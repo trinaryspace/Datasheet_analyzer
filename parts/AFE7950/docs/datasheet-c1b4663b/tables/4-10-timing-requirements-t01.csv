@@ -1,0 +1,14 @@
+,_2,MIN,NOM,MAX,UNIT
+Timing: SYSREF+/-,Timing: SYSREF+/-,Timing: SYSREF+/-,Timing: SYSREF+/-,Timing: SYSREF+/-,Timing: SYSREF+/-
+ts(SYSREF),"Setup Time, SYSREF+/- Valid to Rising Edge of CLK+/-",,50,,ps
+th(SYSREF),"Hold Time, SYSREF+/- Valid after Rising Edge of CLK+/-",,50,,ps
+Timing: Serial ports,Timing: Serial ports,Timing: Serial ports,Timing: Serial ports,Timing: Serial ports,Timing: Serial ports
+ts(SENB),"Setup Time, SENB to Rising Edge of SCLK",,15,,ns
+th(SENB),"Hold Time, SENB after last Rising Edge of SCLK (1)",,5 + tSCLK,,ns
+ts(SDIO),"Setup Time, SDIO valid to Rising Edge of SCLK",,15,,ns
+th(SDIO),"Hold Time, SDIO valid after Rising Edge of SCLK",,5,,ns
+t(SCLK)_W,Minimum SCLK period: registers write,,25,,ns
+t(SCLK)_R,Minimum SCLK period: registers read,,50,,ns
+td(data_out),Minimum Data Output delay after Falling Edge of SCLK,,0,,ns
+td(data_out),Maximum Data Output delay after Falling Edge of SCLK,,15,,ns
+tRESET,Minimum RESETZ Pulse Width,,1,,ms

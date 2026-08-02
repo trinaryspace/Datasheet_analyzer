@@ -1,0 +1,155 @@
+# Golden Q&A set for the AFE7950 (SBASA41E) datasheet.
+# Every expected_substring was verified against the printed PDF page text.
+# `pages` are the printed PDF page numbers an answer must cite.
+questions:
+  - id: q01-dac-resolution
+    question: What is the DAC resolution of the AFE7950?
+    expected_substrings: ["14", "bits"]
+    pages: [7]
+    section: "4.5"
+    kind: direct
+    spec_query: {symbol: "DACRES"}
+
+  - id: q02-tx-dsa-range-step
+    question: What is the TX DSA attenuation range and analog step size?
+    expected_substrings: ["DSA Attenuation range", "40", "1.0", "dB"]
+    pages: [7]
+    section: "4.5"
+    kind: direct
+    spec_query: {section: "4.5", name: "Attenuation"}
+
+  - id: q03-dsa-step-accuracy-calibrated
+    question: What is the DSA attenuation step accuracy (DNL) after calibration?
+    expected_substrings: ["±0.1", "after calibration"]
+    pages: [7]
+    section: "4.5"
+    kind: direct
+    spec_query: {name: "step accuracy", section: "4.5"}
+    notes: answer is conditioned on footnote (2) "After DSA calibration procedure"
+
+  - id: q04-serdes-standard-rate
+    question: Which SerDes standards are supported and what is the maximum lane rate?
+    expected_substrings: ["JESD204B", "JESD204C", "29.5"]
+    pages: [1]
+    section: "1"
+    kind: direct
+
+  - id: q05-spi-write-clock
+    question: What is the minimum SCLK period for register writes?
+    expected_substrings: ["25", "ns"]
+    pages: [27]
+    section: "4.10"
+    kind: direct
+    spec_query: {name: "SCLK", section: "4.10"}
+    notes: 25 ns period ⇒ 40 MHz max write clock (derived answer allowed)
+
+  - id: q06-thermal-resistance
+    question: What is the junction-to-ambient thermal resistance?
+    expected_substrings: ["16.2", "°C/W"]
+    pages: [6]
+    section: "4.4"
+    kind: direct
+    spec_query: {name: "Junction-to-ambient", section: "4.4"}
+
+  - id: q07-vco-coverage
+    question: How many integrated VCOs are there and what frequency range do they cover?
+    expected_substrings: ["7.2", "12.08"]
+    pages: [18]
+    section: "4.7"
+    kind: derived
+    spec_query: {section: "4.7", name: "VCO"}
+    notes: four VCOs 7.2–7.68, 8.8–9.1, 9.7–10.24, 11.6–12.08 GHz
+
+  - id: q08-peak-rf-input-830mhz
+    question: What is the absolute maximum peak differential RF input power at 830 MHz?
+    expected_substrings: ["16.7", "dBm"]
+    pages: [4]
+    section: "4.1"
+    kind: direct
+    spec_query: {name: "peak differential RF input", section: "4.1"}
+
+  - id: q09-sysref-setup-hold
+    question: What are the SYSREF setup and hold time requirements?
+    expected_substrings: ["50", "ps"]
+    pages: [27]
+    section: "4.10"
+    kind: direct
+    spec_query: {name: "SYSREF", section: "4.10"}
+
+  - id: q10-package
+    question: What package does the AFE7950 come in?
+    expected_substrings: ["17mm", "FCBGA", "0.8mm"]
+    pages: [1]
+    section: "1"
+    kind: direct
+
+  - id: q11-rx-bandwidth
+    question: What is the maximum RX signal bandwidth?
+    expected_substrings: ["1200MHz", "600MHz"]
+    pages: [1]
+    section: "1"
+    kind: direct
+    notes: 1200 MHz without FB, 600 MHz with FB — conditional answer
+
+  - id: q12-rf-frequency-range
+    question: What RF frequency range do the TX and RX paths cover?
+    expected_substrings: ["600MHz", "12GHz"]
+    pages: [1]
+    section: "1"
+    kind: direct
+
+  - id: q13-min-1p2v-supply
+    question: What is the minimum operating voltage of the 1.2V rails?
+    expected_substrings: ["1.15"]
+    pages: [6]
+    section: "4.3"
+    kind: direct
+    spec_query: {section: "4.3", name: "1.2V"}
+
+  - id: q14-pfd-frequency-range
+    question: What is the PFD frequency range?
+    expected_substrings: ["100", "500", "MHz"]
+    pages: [18]
+    section: "4.7"
+    kind: direct
+    spec_query: {section: "4.7", name: "PFD"}
+
+  - id: q15-serdes-rise-fall-time
+    question: What is the SerDes output rise/fall time?
+    expected_substrings: ["8", "ps"]
+    pages: [20]
+    section: "4.8"
+    kind: direct
+    spec_query: {section: "4.8", name: "rise"}
+
+  - id: q16-esd-rating
+    question: What is the ESD rating for the Human Body Model?
+    expected_substrings: ["1000", "V"]
+    pages: [5]
+    section: "4.2"
+    kind: direct
+    spec_query: {section: "4.2", name: "Electrostatic"}
+
+  - id: p01-tx-fullscale-800m
+    question: Which figure shows TX output fullscale vs frequency at 800 MHz?
+    expected_substrings: ["TX Output Fullscale vs Output Frequency"]
+    pages: [29]
+    section: "4.12.1"
+    kind: plot
+    plot_query: {caption_contains: "Output Fullscale vs Output Frequency", section: "4.12.1", conditions_contain: "DSA = 0"}
+
+  - id: p02-tx-gain-error-800m
+    question: Which figure shows TX calibrated differential gain error vs DSA setting at 0.85 GHz?
+    expected_substrings: ["TX Calibrated Differential Gain Error vs DSA Setting"]
+    pages: [29]
+    section: "4.12.1"
+    kind: plot
+    plot_query: {caption_contains: "Calibrated Differential Gain Error vs DSA Setting", section: "4.12.1"}
+
+  - id: p03-rx-fullscale-800m
+    question: Which figure shows RX input fullscale vs temperature and channel at 800 MHz?
+    expected_substrings: ["RX Input Fullscale"]
+    pages: [90]
+    section: "4.12.8"
+    kind: plot
+    plot_query: {caption_contains: "RX Input Fullscale", section: "4.12.8"}

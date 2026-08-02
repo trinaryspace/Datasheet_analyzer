@@ -1,0 +1,3 @@
+,_2,_3,VALUE,UNIT
+V(ESD),Electrostatic discharge,"Human body model (HBM), per ANSI/ESDA/JEDEC JS-001, all pins(1)",1000,V
+V(ESD),Electrostatic discharge,"Charged device model (CDM), per ANSI/ESDA/JEDEC JS-002, all pins",150,V
