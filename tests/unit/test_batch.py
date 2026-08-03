@@ -8,6 +8,7 @@ the mapping/summary output, and exit semantics. No assertions on internals.
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import time
 from pathlib import Path
@@ -165,7 +166,7 @@ def test_batch_builds_each_pdf_as_its_own_part(batch_env, capsys):
     # the full file -> part mapping is printed before any build work starts
     assert "test9000.pdf -> TEST9000" in out
     assert "plain.PDF -> PLAIN" in out
-    assert out.index("plain.PDF -> PLAIN") < out.index("building PLAIN")
+    assert out.index("plain.PDF -> PLAIN") < out.index("PLAIN: queued")
     # summary table lists every job with its outcome
     assert "Batch summary" in out
     assert "3 jobs: 3 done, 0 failed" in out
@@ -367,6 +368,131 @@ def test_cli_batch_force_rebuilds(batch_env, monkeypatch, capsys):
     out = capsys.readouterr().out
     assert code == 0
     assert "3 jobs: 3 done, 0 failed, 0 skipped" in out
+
+
+def _batch_log_dirs(settings: Settings) -> list[Path]:
+    return sorted((settings.cache_dir / "batches").glob("*/batch.jsonl"))
+
+
+def _read_events(log: Path) -> list[dict]:
+    return [json.loads(line) for line in log.read_text(encoding="utf-8").splitlines()]
+
+
+def test_run_writes_jsonl_log_with_header_and_full_event_stream(batch_env):
+    pdfs, settings = batch_env
+    assert run_batch(pdfs, settings=settings, use_llm=False).ok
+
+    logs = _batch_log_dirs(settings)
+    assert len(logs) == 1  # one run -> one log
+    events = _read_events(logs[0])
+    assert events  # header + every transition
+
+    # header first, carrying the full job list in run order
+    header = events[0]
+    assert header["stage"] == "header"
+    assert [j["part"] for j in header["jobs"]] == ["PLAIN", "TEST9000", "TEST9001"]
+    assert [j["pdf"] for j in header["jobs"]] == ["plain.PDF", "test9000.pdf", "test9001.pdf"]
+
+    # every event is one parseable object carrying id, part, stage, timestamp, detail
+    for ev in events:
+        assert set(ev) == {"timestamp", "job", "part", "stage", "detail"} or (
+            ev["stage"] == "header"
+        )
+    for ev in events:
+        assert ev["timestamp"]
+    transitions = events[1:]
+    for ev in transitions:
+        assert isinstance(ev["job"], int) and 1 <= ev["job"] <= 3
+        assert ev["part"] in {"PLAIN", "TEST9000", "TEST9001"}
+    # each job: queued -> extracting -> structuring -> enriching -> publishing -> done
+    for part in ("PLAIN", "TEST9000", "TEST9001"):
+        stages = [ev["stage"] for ev in transitions if ev["part"] == part]
+        assert stages == ["queued", "extracting", "structuring", "enriching",
+                          "publishing", "done"]
+    # done events carry their detail (artifact stats)
+    done = next(ev for ev in transitions if ev["stage"] == "done")
+    assert done["detail"] == "2 sections, 1 table"
+
+
+def test_failed_and_skipped_jobs_appear_in_jsonl_with_detail(batch_env, make_synthetic_pdf):
+    pdfs, settings = batch_env
+    (pdfs / "broken.pdf").write_bytes(b"%PDF-1.4 corrupt nonsense bytes")
+    report = run_batch(pdfs, settings=settings, use_llm=False)
+    events = _read_events(_batch_log_dirs(settings)[0])
+
+    broken_failed = next(
+        ev for ev in events if ev["part"] == "BROKEN" and ev["stage"] == "failed"
+    )
+    by_part = {j.part: j for j in report.jobs}
+    assert broken_failed["detail"] == by_part["BROKEN"].error  # error text, one line
+    assert "\n" not in broken_failed["detail"]
+    assert "Traceback" in broken_failed["traceback"]  # traceback summary, JSONL only
+    assert broken_failed["job"] == 1  # sorted order: broken.pdf first
+    # the jobs that completed still emit their full stage stream
+    assert any(ev["part"] == "TEST9000" and ev["stage"] == "done" for ev in events)
+
+    # a rerun produces a second log; skips appear there with their reason
+    # (BROKEN can never skip: its corrupt bytes never built, so it fails again)
+    report = run_batch(pdfs, settings=settings, use_llm=False)
+    second = _read_events(_batch_log_dirs(settings)[1])
+    skipped = [ev for ev in second if ev["stage"] == "skipped"]
+    assert len(skipped) == 3
+    assert all(ev["detail"] for ev in skipped)
+    plain_skip = next(ev for ev in skipped if ev["part"] == "PLAIN")
+    assert plain_skip["detail"] == report.jobs[1].error
+    assert any(ev["part"] == "BROKEN" and ev["stage"] == "failed" for ev in second)
+
+
+def test_log_path_identifies_source_dir_and_run(batch_env, capsys):
+    pdfs, settings = batch_env
+    assert run_batch(pdfs, settings=settings, use_llm=False).ok
+
+    log_dirs = sorted((settings.cache_dir / "batches").iterdir())
+    assert len(log_dirs) == 1
+    assert log_dirs[0].name.startswith("datasheets-")  # source-dir stem + run start
+    assert (log_dirs[0] / "batch.jsonl").exists()
+
+    out = capsys.readouterr().out
+    assert "batch log:" in out and "batch.jsonl" in out  # CLI can point at it
+
+
+def test_terminal_emits_one_prefixed_line_per_transition(batch_env, capsys):
+    pdfs, settings = batch_env
+    assert run_batch(pdfs, settings=settings, use_llm=False).ok
+    out = capsys.readouterr().out
+
+    for line in (f"[1/3] PLAIN: {stage}" for stage in
+                 ("queued", "extracting", "structuring", "enriching", "publishing", "done")):
+        assert line in out
+    assert "[2/3] TEST9000: queued" in out
+    assert "[3/3] TEST9001: done" in out
+    # one line per event: stage lines are never wrapped or paired
+    assert "[1/3] PLAIN: queued\n[1/3] PLAIN: extracting" in out
+
+
+def test_job_result_records_observed_stages(batch_env):
+    from datasheet_analyzer.pipeline import BUILD_STAGES
+
+    pdfs, settings = batch_env
+    report = run_batch(pdfs, settings=settings, use_llm=False)
+    for job in report.jobs:
+        assert job.stages == list(BUILD_STAGES)
+
+
+def test_jsonl_sink_failure_degrades_not_crash(batch_env, capsys):
+    """A log sink that cannot open (read-only cache, disk full) must warn and
+    let the batch run; the JSONL is monitoring, never a build's dependency
+    (AGENTS.md invariant 7: honest degradation)."""
+    pdfs, settings = batch_env
+    settings.cache_dir.mkdir(parents=True, exist_ok=True)
+    (settings.cache_dir / "batches").write_text("occupied", encoding="utf-8")
+
+    report = run_batch(pdfs, settings=settings, use_llm=False)
+
+    assert report.ok
+    assert all(j.status != STATUS_FAILED for j in report.jobs)
+    err = capsys.readouterr().err
+    assert "batch log unavailable" in err
 
 
 def test_missing_directory_is_an_error(tmp_path):

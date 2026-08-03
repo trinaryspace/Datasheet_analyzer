@@ -16,9 +16,9 @@ skipped jobs still appear in the log with their detail.
 
 **Status:** ready-for-agent
 
-- [ ] Terminal shows one prefixed stage line per job transition (no interleaving, even later under parallelism)
-- [ ] A per-run JSONL file is written under the cache directory with a header event listing the jobs
-- [ ] Every event is a single parseable JSON object carrying job id, part, stage, timestamp, detail
-- [ ] Done, failed, and skipped jobs all appear in the log with their detail (error text for failures, reason for skips — skip states arriving via ticket 2)
-- [ ] Existing calls to the single-part build without the callback behave exactly as before (additive change)
-- [ ] The log file path clearly identifies the source directory and the run
+- [x] Terminal shows one prefixed stage line per job transition (no interleaving, even later under parallelism — event sinks run under one lock)
+- [x] A per-run JSONL file is written under the cache directory with a header event listing the jobs
+- [x] Every event is a single parseable JSON object carrying job id, part, stage, timestamp, detail
+- [x] Done, failed, and skipped jobs all appear in the log with their detail (error text for failures, reason for skips — skip states arriving via ticket 2)
+- [x] Existing calls to the single-part build without the callback behave exactly as before (additive change)
+- [x] The log file path clearly identifies the source directory and the run

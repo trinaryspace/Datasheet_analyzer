@@ -89,6 +89,26 @@ def test_second_build_uses_extraction_cache(synthetic_env):
     assert second.cached_extraction
 
 
+def test_progress_callback_fires_at_stage_boundaries(synthetic_env):
+    """The additive progress callback fires once per pipeline stage, in order,
+    and leaves the build itself untouched."""
+    from datasheet_analyzer.pipeline import BUILD_STAGES
+
+    pdf, settings = synthetic_env
+    seen: list[str] = []
+
+    def on_progress(stage: str) -> None:
+        seen.append(stage)
+
+    result = build_part(
+        pdf, part_number="TEST9000", settings=settings, use_llm=False,
+        on_progress=on_progress,
+    )
+    assert seen == list(BUILD_STAGES)
+    assert BUILD_STAGES == ("extracting", "structuring", "enriching", "publishing")
+    assert result.manifest.stats.n_sections == 2  # behavior unchanged
+
+
 def test_no_cache_flag_forces_reextract(synthetic_env):
     pdf, settings = synthetic_env
     build_part(pdf, part_number="TEST9000", settings=settings, use_llm=False)

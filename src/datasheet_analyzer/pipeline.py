@@ -9,6 +9,7 @@ parsing entirely (the HTTP layer has its own cache too).
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -37,6 +38,13 @@ from datasheet_analyzer.structure.plots import build_plotset
 from datasheet_analyzer.structure.specs import build_specset
 
 log = logging.getLogger(__name__)
+
+BUILD_STAGES: tuple[str, ...] = (
+    "extracting",
+    "structuring",
+    "enriching",
+    "publishing",
+)
 
 
 @dataclass
@@ -135,9 +143,21 @@ def build_part(
     backend_name: str = DEFAULT_BACKEND,
     use_cache: bool = True,
     use_llm: bool = True,
+    on_progress: Callable[[str], None] | None = None,
 ) -> BuildResult:
+    """Build one part corpus end to end.
+
+    ``on_progress`` is an additive hook: when supplied it is called at each
+    stage boundary (``extracting``, ``structuring``, ``enriching``,
+    ``publishing``) before that stage's work starts. Callers that omit it get
+    the exact behavior they always had.
+    """
     pdf_path = Path(pdf_path)
     part_dir = settings.parts_dir / part_number
+
+    def _progress(stage: str) -> None:
+        if on_progress is not None:
+            on_progress(stage)
 
     # acquire: load inventory or bootstrap from the CLI pdf
     inventory = load_inventory(part_dir)
@@ -148,6 +168,7 @@ def build_part(
         inventory = append_to_inventory([source], part_dir)
 
     # extract each document (datasheet via ti_html, companions via pdf_text)
+    _progress("extracting")
     docs: list[RawDocument] = []
     any_cached = True
     for source in inventory:
@@ -171,6 +192,7 @@ def build_part(
         log.warning("no ANTHROPIC_API_KEY — using deterministic descriptions")
 
     all_plans: list[tuple[RawDocument, list[SectionPlan], dict[str, str]]] = []
+    _progress("structuring")
     specsets: list[PlotSet] = []
     plotsets: list[PlotSet] = []
     doc_summaries: list[tuple[str, str, int, str]] = []
@@ -214,6 +236,7 @@ def build_part(
         )
 
     # enrich: one INDEX.md grouping sections by document
+    _progress("enriching")
     metas: list[SectionMeta] = []
     for raw, plans, descriptions in all_plans:
         doc_dir = f"docs/{doc_dir_name(raw)}"
@@ -242,6 +265,7 @@ def build_part(
     )
 
     # publish
+    _progress("publishing")
     manifest = write_corpus(
         part_dir, all_plans, index_md,
         pipeline_version=PIPELINE_VERSION,
