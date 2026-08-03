@@ -621,7 +621,8 @@ def test_parallel_events_fire_exactly_once_and_jsonl_parses(batch_env):
 
 
 def test_workers_1_reproduces_serial_path_exactly(batch_env):
-    """workers=1 is the serial path: identical report to the default run."""
+    """workers=1 is the serial path: identical report AND event stream to the
+    default run — the external behavior of the runner, not just its summary."""
     pdfs, settings = batch_env
 
     default = run_batch(pdfs, settings=settings, use_llm=False, force=True)
@@ -632,6 +633,17 @@ def test_workers_1_reproduces_serial_path_exactly(batch_env):
         (j.part, j.status, j.stages, j.error) for j in single.jobs
     ]
     assert [j.stats for j in default.jobs] == [j.stats for j in single.jobs]
+
+    # the two runs emit identical event streams (same order, same pairs),
+    # differing only in timestamp and run-bookkeeping
+    def _stream(log):
+        events = _read_events(log)
+        assert events[0]["stage"] == "header"
+        return [(ev["job"], ev["part"], ev["stage"], ev["detail"]) for ev in events[1:]]
+
+    logs = _batch_log_dirs(settings)
+    assert len(logs) == 2
+    assert _stream(logs[0]) == _stream(logs[1])
 
 
 def test_parallel_run_with_identical_pdf_bytes_keeps_cache_valid(

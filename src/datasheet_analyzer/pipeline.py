@@ -73,11 +73,12 @@ def _load_cached_raw(settings: Settings, content_hash: str, backend: str) -> Raw
 def _atomic_write_text(path: Path, text: str) -> None:
     """Write ``text`` to ``path`` atomically: unique temp file + rename.
 
-    A concurrent reader or writer always observes either the old file or the
-    complete new one — never a partially written file. This is what makes it
-    safe for parallel batch jobs whose PDFs share the same (hash, backend)
-    extraction-cache identity to race on one path; a failed write removes its
-    temp file and leaves the destination untouched.
+    Concurrent writers of the same path can never produce a partially
+    written file: each write lands in its own temp file and the visible path
+    flips only at the rename. This is what makes it safe for parallel batch
+    jobs whose PDFs share the same (hash, backend) extraction-cache identity
+    to race on one path; a failed write removes its temp file and leaves the
+    destination untouched.
     """
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=path.name + ".", suffix=".tmp")

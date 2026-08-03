@@ -363,8 +363,62 @@ def _emit_final(emitter: EventEmitter, idx: int, result: JobResult) -> None:
     emitter.emit(idx, result.part, result.status, _details(result), extra=extra)
 
 
-def _skip_decision(job: BatchJob, *, settings: Settings, use_cache: bool, force: bool) -> str:
-    return skip_reason(job, settings=settings, force=force) if use_cache else ""
+def _dispatch_job(
+    idx: int,
+    job: BatchJob,
+    *,
+    emitter: EventEmitter,
+    settings: Settings,
+    use_cache: bool,
+    use_llm: bool,
+    force: bool,
+    completed: dict[int, JobResult],
+    executor: ThreadPoolExecutor | None = None,
+    pending: dict[Future, int] | None = None,
+) -> None:
+    """Run one job at its dispatch point: queue, skip, then either run inline
+    (serial path, ``executor=None``) or submit to the pool.
+
+    With ``executor`` the build's stage events fire from the worker thread;
+    the final event is emitted by the collector, not here. Without it the
+    whole job — stages and final — completes before this call returns, which
+    is what makes ``workers=1`` byte-for-byte the serial path.
+    """
+    emitter.emit(idx, job.part, "queued")
+    reason = skip_reason(job, settings=settings, force=force) if use_cache else ""
+    if reason:
+        completed[idx] = JobResult(
+            part=job.part,
+            pdf_path=str(job.pdf_path),
+            status=STATUS_SKIPPED,
+            error=reason,
+        )
+        emitter.emit(idx, job.part, STATUS_SKIPPED, reason)
+        return
+
+    def _progress(stage: str) -> None:
+        emitter.emit(idx, job.part, stage)
+
+    if executor is None:
+        result = run_job(
+            job,
+            settings=settings,
+            use_cache=use_cache,
+            use_llm=use_llm,
+            on_progress=_progress,
+        )
+        completed[idx] = result
+        _emit_final(emitter, idx, result)
+    else:
+        future = executor.submit(
+            run_job,
+            job,
+            settings=settings,
+            use_cache=use_cache,
+            use_llm=use_llm,
+            on_progress=_progress,
+        )
+        pending[future] = idx
 
 
 def _print_summary(report: BatchReport) -> None:
@@ -421,66 +475,32 @@ def run_batch(
     # Dispatch. workers=1 is the serial path: one job fully runs (and its
     # events fully flush) before the next is even queued — byte-for-byte the
     # behavior of earlier releases. workers>1 runs jobs in a bounded thread
-    # pool: queued + skip decisions are taken here in run order, each build
-    # runs in its own worker with job-scoped wiring, and final states are
-    # emitted as jobs complete (live terminal/JSONL). run_job never raises —
-    # failure isolation turns every exception into a failed result.
-    pool_size = max(1, int(workers))
+    # pool: queued + skip decisions are taken here in run order, builds run
+    # in workers with job-scoped wiring, and final states are emitted as jobs
+    # complete (live terminal/JSONL). run_job never raises — failure
+    # isolation turns every exception into a failed result. (Settings
+    # validation rejects ``batch_workers < 1``; a direct zero/negative
+    # ``workers`` argument raises in the pool boundary instead of silently
+    # clamping.)
     completed: dict[int, JobResult] = {}
-    if pool_size == 1:
+    if workers == 1:
         for idx, job in enumerate(jobs, 1):
-            emitter.emit(idx, job.part, "queued")
-            reason = _skip_decision(job, settings=settings, use_cache=use_cache, force=force)
-            if reason:
-                completed[idx] = JobResult(
-                    part=job.part,
-                    pdf_path=str(job.pdf_path),
-                    status=STATUS_SKIPPED,
-                    error=reason,
-                )
-                emitter.emit(idx, job.part, STATUS_SKIPPED, reason)
-                continue
-            result = run_job(
-                job,
-                settings=settings,
-                use_cache=use_cache,
-                use_llm=use_llm,
-                on_progress=lambda stage, _idx=idx, _job=job: emitter.emit(
-                    _idx, _job.part, stage
-                ),
+            _dispatch_job(
+                idx, job, emitter=emitter, settings=settings,
+                use_cache=use_cache, use_llm=use_llm, force=force,
+                completed=completed,
             )
-            completed[idx] = result
-            _emit_final(emitter, idx, result)
     else:
         pending: dict[Future, int] = {}
         with ThreadPoolExecutor(
-            max_workers=pool_size, thread_name_prefix="dsa-batch"
+            max_workers=workers, thread_name_prefix="dsa-batch"
         ) as executor:
             for idx, job in enumerate(jobs, 1):
-                emitter.emit(idx, job.part, "queued")
-                reason = _skip_decision(
-                    job, settings=settings, use_cache=use_cache, force=force
+                _dispatch_job(
+                    idx, job, emitter=emitter, settings=settings,
+                    use_cache=use_cache, use_llm=use_llm, force=force,
+                    completed=completed, executor=executor, pending=pending,
                 )
-                if reason:
-                    completed[idx] = JobResult(
-                        part=job.part,
-                        pdf_path=str(job.pdf_path),
-                        status=STATUS_SKIPPED,
-                        error=reason,
-                    )
-                    emitter.emit(idx, job.part, STATUS_SKIPPED, reason)
-                    continue
-                future = executor.submit(
-                    run_job,
-                    job,
-                    settings=settings,
-                    use_cache=use_cache,
-                    use_llm=use_llm,
-                    on_progress=lambda stage, _idx=idx, _job=job: emitter.emit(
-                        _idx, _job.part, stage
-                    ),
-                )
-                pending[future] = idx
 
             for future in as_completed(pending):
                 idx = pending[future]
