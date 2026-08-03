@@ -19,6 +19,12 @@ SYNTHETIC = FIXTURES / "synthetic"
 GOLDEN_QA = FIXTURES / "golden_qa.yaml"
 REPO_ROOT = Path(__file__).parent.parent
 AFE7950_PDF = REPO_ROOT / "afe7950.pdf"
+# Phase 4 gate: real PDFs at the repo root, ungated-offline by construction
+# (pdf_layout never touches the network); skip-guarded like AFE7950_PDF.
+AD9081_PDF = REPO_ROOT / "ad9081.pdf"
+LM741_PDF = REPO_ROOT / "lm741.pdf"
+QPA1003P_PDF = REPO_ROOT / "QPA1003P.pdf"
+HMC520A_PDF = REPO_ROOT / "hmc520a.pdf"
 
 
 @pytest.fixture

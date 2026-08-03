@@ -64,9 +64,10 @@ codes, not colors.
 | `acquire/inventory.py` | Part = folder of docs. `sources.json` per part; identity = sha256 of bytes; evidence-pinned vendor at acquire (detection or `--vendor` override). | `register_source`, `save_inventory`, `load_inventory`, `detect_doc_type`, `pin_vendor` |
 | `vendor.py` | **Vendor routing record, not a rulebook**: profile registry (brand lexicon + backend preference chain), evidence-pinned detection on page-1 text/filename, drift warnings. Default `ti`; no layout behavior hangs off the vendor string. | `VENDOR_PROFILES`, `detect_vendor`, `select_backend`, `warn_vendor_drift`, `is_known_vendor` |
 | `extract/base.py` | Backend protocol + registry. | `ExtractionBackend`, `register`, `get_backend` |
-| `extract/pdf_structure.py` | PyMuPDF: content hash, page count, **printed TOC (authoritative page numbers)**, per-page text (verification/pinning only — NOT content extraction). | `read_toc`, `page_texts`, `compute_content_hash`, `make_source`, `split_number` |
+| `extract/pdf_structure.py` | PyMuPDF: content hash, page count, **printed TOC (authoritative page numbers)**, per-page text (verification/pinning only). Layout analysis lives in `pdf_layout`, never here. | `read_toc`, `page_texts`, `compute_content_hash`, `make_source`, `split_number` |
 | `extract/http.py` | Fetchers. `CachingFetcher` (disk cache `.cache/http`), `CachingBinaryFetcher` (`.cache/http-bin`), `ReplayFetcher`/`ReplayBinaryFetcher` (hermetic tests: miss = hard error), `MappingFetcher`. | `Fetcher` / `BinaryFetcher` protocols |
-| `extract/ti_html.py` | Primary content backend: TI document-viewer HTML (real tables, MathML, footnotes — no OCR, no hallucination). | `TiHtmlBackend`, `parse_toc`, `parse_section` |
+| `extract/ti_html.py` | Primary TI content backend: TI document-viewer HTML (real tables, MathML, footnotes — no OCR, no hallucination). TI keeps this path; every other vendor routes to the layout floor. | `TiHtmlBackend`, `parse_toc`, `parse_section` |
+| `extract/pdf_layout.py` | **Vendor-neutral layout floor** (offline, PyMuPDF-only): furniture by slot recurrence + universal page-machinery patterns (zero vendor strings), structure ladder (outline → printed-TOC dot-leader parse → per-page), page-ranged sections, honest unnumbered identity. Paragraph core today; tables/gate/etc. land in tickets 03–08. | `PdfLayoutBackend`, `parse_printed_toc` |
 | `extract/pdf_text.py` | Degraded backend for register maps/errata/app notes: paragraphs only, no trusted tables/figures, contextual page-number stripping. | `PdfTextBackend` |
 | `structure/tables.py` | HTML table → atomic `TableBlock`; full rowspan/colspan expansion; markdown + CSV precomputed. | `html_table_to_block`, `cited_markers`, `cell_text` |
 | `structure/footnotes.py` | `div.tablenote` → `Footnote`; orphan/uncited audit. | `parse_tablenote`, `attach_footnotes`, `audit_table_footnotes` |
@@ -116,7 +117,9 @@ parts/<PART>/
 4. **Tests are hermetic.** No network (ReplayFetcher/MappingFetcher), no LLM
    (FakeClient), no reliance on machine state. Real-input coverage comes from
    recorded fixtures (`tests/fixtures/recorded_http/`, 41 files) + the real
-   `afe7950.pdf` / `afe7953.pdf` (skip-guarded). Synthetic PDFs are built
+   `afe7950.pdf` / `afe7953.pdf` and the four Phase-4 gate PDFs
+   (`ad9081.pdf`/`lm741.pdf`/`QPA1003P.pdf`/`hmc520a.pdf`, skip-guarded;
+   `pdf_layout` is offline by construction). Synthetic PDFs are built
    in-test via fitz.
 5. **Golden Q&A is the objective function.** `tests/fixtures/golden_qa.yaml`
    (19 questions) is the benchmark (no public one exists). Extend it whenever

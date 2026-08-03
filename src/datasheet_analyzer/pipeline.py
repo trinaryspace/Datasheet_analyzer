@@ -99,7 +99,8 @@ def _brief_and_facts(raw: RawDocument) -> tuple[str, list[str]]:
     brief, facts = "", []
     for sec in raw.sections:
         title = sec.title.lower()
-        if not brief and title.startswith("description"):
+        # "General Description" (ADI/older parts) alongside TI's "Description"
+        if not brief and title.startswith(("description", "general description")):
             for para in sec.paragraphs:
                 if len(para.split()) >= 8:
                     brief = para

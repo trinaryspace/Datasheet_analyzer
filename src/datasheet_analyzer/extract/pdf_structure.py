@@ -1,9 +1,9 @@
 """PDF structure extraction via PyMuPDF: identity, page count, TOC, page text.
 
-This is NOT the content extractor (layout analysis of dense parametric
-tables from raw PDF text is the failure mode this project avoids). The PDF
-provides: content-hash identity, page count, the printed TOC (authoritative
-page numbers for citations), and per-page text for verification/pinning.
+Layout analysis lives in the vendor-neutral layout core (`extract.pdf_layout`,
+reconstruction-verified per ADR 0003) — never here. This module provides
+content-hash identity, page count, the printed TOC (authoritative page
+numbers for citations), and per-page text for verification/pinning only.
 """
 
 from __future__ import annotations

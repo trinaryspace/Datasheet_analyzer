@@ -19,7 +19,7 @@ import pytest
 from datasheet_analyzer import cli
 from datasheet_analyzer.acquire.inventory import load_inventory, register_source, save_inventory
 from datasheet_analyzer.config import Settings
-from datasheet_analyzer.extract import BackendUnavailableError, get_backend
+from datasheet_analyzer.extract import get_backend
 from datasheet_analyzer.extract.http import MappingFetcher
 from datasheet_analyzer.extract.pdf_structure import compute_content_hash
 from datasheet_analyzer.models import DocType, SourceDocument
@@ -64,7 +64,10 @@ def vendor_env(tmp_path, monkeypatch, make_synthetic_pdf):
     }
     backend = get_backend("ti_html")
     backend.fetcher = MappingFetcher(mapping)
-    monkeypatch.setattr("datasheet_analyzer.pipeline.get_backend", lambda name: backend)
+    monkeypatch.setattr(
+        "datasheet_analyzer.pipeline.get_backend",
+        lambda name: backend if name == "ti_html" else get_backend(name),
+    )
     return pdf, settings
 
 
@@ -105,14 +108,11 @@ class TestSelectBackend:
     def test_ti_datasheet_prefers_ti_html(self):
         assert select_backend("ti", DocType.DATASHEET) == "ti_html"
 
-    def test_non_ti_datasheets_need_layout_backend_not_available(self):
-        # pdf_layout lands in ticket 02; until then the chain raises honestly.
-        with pytest.raises(BackendUnavailableError, match="pdf_layout"):
-            select_backend("adi", DocType.DATASHEET)
+    def test_non_ti_datasheets_route_to_layout_backend(self):
+        assert select_backend("adi", DocType.DATASHEET) == "pdf_layout"
 
     def test_unknown_vendor_falls_back_to_layout_backend(self):
-        with pytest.raises(BackendUnavailableError, match="pdf_layout"):
-            select_backend("unknown", DocType.DATASHEET)
+        assert select_backend("unknown", DocType.DATASHEET) == "pdf_layout"
 
     def test_companions_use_pdf_text_for_every_vendor(self):
         for vendor in ("ti", "adi", "qorvo", "unknown"):
@@ -158,26 +158,28 @@ class TestAcquirePinning:
 
 
 class TestPinningPersistence:
-    def test_override_pins_into_inventory_even_when_build_fails(self, vendor_env):
+    def test_override_pins_into_inventory_and_builds_via_layout(self, vendor_env):
         pdf, settings = vendor_env
-        with pytest.raises(BackendUnavailableError):
-            build_part(pdf, part_number="TEST9000", settings=settings, vendor="adi",
-                       use_llm=False)
+        result = build_part(pdf, part_number="TEST9000", settings=settings, vendor="adi",
+                            use_llm=False)
         (src,) = load_inventory(settings.parts_dir / "TEST9000")
         assert src.vendor == "adi"
         assert src.vendor_evidence == "cli-override: --vendor adi"
+        assert result.manifest.vendor == "adi"
+        assert result.manifest.extraction_stats[src.content_hash].backend == "pdf_layout"
 
     def test_rerun_without_override_keeps_pinned_vendor(self, vendor_env, caplog):
         pdf, settings = vendor_env
-        with pytest.raises(BackendUnavailableError):
-            build_part(pdf, part_number="TEST9000", settings=settings, vendor="adi",
-                       use_llm=False)
-        with caplog.at_level(logging.WARNING), pytest.raises(BackendUnavailableError):
-            build_part(pdf, part_number="TEST9000", settings=settings, use_llm=False)
+        build_part(pdf, part_number="TEST9000", settings=settings, vendor="adi",
+                   use_llm=False)
+        with caplog.at_level(logging.WARNING):
+            result = build_part(pdf, part_number="TEST9000", settings=settings,
+                                use_llm=False)
         (src,) = load_inventory(settings.parts_dir / "TEST9000")
         assert src.vendor == "adi"
         # a deliberate override is not treated as drift
         assert not any("vendor drift" in r.message for r in caplog.records)
+        assert result.manifest.vendor == "adi"
 
     def test_unpinned_build_detects_vendor(self, vendor_env):
         pdf, settings = vendor_env
