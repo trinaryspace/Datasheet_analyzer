@@ -1,8 +1,12 @@
-"""Batch runner (serial) — external behavior only.
+"""Batch runner — external behavior only.
 
 Given a directory of synthetic PDFs and temp-dir settings, assert the
 observable outcomes: which parts exist, which jobs are done/skipped/failed,
-the mapping/summary output, and exit semantics. No assertions on internals.
+the mapping/summary output, exit semantics, the event/JSONL stream, and the
+parallel-dispatch contract (any worker count, serial equivalence, atomic
+extraction cache). No assertions on thread scheduling or internals —
+deterministic runs use workers=1; parallel tests assert only observable
+completion, exactly-once events, and parseable JSONL lines.
 """
 
 from __future__ import annotations
@@ -570,3 +574,131 @@ def test_cli_batch_missing_dir_exits_2(tmp_path, monkeypatch, capsys):
     err = capsys.readouterr().err
     assert code == 2
     assert "batch error" in err
+
+
+def test_parallel_dispatch_completes_more_jobs_than_workers(
+    batch_env, make_synthetic_pdf
+):
+    """6 jobs across 2 workers: every job completes; the report stays in
+    sorted filename order regardless of completion order."""
+    pdfs, settings = batch_env
+
+    import datasheet_analyzer.pipeline as pipeline_mod
+
+    fetcher = pipeline_mod.get_backend("ti_html").fetcher
+    for name in ("test9002.pdf", "test9003.pdf", "test9004.pdf"):
+        make_synthetic_pdf(pdfs / name)
+        fetcher.mapping.update(_mapping_for(name[:-4].upper()))
+
+    report = run_batch(pdfs, settings=settings, use_llm=False, workers=2)
+
+    assert report.ok
+    assert report.counts == {STATUS_DONE: 6, STATUS_FAILED: 0, STATUS_SKIPPED: 0}
+    assert [j.part for j in report.jobs] == [
+        "PLAIN", "TEST9000", "TEST9001", "TEST9002", "TEST9003", "TEST9004",
+    ]
+    assert all((settings.parts_dir / j.part / "INDEX.md").exists() for j in report.jobs)
+
+
+def test_parallel_events_fire_exactly_once_and_jsonl_parses(batch_env):
+    """Parallel runs keep the ticket-3 event contract: one event per
+    transition, per-part stage sequence intact, every JSONL line a single
+    parseable object (no mid-line interleaving)."""
+    from datasheet_analyzer.pipeline import BUILD_STAGES
+
+    pdfs, settings = batch_env
+    assert run_batch(pdfs, settings=settings, use_llm=False, workers=3).ok
+
+    events = _read_events(_batch_log_dirs(settings)[0])
+    assert events[0]["stage"] == "header"
+    transitions = events[1:]
+    assert len(transitions) == 3 * (1 + len(BUILD_STAGES) + 1)  # queued+stages+done
+    for part in ("PLAIN", "TEST9000", "TEST9001"):
+        stages = [ev["stage"] for ev in transitions if ev["part"] == part]
+        assert stages == ["queued", *list(BUILD_STAGES), "done"]
+        ids = {ev["job"] for ev in transitions if ev["part"] == part}
+        assert len(ids) == 1  # one stable job id per part
+
+
+def test_workers_1_reproduces_serial_path_exactly(batch_env):
+    """workers=1 is the serial path: identical report to the default run."""
+    pdfs, settings = batch_env
+
+    default = run_batch(pdfs, settings=settings, use_llm=False, force=True)
+    single = run_batch(pdfs, settings=settings, use_llm=False, force=True, workers=1)
+
+    assert all(j.status == STATUS_DONE for j in single.jobs)
+    assert [(j.part, j.status, j.stages, j.error) for j in default.jobs] == [
+        (j.part, j.status, j.stages, j.error) for j in single.jobs
+    ]
+    assert [j.stats for j in default.jobs] == [j.stats for j in single.jobs]
+
+
+def test_parallel_run_with_identical_pdf_bytes_keeps_cache_valid(
+    batch_env, make_synthetic_pdf
+):
+    """Two jobs whose PDF bytes are identical share one extraction-cache
+    identity; an overlapping parallel write must leave that file valid
+    (atomic write-temp + rename), with no temp litter."""
+    import shutil
+
+    import datasheet_analyzer.pipeline as pipeline_mod
+    from datasheet_analyzer.pipeline import _load_cached_raw
+
+    pdfs, settings = batch_env
+    make_synthetic_pdf(pdfs / "dupalpha.pdf")
+    shutil.copyfile(pdfs / "dupalpha.pdf", pdfs / "dupbeta.pdf")
+
+    fetcher = pipeline_mod.get_backend("ti_html").fetcher
+    fetcher.mapping.update(_mapping_for("DUPALPHA"))
+    fetcher.mapping.update(_mapping_for("DUPBETA"))
+
+    report = run_batch(pdfs, settings=settings, use_llm=False, workers=2)
+    by_part = {j.part: j for j in report.jobs}
+    assert report.ok
+    assert by_part["DUPALPHA"].status == STATUS_DONE
+    assert by_part["DUPBETA"].status == STATUS_DONE
+    assert (settings.parts_dir / "DUPALPHA" / "INDEX.md").exists()
+    assert (settings.parts_dir / "DUPBETA" / "INDEX.md").exists()
+
+    extract_dir = settings.cache_dir / "extract"
+    assert list(extract_dir.glob("*.tmp")) == []  # atomic writes leave no litter
+    shared = extract_dir / f"{_sha256(pdfs / 'dupalpha.pdf')}__ti_html.json"
+    assert shared.exists()
+    loaded = _load_cached_raw(settings, _sha256(pdfs / "dupalpha.pdf"), "ti_html")
+    assert loaded is not None
+    assert len(loaded.sections) == 2  # a torn write would fail validation here
+
+    # cache intact + hash gate intact: a re-run skips everything
+    report = run_batch(pdfs, settings=settings, use_llm=False, workers=2)
+    assert report.counts == {STATUS_DONE: 0, STATUS_FAILED: 0, STATUS_SKIPPED: 5}
+
+
+def test_cli_batch_workers_precedence(batch_env, monkeypatch, capsys):
+    """--workers flag > DSA_BATCH_WORKERS env > default 4."""
+    pdfs, settings = batch_env
+    monkeypatch.setattr("datasheet_analyzer.cli.get_settings", lambda: settings)
+
+    calls: list[int] = []
+
+    def _fake_run(batch_dir, *, workers, **kwargs):
+        calls.append(workers)
+        from datasheet_analyzer.batch import BatchReport
+
+        return BatchReport(jobs=[])
+
+    monkeypatch.setattr("datasheet_analyzer.batch.run_batch", _fake_run)
+
+    assert cli.main(["batch", str(pdfs), "--no-llm"]) == 0
+    assert cli.main(["batch", str(pdfs), "--no-llm", "--workers", "1"]) == 0
+    assert cli.main(["batch", str(pdfs), "--no-llm", "--workers", "8"]) == 0
+    assert calls == [settings.batch_workers, 1, 8]
+
+    # env var is the default when the flag is absent
+    monkeypatch.setenv("DSA_BATCH_WORKERS", "2")
+    env_settings = Settings().resolve()
+    assert env_settings.batch_workers == 2
+    monkeypatch.setattr("datasheet_analyzer.cli.get_settings", lambda: env_settings)
+    assert cli.main(["batch", str(pdfs), "--no-llm"]) == 0
+    assert calls[-1] == 2
+    capsys.readouterr()

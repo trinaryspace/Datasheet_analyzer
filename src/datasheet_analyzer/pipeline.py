@@ -9,6 +9,8 @@ parsing entirely (the HTTP layer has its own cache too).
 from __future__ import annotations
 
 import logging
+import os
+import tempfile
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -68,10 +70,34 @@ def _load_cached_raw(settings: Settings, content_hash: str, backend: str) -> Raw
     return None
 
 
+def _atomic_write_text(path: Path, text: str) -> None:
+    """Write ``text`` to ``path`` atomically: unique temp file + rename.
+
+    A concurrent reader or writer always observes either the old file or the
+    complete new one — never a partially written file. This is what makes it
+    safe for parallel batch jobs whose PDFs share the same (hash, backend)
+    extraction-cache identity to race on one path; a failed write removes its
+    temp file and leaves the destination untouched.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=path.name + ".", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(text)
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.replace(tmp, path)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+
+
 def _store_cached_raw(settings: Settings, raw: RawDocument) -> None:
     path = _extract_cache_path(settings, raw.source.content_hash, raw.extractor)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(raw.model_dump_json(indent=2), encoding="utf-8")
+    _atomic_write_text(path, raw.model_dump_json(indent=2))
 
 
 def _brief_and_facts(raw: RawDocument) -> tuple[str, list[str]]:

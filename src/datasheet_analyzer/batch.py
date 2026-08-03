@@ -18,6 +18,15 @@ matching ``dsa build --no-cache``'s full-redo semantics. A changed PDF is
 re-registered under its new identity before building, so the rebuilt part is
 keyed on the current bytes and later runs skip it again.
 
+Dispatch: jobs run through a bounded ``ThreadPoolExecutor`` (``--workers N``,
+env ``DSA_BATCH_WORKERS`` default 4; ``workers=1`` is the serial path with
+today's exact behavior). Each job is one independent unit running the full
+pipeline, with its backend wiring, LLM client and fetchers created inside the
+job — thread safety is by construction, no shared mutable pipeline state.
+queued/skip decisions are taken in the main thread in run order; stage
+events fire from the worker that runs the job; final states are emitted as
+jobs complete and the report is assembled back in run order.
+
 Event vocabulary (part of the runner's contract): every job transition emits
 one event — ``queued``, a build stage (``extracting | structuring |
 enriching | publishing``, fired by ``build_part``'s additive ``on_progress``
@@ -27,7 +36,8 @@ appended to the run's JSONL under
 ``.cache/batches/<dirstem>-<run>/batch.jsonl`` (header event first, carrying
 the full job list). The JSONL is the authoritative monitoring record —
 tailable, greppable by part; failed and skipped jobs appear there with their
-detail (failed events additionally carry a traceback summary).
+detail (failed events additionally carry a traceback summary). The emitter
+lock keeps every terminal line and JSONL record whole under parallelism.
 """
 
 from __future__ import annotations
@@ -38,6 +48,7 @@ import sys
 import threading
 import traceback
 from collections.abc import Callable
+from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -346,6 +357,16 @@ def _details(job: JobResult) -> str:
     return job.error or "unknown error"
 
 
+def _emit_final(emitter: EventEmitter, idx: int, result: JobResult) -> None:
+    """Emit a job's final state (terminal + JSONL) with its traceback extra."""
+    extra = {"traceback": result.traceback} if result.traceback else None
+    emitter.emit(idx, result.part, result.status, _details(result), extra=extra)
+
+
+def _skip_decision(job: BatchJob, *, settings: Settings, use_cache: bool, force: bool) -> str:
+    return skip_reason(job, settings=settings, force=force) if use_cache else ""
+
+
 def _print_summary(report: BatchReport) -> None:
     counts = report.counts
     print("# Batch summary")
@@ -365,17 +386,25 @@ def run_batch(
     use_cache: bool = True,
     use_llm: bool = True,
     force: bool = False,
+    workers: int = 1,
 ) -> BatchReport:
     """Build every PDF directly inside ``batch_dir`` as one part corpus each.
 
     Parts that are already built with the current pipeline version and whose
     PDF bytes are unchanged are skipped (``skip_reason``); ``force`` rebuilds
     everything. ``use_cache=False`` also disables skipping (full redo, like
-    ``dsa build --no-cache``). Every job transition is emitted through an
-    ``EventEmitter`` — one prefixed terminal line and one JSONL record under
+    ``dsa build --no-cache``).
+
+    Dispatch: ``workers`` controls a bounded thread pool (default 1 = the
+    serial path). Each job runs the full pipeline inside its own error
+    boundary with job-scoped wiring, so a failing or slow job never disturbs
+    another. Every job transition is emitted through an ``EventEmitter`` —
+    one prefixed terminal line and one JSONL record under
     ``.cache/batches/`` (see ``log_path_for``); the JSONL is the monitoring
-    source of truth. Returns a ``BatchReport``; raises ``BatchError`` for a
-    missing or empty directory (the CLI maps that to exit code 2).
+    source of truth. The report is assembled in run (sorted) order no matter
+    which order jobs complete. Returns a ``BatchReport``; raises
+    ``BatchError`` for a missing or empty directory (the CLI maps that to
+    exit code 2).
     """
     batch_dir = Path(batch_dir)
     jobs = discover_jobs(batch_dir)
@@ -389,36 +418,77 @@ def run_batch(
     emitter.header(batch_dir, jobs)
     print(f"batch log: {log_path}")
 
-    results: list[JobResult] = []
-    for idx, job in enumerate(jobs, 1):
-        emitter.emit(idx, job.part, "queued")
-        if use_cache:
-            reason = skip_reason(job, settings=settings, force=force)
-        else:
-            reason = ""
-        if reason:
-            result = JobResult(
-                part=job.part,
-                pdf_path=str(job.pdf_path),
-                status=STATUS_SKIPPED,
-                error=reason,
+    # Dispatch. workers=1 is the serial path: one job fully runs (and its
+    # events fully flush) before the next is even queued — byte-for-byte the
+    # behavior of earlier releases. workers>1 runs jobs in a bounded thread
+    # pool: queued + skip decisions are taken here in run order, each build
+    # runs in its own worker with job-scoped wiring, and final states are
+    # emitted as jobs complete (live terminal/JSONL). run_job never raises —
+    # failure isolation turns every exception into a failed result.
+    pool_size = max(1, int(workers))
+    completed: dict[int, JobResult] = {}
+    if pool_size == 1:
+        for idx, job in enumerate(jobs, 1):
+            emitter.emit(idx, job.part, "queued")
+            reason = _skip_decision(job, settings=settings, use_cache=use_cache, force=force)
+            if reason:
+                completed[idx] = JobResult(
+                    part=job.part,
+                    pdf_path=str(job.pdf_path),
+                    status=STATUS_SKIPPED,
+                    error=reason,
+                )
+                emitter.emit(idx, job.part, STATUS_SKIPPED, reason)
+                continue
+            result = run_job(
+                job,
+                settings=settings,
+                use_cache=use_cache,
+                use_llm=use_llm,
+                on_progress=lambda stage, _idx=idx, _job=job: emitter.emit(
+                    _idx, _job.part, stage
+                ),
             )
-            emitter.emit(idx, job.part, STATUS_SKIPPED, reason)
-            results.append(result)
-            continue
-        result = run_job(
-            job,
-            settings=settings,
-            use_cache=use_cache,
-            use_llm=use_llm,
-            on_progress=lambda stage, _idx=idx, _job=job: emitter.emit(
-                _idx, _job.part, stage
-            ),
-        )
-        extra = {"traceback": result.traceback} if result.traceback else None
-        emitter.emit(idx, job.part, result.status, _details(result), extra=extra)
-        results.append(result)
+            completed[idx] = result
+            _emit_final(emitter, idx, result)
+    else:
+        pending: dict[Future, int] = {}
+        with ThreadPoolExecutor(
+            max_workers=pool_size, thread_name_prefix="dsa-batch"
+        ) as executor:
+            for idx, job in enumerate(jobs, 1):
+                emitter.emit(idx, job.part, "queued")
+                reason = _skip_decision(
+                    job, settings=settings, use_cache=use_cache, force=force
+                )
+                if reason:
+                    completed[idx] = JobResult(
+                        part=job.part,
+                        pdf_path=str(job.pdf_path),
+                        status=STATUS_SKIPPED,
+                        error=reason,
+                    )
+                    emitter.emit(idx, job.part, STATUS_SKIPPED, reason)
+                    continue
+                future = executor.submit(
+                    run_job,
+                    job,
+                    settings=settings,
+                    use_cache=use_cache,
+                    use_llm=use_llm,
+                    on_progress=lambda stage, _idx=idx, _job=job: emitter.emit(
+                        _idx, _job.part, stage
+                    ),
+                )
+                pending[future] = idx
 
+            for future in as_completed(pending):
+                idx = pending[future]
+                result = future.result()
+                completed[idx] = result
+                _emit_final(emitter, idx, result)
+
+    results = [completed[idx] for idx in range(1, len(jobs) + 1)]
     report = BatchReport(jobs=results)
     _print_summary(report)
     return report

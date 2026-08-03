@@ -2,7 +2,7 @@
 
 Commands:
   build <pdf> --part NAME   full pipeline: acquire -> extract -> corpus
-  batch <dir>               build every PDF in a directory as its own part (unchanged parts skipped; --force rebuilds)
+  batch <dir>               build every PDF in a directory as its own part (unchanged parts skipped; --force rebuilds; --workers N parallel, default 4)
   verify --part NAME        golden Q&A citation verification (deterministic)
   query --part NAME         deterministic spec lookup
   plots --part NAME         deterministic plot lookup
@@ -82,6 +82,7 @@ def _cmd_batch(args: argparse.Namespace) -> int:
             use_cache=not args.no_cache,
             use_llm=not args.no_llm,
             force=args.force,
+            workers=args.workers if args.workers is not None else settings.batch_workers,
         )
     except BatchError as exc:
         print(f"batch error: {exc}", file=sys.stderr)
@@ -295,6 +296,10 @@ def main(argv: list[str] | None = None) -> int:
     )
     p_batch.add_argument("--no-cache", action="store_true")
     p_batch.add_argument("--no-llm", action="store_true")
+    p_batch.add_argument(
+        "--workers", type=int, default=None,
+        help="parallel jobs (default: DSA_BATCH_WORKERS env, then 4)",
+    )
     p_batch.set_defaults(func=_cmd_batch)
 
     p_add = sub.add_parser("add-doc", help="register a companion document (register map, errata, app note)")
