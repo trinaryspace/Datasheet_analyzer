@@ -1,21 +1,59 @@
 """Batch runner (serial) — external behavior only.
 
 Given a directory of synthetic PDFs and temp-dir settings, assert the
-observable outcomes: which parts exist, which jobs are done/failed, the
-mapping/summary output, and exit semantics. No assertions on internals.
+observable outcomes: which parts exist, which jobs are done/skipped/failed,
+the mapping/summary output, and exit semantics. No assertions on internals.
 """
 
 from __future__ import annotations
 
+import hashlib
+import os
+import time
 from pathlib import Path
 
+import fitz
 import pytest
 
 from datasheet_analyzer import cli
-from datasheet_analyzer.batch import STATUS_DONE, STATUS_FAILED, BatchError, run_batch
+from datasheet_analyzer.batch import (
+    STATUS_DONE,
+    STATUS_FAILED,
+    STATUS_SKIPPED,
+    BatchError,
+    run_batch,
+)
 from datasheet_analyzer.config import Settings
 
 SYN = Path(__file__).parent.parent / "fixtures" / "synthetic"
+
+
+def _sha256(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _write_variant_pdf(path: Path) -> None:
+    """A second synthetic PDF with deliberately different bytes (same TOC shape)."""
+    doc = fitz.open()
+    p1 = doc.new_page()
+    p1.insert_text(
+        (72, 72),
+        "TEST9000 REVISED Features page. Different bytes than the shared fixture.",
+    )
+    p2 = doc.new_page()
+    p2.insert_text(
+        (72, 72),
+        "4.1 Absolute Maximum Ratings VDD1P2 Supply voltage 1.2V –0.3 1.4 V TJ 150 °C",
+    )
+    doc.set_toc(
+        [
+            [1, "1 Features", 1],
+            [1, "4 Specifications", 2],
+            [2, "4.1 Absolute Maximum Ratings", 2],
+        ]
+    )
+    doc.save(path)
+    doc.close()
 
 
 def _wire_ti_backend(monkeypatch, mapping: dict[str, str]) -> None:
@@ -140,6 +178,156 @@ def test_failed_job_is_isolated_and_batch_continues(batch_env, capsys):
     out = capsys.readouterr().out
     assert "| BROKEN | failed |" in out
     assert "4 jobs: 3 done, 1 failed" in out
+
+
+def test_rerun_skips_already_built_parts(batch_env, monkeypatch, capsys):
+    pdfs, settings = batch_env
+    assert run_batch(pdfs, settings=settings, use_llm=False).ok
+
+    # any fetch from here on is a hard error: skipped jobs must not extract.
+    # A second run over the unchanged directory must never touch the fetcher.
+    import datasheet_analyzer.pipeline as pipeline_mod
+    from datasheet_analyzer.extract.http import MappingFetcher
+
+    pipeline_mod.get_backend("ti_html").fetcher = MappingFetcher({})
+    report = run_batch(pdfs, settings=settings, use_llm=False)
+
+    assert report.ok  # skips count toward success
+    assert report.counts == {STATUS_DONE: 0, STATUS_FAILED: 0, STATUS_SKIPPED: 3}
+    assert all(j.status == STATUS_SKIPPED for j in report.jobs)
+    assert all(j.error for j in report.jobs)  # every skip carries its reason
+
+    out = capsys.readouterr().out
+    assert "3 jobs: 0 done, 0 failed, 3 skipped" in out
+    assert "| TEST9000 | skipped | already built" in out
+
+
+def test_changed_pdf_rebuilds_exactly_that_part_and_reregisters(batch_env):
+    pdfs, settings = batch_env
+    assert run_batch(pdfs, settings=settings, use_llm=False).ok
+
+    target = pdfs / "test9000.pdf"
+    _write_variant_pdf(target)
+    variant_hash = _sha256(target)
+
+    report = run_batch(pdfs, settings=settings, use_llm=False)
+    by_part = {j.part: j for j in report.jobs}
+    assert by_part["TEST9000"].status == STATUS_DONE
+    assert by_part["TEST9000"].error == ""
+    assert by_part["PLAIN"].status == STATUS_SKIPPED
+    assert by_part["TEST9001"].status == STATUS_SKIPPED
+
+    # the rebuilt part is keyed on the new identity (hash is identity)...
+    from datasheet_analyzer.acquire.inventory import load_inventory
+
+    assert [s.content_hash for s in load_inventory(settings.parts_dir / "TEST9000")] == [
+        variant_hash
+    ]
+    # ...so the next run skips it instead of rebuilding forever
+    report = run_batch(pdfs, settings=settings, use_llm=False)
+    assert report.counts == {STATUS_DONE: 0, STATUS_FAILED: 0, STATUS_SKIPPED: 3}
+
+
+def test_new_pdf_builds_while_existing_parts_skip(batch_env, make_synthetic_pdf):
+    pdfs, settings = batch_env
+    assert run_batch(pdfs, settings=settings, use_llm=False).ok
+
+    import datasheet_analyzer.pipeline as pipeline_mod
+    from datasheet_analyzer.extract.http import MappingFetcher
+
+    make_synthetic_pdf(pdfs / "test9002.pdf")
+    pipeline_mod.get_backend("ti_html").fetcher = MappingFetcher(
+        _mapping_for("TEST9002")
+    )
+    report = run_batch(pdfs, settings=settings, use_llm=False)
+    by_part = {j.part: j for j in report.jobs}
+    assert by_part["TEST9002"].status == STATUS_DONE
+    assert (settings.parts_dir / "TEST9002" / "INDEX.md").exists()
+    assert by_part["TEST9000"].status == STATUS_SKIPPED
+
+
+def test_missing_manifest_rebuilds_part(batch_env):
+    pdfs, settings = batch_env
+    assert run_batch(pdfs, settings=settings, use_llm=False).ok
+    (settings.parts_dir / "PLAIN" / "manifest.json").unlink()
+
+    report = run_batch(pdfs, settings=settings, use_llm=False)
+    by_part = {j.part: j for j in report.jobs}
+    assert by_part["PLAIN"].status == STATUS_DONE  # rebuilt, not skipped
+    assert by_part["TEST9000"].status == STATUS_SKIPPED
+
+
+def test_corrupt_manifest_rebuilds_part(batch_env):
+    pdfs, settings = batch_env
+    assert run_batch(pdfs, settings=settings, use_llm=False).ok
+    path = settings.parts_dir / "PLAIN" / "manifest.json"
+    path.write_text("{ not valid json", encoding="utf-8")
+
+    report = run_batch(pdfs, settings=settings, use_llm=False)
+    by_part = {j.part: j for j in report.jobs}
+    assert by_part["PLAIN"].status == STATUS_DONE
+    assert by_part["TEST9000"].status == STATUS_SKIPPED
+    # the failed publish left no valid manifest; the rebuild restored one
+    assert (settings.parts_dir / "PLAIN" / "manifest.json").read_text(
+        encoding="utf-8"
+    ).startswith("{")
+
+
+def test_pipeline_version_bump_forces_rebuild(batch_env, monkeypatch):
+    import datasheet_analyzer.batch as batch_mod
+    import datasheet_analyzer.pipeline as pipeline_mod
+
+    pdfs, settings = batch_env
+    assert run_batch(pdfs, settings=settings, use_llm=False).ok
+
+    monkeypatch.setattr(batch_mod, "PIPELINE_VERSION", "9.9.9")
+    monkeypatch.setattr(pipeline_mod, "PIPELINE_VERSION", "9.9.9")
+    report = run_batch(pdfs, settings=settings, use_llm=False)
+    assert report.counts == {STATUS_DONE: 3, STATUS_FAILED: 0, STATUS_SKIPPED: 0}
+
+
+def test_skip_uses_hash_not_mtime(batch_env):
+    pdfs, settings = batch_env
+    assert run_batch(pdfs, settings=settings, use_llm=False).ok
+
+    future = time.time() + 10000
+    for p in pdfs.iterdir():
+        if p.is_file() and p.suffix.lower() == ".pdf":
+            os.utime(p, (future, future))
+
+    report = run_batch(pdfs, settings=settings, use_llm=False)
+    assert report.counts == {STATUS_DONE: 0, STATUS_FAILED: 0, STATUS_SKIPPED: 3}
+
+
+def test_force_rebuilds_even_when_up_to_date(batch_env):
+    pdfs, settings = batch_env
+    assert run_batch(pdfs, settings=settings, use_llm=False).ok
+
+    report = run_batch(pdfs, settings=settings, force=True, use_llm=False)
+    assert report.counts == {STATUS_DONE: 3, STATUS_FAILED: 0, STATUS_SKIPPED: 0}
+    for job in report.jobs:
+        assert job.stats is not None
+
+
+def test_no_cache_disables_skip(batch_env):
+    """--no-cache means a full redo, exactly like `dsa build --no-cache`."""
+    pdfs, settings = batch_env
+    assert run_batch(pdfs, settings=settings, use_llm=False).ok
+
+    report = run_batch(pdfs, settings=settings, use_cache=False, use_llm=False)
+    assert report.counts == {STATUS_DONE: 3, STATUS_FAILED: 0, STATUS_SKIPPED: 0}
+
+
+def test_cli_batch_force_rebuilds(batch_env, monkeypatch, capsys):
+    pdfs, settings = batch_env
+    monkeypatch.setattr("datasheet_analyzer.cli.get_settings", lambda: settings)
+    assert cli.main(["batch", str(pdfs), "--no-llm"]) == 0
+    capsys.readouterr()
+
+    code = cli.main(["batch", str(pdfs), "--no-llm", "--force"])
+    out = capsys.readouterr().out
+    assert code == 0
+    assert "3 jobs: 3 done, 0 failed, 0 skipped" in out
 
 
 def test_missing_directory_is_an_error(tmp_path):

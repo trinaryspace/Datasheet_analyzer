@@ -9,10 +9,19 @@ job still runs. The run prints the file -> part mapping before any work
 starts and a per-job summary table at the end; ``BatchReport.ok`` is False
 when any job failed (the CLI maps that to exit code 1).
 
+Re-running a batch over the same directory skips parts that are already
+built and unchanged: a job is skipped when the part's manifest exists with
+the current ``PIPELINE_VERSION`` and the PDF's sha256 matches the hash
+recorded for it in the part's inventory (never mtime or size). ``--force``
+disables the check; ``--no-cache`` (``use_cache=False``) also rebuilds,
+matching ``dsa build --no-cache``'s full-redo semantics. A changed PDF is
+re-registered under its new identity before building, so the rebuilt part is
+keyed on the current bytes and later runs skip it again.
+
 Status vocabulary (part of the runner's contract):
 ``queued | running:<stage> | done | failed | skipped`` — this serial runner
-emits the final states ``done`` / ``failed`` (``skipped`` lands with the
-hash-gated skip); stage transitions belong to the event emitter.
+emits the final states ``done`` / ``failed`` / ``skipped``; stage
+transitions belong to the event emitter (ticket 03).
 """
 
 from __future__ import annotations
@@ -20,8 +29,12 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from datasheet_analyzer.config import Settings
-from datasheet_analyzer.models import CorpusStats
+from pydantic import ValidationError
+
+from datasheet_analyzer.acquire.inventory import load_inventory, register_source, save_inventory
+from datasheet_analyzer.config import PIPELINE_VERSION, Settings
+from datasheet_analyzer.extract.pdf_structure import compute_content_hash
+from datasheet_analyzer.models import CorpusManifest, CorpusStats
 from datasheet_analyzer.pipeline import build_part
 
 STATUS_DONE = "done"
@@ -84,6 +97,61 @@ def discover_jobs(batch_dir: Path) -> list[BatchJob]:
         raise BatchError(f"batch directory not found: {batch_dir}")
     pdfs = sorted(p for p in batch_dir.iterdir() if p.is_file() and p.suffix.lower() == ".pdf")
     return [BatchJob(pdf_path=p, part=p.stem.upper()) for p in pdfs]
+
+
+def _refresh_pdf_source(job: BatchJob, settings: Settings) -> None:
+    """Re-register ``job.pdf_path`` under its current bytes in the inventory.
+
+    A changed PDF keeps its old hash in the inventory until this runs; without
+    the refresh the part would rebuild on every subsequent run (its recorded
+    identity never matches) and the corpus would stay keyed on stale bytes.
+    Only entries for this exact path are touched, so companions added via
+    ``add-doc`` are untouched. No-op when the path is not in the inventory.
+    """
+    part_dir = settings.parts_dir / job.part
+    inventory = load_inventory(part_dir)
+    if not any(s.path == str(job.pdf_path) for s in inventory):
+        return
+    fresh = register_source(job.pdf_path, part_number=job.part, doc_type="datasheet")
+    kept = [s for s in inventory if s.path != str(job.pdf_path)]
+    kept.append(fresh)
+    save_inventory(kept, part_dir)
+
+
+def skip_reason(job: BatchJob, *, settings: Settings, force: bool = False) -> str:
+    """Nonempty reason to skip ``job``, or "" when it must build.
+
+    A job is skipped when the part's corpus manifest exists, records the
+    current ``PIPELINE_VERSION``, and the PDF's sha256 matches the hash in the
+    part's inventory (`content_hash` is the source document's identity — never
+    mtime or size). ``force`` bypasses the whole check. Missing, corrupt or
+    version-stale manifests and unknown hashes all mean build; a changed PDF
+    is first re-registered under its new identity so the rebuild it triggers
+    restores the skip condition for later runs. Never raises: any failure to
+    verify means "not safe to skip".
+    """
+    if force:
+        return ""
+    part_dir = settings.parts_dir / job.part
+    try:
+        manifest_path = part_dir / "manifest.json"
+        if not manifest_path.exists():
+            return ""
+        manifest = CorpusManifest.model_validate_json(
+            manifest_path.read_text(encoding="utf-8")
+        )
+        if manifest.pipeline_version != PIPELINE_VERSION:
+            return ""
+        pdf_hash = compute_content_hash(job.pdf_path)
+        inventory = load_inventory(part_dir)
+        if pdf_hash in {s.content_hash for s in inventory}:
+            return (f"already built: PDF sha256 and pipeline version "
+                    f"{PIPELINE_VERSION} match")
+        # unchanged corpus built from older bytes -> re-register and rebuild
+        _refresh_pdf_source(job, settings)
+        return ""
+    except (OSError, ValidationError):
+        return ""
 
 
 def run_job(
@@ -156,11 +224,16 @@ def run_batch(
     settings: Settings,
     use_cache: bool = True,
     use_llm: bool = True,
+    force: bool = False,
 ) -> BatchReport:
     """Build every PDF directly inside ``batch_dir`` as one part corpus each.
 
-    Returns a ``BatchReport``; raises ``BatchError`` for a missing or empty
-    directory (the CLI maps that to exit code 2).
+    Parts that are already built with the current pipeline version and whose
+    PDF bytes are unchanged are skipped (``skip_reason``); ``force`` rebuilds
+    everything. ``use_cache=False`` also disables skipping (full redo, like
+    ``dsa build --no-cache``). Returns a ``BatchReport``; raises
+    ``BatchError`` for a missing or empty directory (the CLI maps that to
+    exit code 2).
     """
     batch_dir = Path(batch_dir)
     jobs = discover_jobs(batch_dir)
@@ -171,6 +244,21 @@ def run_batch(
     results: list[JobResult] = []
     total = len(jobs)
     for idx, job in enumerate(jobs, 1):
+        if use_cache:
+            reason = skip_reason(job, settings=settings, force=force)
+        else:
+            reason = ""
+        if reason:
+            results.append(
+                JobResult(
+                    part=job.part,
+                    pdf_path=str(job.pdf_path),
+                    status=STATUS_SKIPPED,
+                    error=reason,
+                )
+            )
+            print(f"[{idx}/{total}] {job.part}: skipped ({reason})")
+            continue
         print(f"[{idx}/{total}] building {job.part} from {job.pdf_path.name}")
         result = run_job(job, settings=settings, use_cache=use_cache, use_llm=use_llm)
         mark = "done" if result.status == STATUS_DONE else "failed"
@@ -182,8 +270,8 @@ def run_batch(
     return report
 
 
-# Public surface: the CLI uses run_batch/BatchError; run_job and discover_jobs
-# are the seams the parallel-dispatch and hash-gate tickets extend.
+# Public surface: the CLI uses run_batch/BatchError; run_job, discover_jobs
+# and skip_reason are the seams the parallel-dispatch and events tickets extend.
 __all__ = [
     "STATUS_DONE",
     "STATUS_FAILED",
@@ -195,4 +283,5 @@ __all__ = [
     "discover_jobs",
     "run_batch",
     "run_job",
+    "skip_reason",
 ]
