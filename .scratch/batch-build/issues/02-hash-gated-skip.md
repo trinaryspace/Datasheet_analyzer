@@ -13,6 +13,11 @@ rebuilds every part.
 
 **Status:** ready-for-agent
 
+- [ ] The skip gate compares the recorded inventory hash AND the manifest's
+      `pipeline_version` (+ pinned vendor where present): an unchanged PDF
+      built by an older pipeline version rebuilds instead of skipping
+      (`PIPELINE_VERSION` bumps, e.g. 0.1.0 → 0.2.0 for the vendor-neutral
+      layout core, must never leave stale corpora silently in place)
 - [ ] Second run over an unchanged directory marks every already-built part as skipped (not rebuilt)
 - [ ] A changed or newly added PDF rebuilds exactly that part; unchanged parts are skipped
 - [ ] A part without a completed corpus (e.g. a prior failed publish with no manifest) is rebuilt, not skipped

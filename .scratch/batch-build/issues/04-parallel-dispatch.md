@@ -18,3 +18,7 @@ per transition and every JSONL line stays individually parseable.
 - [ ] With parallel workers, every job completes and each event fires exactly once per transition
 - [ ] With parallel workers, every JSONL line in the run log is individually parseable (no mid-line interleaving)
 - [ ] No shared mutable pipeline state exists between concurrent jobs; job-scoped wiring (backend, fetchers, LLM client) is created per job
+- [ ] Extraction-cache writes are atomic (write-temp + rename): two jobs with
+      identical PDF bytes in one run must never corrupt
+      `.cache/extract/<hash>__<backend>.json` (possible with pdf_layout jobs,
+      which are offline) 

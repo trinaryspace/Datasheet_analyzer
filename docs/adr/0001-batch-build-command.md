@@ -14,6 +14,16 @@ stage transition emits one event, printed to the terminal and appended to
 source of truth. A failed job records its error and the batch continues;
 exit code 0 = all passed, 1 = any failed.
 
+Addendum (vendor-neutral layout core, ADR 0003): the "workload is network-
+and LLM-bound, PyMuPDF releases the GIL" rationale predates the offline
+`pdf_layout` engine. Batches now mix network-bound HTML jobs (ti_html, LLM
+enrichment) with CPU-bound offline jobs (layout inference — pure Python
+clustering under the GIL). The thread-pool decision is retained for now —
+`--workers` remains a capacity knob, not a wall-clock promise — but worker
+placement (threads vs processes) must be revisited with measured scaling
+when pdf_layout lands. Vendor is detected and evidence-pinned per job, never
+per directory, so a mixed-vendor batch stays vendor-free by construction.
+
 Considered and rejected:
 
 - Descriptor file (YAML listing pdf/part pairs) — stable identity and resume

@@ -30,6 +30,15 @@ No per-vendor layout assumptions; vendor-specific code only inside backends
 that consume a vendor's digital format (e.g. ti_html).
 _Avoid_: extractor, parser, scanner
 
+**Furniture**:
+Recurring page-decoration bands (headers, footers, brand marks) detected by
+slot repetition — y-position + style recurrence across pages, not string
+matches. Constant text or universal page-machinery patterns ("N of M",
+"Page N", "Rev." captions) count as furniture; a section-title echo counts
+only outside the body region. PDFs with no consistent slots get no
+stripping.
+_Avoid_: header, footer, chrome, noise
+
 **Part**:
 A named device (e.g. AFE7950) and its corpus: a folder under `parts/`
 holding an index, inventory, manifest, and one document directory per source
