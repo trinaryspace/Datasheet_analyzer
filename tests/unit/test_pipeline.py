@@ -5,7 +5,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import fitz
 import pytest
 
 from datasheet_analyzer.config import Settings
@@ -14,22 +13,11 @@ from datasheet_analyzer.pipeline import build_part
 SYN = Path(__file__).parent.parent / "fixtures" / "synthetic"
 
 
-def _make_pdf(path: Path):
-    doc = fitz.open()
-    p1 = doc.new_page()
-    p1.insert_text((72, 72), "TEST9000 Features page. Quad RF sampling 12GSPS transmit DACs.")
-    p2 = doc.new_page()
-    p2.insert_text((72, 72), "4.1 Absolute Maximum Ratings VDD1P2 Supply voltage 1.2V –0.3 1.4 V TJ 150 °C")
-    doc.set_toc([[1, "1 Features", 1], [1, "4 Specifications", 2], [2, "4.1 Absolute Maximum Ratings", 2]])
-    doc.save(path)
-    doc.close()
-
-
 @pytest.fixture
-def synthetic_env(tmp_path, monkeypatch):
+def synthetic_env(tmp_path, monkeypatch, make_synthetic_pdf):
     """Settings + a MappingFetcher replaying the synthetic TI pages."""
     pdf = tmp_path / "test9000.pdf"
-    _make_pdf(pdf)
+    make_synthetic_pdf(pdf)
     settings = Settings(parts_dir=tmp_path / "parts", cache_dir=tmp_path / ".cache").resolve()
 
     main = (SYN / "ti_main.html").read_text(encoding="utf-8")

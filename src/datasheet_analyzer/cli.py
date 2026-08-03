@@ -2,6 +2,7 @@
 
 Commands:
   build <pdf> --part NAME   full pipeline: acquire -> extract -> corpus
+  batch <dir>               build every PDF in a directory as its own part
   verify --part NAME        golden Q&A citation verification (deterministic)
   query --part NAME         deterministic spec lookup
   plots --part NAME         deterministic plot lookup
@@ -68,6 +69,23 @@ def _cmd_build(args: argparse.Namespace) -> int:
         f"descriptions {'LLM' if result.used_llm else 'deterministic'}"
     )
     return 0
+
+
+def _cmd_batch(args: argparse.Namespace) -> int:
+    from datasheet_analyzer.batch import BatchError, run_batch
+
+    settings = get_settings()
+    try:
+        report = run_batch(
+            Path(args.dir),
+            settings=settings,
+            use_cache=not args.no_cache,
+            use_llm=not args.no_llm,
+        )
+    except BatchError as exc:
+        print(f"batch error: {exc}", file=sys.stderr)
+        return 2
+    return 0 if report.ok else 1
 
 
 def _spec_fields(rec) -> str:
@@ -264,6 +282,15 @@ def main(argv: list[str] | None = None) -> int:
     p_build.add_argument("--no-cache", action="store_true")
     p_build.add_argument("--no-llm", action="store_true")
     p_build.set_defaults(func=_cmd_build)
+
+    p_batch = sub.add_parser(
+        "batch",
+        help="build every PDF directly inside a directory as its own part corpus",
+    )
+    p_batch.add_argument("dir", help="directory of datasheet PDFs (flat scan)")
+    p_batch.add_argument("--no-cache", action="store_true")
+    p_batch.add_argument("--no-llm", action="store_true")
+    p_batch.set_defaults(func=_cmd_batch)
 
     p_add = sub.add_parser("add-doc", help="register a companion document (register map, errata, app note)")
     p_add.add_argument("pdf", help="PDF file to register")

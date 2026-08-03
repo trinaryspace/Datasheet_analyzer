@@ -72,10 +72,15 @@ dsa verify --part AFE7950 --pdf afe7950.pdf --specs
 # Second reference part, same path
 dsa build afe7953.pdf --part AFE7953
 dsa verify --part AFE7953 --pdf afe7953.pdf
+
+# One invocation builds every PDF in a directory as its own part corpus
+# (part = uppercase filename stem; flat scan; failing jobs are isolated)
+dsa batch datasheets/
 ```
 
 Useful flags: `build --no-cache` (re-extract), `build --no-llm` (deterministic
-descriptions even with a key set).
+descriptions even with a key set); `batch` accepts the same `--no-cache` /
+`--no-llm` options.
 
 ## Using the corpus
 

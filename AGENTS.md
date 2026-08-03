@@ -33,6 +33,7 @@ source .venv/Scripts/activate       # puts `dsa` and `python` on PATH
 # run
 dsa build afe7950.pdf --part AFE7950                    # corpus + specs.json + plots.json
 dsa build afe7953.pdf --part AFE7953                    # second reference part
+dsa batch datasheets/                                   # one part corpus per PDF in a dir (serial today)
 dsa verify --part AFE7950 --pdf afe7950.pdf             # golden Q&A + token economics
 dsa verify --part AFE7950 --pdf afe7950.pdf --specs     # + spec_query checks
 dsa query --part AFE7950 --symbol DACRES                # deterministic spec lookup
@@ -82,6 +83,7 @@ codes, not colors.
 | `evalh/citations.py` | Golden Q&A verification: corpus-contains AND page-truth, two-tier (exact then squash-normalized). | `verify_questions`, `load_golden_yaml`, `contains`, `squash` |
 | `evalh/golden.py` | Report rendering + token economics measurement. | `render_verification_report`, `estimate_lookup_tokens` |
 | `pipeline.py` | Orchestration + extraction cache (`.cache/extract/<hash>__<backend>.json`). | `build_part` |
+| `batch.py` | Batch runner: flat `*.pdf` scan of a directory, one job per PDF (part = uppercase stem), failure isolation, per-job summary + `BatchReport`. Serial today (workers/hash-gate/events land in later tickets). | `run_batch`, `run_job`, `discover_jobs`, `BatchReport`, `BatchError`, `STATUS_*` |
 | `cli.py` | argparse CLI. Reconfigures stdout/stderr to UTF-8 (Windows cp1252). | `main` |
 
 ### Corpus layout (the product)

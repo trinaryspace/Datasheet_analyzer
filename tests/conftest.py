@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import fitz
 import pytest
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -18,6 +19,37 @@ SYNTHETIC = FIXTURES / "synthetic"
 GOLDEN_QA = FIXTURES / "golden_qa.yaml"
 REPO_ROOT = Path(__file__).parent.parent
 AFE7950_PDF = REPO_ROOT / "afe7950.pdf"
+
+
+@pytest.fixture
+def make_synthetic_pdf():
+    """Factory for the shared synthetic part PDF: 2 pages, TOC with
+    Features (p.1) + Absolute Maximum Ratings (p.2). One fixture so every
+    pipeline-level test builds the same input bytes."""
+
+    def _make(path: Path) -> None:
+        doc = fitz.open()
+        p1 = doc.new_page()
+        p1.insert_text(
+            (72, 72),
+            "TEST9000 Features page. Quad RF sampling 12GSPS transmit DACs.",
+        )
+        p2 = doc.new_page()
+        p2.insert_text(
+            (72, 72),
+            "4.1 Absolute Maximum Ratings VDD1P2 Supply voltage 1.2V –0.3 1.4 V TJ 150 °C",
+        )
+        doc.set_toc(
+            [
+                [1, "1 Features", 1],
+                [1, "4 Specifications", 2],
+                [2, "4.1 Absolute Maximum Ratings", 2],
+            ]
+        )
+        doc.save(path)
+        doc.close()
+
+    return _make
 
 
 @pytest.fixture
