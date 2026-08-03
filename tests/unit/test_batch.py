@@ -12,7 +12,6 @@ import os
 import time
 from pathlib import Path
 
-import fitz
 import pytest
 
 from datasheet_analyzer import cli
@@ -32,28 +31,68 @@ def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def _write_variant_pdf(path: Path) -> None:
-    """A second synthetic PDF with deliberately different bytes (same TOC shape)."""
-    doc = fitz.open()
-    p1 = doc.new_page()
-    p1.insert_text(
-        (72, 72),
-        "TEST9000 REVISED Features page. Different bytes than the shared fixture.",
+def test_failed_rebuild_is_not_skipped_on_rerun(batch_env, monkeypatch, make_synthetic_pdf):
+    """A rebuild run that fails must not arm the skip for the stale corpus."""
+    pdfs, settings = batch_env
+    assert run_batch(pdfs, settings=settings, use_llm=False).ok
+
+    import datasheet_analyzer.pipeline as pipeline_mod
+    from datasheet_analyzer.extract.http import MappingFetcher
+
+    make_synthetic_pdf(pdfs / "test9000.pdf", marker=" REVISION 1")
+    # the rebuild run fails (network): nothing may be assumed rebuilt
+    pipeline_mod.get_backend("ti_html").fetcher = MappingFetcher({})
+    report = run_batch(pdfs, settings=settings, use_llm=False)
+    by_part = {j.part: j for j in report.jobs}
+    assert by_part["TEST9000"].status == STATUS_FAILED
+
+    # restore the fetcher and rerun: TEST9000 must rebuild, not skip
+    pipeline_mod.get_backend("ti_html").fetcher = MappingFetcher(
+        _mapping_for("TEST9000")
     )
-    p2 = doc.new_page()
-    p2.insert_text(
-        (72, 72),
-        "4.1 Absolute Maximum Ratings VDD1P2 Supply voltage 1.2V –0.3 1.4 V TJ 150 °C",
+    report = run_batch(pdfs, settings=settings, use_llm=False)
+    by_part = {j.part: j for j in report.jobs}
+    assert by_part["TEST9000"].status == STATUS_DONE
+    assert by_part["PLAIN"].status == STATUS_SKIPPED
+
+    # and only after the successful rebuild does a rerun skip it
+    report = run_batch(pdfs, settings=settings, use_llm=False)
+    assert report.counts == {STATUS_DONE: 0, STATUS_FAILED: 0, STATUS_SKIPPED: 3}
+
+
+def test_skip_gate_survives_path_spelling_change(batch_env, make_synthetic_pdf):
+    """The changed-PDF refresh must match the recorded path regardless of how
+    the CLI spelled the directory (relative vs absolute, separators, case)."""
+    pdfs, settings = batch_env
+    assert run_batch(pdfs, settings=settings, use_llm=False).ok
+
+    make_synthetic_pdf(pdfs / "test9000.pdf", marker=" REVISION 1")
+    relative = Path(os.path.relpath(pdfs))
+    report = run_batch(relative, settings=settings, use_llm=False)
+    by_part = {j.part: j for j in report.jobs}
+    assert by_part["TEST9000"].status == STATUS_DONE  # rebuilt...
+
+    # ...and the rerun (different spelling) skips it: refresh matched by path
+    report = run_batch(relative, settings=settings, use_llm=False)
+    assert report.counts == {STATUS_DONE: 0, STATUS_FAILED: 0, STATUS_SKIPPED: 3}
+
+
+def test_corrupt_inventory_fails_that_part_isolated(batch_env):
+    """An unreadable inventory cannot be verified: the job fails alone and the
+    rest of the batch carries on (SPEC: failure isolation)."""
+    pdfs, settings = batch_env
+    assert run_batch(pdfs, settings=settings, use_llm=False).ok
+    (settings.parts_dir / "PLAIN" / "sources.json").write_text(
+        "{ not valid json", encoding="utf-8"
     )
-    doc.set_toc(
-        [
-            [1, "1 Features", 1],
-            [1, "4 Specifications", 2],
-            [2, "4.1 Absolute Maximum Ratings", 2],
-        ]
-    )
-    doc.save(path)
-    doc.close()
+
+    report = run_batch(pdfs, settings=settings, use_llm=False)
+    by_part = {j.part: j for j in report.jobs}
+    assert by_part["PLAIN"].status == STATUS_FAILED
+    assert by_part["PLAIN"].error
+    assert by_part["TEST9000"].status == STATUS_SKIPPED
+    assert by_part["TEST9001"].status == STATUS_SKIPPED
+    assert not report.ok
 
 
 def _wire_ti_backend(monkeypatch, mapping: dict[str, str]) -> None:
@@ -202,12 +241,12 @@ def test_rerun_skips_already_built_parts(batch_env, monkeypatch, capsys):
     assert "| TEST9000 | skipped | already built" in out
 
 
-def test_changed_pdf_rebuilds_exactly_that_part_and_reregisters(batch_env):
+def test_changed_pdf_rebuilds_exactly_that_part_and_reregisters(batch_env, make_synthetic_pdf):
     pdfs, settings = batch_env
     assert run_batch(pdfs, settings=settings, use_llm=False).ok
 
     target = pdfs / "test9000.pdf"
-    _write_variant_pdf(target)
+    make_synthetic_pdf(target, marker=" REVISION 1")
     variant_hash = _sha256(target)
 
     report = run_batch(pdfs, settings=settings, use_llm=False)

@@ -29,8 +29,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from pydantic import ValidationError
-
 from datasheet_analyzer.acquire.inventory import load_inventory, register_source, save_inventory
 from datasheet_analyzer.config import PIPELINE_VERSION, Settings
 from datasheet_analyzer.extract.pdf_structure import compute_content_hash
@@ -99,21 +97,37 @@ def discover_jobs(batch_dir: Path) -> list[BatchJob]:
     return [BatchJob(pdf_path=p, part=p.stem.upper()) for p in pdfs]
 
 
+def _same_path(recorded: str, pdf_path: Path) -> bool:
+    """Whether a recorded source path names ``pdf_path``'s file.
+
+    The inventory stores the path as spelled at registration time; CLI
+    re-spellings (relative vs absolute, separators, case) must not defeat the
+    match, so both sides are resolved before comparing.
+    """
+    return Path(recorded).resolve() == pdf_path.resolve()
+
+
 def _refresh_pdf_source(job: BatchJob, settings: Settings) -> None:
     """Re-register ``job.pdf_path`` under its current bytes in the inventory.
 
     A changed PDF keeps its old hash in the inventory until this runs; without
     the refresh the part would rebuild on every subsequent run (its recorded
     identity never matches) and the corpus would stay keyed on stale bytes.
-    Only entries for this exact path are touched, so companions added via
-    ``add-doc`` are untouched. No-op when the path is not in the inventory.
+    Only entries naming this file are touched, so companions added via
+    ``add-doc`` are untouched. No-op when the path is not in the inventory or
+    the recorded hash already matches.
     """
     part_dir = settings.parts_dir / job.part
     inventory = load_inventory(part_dir)
-    if not any(s.path == str(job.pdf_path) for s in inventory):
+    current = compute_content_hash(job.pdf_path)
+    stale = [
+        s for s in inventory
+        if _same_path(s.path, job.pdf_path) and s.content_hash != current
+    ]
+    if not stale:
         return
     fresh = register_source(job.pdf_path, part_number=job.part, doc_type="datasheet")
-    kept = [s for s in inventory if s.path != str(job.pdf_path)]
+    kept = [s for s in inventory if not _same_path(s.path, job.pdf_path)]
     kept.append(fresh)
     save_inventory(kept, part_dir)
 
@@ -121,14 +135,16 @@ def _refresh_pdf_source(job: BatchJob, settings: Settings) -> None:
 def skip_reason(job: BatchJob, *, settings: Settings, force: bool = False) -> str:
     """Nonempty reason to skip ``job``, or "" when it must build.
 
-    A job is skipped when the part's corpus manifest exists, records the
-    current ``PIPELINE_VERSION``, and the PDF's sha256 matches the hash in the
-    part's inventory (`content_hash` is the source document's identity — never
-    mtime or size). ``force`` bypasses the whole check. Missing, corrupt or
-    version-stale manifests and unknown hashes all mean build; a changed PDF
-    is first re-registered under its new identity so the rebuild it triggers
-    restores the skip condition for later runs. Never raises: any failure to
-    verify means "not safe to skip".
+    A job is skipped only when the part's corpus manifest exists, records the
+    current ``PIPELINE_VERSION``, and the PDF's sha256 matches the hash of the
+    document recorded for this file in the part's inventory AND the manifest's
+    published documents (`content_hash` is the source document's identity —
+    never mtime or size). Requiring the hash among the published documents
+    means a failed rebuild can never arm the skip on a stale corpus. ``force``
+    bypasses the whole check. Missing, corrupt or version-stale manifests and
+    unknown hashes all mean build (a changed PDF is re-registered by the build
+    path, restoring the skip condition for later runs). Never raises: any
+    failure to verify means "not safe to skip".
     """
     if force:
         return ""
@@ -143,14 +159,15 @@ def skip_reason(job: BatchJob, *, settings: Settings, force: bool = False) -> st
         if manifest.pipeline_version != PIPELINE_VERSION:
             return ""
         pdf_hash = compute_content_hash(job.pdf_path)
-        inventory = load_inventory(part_dir)
-        if pdf_hash in {s.content_hash for s in inventory}:
+        published = {s.content_hash for s in manifest.documents}
+        entries = [
+            s for s in load_inventory(part_dir) if _same_path(s.path, job.pdf_path)
+        ]
+        if any(s.content_hash == pdf_hash for s in entries) and pdf_hash in published:
             return (f"already built: PDF sha256 and pipeline version "
                     f"{PIPELINE_VERSION} match")
-        # unchanged corpus built from older bytes -> re-register and rebuild
-        _refresh_pdf_source(job, settings)
         return ""
-    except (OSError, ValidationError):
+    except (OSError, ValueError):  # JSONDecodeError etc. — never raise
         return ""
 
 
@@ -161,8 +178,15 @@ def run_job(
     use_cache: bool,
     use_llm: bool,
 ) -> JobResult:
-    """Build one part, isolating failures: any exception becomes a failed result."""
+    """Build one part, isolating failures: any exception becomes a failed result.
+
+    Before building, the inventory is refreshed to the PDF's current bytes (a
+    no-op unless the recorded hash is stale), so a rebuild triggered by the
+    hash gate publishes a corpus keyed on the new identity. The refresh runs
+    inside the error boundary: a failure here is an ordinary failed job.
+    """
     try:
+        _refresh_pdf_source(job, settings)
         result = build_part(
             job.pdf_path,
             part_number=job.part,
