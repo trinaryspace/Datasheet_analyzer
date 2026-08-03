@@ -44,6 +44,11 @@ class SourceDocument(BaseModel):
     revision: str = ""
     page_count: int = 0
     nda: bool = False
+    # Vendor routing record, evidence-pinned at acquire time. The default
+    # stays `ti` so pre-existing inventories keep today's routing; evidence
+    # is the brand match text or "cli-override: --vendor <name>".
+    vendor: str = "ti"
+    vendor_evidence: str = ""
     registered_at: datetime = Field(default_factory=_utcnow)
 
 
@@ -164,11 +169,31 @@ class CorpusStats(BaseModel):
     sections_without_pages: int = 0
 
 
+class ExtractionStats(BaseModel):
+    """Per-document extraction statistics recorded in the manifest.
+
+    The detected/accepted/rejected table counts, rejection reasons and
+    mean fidelity are filled by the layout engine (``pdf_layout``); other
+    backends record just the backend name.
+    """
+
+    backend: str = ""
+    tables_detected: int = 0
+    tables_accepted: int = 0
+    tables_rejected: int = 0
+    rejection_reasons: list[str] = Field(default_factory=list)
+    mean_fidelity: float = 0.0
+
+
 class CorpusManifest(BaseModel):
     """Machine-readable index of a built part corpus (manifest.json)."""
 
     part_number: str
     pipeline_version: str = ""
+    # Part-level vendor record: the datasheet's pinned vendor.
+    vendor: str = ""
+    # Per-document extraction stats keyed by content_hash.
+    extraction_stats: dict[str, ExtractionStats] = Field(default_factory=dict)
     generated_at: datetime = Field(default_factory=_utcnow)
     documents: list[SourceDocument] = Field(default_factory=list)
     sections: list[SectionFile] = Field(default_factory=list)

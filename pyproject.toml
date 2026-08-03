@@ -1,6 +1,6 @@
 [project]
 name = "datasheet-analyzer"
-version = "0.1.0"
+version = "0.2.0"
 description = "Turn big IC datasheets into a token-efficient, citation-verified markdown corpus for AI agents"
 requires-python = ">=3.10"
 dependencies = [

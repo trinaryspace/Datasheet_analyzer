@@ -60,6 +60,12 @@ def page_texts(path: Path) -> list[str]:
         return [p.get_text() for p in doc]
 
 
+def first_page_text(path: Path) -> str:
+    """Text of page 1 only (vendor detection); '' for an empty document."""
+    with fitz.open(path) as doc:
+        return doc[0].get_text() if doc.page_count else ""
+
+
 def sniff_revision(path: Path, max_pages: int = 3) -> str:
     """Pull the TI document id (e.g. 'SBASA41E') from the first pages."""
     pat = re.compile(r"\b(S[A-Z]{2}[A-Z0-9]{2,6}[A-Z]?)\b")

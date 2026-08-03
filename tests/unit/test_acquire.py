@@ -61,6 +61,32 @@ class TestRegisterSource:
         assert src.nda is True
 
 
+class TestVendorRegistration:
+    def test_detected_vendor_pins_with_evidence(self, tmp_path):
+        pdf = tmp_path / "afe7950.pdf"
+        _make_pdf(pdf, ["Texas Instruments AFE7950 datasheet"])
+        src = register_source(pdf, part_number="AFE7950")
+        assert src.vendor == "ti"
+        assert src.vendor_evidence == 'brand:"texas instruments" (p.1)'
+
+    def test_override_beats_detection(self, tmp_path):
+        pdf = tmp_path / "afa710.pdf"
+        _make_pdf(pdf, ["Some other vendor's datasheet"])
+        src = register_source(pdf, vendor="adi")
+        assert src.vendor == "adi"
+        assert src.vendor_evidence == "cli-override: --vendor adi"
+
+    def test_vendor_survives_inventory_roundtrip(self, tmp_path):
+        pdf = tmp_path / "part.pdf"
+        _make_pdf(pdf, ["Qorvo QPA1003P datasheet"])
+        src = register_source(pdf, part_number="QPA1003P")
+        part_dir = tmp_path / "parts" / "QPA1003P"
+        save_inventory([src], part_dir)
+        (loaded,) = load_inventory(part_dir)
+        assert loaded.vendor == "qorvo"
+        assert loaded.vendor_evidence == 'brand:"qorvo" (p.1)'
+
+
 class TestInventoryRoundTrip:
     def test_save_load_preserves_everything(self, tmp_path):
         pdf = tmp_path / "part.pdf"

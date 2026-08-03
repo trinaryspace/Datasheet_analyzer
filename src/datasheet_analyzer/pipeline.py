@@ -9,10 +9,19 @@ parsing entirely (the HTTP layer has its own cache too).
 from __future__ import annotations
 
 import logging
+import os
+import threading
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
-from datasheet_analyzer.acquire import append_to_inventory, load_inventory, register_source
+from datasheet_analyzer.acquire import (
+    append_to_inventory,
+    load_inventory,
+    pin_vendor,
+    register_source,
+    save_inventory,
+)
 from datasheet_analyzer.config import PIPELINE_VERSION, Settings
 from datasheet_analyzer.enrich import (
     AnthropicClient,
@@ -21,10 +30,10 @@ from datasheet_analyzer.enrich import (
     SectionMeta,
     build_index_markdown,
 )
-from datasheet_analyzer.extract import DEFAULT_BACKEND, get_backend
+from datasheet_analyzer.extract import get_backend
 from datasheet_analyzer.extract.http import CachingBinaryFetcher, CachingFetcher
 from datasheet_analyzer.extract.pdf_structure import page_texts, read_toc
-from datasheet_analyzer.models import CorpusManifest, PlotSet, RawDocument, SourceDocument
+from datasheet_analyzer.models import CorpusManifest, DocType, PlotSet, RawDocument, SourceDocument
 from datasheet_analyzer.publish import write_corpus
 from datasheet_analyzer.publish.plots import (
     fetch_plot_images,
@@ -35,6 +44,7 @@ from datasheet_analyzer.structure.corpus import SectionPlan, build_section_plans
 from datasheet_analyzer.structure.pagemap import pin_table_pages
 from datasheet_analyzer.structure.plots import build_plotset
 from datasheet_analyzer.structure.specs import build_specset
+from datasheet_analyzer.vendor import select_backend, warn_vendor_drift
 
 log = logging.getLogger(__name__)
 
@@ -61,9 +71,27 @@ def _load_cached_raw(settings: Settings, content_hash: str, backend: str) -> Raw
 
 
 def _store_cached_raw(settings: Settings, raw: RawDocument) -> None:
+    """Atomic cache write: unique temp file + rename, so concurrent jobs
+    sharing identical bytes can never leave a torn/corrupt cache entry.
+
+    (pid + thread id keeps temp names unique even across threads of one
+    process — Windows locks open files, so a shared temp name would fail;
+    the replace itself races under contention and is retried briefly.)
+    """
     path = _extract_cache_path(settings, raw.source.content_hash, raw.extractor)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(raw.model_dump_json(indent=2), encoding="utf-8")
+    tmp = path.with_name(f"{path.name}.{os.getpid()}.{threading.get_ident()}.tmp")
+    try:
+        tmp.write_text(raw.model_dump_json(indent=2), encoding="utf-8")
+        for attempt in range(10):
+            try:
+                tmp.replace(path)
+                return
+            except PermissionError:  # Windows: destination briefly locked
+                time.sleep(0.01 * (attempt + 1))
+        tmp.replace(path)  # last try — surface the error if still contended
+    finally:
+        tmp.unlink(missing_ok=True)
 
 
 def _brief_and_facts(raw: RawDocument) -> tuple[str, list[str]]:
@@ -81,22 +109,36 @@ def _brief_and_facts(raw: RawDocument) -> tuple[str, list[str]]:
     return brief, facts
 
 
-def _select_backend_name(source: SourceDocument, datasheet_backend: str) -> str:
-    """Primary datasheet -> HTML backend; companions -> degraded pdf_text."""
-    if source.doc_type.value == "datasheet":
-        return datasheet_backend
-    return "pdf_text"
+def _backfill_vendor_evidence(sources: list[SourceDocument]) -> bool:
+    """Legacy inventories (pre-0.2.0) have a vendor but no evidence: record
+    the detection that agrees with the pinned value. True when anything
+    changed; mismatches are left alone so the drift warning stays loud.
+    """
+    from datasheet_analyzer.vendor import detect_vendor
+
+    changed = False
+    for src in sources:
+        if src.vendor_evidence or src.doc_type != DocType.DATASHEET:
+            continue
+        detected, evidence = detect_vendor(Path(src.path))
+        if detected == src.vendor and evidence and not src.vendor_evidence:
+            src.vendor_evidence = evidence
+            changed = True
+    return changed
 
 
 def _extract_document(
     source: SourceDocument,
     pdf_path: Path,
     settings: Settings,
-    datasheet_backend: str,
     use_cache: bool,
 ) -> tuple[RawDocument, bool]:
-    """Extract one document, using cache if enabled. Returns (raw, cached)."""
-    backend_name = _select_backend_name(source, datasheet_backend)
+    """Extract one document, using cache if enabled. Returns (raw, cached).
+
+    Backend follows the source's evidence-pinned vendor routing record:
+    datasheet -> the profile's preference chain, companions -> pdf_text.
+    """
+    backend_name = select_backend(source.vendor, source.doc_type)
     cached = False
     raw: RawDocument | None = None
     if use_cache:
@@ -132,10 +174,12 @@ def build_part(
     *,
     part_number: str,
     settings: Settings,
-    backend_name: str = DEFAULT_BACKEND,
+    vendor: str = "",
     use_cache: bool = True,
     use_llm: bool = True,
 ) -> BuildResult:
+    """Build a part corpus. ``vendor`` = explicit override of detection
+    (recorded as cli-override evidence); "" = detection/pinned value."""
     pdf_path = Path(pdf_path)
     part_dir = settings.parts_dir / part_number
 
@@ -143,16 +187,32 @@ def build_part(
     inventory = load_inventory(part_dir)
     if not inventory:
         source = register_source(
-            pdf_path, part_number=part_number, doc_type="datasheet"
+            pdf_path, part_number=part_number, doc_type="datasheet",
+            vendor=vendor or None,
         )
         inventory = append_to_inventory([source], part_dir)
+    if vendor and pin_vendor(inventory, vendor):
+        save_inventory(inventory, part_dir)
 
-    # extract each document (datasheet via ti_html, companions via pdf_text)
+    if not vendor and _backfill_vendor_evidence(inventory):
+        save_inventory(inventory, part_dir)
+
+    # identity drift: a detection contradicting a pin warns loudly but never
+    # re-routes (the pinned value stays authoritative).
+    warn_vendor_drift(inventory)
+
+    part_vendor = next(
+        (s.vendor for s in inventory if s.doc_type == DocType.DATASHEET),
+        inventory[0].vendor if inventory else "",
+    )
+
+    # extract each document (datasheet via the vendor's preferred backend,
+    # companions via pdf_text)
     docs: list[RawDocument] = []
     any_cached = True
     for source in inventory:
         raw, cached = _extract_document(
-            source, Path(source.path), settings, backend_name, use_cache
+            source, Path(source.path), settings, use_cache
         )
         any_cached = any_cached and cached
         docs.append(raw)
@@ -245,6 +305,7 @@ def build_part(
     manifest = write_corpus(
         part_dir, all_plans, index_md,
         pipeline_version=PIPELINE_VERSION,
+        vendor=part_vendor,
         specsets=specsets,
         plotsets=plotsets,
     )

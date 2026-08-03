@@ -94,3 +94,31 @@ def test_multi_doc_part(tmp_path):
 def test_doc_dir_name_is_stable_and_typed():
     raw = _raw("f")
     assert doc_dir_name(raw) == "datasheet-ffffffff"
+
+
+def test_manifest_carries_vendor_and_per_doc_extraction_stats(tmp_path):
+    raw = _raw("g")
+    plans = build_section_plans(raw)
+    manifest = write_corpus(
+        tmp_path / "P",
+        [(raw, plans, {})],
+        "idx",
+        pipeline_version="0.2.0",
+        vendor="adi",
+    )
+    assert manifest.vendor == "adi"
+    assert manifest.pipeline_version == "0.2.0"
+    stats = manifest.extraction_stats[raw.source.content_hash]
+    assert stats.backend == "test"
+    assert stats.tables_detected == 0
+
+    on_disk = json.loads((tmp_path / "P" / "manifest.json").read_text())
+    m = CorpusManifest.model_validate(on_disk)  # schema round-trip
+    assert m.vendor == "adi"
+    assert m.extraction_stats[raw.source.content_hash].backend == "test"
+
+
+def test_manifest_without_vendor_defaults_empty(tmp_path):
+    manifest = write_corpus(tmp_path / "P", [], "idx", pipeline_version="x")
+    assert manifest.vendor == ""
+    assert manifest.extraction_stats == {}

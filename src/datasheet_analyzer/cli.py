@@ -22,10 +22,21 @@ from datasheet_analyzer.config import PIPELINE_VERSION, get_settings
 log = logging.getLogger("dsa")
 
 
+def _known_vendor_or_error(vendor: str) -> bool:
+    from datasheet_analyzer.vendor import is_known_vendor, unknown_vendor_message
+
+    if not vendor or is_known_vendor(vendor):
+        return True
+    print(unknown_vendor_message(vendor), file=sys.stderr)
+    return False
+
+
 def _cmd_add_doc(args: argparse.Namespace) -> int:
     from datasheet_analyzer.acquire import append_to_inventory, register_source
     from datasheet_analyzer.models import DocType
 
+    if not _known_vendor_or_error(args.vendor or ""):
+        return 2
     settings = get_settings()
     part_dir = settings.parts_dir / args.part
     dtype = DocType(args.type)
@@ -34,24 +45,36 @@ def _cmd_add_doc(args: argparse.Namespace) -> int:
         part_number=args.part,
         doc_type=dtype,
         nda=args.nda,
+        vendor=args.vendor or None,
     )
     append_to_inventory([source], part_dir)
     print(f"registered {source.doc_type.value}: {Path(source.path).name}")
-    print(f"  hash {source.content_hash[:8]} — {source.page_count} pages")
+    print(
+        f"  hash {source.content_hash[:8]} — {source.page_count} pages — "
+        f"vendor {source.vendor}"
+    )
     return 0
 
 
 def _cmd_build(args: argparse.Namespace) -> int:
+    from datasheet_analyzer.extract import BackendUnavailableError
     from datasheet_analyzer.pipeline import build_part
 
+    if not _known_vendor_or_error(args.vendor or ""):
+        return 2
     settings = get_settings()
-    result = build_part(
-        Path(args.pdf),
-        part_number=args.part,
-        settings=settings,
-        use_cache=not args.no_cache,
-        use_llm=not args.no_llm,
-    )
+    try:
+        result = build_part(
+            Path(args.pdf),
+            part_number=args.part,
+            settings=settings,
+            vendor=args.vendor,
+            use_cache=not args.no_cache,
+            use_llm=not args.no_llm,
+        )
+    except BackendUnavailableError as exc:
+        print(f"build error: {exc}", file=sys.stderr)
+        return 2
     stats = result.manifest.stats
     print(f"corpus: {result.part_dir}")
     print(
@@ -252,6 +275,38 @@ def _cmd_plots(args: argparse.Namespace) -> int:
     return 0 if recs else 1
 
 
+def _part_vendor_info(part: Path) -> tuple[str, str, list[str]]:
+    """(vendor, evidence, backends) for a part.
+
+    Vendor + evidence always come from sources.json — the pinned acquire
+    record (a built part's manifest only mirrors it, and legacy manifests
+    predate the field). Backends come from the manifest's extraction stats
+    when the part is built. ("", "", []) when nothing is registered.
+    """
+    from datasheet_analyzer.acquire import load_inventory
+    from datasheet_analyzer.models import CorpusManifest, DocType
+
+    sources = load_inventory(part) if (part / "sources.json").exists() else []
+    vendor, evidence = "", ""
+    if sources:
+        ds = next((s for s in sources if s.doc_type == DocType.DATASHEET), sources[0])
+        vendor, evidence = ds.vendor, ds.vendor_evidence
+    backends: list[str] = []
+    manifest_path = part / "manifest.json"
+    if manifest_path.exists():
+        try:
+            m = CorpusManifest.model_validate_json(
+                manifest_path.read_text(encoding="utf-8")
+            )
+        except (ValueError, OSError, TypeError):
+            m = None
+        if m is not None:
+            backends = list(
+                dict.fromkeys(st.backend for st in m.extraction_stats.values() if st.backend)
+            )
+    return vendor, evidence, backends
+
+
 def _cmd_status(_args: argparse.Namespace) -> int:
     settings = get_settings()
     print(f"datasheet-analyzer {PIPELINE_VERSION}")
@@ -261,7 +316,17 @@ def _cmd_status(_args: argparse.Namespace) -> int:
     if settings.parts_dir.exists():
         for part in sorted(p for p in settings.parts_dir.iterdir() if p.is_dir()):
             has_index = (part / "INDEX.md").exists()
-            print(f"  part: {part.name} {'[built]' if has_index else '[partial]'}")
+            label = f"  part: {part.name} {'[built]' if has_index else '[partial]'}"
+            vendor, evidence, backends = _part_vendor_info(part)
+            if vendor:
+                label += f" vendor: {vendor}"
+                if evidence:
+                    label += f" ({evidence})"
+                if any(backends):
+                    label += f" extraction: {', '.join(backends)}"
+            else:
+                label += " vendor: (none)"
+            print(label)
     return 0
 
 
@@ -279,6 +344,11 @@ def main(argv: list[str] | None = None) -> int:
     p_build = sub.add_parser("build", help="build a part corpus from a datasheet PDF")
     p_build.add_argument("pdf")
     p_build.add_argument("--part", required=True, help="part number, e.g. AFE7950")
+    p_build.add_argument(
+        "--vendor",
+        default="",
+        help="explicit vendor override, e.g. adi (default: detected + pinned)",
+    )
     p_build.add_argument("--no-cache", action="store_true")
     p_build.add_argument("--no-llm", action="store_true")
     p_build.set_defaults(func=_cmd_build)
@@ -302,6 +372,11 @@ def main(argv: list[str] | None = None) -> int:
         help="document type",
     )
     p_add.add_argument("--nda", action="store_true", help="mark as NDA")
+    p_add.add_argument(
+        "--vendor",
+        default="",
+        help="explicit vendor override (default: detected + pinned)",
+    )
     p_add.set_defaults(func=_cmd_add_doc)
 
     p_verify = sub.add_parser("verify", help="verify a built corpus against the golden Q&A set")

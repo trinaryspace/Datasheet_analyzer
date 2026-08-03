@@ -1,7 +1,8 @@
 """Source inventory: a part is a folder of documents.
 
 sources.json (per part) tracks every input document with its content hash
-(identity), detected document type, revision and NDA flag. Companion
+(identity), detected document type, revision, NDA flag and the
+evidence-pinned vendor (routing record — see vendor.py). Companion
 documents (register map, errata, app notes) drop into the same folder and
 are picked up on the next build — the corpus layout does not change.
 """
@@ -15,6 +16,7 @@ from pathlib import Path
 
 from datasheet_analyzer.extract.pdf_structure import make_source
 from datasheet_analyzer.models import DocType, SourceDocument
+from datasheet_analyzer.vendor import detect_vendor, override_evidence
 
 log = logging.getLogger(__name__)
 
@@ -42,20 +44,43 @@ def register_source(
     part_number: str = "",
     doc_type: DocType | None = None,
     nda: bool = False,
+    vendor: str | None = None,
 ) -> SourceDocument:
-    """Register one input document (identity = sha256 of its bytes)."""
+    """Register one input document (identity = sha256 of its bytes).
+
+    ``vendor`` None = evidence-pinned detection at acquire time; given =
+    explicit override, recorded in ``vendor_evidence`` (never a silent
+    guess on the routing path).
+    """
     src = make_source(
         Path(path),
         part_number=part_number,
         doc_type=doc_type or detect_doc_type(Path(path)),
         nda=nda,
     )
+    if vendor is not None:
+        src.vendor = vendor
+        src.vendor_evidence = override_evidence(vendor)
+    else:
+        src.vendor, src.vendor_evidence = detect_vendor(Path(path))
     log.info(
-        "registered %s: type=%s rev=%s pages=%d hash=%s…",
+        "registered %s: type=%s rev=%s pages=%d hash=%s… vendor=%s (%s)",
         Path(path).name, src.doc_type.value, src.revision or "?",
-        src.page_count, src.content_hash[:10],
+        src.page_count, src.content_hash[:10], src.vendor, src.vendor_evidence,
     )
     return src
+
+
+def pin_vendor(sources: list[SourceDocument], vendor: str) -> bool:
+    """Repin every source's vendor with override evidence; True when changed."""
+    evidence = override_evidence(vendor)
+    changed = False
+    for src in sources:
+        if src.vendor != vendor or src.vendor_evidence != evidence:
+            src.vendor = vendor
+            src.vendor_evidence = evidence
+            changed = True
+    return changed
 
 
 def save_inventory(sources: list[SourceDocument], part_dir: Path) -> Path:

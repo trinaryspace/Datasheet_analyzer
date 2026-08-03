@@ -33,13 +33,14 @@ source .venv/Scripts/activate       # puts `dsa` and `python` on PATH
 # run
 dsa build afe7950.pdf --part AFE7950                    # corpus + specs.json + plots.json
 dsa build afe7953.pdf --part AFE7953                    # second reference part
+dsa build ad9081.pdf --part AD9081 --vendor adi         # explicit vendor override (default: detected + pinned)
 dsa batch datasheets/                                   # one part corpus per PDF in a dir (serial today)
 dsa verify --part AFE7950 --pdf afe7950.pdf             # golden Q&A + token economics
 dsa verify --part AFE7950 --pdf afe7950.pdf --specs     # + spec_query checks
 dsa query --part AFE7950 --symbol DACRES                # deterministic spec lookup
 dsa add-doc register_map.pdf --part AFE7950 --type register_map
 dsa plots --part AFE7950 --q "Output Fullscale"
-dsa status
+dsa status                                             # shows per-part vendor + detection evidence
 
 # test (fully offline, ~8 s)
 python -m pytest tests/ -q
@@ -57,10 +58,11 @@ codes, not colors.
 
 | Module | Role | Key exports |
 |---|---|---|
-| `models.py` | **The contract.** Pydantic v2 models shared by all stages. Change deliberately. | `SourceDocument`, `TOCEntry`, `Footnote`, `TableBlock`, `FigureRef`, `SectionNode`, `RawDocument`, `SectionFile`, `CorpusManifest`, `CorpusStats`, `GoldenQuestion`, `DocType`, `SpecUnit`, `SpecRecord`, `SpecTableInfo`, `SpecSet`, `PlotRecord`, `PlotSet` |
+| `models.py` | **The contract.** Pydantic v2 models shared by all stages. Change deliberately. | `SourceDocument`, `TOCEntry`, `Footnote`, `TableBlock`, `FigureRef`, `SectionNode`, `RawDocument`, `SectionFile`, `CorpusManifest`, `CorpusStats`, `ExtractionStats`, `GoldenQuestion`, `DocType`, `SpecUnit`, `SpecRecord`, `SpecTableInfo`, `SpecSet`, `PlotRecord`, `PlotSet` |
 | `config.py` | pydantic-settings, `DSA_` prefix; `ANTHROPIC_API_KEY` plain. No filesystem side effects at import. `PIPELINE_VERSION`, `SPECS_SCHEMA_VERSION`, `PLOTS_SCHEMA_VERSION` live here. | `Settings`, `get_settings()` (lru_cached; `reset_settings_cache()` for tests) |
 | `tokens.py` | THE token counter (chars/4). Every reported token number flows through it. | `count_tokens`, `truncate_to_tokens` (budget ≤ 0 → `""`) |
-| `acquire/inventory.py` | Part = folder of docs. `sources.json` per part; identity = sha256 of bytes. | `register_source`, `save_inventory`, `load_inventory`, `detect_doc_type` |
+| `acquire/inventory.py` | Part = folder of docs. `sources.json` per part; identity = sha256 of bytes; evidence-pinned vendor at acquire (detection or `--vendor` override). | `register_source`, `save_inventory`, `load_inventory`, `detect_doc_type`, `pin_vendor` |
+| `vendor.py` | **Vendor routing record, not a rulebook**: profile registry (brand lexicon + backend preference chain), evidence-pinned detection on page-1 text/filename, drift warnings. Default `ti`; no layout behavior hangs off the vendor string. | `VENDOR_PROFILES`, `detect_vendor`, `select_backend`, `warn_vendor_drift`, `is_known_vendor` |
 | `extract/base.py` | Backend protocol + registry. | `ExtractionBackend`, `register`, `get_backend` |
 | `extract/pdf_structure.py` | PyMuPDF: content hash, page count, **printed TOC (authoritative page numbers)**, per-page text (verification/pinning only — NOT content extraction). | `read_toc`, `page_texts`, `compute_content_hash`, `make_source`, `split_number` |
 | `extract/http.py` | Fetchers. `CachingFetcher` (disk cache `.cache/http`), `CachingBinaryFetcher` (`.cache/http-bin`), `ReplayFetcher`/`ReplayBinaryFetcher` (hermetic tests: miss = hard error), `MappingFetcher`. | `Fetcher` / `BinaryFetcher` protocols |
@@ -82,7 +84,7 @@ codes, not colors.
 | `query.py` | Deterministic spec lookup against built `specs.json` files; plot lookup against `plots.json`. | `SpecQuery`, `format_answer`, `find_plots`, `format_plot_answer` |
 | `evalh/citations.py` | Golden Q&A verification: corpus-contains AND page-truth, two-tier (exact then squash-normalized). | `verify_questions`, `load_golden_yaml`, `contains`, `squash` |
 | `evalh/golden.py` | Report rendering + token economics measurement. | `render_verification_report`, `estimate_lookup_tokens` |
-| `pipeline.py` | Orchestration + extraction cache (`.cache/extract/<hash>__<backend>.json`). | `build_part` |
+| `pipeline.py` | Orchestration + extraction cache (`.cache/extract/<hash>__<backend>.json`, atomic write-temp + rename). Vendor routing via the pinned vendor; `--vendor` repins the inventory; drift warnings never re-route. | `build_part` |
 | `batch.py` | Batch runner: flat `*.pdf` scan of a directory, one job per PDF (part = uppercase stem), failure isolation, per-job summary + `BatchReport`. Serial today (workers/hash-gate/events land in later tickets). | `run_batch`, `run_job`, `discover_jobs`, `BatchReport`, `BatchError`, `STATUS_*` |
 | `cli.py` | argparse CLI. Reconfigures stdout/stderr to UTF-8 (Windows cp1252). | `main` |
 
@@ -91,8 +93,8 @@ codes, not colors.
 ```
 parts/<PART>/
 ├── INDEX.md               # always-loadable index (hard budget, default 3000 tok)
-├── sources.json           # doc inventory: sha256, DocType, revision, nda flag
-├── manifest.json          # CorpusManifest: sections, files, page ranges, stats
+├── sources.json           # doc inventory: sha256, DocType, revision, nda flag, pinned vendor + evidence
+├── manifest.json          # CorpusManifest: sections, files, page ranges, stats, vendor, extraction stats
 └── docs/<doc_type>-<hash8>/
     ├── sections/*.md      # atomic; `<!-- source: <doc> p.N[-M] -->` header
     ├── tables/*.csv       # machine-readable twins of each section table

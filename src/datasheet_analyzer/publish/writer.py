@@ -19,6 +19,7 @@ from pathlib import Path
 from datasheet_analyzer.models import (
     CorpusManifest,
     CorpusStats,
+    ExtractionStats,
     PlotSet,
     RawDocument,
     SectionFile,
@@ -40,13 +41,16 @@ def write_corpus(
     index_md: str,
     *,
     pipeline_version: str,
+    vendor: str = "",
     specsets: list[SpecSet] | None = None,
     plotsets: list[PlotSet] | None = None,
 ) -> CorpusManifest:
     """Write all corpus artifacts; return the manifest.
 
     `docs` = list of (RawDocument, its section plans, section descriptions).
-    Optional `specsets` are written as `docs/<doc>/specs.json`.
+    `vendor` is the part's evidence-pinned vendor routing record. Per-document
+    extraction stats are recorded (backend always; table counts by the layout
+    engine). Optional `specsets` are written as `docs/<doc>/specs.json`.
     Optional `plotsets` are written as `docs/<doc>/plots.json`.
     """
     part_dir = Path(part_dir)
@@ -54,7 +58,7 @@ def write_corpus(
 
     stats = CorpusStats(n_documents=len(docs))
     manifest = CorpusManifest(
-        part_number=part_dir.name, pipeline_version=pipeline_version
+        part_number=part_dir.name, pipeline_version=pipeline_version, vendor=vendor
     )
     specsets_by_hash = {s.doc_hash: s for s in (specsets or [])}
     plotsets_by_hash = {p.doc_hash: p for p in (plotsets or [])}
@@ -81,6 +85,9 @@ def write_corpus(
             stats.n_plot_files += sum(1 for p in plotset.plots if p.file)
 
         manifest.documents.append(raw.source)
+        manifest.extraction_stats[raw.source.content_hash] = ExtractionStats(
+            backend=raw.extractor
+        )
         stats.n_sections += len(plans)
 
         for plan in plans:
