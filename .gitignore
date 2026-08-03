@@ -1,3 +1,8 @@
 .env
 Lit_Analyzer/
 .venv/
+.cache/
+.pytest_cache/
+.ruff_cache/
+__pycache__/
+*.pyc

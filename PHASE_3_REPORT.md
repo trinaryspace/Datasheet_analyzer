@@ -1,12 +1,28 @@
 # Phase 3 Report — Plot Pixels + Vision Reads + Multi-Doc Parts
 
-## Summary
+**Status: complete. Phase 3 closes the catalog→pixels gap and makes parts
+multi-document; results below are the final measured numbers. Replicated on
+AFE7953 (SBASAN1A): 492 figure files + 492 `plots.json` records, same code
+path, zero changes.**
 
 Phase 3 makes the 514 cataloged AFE7950 figures answerable by agents:
 every figure has an image file in the corpus, a searchable `plots.json`
 catalog, and a deterministic `dsa plots` lookup. Companion documents
 (register maps, errata, app notes) can now be added to a part and built
 with a single `INDEX.md` via the honest `pdf_text` backend.
+
+## Reproduce (Git Bash on Windows; use `.venv/Scripts/dsa.exe` without activation)
+
+```bash
+uv venv --python 3.10 .venv
+uv pip install --python .venv/Scripts/python.exe -e ".[dev]"
+source .venv/Scripts/activate
+dsa build afe7950.pdf --part AFE7950                  # + plots.json + figures/
+dsa verify --part AFE7950 --pdf afe7950.pdf --specs   # 19 golden incl. 3 plot queries
+dsa plots --part AFE7950 --q "Output Fullscale"       # plot lookup
+python -m pytest tests/ -q                            # 214 tests, ~8 s, fully offline
+python -m ruff check src tests
+```
 
 ## Task 0 — Hi-res image probe
 
@@ -72,6 +88,9 @@ available variant, but the rule is general.
   - `p02-tx-gain-error-800m`
   - `p03-rx-fullscale-800m`
 - `dsa verify` prints a third table: **Plot query verification**.
+- A regression test (`tests/unit/test_cli_verify.py`) pins the summary
+  counts: spec/plot rows must count only passing questions (a generator
+  bug once claimed N/N on failing rows).
 
 ## Measured numbers (real AFE7950, hermetic fixtures)
 
@@ -90,6 +109,19 @@ plots.json records: 514
 plot question tokens: 4053
 ```
 
+Second reference part (AFE7953, same build path, no code changes):
+
+```text
+n_sections: 39
+n_tables: 14
+n_figures: 492
+n_specs: 536
+n_plot_files: 492
+total_tokens: 39033
+index_tokens: 2522
+plots.json records: 492
+```
+
 Golden plot file sizes (real recorded GIFs):
 
 - `4.12.1-f001` (TX Output Fullscale): 9869 B
@@ -104,7 +136,7 @@ Golden plot file sizes (real recorded GIFs):
 - [x] Plot question token cost measured: 4053 tokens (INDEX + plots slice + one image ~1.5k)
 - [x] 2-document part builds with unified `INDEX.md`; register map emits no `specs.json`
 - [x] `pdf_text` strips page furniture using page context; data lines survive
-- [x] `pytest` + `ruff` green incl. Phase 1 + Phase 2 integration
+- [x] `pytest` (214 tests) + `ruff` green incl. Phase 1 + Phase 2 integration
 
 ## Out of scope (kept out)
 

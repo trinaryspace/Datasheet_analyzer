@@ -1,22 +1,25 @@
 # Phase 2 Report — `specs.json`: the Verified Structured Part Model
 
-**Status: complete. 172/172 tests passing, ruff clean, golden Q&A 16/16, spec-query verification 8/8 original + 4 new questions passing.**
+**Status: complete. Numbers below are the Phase 2 snapshot (172 tests,
+golden Q&A 16/16, spec queries 12/12). The current repo suite is 214 tests /
+19 golden questions — Phase 3 shipped on top (see `PHASE_3_REPORT.md`).**
 
 Phase 2 turns the 11 real parametric tables extracted in Phase 1 into a
 deterministic, machine-queryable `specs.json`, plus a `dsa query` interface.
 Parametric questions now resolve to a **~2.5k-token lookup** (INDEX.md + answer)
 instead of a **~4–8k section read**.
 
-## Reproduce
+## Reproduce (Git Bash on Windows; use `.venv/Scripts/dsa.exe` without activation)
 
-```powershell
+```bash
 uv venv --python 3.10 .venv
 uv pip install --python .venv/Scripts/python.exe -e ".[dev]"
-.venv/Scripts/dsa.exe build afe7950.pdf --part AFE7950              # writes specs.json
-.venv/Scripts/dsa.exe verify --part AFE7950 --pdf afe7950.pdf --specs # Phase 2 checks
-.venv/Scripts/dsa.exe query --part AFE7950 --symbol DACRES          # deterministic lookup
-.venv/Scripts/python.exe -m pytest tests/ -q
-.venv/Scripts/python.exe -m ruff check src tests
+source .venv/Scripts/activate
+dsa build afe7950.pdf --part AFE7950                  # writes specs.json
+dsa verify --part AFE7950 --pdf afe7950.pdf --specs   # Phase 2 checks
+dsa query --part AFE7950 --symbol DACRES              # deterministic lookup
+python -m pytest tests/ -q
+python -m ruff check src tests
 ```
 
 The build above runs **deterministic** (no `ANTHROPIC_API_KEY`) and uses only
@@ -27,7 +30,7 @@ the recorded TI fixtures plus the local PDF — no live network in tests.
 ### Corpus stats (from manifest.json)
 
 | Metric | Value |
-|---|---|---|
+|---|---|
 | Sections | 39 |
 | Tables | 15 (11 parametric + 1 info + 3 unmapped figure-furniture tables) |
 | Figures | ≥514 (Phase 1 catalog) |
@@ -57,7 +60,8 @@ Every extracted table was classified and normalized:
 
 All 619 records validate against the `SpecSet` Pydantic model, and every
 record's `page` is either `None` or inside its owning section's manifest page
-range.
+range. The same code path later produced **536 records for AFE7953**
+(SBASAN1A) with `dsa query --part AFE7953 ...` working out of the box.
 
 ### Golden Q&A verification
 
@@ -137,4 +141,4 @@ for known parametric questions.
 - Float parsing / numeric comparison of values (verbatim strings only).
 - LLM normalization of parameter names.
 - Cross-part comparison, fleet manifest, MCP.
-- specs from any future `pdf_text` backend.
+- Specs from `pdf_text` documents (they emit none, by design).

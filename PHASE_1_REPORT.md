@@ -1,6 +1,8 @@
 # Phase 1 Report — AFE7950 Corpus, Verified End-to-End
 
-**Status: complete. 105/105 tests passing, ruff clean, golden Q&A 12/12.**
+**Status: complete. Numbers below are the Phase 1 snapshot (105 tests,
+golden Q&A 12/12). The current repo suite is 214 tests / 19 golden questions
+— Phases 2 and 3 shipped on top (see `PHASE_2_REPORT.md`, `PHASE_3_REPORT.md`).**
 
 Phase 1 turns the 146-page AFE7950 datasheet (SBASA41E, 16.9 MB PDF) into a
 **token-efficient, citation-verified markdown corpus** that any agent can
@@ -16,20 +18,21 @@ parts/AFE7950/
     └── tables/*.csv         15 machine-readable table twins
 ```
 
-## Reproduce
+## Reproduce (Git Bash on Windows; use `.venv/Scripts/dsa.exe` without activation)
 
-```powershell
+```bash
 uv venv --python 3.10 .venv
 uv pip install --python .venv/Scripts/python.exe -e ".[dev]"
-.venv/Scripts/dsa.exe build afe7950.pdf --part AFE7950          # ~2 min first run (fetches 40 TI pages, cached forever)
-.venv/Scripts/dsa.exe verify --part AFE7950 --pdf afe7950.pdf   # golden Q&A + token economics
-.venv/Scripts/python.exe -m pytest tests/                        # 105 tests, ~8 s, fully offline
-.venv/Scripts/python.exe -m ruff check src tests                 # clean
+source .venv/Scripts/activate
+dsa build afe7950.pdf --part AFE7950          # ~2 min first run (fetches TI pages, cached forever)
+dsa verify --part AFE7950 --pdf afe7950.pdf   # golden Q&A + token economics
+python -m pytest tests/                       # 105 tests at the time, ~8 s, fully offline
+python -m ruff check src tests                # clean
 ```
 
-LLM-written INDEX descriptions are wired (`LLMWriter`, one batched call) but
-this build ran **deterministic** — no `ANTHROPIC_API_KEY` on the machine.
-Drop the key into `.env` and re-run `dsa build` (no flags) to upgrade.
+LLM-written INDEX descriptions were already wired (`LLMWriter`, one batched
+call) but this build ran **deterministic** — no `ANTHROPIC_API_KEY` on the
+machine. Drop the key into `.env` and re-run `dsa build` (no flags) to upgrade.
 
 ## Results
 
@@ -39,7 +42,7 @@ Drop the key into `.env` and re-run `dsa build` (no flags) to upgrade.
 |---|---|
 | Sections | 39 (100% of content sections; cover page correctly excluded) |
 | Parametric tables | 15 atomic, span-expanded, each with conditions + footnotes inline |
-| Figures cataloged | 514 plots with captions + conditions (pixels are Phase 3) |
+| Figures cataloged | 514 plots with captions + conditions (pixels came in Phase 3) |
 | Footnotes | 20, **0 orphan citations** (every marker in every table resolves) |
 | Sections with page ranges | **39/39** (reconciled from the PDF's printed TOC) |
 | Tables with exact page pinned | 12/15 (located in PDF page text; rest stay honestly at section range) |
@@ -51,22 +54,23 @@ Drop the key into `.env` and re-run `dsa build` (no flags) to upgrade.
 Each of the 12 questions (`tests/fixtures/golden_qa.yaml`, answers verified
 against the printed PDF by hand) is checked twice, deterministically:
 the corpus section covering the cited page must contain the answer values,
-**and** the cited PDF page itself must contain them.
+**and** the cited PDF page itself must contain them. (The set has grown to
+19 questions across Phases 2–3.)
 
 | # | Question | Cite | Result |
 |---|---|---|---|
-| 1 | DAC resolution? (14 bits) | p.7 | ✅ |
-| 2 | TX DSA range + analog step? (40 dB, 1.0 dB) | p.7 | ✅ |
-| 3 | DSA step accuracy after calibration? (±0.1 dB, footnote-conditioned) | p.7 | ✅ |
-| 4 | SerDes standards + max rate? (JESD204B/C, 29.5 Gbps) | p.1 | ✅ |
-| 5 | Min SCLK period, register write? (25 ns) | p.27 | ✅ |
-| 6 | Junction-to-ambient thermal resistance? (16.2 °C/W) | p.6 | ✅ |
-| 7 | VCO count + coverage? (4 VCOs, 7.2–12.08 GHz) | p.18 | ✅ |
-| 8 | Abs-max peak RF input @830 MHz? (16.7 dBm) | p.4 | ✅ |
-| 9 | SYSREF setup/hold? (50 ps) | p.27 | ✅ |
-| 10 | Package? (17×17 mm FCBGA, 0.8 mm pitch) | p.1 | ✅ |
-| 11 | Max RX bandwidth? (1200/600 MHz, FB-conditional) | p.1 | ✅ |
-| 12 | TX/RX RF range? (600 MHz–12 GHz) | p.1 | ✅ |
+| 1 | DAC resolution? (14 bits) | p.7 | pass |
+| 2 | TX DSA range + analog step? (40 dB, 1.0 dB) | p.7 | pass |
+| 3 | DSA step accuracy after calibration? (±0.1 dB, footnote-conditioned) | p.7 | pass |
+| 4 | SerDes standards + max rate? (JESD204B/C, 29.5 Gbps) | p.1 | pass |
+| 5 | Min SCLK period, register write? (25 ns) | p.27 | pass |
+| 6 | Junction-to-ambient thermal resistance? (16.2 °C/W) | p.6 | pass |
+| 7 | VCO count + coverage? (4 VCOs, 7.2–12.08 GHz) | p.18 | pass |
+| 8 | Abs-max peak RF input @830 MHz? (16.7 dBm) | p.4 | pass |
+| 9 | SYSREF setup/hold? (50 ps) | p.27 | pass |
+| 10 | Package? (17×17 mm FCBGA, 0.8 mm pitch) | p.1 | pass |
+| 11 | Max RX bandwidth? (1200/600 MHz, FB-conditional) | p.1 | pass |
+| 12 | TX/RX RF range? (600 MHz–12 GHz) | p.1 | pass |
 
 ### Token economics (measured on the built corpus)
 
@@ -75,9 +79,8 @@ the corpus section covering the cited page must contain the answer values,
 | Naive full-corpus dump | 46,081 |
 | **This corpus (INDEX.md + one section)** | **4,256 avg / 8,402 worst** |
 
-**10.8× cheaper on average, 5.5× in the worst case** — before any LLM
-description upgrade or `specs.json` (Phase 2, target: ~0.5–2k for known
-parametric lookups).
+**10.8× cheaper on average, 5.5× in the worst case** — before the
+`specs.json` lookup path (Phase 2, ~2.5k for known parametric questions).
 
 ### What a section file looks like (4.5, p.7–13)
 
@@ -134,27 +137,28 @@ are manufactured in-test with PyMuPDF; LLM is injected as `FakeClient`.
    one unreadable line). Caught by INDEX.md review; per-`li` splitting +
    indentation pinned by test.
 8. **Ohm sign is U+2126, not U+03A9** — verbatim preservation locked in by
-   test (unit canonicalization deferred to Phase 2 `specs.json`).
+   test (unit canonicalization shipped in Phase 2 `specs.json`).
 
-## Known limitations (deliberate Phase 1 scope)
+## Known limitations (deliberate Phase 1 scope, later phases closed these)
 
-- **Plots are cataloged, not rendered.** 514 figures have captions +
-  conditions + image URLs; pixels and vision reads are Phase 3.
+- **Plots were cataloged, not rendered.** 514 figures had captions +
+  conditions + image URLs; pixels and vision reads shipped in Phase 3.
 - **Table page pinning is 12/15**; unpinned tables honestly keep
   section-level ranges rather than guess.
 - **TI-only content path.** Other vendors fall back to a PDF backend
-  (MinerU/docling) — extraction interface is already pluggable.
-- **Descriptions are deterministic** until an Anthropic key is provided;
+  (MinerU/docling) — extraction interface is already pluggable; `pdf_text`
+  shipped in Phase 3.
+- **Descriptions were deterministic** until an Anthropic key is provided;
   `LLMWriter` is implemented, tested with `FakeClient`, and falls back
   safely on any failure.
 - PyMuPDF is AGPL-3.0 (used for TOC/identity/verification, not content
   extraction) — fine for local research, review before commercial use.
 
-## Phase 2 hooks (already designed in)
+## Phase 2 hooks (all landed)
 
-- `specs.json`: parametric tables are already span-expanded grids with
-  conditions/footnotes/page refs — normalization is a pure transform.
+- `specs.json`: parametric tables are span-expanded grids with
+  conditions/footnotes/page refs — normalization was a pure transform.
 - Golden Q&A harness (`dsa verify`) is the objective function for every
-  Phase 2 change; no public datasheet benchmark exists, so this set grows.
+  change; no public datasheet benchmark exists, so the set keeps growing.
 - `docs/<type>-<hash>/` layout accepts register maps/errata with zero
-  redesign (multi-doc manifest test already green).
+  redesign (multi-doc manifest test green since Phase 1).

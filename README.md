@@ -2,11 +2,24 @@
 
 Turn big IC datasheets into a **token-efficient, citation-verified markdown
 corpus** that AI agents navigate with an index file + grep/read — instead of
-loading 46k+ tokens of raw PDF text into context.
+loading tens of thousands of raw-PDF tokens into context.
 
-Reference part: TI AFE7950 (SBASA41E, 146-page PDF). A built corpus for this
-part answers golden-Q&A questions at **~3.7k tokens average** vs **~46k** for a
-full-text dump, with every answer traceable to a printed page number.
+Two reference parts are built and verified in this repo:
+
+| | AFE7950 (SBASA41E) | AFE7953 (SBASAN1A) |
+|---|---|---|
+| PDF | 146 pages | 134 pages |
+| Sections | 39 | 39 |
+| Tables (atomic) | 15 | 14 |
+| Figures → image files | 514 | 492 |
+| `specs.json` records | 619 | 536 |
+| Corpus tokens | 46,073 | 39,033 |
+| INDEX.md tokens | 2,469 / 3,000 | 2,522 / 3,000 |
+
+A golden Q&A set (19 questions, answers hand-verified against the printed
+PDF) passes at ~2.5k tokens for parametric lookups, ~4.3k average for direct
+section reads, and ~4k for plot lookups — vs ~46k for a full-text dump —
+with every answer traceable to a printed page number.
 
 ## What it does
 
@@ -16,43 +29,49 @@ Pipeline: `PDF → acquire → extract → structure → enrich → publish → 
   MathML, footnotes — no OCR, no hallucination). A degraded `pdf_text` backend
   handles register maps / errata / app notes (paragraphs only).
 - **Structure** — HTML tables become atomic, span-expanded blocks with their
-  conditions preamble and footnotes attached; sections get page ranges from
-  the PDF's printed TOC; tables get exact pinned pages where possible.
-- **Enrich** — an `INDEX.md` under a hard token budget (default 3,000). An LLM
-  writes only the section descriptions (optional); all corpus content is
+  conditions preamble + footnotes attached; sections get page ranges from the
+  PDF's printed TOC; tables get exact pinned pages where possible.
+- **Enrich** — an `INDEX.md` under a hard token budget (default 3,000). An
+  LLM writes only the section descriptions (optional); all corpus content is
   verbatim-extracted. Without an API key, descriptions are deterministic.
-- **Publish** — per-section markdown files with CSV twins of every table,
-  `specs.json` (619 machine-queryable parametric records), `plots.json` +
-  image files for all 514 cataloged figures, and a `manifest.json`.
-- **Eval** — `dsa verify` runs a golden Q&A set: every answer must appear in
-  the corpus section covering the cited page **and** in the cited PDF page
-  itself, plus deterministic spec-query and plot-query checks.
+- **Publish** — per-section markdown with CSV twins of every table,
+  `specs.json`, `plots.json` + `figures/` image files, and `manifest.json`.
+- **Eval** — `dsa verify` runs the golden Q&A: every answer must appear in the
+  corpus section covering the cited page **and** in the cited PDF page itself,
+  plus deterministic spec-query and plot-query checks.
 
 ## Install
 
-Requires Python ≥ 3.10. Windows PowerShell, using [uv](https://docs.astral.sh/uv/):
+Requires Python ≥ 3.10 and [uv](https://docs.astral.sh/uv/). Commands below
+are for Git Bash on Windows:
 
-```powershell
+```bash
 uv venv --python 3.10 .venv
 uv pip install --python .venv/Scripts/python.exe -e ".[dev]"
+source .venv/Scripts/activate   # puts `dsa` and `python` on PATH
 ```
 
-This installs the `dsa` CLI at `.venv/Scripts/dsa.exe`.
+If you skip the activation line, call `.venv/Scripts/dsa.exe` and
+`.venv/Scripts/python.exe` directly — all commands below work either way.
 
 Optional: put `ANTHROPIC_API_KEY=...` in a `.env` file to enable LLM-written
 INDEX descriptions (one batched call per build; falls back safely without it).
 
 ## Quickstart
 
-```powershell
+```bash
 # Build the corpus (first run fetches TI pages + plot images, cached forever)
-.venv/Scripts/dsa.exe build afe7950.pdf --part AFE7950
+dsa build afe7950.pdf --part AFE7950
 
 # Verify against the golden Q&A set (citations + page truth)
-.venv/Scripts/dsa.exe verify --part AFE7950 --pdf afe7950.pdf
+dsa verify --part AFE7950 --pdf afe7950.pdf
 
 # Also verify deterministic spec lookups
-.venv/Scripts/dsa.exe verify --part AFE7950 --pdf afe7950.pdf --specs
+dsa verify --part AFE7950 --pdf afe7950.pdf --specs
+
+# Second reference part, same path
+dsa build afe7953.pdf --part AFE7953
+dsa verify --part AFE7953 --pdf afe7953.pdf
 ```
 
 Useful flags: `build --no-cache` (re-extract), `build --no-llm` (deterministic
@@ -62,11 +81,12 @@ descriptions even with a key set).
 
 ### Ask a parametric question (cheapest: ~2.5k tokens)
 
-```powershell
-.venv/Scripts/dsa.exe query --part AFE7950 --symbol DACRES
-# DAC resolution (DACRES): 14 bits — §4.5, p.7 ...
+```bash
+dsa query --part AFE7950 --symbol DACRES
+# DAC resolution (DACRES): 14 bits — §4.5, p.7 [table 0 row 0]
 
-.venv/Scripts/dsa.exe query --part AFE7950 --section 4.10 --name SYSREF
+dsa query --part AFE7953 --symbol DACRES
+dsa query --part AFE7950 --section 4.10 --name SYSREF
 ```
 
 Filters (`--symbol`, `--name`, `--section`) are AND-ed, case-insensitive
@@ -75,10 +95,10 @@ markers, and page cites.
 
 ### Find a plot
 
-```powershell
-.venv/Scripts/dsa.exe plots --part AFE7950 --q "Output Fullscale"
-.venv/Scripts/dsa.exe plots --part AFE7950 --q "Gain Error" --section 4.12.1
-.venv/Scripts/dsa.exe plots --part AFE7950 --tag "tx,800mhz"
+```bash
+dsa plots --part AFE7950 --q "Output Fullscale"
+dsa plots --part AFE7950 --q "Gain Error" --section 4.12.1
+dsa plots --part AFE7950 --tag "tx,800mhz"
 ```
 
 Returns matching `plots.json` records (caption, conditions, section, page,
@@ -107,9 +127,9 @@ section header.
 
 ### Add companion documents
 
-```powershell
-.venv/Scripts/dsa.exe add-doc register_map.pdf --part AFE7950 --type register_map [--nda]
-.venv/Scripts/dsa.exe build afe7950.pdf --part AFE7950   # rebuild picks it up
+```bash
+dsa add-doc register_map.pdf --part AFE7950 --type register_map [--nda]
+dsa build afe7950.pdf --part AFE7950   # rebuild picks it up
 ```
 
 Types: `register_map`, `errata`, `app_note`, `datasheet`. Companions extract
@@ -118,9 +138,9 @@ with the honest `pdf_text` backend (paragraphs only; no trusted tables, no
 
 ### Other commands
 
-```powershell
-.venv/Scripts/dsa.exe status    # config, LLM availability, built parts
-.venv/Scripts/dsa.exe version
+```bash
+dsa status    # config, LLM availability, built parts
+dsa version
 ```
 
 ## Configuration
@@ -141,15 +161,15 @@ Token counts everywhere are `chars/4` (see `tokens.py`).
 
 ## Development
 
-```powershell
-.venv/Scripts/python.exe -m pytest tests/ -q    # 213 tests, ~8 s, fully offline
-.venv/Scripts/python.exe -m ruff check src tests
+```bash
+python -m pytest tests/ -q    # 214 tests, ~8 s, fully offline
+python -m ruff check src tests
 ```
 
 Tests are hermetic: TI pages replay from `tests/fixtures/recorded_http/`
 (unrecorded URL = hard error), synthetic PDFs are built in-test with PyMuPDF,
-and the LLM is a fake client. Integration tests use the real `afe7950.pdf`
-(skip-guarded) plus recorded fixtures.
+and the LLM is a fake client. Integration tests use the real `afe7950.pdf` /
+`afe7953.pdf` (skip-guarded) plus recorded fixtures.
 
 `tests/fixtures/golden_qa.yaml` is the objective function: 19 questions with
 hand-verified answers and page cites, covering direct corpus reads, spec
@@ -171,5 +191,6 @@ must stay at 100% for supported paths.
 
 - `AGENTS.md` — architecture contract, invariants, module map
 - `PHASE_1_REPORT.md` / `PHASE_2_REPORT.md` / `PHASE_3_REPORT.md` — measured
-  results per phase
-- `PHASE_2_PLAN.md` / `PHASE_3_PLAN.md` — execution plans
+  results per phase (all three phases are shipped)
+- `PHASE_2_PLAN.md` / `PHASE_3_PLAN.md` — completed execution contracts,
+  superseded by their reports

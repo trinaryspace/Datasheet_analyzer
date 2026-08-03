@@ -134,7 +134,7 @@ def _cmd_verify(args: argparse.Namespace) -> int:
         print()
         print("## Spec query verification (deterministic)")
         print()
-        print(f"**{sum(1 for _, ok, _ in spec_results)}/{len(spec_results)} passed**")
+        print(f"**{sum(1 for _, ok, _ in spec_results if ok)}/{len(spec_results)} passed**")
         print()
         print("| # | Question | Query | Result |")
         print("|---|---|---|---|")
@@ -179,7 +179,9 @@ def _cmd_verify(args: argparse.Namespace) -> int:
         print()
         print("## Plot query verification (deterministic)")
         print()
-        print(f"**{sum(1 for _, ok, _, _ in plot_results)}/{len(plot_results)} passed**")
+        print(
+            f"**{sum(1 for _, ok, _, _ in plot_results if ok)}/{len(plot_results)} passed**"
+        )
         print()
         print("| # | Question | Query | Result |")
         print("|---|---|---|---|")

@@ -2,42 +2,53 @@
 
 Read this before writing any code in this repo. It is the architecture
 contract: what exists, the invariants that must not be broken, and the
-conventions every phase must follow. Execution plans for remaining work:
-`PHASE_2_PLAN.md`, `PHASE_3_PLAN.md`. What Phase 1 proved: `PHASE_1_REPORT.md`.
+conventions every change must follow. Phases 1–3 are shipped; measured
+results live in `PHASE_1_REPORT.md`, `PHASE_2_REPORT.md`, `PHASE_3_REPORT.md`
+(the old `PHASE_2_PLAN.md` / `PHASE_3_PLAN.md` are superseded completion
+records).
 
 ## What this is
 
 Pipeline that turns big IC datasheets into a **token-efficient,
 citation-verified markdown corpus** that agents navigate with an index file
-+ grep/read instead of loading 46k+ tokens of raw text. Reference part:
-TI AFE7950 (SBASA41E, 146-page PDF at repo root).
++ grep/read instead of loading tens of thousands of raw-text tokens.
+
+Reference parts (built corpora under `parts/`):
+
+| Part | PDF | Revision | Pages | Sections | Specs | Figure files |
+|---|---|---|---|---|---|---|
+| AFE7950 | `afe7950.pdf` | SBASA41E | 146 | 39 | 619 | 514 |
+| AFE7953 | `afe7953.pdf` | SBASAN1A | 134 | 39 | 536 | 492 |
 
 Pipeline: `PDF → acquire → extract → structure → enrich → publish → eval`
 
-## Commands (verified, Windows PowerShell)
+## Commands (verified, Git Bash on Windows)
 
-```powershell
+```bash
 # setup (uv-managed venv; NO torch in this project — plain install is safe)
 uv venv --python 3.10 .venv
 uv pip install --python .venv/Scripts/python.exe -e ".[dev]"
+source .venv/Scripts/activate       # puts `dsa` and `python` on PATH
 
 # run
-.venv/Scripts/dsa.exe build afe7950.pdf --part AFE7950              # build corpus + specs.json + plots.json
-.venv/Scripts/dsa.exe verify --part AFE7950 --pdf afe7950.pdf       # golden Q&A + token economics
-.venv/Scripts/dsa.exe verify --part AFE7950 --pdf afe7950.pdf --specs # include spec_query checks
-.venv/Scripts/dsa.exe query --part AFE7950 --symbol DACRES          # deterministic spec lookup
-.venv/Scripts/dsa.exe add-doc register_map.pdf --part AFE7950 --type register_map
-.venv/Scripts/dsa.exe plots --part AFE7950 --q "Output Fullscale"
-.venv/Scripts/dsa.exe status
+dsa build afe7950.pdf --part AFE7950                    # corpus + specs.json + plots.json
+dsa build afe7953.pdf --part AFE7953                    # second reference part
+dsa verify --part AFE7950 --pdf afe7950.pdf             # golden Q&A + token economics
+dsa verify --part AFE7950 --pdf afe7950.pdf --specs     # + spec_query checks
+dsa query --part AFE7950 --symbol DACRES                # deterministic spec lookup
+dsa add-doc register_map.pdf --part AFE7950 --type register_map
+dsa plots --part AFE7950 --q "Output Fullscale"
+dsa status
 
 # test (fully offline, ~8 s)
-.venv/Scripts/python.exe -m pytest tests/ -q
-.venv/Scripts/python.exe -m ruff check src tests
+python -m pytest tests/ -q
+python -m ruff check src tests
 ```
 
-Use `.venv/Scripts/dsa.exe` / `.venv/Scripts/python.exe` directly. `uv`'s
-progress output goes to stderr and shows as red text in PowerShell even on
-success — check exit codes, not colors.
+Without activation, call `.venv/Scripts/dsa.exe` / `.venv/Scripts/python.exe`
+directly — commands work the same in PowerShell. `uv`'s progress output goes
+to stderr and shows as red text in PowerShell even on success — check exit
+codes, not colors.
 
 ## Architecture
 
@@ -45,8 +56,8 @@ success — check exit codes, not colors.
 
 | Module | Role | Key exports |
 |---|---|---|
-| `models.py` | **The contract.** Pydantic v2 models shared by all stages. Change deliberately. | `SourceDocument`, `TOCEntry`, `Footnote`, `TableBlock`, `FigureRef`, `SectionNode`, `RawDocument`, `SectionFile`, `CorpusManifest`, `CorpusStats`, `GoldenQuestion`, `DocType`, `SpecUnit`, `SpecRecord`, `SpecTableInfo`, `SpecSet` |
-| `config.py` | pydantic-settings, `DSA_` prefix; `ANTHROPIC_API_KEY` plain. No filesystem side effects at import. `PIPELINE_VERSION` and `SPECS_SCHEMA_VERSION` live here. | `Settings`, `get_settings()` (lru_cached; `reset_settings_cache()` for tests) |
+| `models.py` | **The contract.** Pydantic v2 models shared by all stages. Change deliberately. | `SourceDocument`, `TOCEntry`, `Footnote`, `TableBlock`, `FigureRef`, `SectionNode`, `RawDocument`, `SectionFile`, `CorpusManifest`, `CorpusStats`, `GoldenQuestion`, `DocType`, `SpecUnit`, `SpecRecord`, `SpecTableInfo`, `SpecSet`, `PlotRecord`, `PlotSet` |
+| `config.py` | pydantic-settings, `DSA_` prefix; `ANTHROPIC_API_KEY` plain. No filesystem side effects at import. `PIPELINE_VERSION`, `SPECS_SCHEMA_VERSION`, `PLOTS_SCHEMA_VERSION` live here. | `Settings`, `get_settings()` (lru_cached; `reset_settings_cache()` for tests) |
 | `tokens.py` | THE token counter (chars/4). Every reported token number flows through it. | `count_tokens`, `truncate_to_tokens` (budget ≤ 0 → `""`) |
 | `acquire/inventory.py` | Part = folder of docs. `sources.json` per part; identity = sha256 of bytes. | `register_source`, `save_inventory`, `load_inventory`, `detect_doc_type` |
 | `extract/base.py` | Backend protocol + registry. | `ExtractionBackend`, `register`, `get_backend` |
@@ -83,15 +94,15 @@ parts/<PART>/
 └── docs/<doc_type>-<hash8>/
     ├── sections/*.md      # atomic; `<!-- source: <doc> p.N[-M] -->` header
     ├── tables/*.csv       # machine-readable twins of each section table
-    ├── figures/           # plot/pixel image files (Phase 3)
-    ├── specs.json         # machine-queryable parametric spec records (Phase 2)
-    └── plots.json         # searchable plot catalog + file map (Phase 3)
+    ├── figures/           # plot/pixel image files referenced by plots.json
+    ├── specs.json         # machine-queryable parametric spec records
+    └── plots.json         # searchable plot catalog + file map
 ```
 
 ## Invariants — do not break these
 
 1. **LLM writes indexes, never content.** Corpus text is verbatim-extracted.
-   LLM output lives only in INDEX.md descriptions (and later, clearly-marked
+   LLM output lives only in INDEX.md descriptions (and clearly-marked
    derived artifacts). Every table row must remain traceable to source HTML.
 2. **Tables are atomic.** A table is never split, and its test-conditions
    preamble + footnotes travel with it (inside `TableBlock`).
@@ -101,10 +112,11 @@ parts/<PART>/
 4. **Tests are hermetic.** No network (ReplayFetcher/MappingFetcher), no LLM
    (FakeClient), no reliance on machine state. Real-input coverage comes from
    recorded fixtures (`tests/fixtures/recorded_http/`, 41 files) + the real
-   `afe7950.pdf` (skip-guarded). Synthetic PDFs are built in-test via fitz.
+   `afe7950.pdf` / `afe7953.pdf` (skip-guarded). Synthetic PDFs are built
+   in-test via fitz.
 5. **Golden Q&A is the objective function.** `tests/fixtures/golden_qa.yaml`
-   is the benchmark (no public one exists). Extend it whenever new answer
-   paths ship; `dsa verify` must stay at 100% for supported paths.
+   (19 questions) is the benchmark (no public one exists). Extend it whenever
+   new answer paths ship; `dsa verify` must stay at 100% for supported paths.
 6. **Caching keyed by identity.** Extraction cache = (content_hash, backend).
    Schema/version changes that alter output must invalidate via filename or
    embedded version fields.
@@ -118,25 +130,26 @@ parts/<PART>/
 - Sub/superscripts are glued to base text (`T_A`, `1st`, `850MHz(2)`) — this
   is deliberate; do not "fix" the spacing.
 - TI emits **U+2126 OHM SIGN**, not U+03A9. Preserve verbatim in extraction;
-  canonicalization belongs to derived artifacts (Phase 2).
+  canonicalization belongs to derived artifacts (`specs.json`).
 - Footnote citation markers are read from `<sup>` elements while HTML
   structure is available — after flattening they're ambiguous. Stored in
   `TableBlock.cited_markers`.
 - `div.graph` bundles = figures (img + div.textnote conditions + span.caption).
   `table.frame-none` outside div.graph = empty furniture, skip.
 - TI cover page appears in the viewer TOC (empty id, numeric navtitle) — it
-  is filtered; content section count for AFE7950 is **39**.
+  is filtered; both AFE79xx reference parts have **39** content sections.
 - Revision-history-style pages: `h1` headings, id-less containers —
   `parse_section` has a last-resort "first substantial subsection" fallback.
 - Windows: console encoding must be UTF-8 (cli.py does it; tests print unicode
   freely). PyMuPDF is AGPL-3.0 — used for structure/verification only.
 - Ruff runs on `src` and `tests`; line length 100; keep it clean.
 
-## Definition of done (every phase/module)
+## Definition of done (every change)
 
 1. New code lands with its tests in the same change; `pytest` and `ruff` green.
 2. Pain-point tests exist for anything that can silently corrupt data
    (span/footnote/provenance class bugs).
 3. Integration proof on the real AFE7950 (hermetic fixtures) still passes.
-4. The phase's report file is updated (`PHASE_<N>_REPORT.md`) with measured
-   numbers, and AGENTS.md is updated if architecture/conventions changed.
+4. Shipped capabilities update the docs: measured numbers in the relevant
+   `PHASE_<N>_REPORT.md` or README, and this file if architecture/conventions
+   changed.

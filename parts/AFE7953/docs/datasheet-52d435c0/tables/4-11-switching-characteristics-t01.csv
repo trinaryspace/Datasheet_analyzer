@@ -1,0 +1,16 @@
+PARAMETER,PARAMETER_2,TEST CONDITIONS,MIN,TYP,MAX,UNIT
+TX Channel Latency,TX Channel Latency,TX Channel Latency,TX Channel Latency,TX Channel Latency,TX Channel Latency,TX Channel Latency
+,SerDes Receiver Analog Delay,Full rate,,2.8,,ns
+tJESDTX,JESD to TX output Latency,"LMFSHd=2-8-8-1, 368.64 MSPS input rate, 24x Interpolation, Serdes rate = 16.22Gbps (JESD204C)",,152,,interface clock cycles(1)
+tJESDTX,JESD to TX output Latency,"LMFSHd=8-16-4-1, 491.52 MSPS 24x Interpolation, Serdes rate = 16.22Gbps (JESD204C)",,176,,interface clock cycles(1)
+tJESDTX,JESD to TX output Latency,"LMFSHd=4-16-8-1, 245.76 MSPS 48x Interpolation, Serdes rate = 16.22Gbps (JESD204C)",,124,,interface clock cycles(1)
+tJESDTX,JESD to TX output Latency,"LMFSHd=2-16-16-1, 122.88 MSPS 96x Interpolation, Serdes rate = 16.22Gbps (JESD204C)",,97,,interface clock cycles(1)
+RX Channel Latency,RX Channel Latency,RX Channel Latency,RX Channel Latency,RX Channel Latency,RX Channel Latency,RX Channel Latency
+,SerDes Transmitter Analog Delay,,,3.6,,ns
+tJESDRX,RX input to JESD output Latency,"LMFS=2-16-16-1, 122.88 MSPS, 24x Decimation, Serdes rate = 16.22Gbps (JESD204C)",,92,,interface clock cycles(1)
+tJESDRX,RX input to JESD output Latency,"LMFS=4-16-8-1, 245.76 MSPS, 12x Decimation, Serdes rate = 16.22Gbps (JESD204C)",,108,,interface clock cycles(1)
+tJESDRX,RX input to JESD output Latency,"LMFS=4-8-4-1, 491.52 MSPS, 6x Decimation, Serdes rate = 16.22Gbps (JESD204C)",,153,,interface clock cycles(1)
+FB Channel Latency,FB Channel Latency,FB Channel Latency,FB Channel Latency,FB Channel Latency,FB Channel Latency,FB Channel Latency
+,SerDes Transmitter Analog Delay,,,3.6,,ns
+tJESDFB,FB input to JESD output Latency,"LMFS=1-2-8-1, 368.64 MSPS, 8x Decimation",,151,,interface clock cycles(1)
+tJESDFB,FB input to JESD output Latency,"LMFS=2-4-4-1, 491.52 MSPS, 6x Decimation",,177,,interface clock cycles(1)
