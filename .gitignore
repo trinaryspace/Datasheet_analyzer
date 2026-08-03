@@ -1,5 +1,6 @@
 .env
 Lit_Analyzer/
+Parts/
 .venv/
 .cache/
 .pytest_cache/
