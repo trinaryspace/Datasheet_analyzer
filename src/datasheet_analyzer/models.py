@@ -136,6 +136,15 @@ class RawDocument(BaseModel):
     toc: list[TOCEntry] = Field(default_factory=list)
     sections: list[SectionNode] = Field(default_factory=list)  # reading order
     extractor: str = ""
+    # Output-schema version of the extractor that produced this document.
+    # Cache invalidation: a cached raw whose version no longer matches the
+    # backend's current `output_version` is stale and must be re-extracted
+    # (embedded version field, per the cache-invalidation invariant).
+    extractor_version: str = ""
+    # Per-document extraction honesty: the layout engine records detected /
+    # accepted / rejected tables with reasons and mean fidelity here; it
+    # survives the extraction cache because it lives on the raw document.
+    extraction_stats: ExtractionStats | None = None
     extracted_at: datetime = Field(default_factory=_utcnow)
 
 

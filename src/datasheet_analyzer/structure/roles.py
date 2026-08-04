@@ -10,7 +10,9 @@ from __future__ import annotations
 import re
 
 _ROLE_PATTERNS: list[tuple[re.Pattern, str]] = [
-    (re.compile(r"(?i)^test conditions?(\(\d+\))?$"), "conditions"),
+    # ADI-style conditions headers measured in AD9081/HMC520A:
+    # "Test Conditions/Comments" and footnote-suffixed variants
+    (re.compile(r"(?i)^test conditions?(\s*/\s*comments?)?(\(\d+\))?$"), "conditions"),
     (re.compile(r"(?i)^(min|minimum)(\(\d+\))?$"), "min"),
     (re.compile(r"(?i)^(typ|typical)(\(\d+\))?$"), "typ"),
     (re.compile(r"(?i)^(nom|nominal)(\(\d+\))?$"), "typ"),

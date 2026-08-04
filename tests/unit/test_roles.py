@@ -28,6 +28,17 @@ def test_nom_maps_to_typ():
     assert unmapped == []
 
 
+def test_adi_conditions_variant_maps_to_conditions():
+    # measured in AD9081/HMC520A: "Test Conditions/Comments" (no MIN/MAX cols)
+    headers = ["Parameter", "Test Conditions/Comments", "Min", "Typ", "Max", "Unit"]
+    roles, unmapped = assign_roles(headers)
+    assert roles == ["symbol", "conditions", "min", "typ", "max", "unit"]
+    assert unmapped == []
+    # footnote-suffixed variants stay mapped too
+    roles, _ = assign_roles(["", "", "TEST CONDITIONS/COMMENTS(1)", "MIN", "MAX", "UNIT"])
+    assert roles == ["symbol", "name", "conditions", "min", "max", "unit"]
+
+
 def test_value_and_thermal_metric_roles():
     esd_roles, _ = assign_roles(["", "", "", "VALUE", "UNIT"])
     assert esd_roles == ["symbol", "name", "conditions", "value", "unit"]

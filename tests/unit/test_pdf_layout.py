@@ -336,7 +336,7 @@ class TestMechanics:
         doc = result.manifest.documents[0]
         stats = result.manifest.extraction_stats[doc.content_hash]
         assert stats.backend == "pdf_layout"
-        assert result.manifest.pipeline_version == "0.2.0"
+        assert result.manifest.pipeline_version == "0.3.0"
         assert result.manifest.vendor == "unknown"
         sources = json.loads((result.part_dir / "sources.json").read_text(encoding="utf-8"))
         assert sources[0]["vendor"] == "unknown"

@@ -144,10 +144,20 @@ def _extract_document(
     raw: RawDocument | None = None
     if use_cache:
         raw = _load_cached_raw(settings, source.content_hash, backend_name)
+    backend = get_backend(backend_name)
+    output_version = getattr(backend, "output_version", "")
+    if raw is not None and raw.extractor_version != output_version:
+        # The cached raw was produced by an older extractor output schema;
+        # re-extract rather than serve a stale corpus (embedded version
+        # field invalidation).
+        log.info(
+            "stale extraction cache (%s v%r != v%r) — re-extracting",
+            backend_name, raw.extractor_version, output_version,
+        )
+        raw = None
     cached = raw is not None
     if raw is None:
         pdf_toc = read_toc(pdf_path)
-        backend = get_backend(backend_name)
         # Tests pre-wire a replaying fetcher on the backend instance; do not
         # override an explicit fetcher.
         if (

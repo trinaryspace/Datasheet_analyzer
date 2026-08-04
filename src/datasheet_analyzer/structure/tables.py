@@ -132,6 +132,20 @@ def _to_csv(headers: list[str], grid: list[list[str]]) -> str:
     return buf.getvalue()
 
 
+def grid_markdown(headers: list[str], grid: list[list[str]]) -> str:
+    """Precomputed markdown rendering of a header+grid pair.
+
+    Public so non-HTML backends (pdf_layout) can build corpus-grade
+    TableBlocks with the exact same encoding as HTML tables.
+    """
+    return _to_markdown(headers, grid)
+
+
+def grid_csv(headers: list[str], grid: list[list[str]]) -> str:
+    """Precomputed CSV rendering of a header+grid pair (machine twin)."""
+    return _to_csv(headers, grid)
+
+
 def html_table_to_block(
     table_el: Tag | str,
     *,

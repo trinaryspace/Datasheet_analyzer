@@ -85,9 +85,10 @@ def write_corpus(
             stats.n_plot_files += sum(1 for p in plotset.plots if p.file)
 
         manifest.documents.append(raw.source)
-        manifest.extraction_stats[raw.source.content_hash] = ExtractionStats(
-            backend=raw.extractor
-        )
+        extraction = raw.extraction_stats
+        if extraction is None:
+            extraction = ExtractionStats(backend=raw.extractor)
+        manifest.extraction_stats[raw.source.content_hash] = extraction
         stats.n_sections += len(plans)
 
         for plan in plans:

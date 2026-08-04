@@ -10,19 +10,31 @@ there and recorded honestly as cli-override evidence.
 
 Assertions are corpus products only: section files with page citations,
 furniture golden strings absent from paragraphs, content preserved,
-inventory vendor evidence, pdf_layout backend in the manifest, and honest
-numbered vs unnumbered section identity.
+inventory vendor evidence, pdf_layout backend in the manifest, honest
+numbered vs unnumbered section identity, and (ticket 03) caption-anchored
+tables: AD9081's partial-ruling spec tables land as atomic grids with ADI
+"Test Conditions/Comments" columns, specs.json records resolve through the
+user-facing SpecQuery, ohm glyphs canonicalize, and table pages are pinned
+so that cell values verify against the PDF's own page text. lm741/QPA1003P
+(section-headed, captionless tables) stay honestly paragraph-only.
 """
 
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 import pytest
 
 from datasheet_analyzer.config import Settings
 from datasheet_analyzer.pipeline import build_part
+
+
+def _squash_text(text: str) -> str:
+    """Aggressive normalizer: lowercase alnum only, space-immune."""
+    return re.sub(r"[^a-z0-9]+", "", re.sub(r"\s+", " ", text).lower())
+
 
 REPO = Path(__file__).parent.parent.parent
 
@@ -129,3 +141,99 @@ class TestGateCorpora:
         files = {p.name for p in (result.part_dir / "docs").glob("**/sections/*.md")}
         assert "features.md" in files
         assert "revision-history.md" in files
+
+
+class TestGateTables:
+    """Ticket 03: caption-anchored tables + specs for non-TI parts."""
+
+    def test_ad9081_spec_tables_build_with_stats(self, gate):
+        result = gate["AD9081"]
+        doc = result.manifest.documents[0]
+        stats = result.manifest.extraction_stats[doc.content_hash]
+        assert stats.tables_detected >= 25
+        assert stats.tables_accepted >= 25
+        assert stats.tables_rejected <= 2
+        assert stats.mean_fidelity >= 0.9
+        assert result.manifest.stats.n_tables >= 20
+        assert result.manifest.stats.n_specs >= 300
+        # atomic tables render in section files with a markdown grid
+        blob = _blob(result)
+        assert "| Parameter | Test Conditions/Comments | Min | Typ | Max | Unit |" in blob
+        assert "Table 3. DAC DC Specifications" in blob
+        csvs = list((result.part_dir / "docs").glob("**/tables/*.csv"))
+        assert len(csvs) >= 15, "CSV twins missing"
+
+    def test_ad9081_spec_records_resolve_via_query(self, gate):
+        from datasheet_analyzer.query import SpecQuery
+
+        result = gate["AD9081"]
+        q = SpecQuery(result.part_dir)
+        fsocr = q.find(symbol="Full-Scale Output Current Range")
+        assert len(fsocr) == 1
+        rec = fsocr[0]
+        assert "AC coupling" in rec.conditions  # ADI conditions column mapped
+        assert rec.page == 5
+        assert rec.section == ""  # AD9081 outline is honestly unnumbered
+        # a row whose values sit on child rows keeps honest empty fields
+        assert rec.min == "" and rec.typ == "" and rec.max == ""
+        ac = q.find(symbol="Gain Matching")
+        assert ac and ac[0].typ == "0.7" and ac[0].unit.canonical == "% FSR"
+        # both ohm glyphs canonicalize (SPEC probe fact: AD9081 has both)
+        v = q.find(symbol="Differential Resistance")
+        assert v and v[0].unit.canonical == "ohm"
+
+    def test_ad9081_table_pages_pinned_and_verified_against_pdf_text(self, gate):
+        import json
+
+        import fitz
+
+        result = gate["AD9081"]
+        pdf = REPO / "ad9081.pdf"
+        if not pdf.exists():
+            pytest.skip("ad9081.pdf not present at repo root")
+        page_texts = {
+            p.number + 1: _squash_text(p.get_text())
+            for p in fitz.open(str(pdf))
+        }
+        specs = json.loads(
+            next((result.part_dir / "docs").glob("*/specs.json")).read_text(
+                encoding="utf-8"))
+        checked = verified = 0
+        misses = []
+        for rec in specs["records"]:
+            if rec["page"] is None or not (rec["typ"] or rec["min"] or rec["max"]):
+                continue
+            needle = rec["row_verbatim"][0] if rec["row_verbatim"] else ""
+            squashed = _squash_text(needle)
+            if len(squashed) < 4:
+                continue
+            checked += 1
+            if squashed in page_texts.get(rec["page"], ""):
+                verified += 1
+            else:
+                misses.append((rec["page"], needle[:30]))
+        assert checked >= 100
+        # continuation rows of multi-page tables cite the block's first
+        # page; the large majority still verify on the exact cited page
+        assert verified / checked >= 0.8, f"pin misses: {misses[:5]}"
+
+    def test_hmc520a_captioned_tables_build(self, gate):
+        result = gate["HMC520A"]
+        stats = result.manifest.extraction_stats[
+            result.manifest.documents[0].content_hash]
+        assert stats.tables_accepted == 6
+        assert result.manifest.stats.n_specs >= 20
+        assert "Table 1." in _blob(result) or "Table 1" in _blob(result)
+
+    def test_captionless_vendors_stay_honestly_paragraph_only(self, gate):
+        # lm741 (old TI, section-headed tables) and QPA1003P (Qorvo, no
+        # outline): no "Table N." captions -> no hallucinated tables, and
+        # every line still lands in the corpus
+        for name in ("LM741", "QPA1003P"):
+            result = gate[name]
+            stats = result.manifest.extraction_stats[
+                result.manifest.documents[0].content_hash]
+            assert stats.tables_detected == 0, name
+            assert stats.tables_accepted == 0, name
+            assert result.manifest.stats.n_tables == 0, name
+            assert len(_blob(result)) > 500, name
