@@ -42,10 +42,13 @@ effort.
   splits (AD9081 Table 3: 0.850 for an over-fine grid vs 0.739 for the
   header-declared one). Measured: all 35 real gate tables keep their
   ticket-03 grids verbatim. Residual: the score is blind to bands the
-  header never declared — a fine split that *carves* interior words of a
-  multi-word header cell outvotes nobody (carved words are not advice
-  edges), but only ties; chain-bridging prevented carving on every real
-  PDF probed. The selection rule is a guard, not a guarantee.
+  header never declared — a fine split that *carves* the interior words
+  of a multi-word header cell (words <12 pt apart, so the header-anchored
+  clustering keeps them in one cell) neither adds nor removes advice
+  edges: it ties, and ladder order keeps the primary split. Only words
+  ≥12 pt apart are advice edges at all — a genuinely wide cell is then
+  *declared* as separate columns by the engine's own rule (see the header
+  anchor tau item below). The selection rule is a guard, not a guarantee.
 - **No per-part golden Q&A for non-TI parts yet.** `golden_qa.yaml`
   covers AFE7950 only; AD9081/HMC520A have no verified question sets.
   → ticket 07, medium.
@@ -68,7 +71,10 @@ effort.
   `tables_detected`/`accepted` increment per caption line, so
   multi-page tables count once per page (HMC520A reports "6 accepted"
   for 6 captions — correct; AD9081 reports 29 for 21 distinct tables).
-  Fine for honesty, weak for "how many tables" claims.
+  Fine for honesty, weak for "how many tables" claims. `dsa status` now
+  surfaces these counts per document, so any public claim built on
+  status output inherits the occurrence semantics; it also truncates
+  rejection reasons to the first 3 (trailing "…") to stay one line.
   → inspect before any public claim, low.
 
 ## Heuristics without boundary tests
@@ -79,11 +85,22 @@ effort.
   only survive as a stray paragraph). No boundary test.
 - **Header anchor tau = 12 pt fixed**: a genuine multi-word header cell
   whose words sit >12 pt apart would over-split and risk rejecting a
-  valid table. All *measured* cells sit within ~10 pt (AD9081 "Test
-  Conditions/Comments" at 226.2/235.9/244.x).
+  valid table. All *measured* cells sit within ~10.9 pt (AD9081 "Test
+  Conditions/Comments" at 226.2/235.9/244.x). Ticket 04 extends the
+  consequence: words ≥12 pt apart become *declared columns* — the
+  header-anchored edge list carries one edge per word, so a fine split
+  that reproduces those edges wins the retry ladder on `_advice_share`
+  and a genuinely wide cell is read as several columns. No boundary
+  test exercises a >12 pt multi-word cell; the probe set has none.
 - **Column tightness cap = 30 pt**: right-aligned cells wider than ~30 pt
   from the band's left edge would fail tightness. Not observed yet; the
   cap is justified only by the probe set.
+- **Band-edge tolerance = 0.75 pt fixed** in `_advice_share`: an advice
+  edge counts as reproduced when a candidate band edge sits within
+  0.75 pt. Absorbs float noise between clustering runs (measured
+  adjacency 0.1 pt: AD9081 header "Max" at 450.0 vs the all-word band at
+  449.9) — but two true columns whose starts sit between 0.75 pt and
+  tau apart would false-credit each other's edge. No boundary test.
 - **Caption regex covers "Table N." / "Table N-M." / "Table N: M"**
   separators only. Exotic forms (e.g. centered captions, "TABLE III.",
   caption-below) are untested.
