@@ -275,13 +275,14 @@ def _cmd_plots(args: argparse.Namespace) -> int:
     return 0 if recs else 1
 
 
-def _part_vendor_info(part: Path) -> tuple[str, str, list[str]]:
-    """(vendor, evidence, backends) for a part.
+def _part_vendor_info(part: Path) -> tuple[str, str, list[str], list[str]]:
+    """(vendor, evidence, backends, doc_stats_lines) for a part.
 
     Vendor + evidence always come from sources.json — the pinned acquire
     record (a built part's manifest only mirrors it, and legacy manifests
-    predate the field). Backends come from the manifest's extraction stats
-    when the part is built. ("", "", []) when nothing is registered.
+    predate the field). Backends and per-document extraction stats come
+    from the manifest's extraction stats when the part is built. ("", "",
+    [], []) when nothing is registered.
     """
     from datasheet_analyzer.acquire import load_inventory
     from datasheet_analyzer.models import CorpusManifest, DocType
@@ -292,6 +293,7 @@ def _part_vendor_info(part: Path) -> tuple[str, str, list[str]]:
         ds = next((s for s in sources if s.doc_type == DocType.DATASHEET), sources[0])
         vendor, evidence = ds.vendor, ds.vendor_evidence
     backends: list[str] = []
+    doc_lines: list[str] = []
     manifest_path = part / "manifest.json"
     if manifest_path.exists():
         try:
@@ -304,7 +306,22 @@ def _part_vendor_info(part: Path) -> tuple[str, str, list[str]]:
             backends = list(
                 dict.fromkeys(st.backend for st in m.extraction_stats.values() if st.backend)
             )
-    return vendor, evidence, backends
+            for doc in m.documents:
+                st = m.extraction_stats.get(doc.content_hash)
+                if st is None:
+                    continue
+                line = (f"    {doc.doc_type.value}-{doc.content_hash[:8]}: backend "
+                        f"{st.backend} · tables: {st.tables_detected} detected / "
+                        f"{st.tables_accepted} accepted / {st.tables_rejected} rejected")
+                if st.mean_fidelity > 0.0:
+                    line += f" · fidelity {st.mean_fidelity:.2f}"
+                if st.rejection_reasons:
+                    shown = "; ".join(st.rejection_reasons[:3])
+                    if len(st.rejection_reasons) > 3:
+                        shown += "; …"
+                    line += f" · rejection reasons: {shown}"
+                doc_lines.append(line)
+    return vendor, evidence, backends, doc_lines
 
 
 def _cmd_status(_args: argparse.Namespace) -> int:
@@ -317,7 +334,7 @@ def _cmd_status(_args: argparse.Namespace) -> int:
         for part in sorted(p for p in settings.parts_dir.iterdir() if p.is_dir()):
             has_index = (part / "INDEX.md").exists()
             label = f"  part: {part.name} {'[built]' if has_index else '[partial]'}"
-            vendor, evidence, backends = _part_vendor_info(part)
+            vendor, evidence, backends, doc_lines = _part_vendor_info(part)
             if vendor:
                 label += f" vendor: {vendor}"
                 if evidence:
@@ -327,6 +344,8 @@ def _cmd_status(_args: argparse.Namespace) -> int:
             else:
                 label += " vendor: (none)"
             print(label)
+            for line in doc_lines:
+                print(line)
     return 0
 
 

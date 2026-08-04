@@ -144,7 +144,7 @@ with the honest `pdf_text` backend (paragraphs only; no trusted tables, no
 ### Other commands
 
 ```bash
-dsa status    # config, LLM availability, built parts
+dsa status    # config, LLM availability, built parts + per-doc extraction stats
 dsa version
 ```
 

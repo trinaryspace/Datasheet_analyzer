@@ -77,6 +77,33 @@ def _spec_header() -> list[tuple[float, float, str]]:
     ]
 
 
+def _spec_pages() -> list[list[tuple[float, float, str]]]:
+    """The canonical 6-column spec table (AD9081 page 5 geometry): partial
+    rulings (no vertical lines between Min/Typ/Max), indented sub-rows,
+    conditions preamble above the caption, footnote + prose lines below."""
+    return [[
+        (56.0, 112.0, "Nominal supplies with DAC output current = 26 mA, unless noted."),
+        (56.0, 124.0, "For the minimum and maximum values, TA corresponds to 80 C."),
+        (56.0, CAP_Y, "Table 3. DAC DC Specifications"),
+        *_spec_header(),
+        (56.0, HDR_Y + PITCH, "DAC RESOLUTION"),
+        (X["min"], HDR_Y + PITCH, "16"),
+        (X["unit"], HDR_Y + PITCH, "Bit"),
+        (62.4, HDR_Y + 2 * PITCH, "Gain Error"),
+        (X["typ"], HDR_Y + 2 * PITCH, "1.5"),
+        (X["unit"], HDR_Y + 2 * PITCH, "% FSR"),
+        (56.0, HDR_Y + 3 * PITCH, "Integral Nonlinearity (INL)"),
+        (X["conditions"], HDR_Y + 3 * PITCH, "Shuffling disabled"),
+        (X["typ"], HDR_Y + 3 * PITCH, "8.0"),
+        (X["unit"], HDR_Y + 3 * PITCH, "LSB"),
+        (62.4, HDR_Y + 4 * PITCH, "Gain Matching"),
+        (X["typ"], HDR_Y + 4 * PITCH, "0.7"),
+        (X["unit"], HDR_Y + 4 * PITCH, "% FSR"),
+        (59.5, CAP_Y + 78.0, "1  For dc-coupled applications, the maximum output current applies."),
+        (56.0, CAP_Y + 91.0, "Stresses at or above those listed under the rating table may cause damage."),
+    ]]
+
+
 def _build(tmp_path, name: str, pages, toc=None) -> object:
     pdf = Path(tmp_path) / name
     _make_pdf(pdf, pages, toc)
@@ -107,28 +134,7 @@ def _specs_path(result) -> Path:
 
 
 class TestCaptionAnchoredTables:
-    def _pages(self) -> list[list[tuple[float, float, str]]]:
-        return [[
-            (56.0, 112.0, "Nominal supplies with DAC output current = 26 mA, unless noted."),
-            (56.0, 124.0, "For the minimum and maximum values, TA corresponds to 80 C."),
-            (56.0, CAP_Y, "Table 3. DAC DC Specifications"),
-            *_spec_header(),
-            (56.0, HDR_Y + PITCH, "DAC RESOLUTION"),
-            (X["min"], HDR_Y + PITCH, "16"),
-            (X["unit"], HDR_Y + PITCH, "Bit"),
-            (62.4, HDR_Y + 2 * PITCH, "Gain Error"),
-            (X["typ"], HDR_Y + 2 * PITCH, "1.5"),
-            (X["unit"], HDR_Y + 2 * PITCH, "% FSR"),
-            (56.0, HDR_Y + 3 * PITCH, "Integral Nonlinearity (INL)"),
-            (X["conditions"], HDR_Y + 3 * PITCH, "Shuffling disabled"),
-            (X["typ"], HDR_Y + 3 * PITCH, "8.0"),
-            (X["unit"], HDR_Y + 3 * PITCH, "LSB"),
-            (62.4, HDR_Y + 4 * PITCH, "Gain Matching"),
-            (X["typ"], HDR_Y + 4 * PITCH, "0.7"),
-            (X["unit"], HDR_Y + 4 * PITCH, "% FSR"),
-            (59.5, CAP_Y + 78.0, "1  For dc-coupled applications, the maximum output current applies."),
-            (56.0, CAP_Y + 91.0, "Stresses at or above those listed under the rating table may cause damage."),
-        ]]
+    _pages = staticmethod(_spec_pages)
 
     def test_spec_table_builds_atomic_block_with_conditions(self, tmp_path):
         result = _build(tmp_path, "t3.pdf", self._pages(),
@@ -332,6 +338,95 @@ class TestRegionEdgeCases:
         records = [r for r in json.loads(_specs_path(result).read_text(encoding="utf-8"))["records"]
                    if r["symbol"] == "JESD204 Data Rate"]
         assert records and records[0]["page"] == 1
+
+
+class TestRetryLadder:
+    """Ticket 04: every band set is scored and the best-scoring grid wins.
+
+    The ladder's rescue claim, the unrecoverable->paragraphs+reason path
+    and the selection rule are pinned here, all through the publish seam:
+    the corpus product must never show a grid the header didn't declare
+    (a coarse τ split that merges Min|Typ is a corruption even though it
+    would score higher on raw word fidelity).
+    """
+
+    def test_header_fail_anchor_recovers_at_coarser_all_word_split(self, tmp_path):
+        # The header row's words sit at positions no body row shares: the
+        # header-anchored split leaves every body word outside the bands
+        # (unstable -> rejected) and only the all-word splits recover the
+        # table. Mirrors AD9081 Tables 17/20/21 (2-word headers over body
+        # columns the header never declares).
+        pages = [[
+            (56.0, CAP_Y, "Table 4. Reference Clock"),
+            (350.0, HDR_Y, "SYMBOL"),
+            (480.0, HDR_Y, "VALUE"),
+            (56.0, HDR_Y + PITCH, "LVDS Clock Divide"),
+            (406.0, HDR_Y + PITCH, "1.2"),
+            (540.0, HDR_Y + PITCH, "V"),
+            (56.0, HDR_Y + 2 * PITCH, "CMOS Clock Divide"),
+            (406.0, HDR_Y + 2 * PITCH, "3.3"),
+            (540.0, HDR_Y + 2 * PITCH, "V"),
+            (56.0, HDR_Y + 3 * PITCH, "Device Clock Divide"),
+            (406.0, HDR_Y + 3 * PITCH, "0.9"),
+            (540.0, HDR_Y + 3 * PITCH, "V"),
+            (56.0, HDR_Y + 4 * PITCH, "SYSREF Clock Divide"),
+            (406.0, HDR_Y + 4 * PITCH, "1.8"),
+            (540.0, HDR_Y + 4 * PITCH, "V"),
+        ]]
+        result = _build(tmp_path, "rescue.pdf", pages)
+        assert result.manifest.stats.n_tables == 1
+        md = _section_md(result, "1-page-1")
+        # the body columns are recovered and every data row survives
+        assert "| LVDS Clock Divide |  | 1.2 |  | V |" in md
+        assert "| SYSREF Clock Divide |  | 1.8 |  | V |" in md
+        doc = result.manifest.documents[0]
+        stats = result.manifest.extraction_stats[doc.content_hash]
+        assert (stats.tables_detected, stats.tables_accepted, stats.tables_rejected) \
+            == (1, 1, 0)
+
+    def test_coarse_split_never_beats_the_header_declared_columns(self, tmp_path):
+        # Min@435 and Typ@460 sit 25 pt apart: a coarse τ=28 all-word split
+        # merges them into one column and, with the prose row dropped by the
+        # fine split but kept by the coarse one, would win a raw word-fidelity
+        # comparison. The header-declared separation must win: the merged cell
+        # must never reach the corpus.
+        result = _build(tmp_path, "guard.pdf", _spec_pages(),
+                        toc=[[1, "1 Specifications", 1]])
+        assert result.manifest.stats.n_tables == 1
+        md = _section_md(result, "1-specifications")
+        assert "| Parameter | Test Conditions/Comments | Min | Typ | Max | Unit |" in md
+        table_region = md.split("## Table 3.")[1]
+        assert "| Min Typ |" not in table_region
+        assert "| Integral Nonlinearity (INL) | Shuffling disabled |  | 8.0 |  | LSB |" in table_region
+
+    def test_unrecoverable_ladder_degrades_to_paragraphs_with_exact_reason(self, tmp_path):
+        # Every row scatters its words on tracks no other row shares: every
+        # split of every tau yields an unstable grid. The ladder exhausts,
+        # the words stay honest paragraphs and the gate's own verdict is the
+        # recorded reason.
+        pages = [[
+            (56.0, 96.0, "Table 7. Noise"),
+            (56.0, 120.0, "Alpha Beta"),
+            (306.0, 120.0, "Gamma"),
+            (100.0, 134.0, "Delta Epsilon"),
+            (410.0, 134.0, "Zeta"),
+            (175.0, 148.0, "Eta"),
+            (465.0, 148.0, "Theta"),
+            (240.0, 162.0, "Iota Kappa"),
+            (520.0, 162.0, "Lambda"),
+            (560.0, 176.0, "Mu Nu"),
+        ]]
+        result = _build(tmp_path, "trapped.pdf", pages)
+        assert result.manifest.stats.n_tables == 0
+        doc = result.manifest.documents[0]
+        stats = result.manifest.extraction_stats[doc.content_hash]
+        assert stats.tables_detected == 1
+        assert stats.tables_accepted == 0
+        assert stats.tables_rejected == 1
+        assert stats.rejection_reasons == ["columns not stable across rows"]
+        blob = _blob(result)
+        for needle in ("Alpha Beta", "Iota Kappa", "Mu Nu"):
+            assert needle in blob
 
 
 class TestMechanics:

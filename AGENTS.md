@@ -40,7 +40,7 @@ dsa verify --part AFE7950 --pdf afe7950.pdf --specs     # + spec_query checks
 dsa query --part AFE7950 --symbol DACRES                # deterministic spec lookup
 dsa add-doc register_map.pdf --part AFE7950 --type register_map
 dsa plots --part AFE7950 --q "Output Fullscale"
-dsa status                                             # shows per-part vendor + detection evidence
+dsa status                                             # vendor + detection evidence + per-doc extraction stats
 
 # test (fully offline, ~8 s)
 python -m pytest tests/ -q
@@ -67,7 +67,7 @@ codes, not colors.
 | `extract/pdf_structure.py` | PyMuPDF: content hash, page count, **printed TOC (authoritative page numbers)**, per-page text (verification/pinning only). Layout analysis lives in `pdf_layout`, never here. | `read_toc`, `page_texts`, `compute_content_hash`, `make_source`, `split_number` |
 | `extract/http.py` | Fetchers. `CachingFetcher` (disk cache `.cache/http`), `CachingBinaryFetcher` (`.cache/http-bin`), `ReplayFetcher`/`ReplayBinaryFetcher` (hermetic tests: miss = hard error), `MappingFetcher`. | `Fetcher` / `BinaryFetcher` protocols |
 | `extract/ti_html.py` | Primary TI content backend: TI document-viewer HTML (real tables, MathML, footnotes — no OCR, no hallucination). TI keeps this path; every other vendor routes to the layout floor. | `TiHtmlBackend`, `parse_toc`, `parse_section` |
-| `extract/pdf_layout.py` | **Vendor-neutral layout floor** (offline, PyMuPDF-only): furniture by slot recurrence + universal page-machinery patterns (zero vendor strings), structure ladder (outline → printed-TOC dot-leader parse → per-page), page-ranged sections, honest unnumbered identity, and (ticket 03) tables: caption-anchored hypotheses, pitch-based row grouping with wrapped-cell merging, header-anchored column clusters + coarse retry ladder, footnote/prose detachment, a reconstruction gate (rejected hypotheses recorded with reasons in `ExtractionStats`), multi-page continuation merging, and test-conditions preamble attachment. Footnote/figures land in tickets 05–06. | `PdfLayoutBackend`, `parse_printed_toc` |
+| `extract/pdf_layout.py` | **Vendor-neutral layout floor** (offline, PyMuPDF-only): furniture by slot recurrence + universal page-machinery patterns (zero vendor strings), structure ladder (outline → printed-TOC dot-leader parse → per-page), page-ranged sections, honest unnumbered identity, and (tickets 03–04) tables: caption-anchored hypotheses, pitch-based row grouping with wrapped-cell merging, header-anchored column clusters + a best-scoring retry ladder (every band set gated and scored; the header-declared edge share selects the winner, ties keep ladder order), footnote/prose detachment, a reconstruction gate (rejected hypotheses recorded with reasons in `ExtractionStats`), multi-page continuation merging, and test-conditions preamble attachment. Footnote/figures land in tickets 05–06. | `PdfLayoutBackend`, `parse_printed_toc` |
 | `extract/pdf_text.py` | Degraded backend for register maps/errata/app notes: paragraphs only, no trusted tables/figures, contextual page-number stripping. | `PdfTextBackend` |
 | `structure/tables.py` | HTML table → atomic `TableBlock`; full rowspan/colspan expansion; markdown + CSV precomputed. | `html_table_to_block`, `cited_markers`, `cell_text` |
 | `structure/footnotes.py` | `div.tablenote` → `Footnote`; orphan/uncited audit. | `parse_tablenote`, `attach_footnotes`, `audit_table_footnotes` |

@@ -80,6 +80,15 @@ def test_full_build_produces_navigable_corpus(synthetic_env):
     assert stats.n_footnotes == 2
     assert stats.sections_with_pages == 2  # both pages mapped from PDF TOC
 
+    # additive stats contract: ti_html documents carry the backend name and
+    # zero table stats (only pdf_layout fills detected/accepted/rejected)
+    ds_doc = result.manifest.documents[0]
+    estats = result.manifest.extraction_stats[ds_doc.content_hash]
+    assert estats.backend == "ti_html"
+    assert estats.tables_detected == estats.tables_accepted == estats.tables_rejected == 0
+    assert estats.rejection_reasons == []
+    assert estats.mean_fidelity == 0.0
+
 
 def test_second_build_uses_extraction_cache(synthetic_env):
     pdf, settings = synthetic_env

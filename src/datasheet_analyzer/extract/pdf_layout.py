@@ -27,13 +27,19 @@ Structure ladder (citations right whatever the PDF's era):
    (failure keeps parsed values + a warning);
 3. neither -> one "Page N" section per page (pdf_text honesty).
 
-Tables (caption-anchored hypotheses + reconstruction gate):
+Tables (caption-anchored hypotheses + best-scoring retry ladder):
 - a candidate region starts at a "Table N." caption line and runs to the
   next caption/heading/page end; rows are baseline clusters (pitch-based
   continuation merging, so wrapped cells stay one row); columns are word-x
   clusters anchored on the header row, with an all-word retry ladder for
   coarser splits; partial rulings are hints (occupancy relaxation), never
   requirements;
+- every band set is gated and scored: the best reconstruction-scoring grid
+  wins — the score is the share of header-anchored column edges the
+  candidate's own band edges reproduce, so a split that merges the
+  header's declared columns never outvotes the grid the header declares
+  (ties keep ladder order); the winner's measured word fidelity lands in
+  `ExtractionStats` as mean_fidelity;
 - numbered footnote lines detach from the region by signature; prose rows
   (confined to one band, sentence-long) drop out and stay paragraphs;
 - the gate accepts only grids with >= 2 rows and >= 2 stable, tight columns
@@ -700,18 +706,49 @@ def _is_repeated_header(row: _Row, lefts: list[float], header_sig: str) -> bool:
     return _squash(" ".join(c for c in _row_cells(row, lefts) if c)) == header_sig
 
 
+def _advice_share(lefts: list[float], advice: list[float]) -> float:
+    """Reconstruction score of a candidate grid: the share of the
+    header-anchored column edges the candidate's own band edges reproduce.
+
+    A candidate whose bands merge the header's declared columns (e.g. a
+    coarse split that collapses "Min" and "Typ" into one band) loses the
+    edges it merged; bands the header never declared neither help nor hurt
+    (rescue splits keep the grid's data columns). The header-anchored
+    candidate reproduces every advice edge by construction, so it is the
+    score maximum whenever it passes the gate.
+    """
+    if not advice:
+        return 1.0
+    hits = 0
+    for edge in advice:
+        if any(abs(edge - left) <= 0.75 for left in lefts):
+            hits += 1
+    return hits / len(advice)
+
+
 def _hypothesis(region: list[_Line], page: _Page
                 ) -> tuple[list[float] | None, str | None, float,
                             list[_Line]]:
     """Score one region against the retry ladder.
 
+    Every band set (header-anchored first, then the all-word retry ladder)
+    is gated and scored; the best reconstruction-scoring grid wins the
+    ladder. The score is ``_advice_share``: the share of the header-anchored
+    column edges the candidate's own band edges reproduce — a candidate
+    whose bands merge the header's declared columns (a coarse split that
+    collapses Min|Typ into one cell) loses the edges it merged, so it never
+    outvotes the grid the header itself declares (which reproduces every
+    advice edge by construction). Ties keep the ladder's exploration order
+    (primary split first).
+
     Returns (lefts, reason, fidelity, candidate): lefts is the accepted
     column geometry (or None), reason the rejection string, fidelity the
-    reconstruction score of the accepted grid — the share of the region's
-    words the grid reconstructs (footnote and prose rows detract honestly,
-    so tables with footnotes score below 1.0), candidate the region lines
-    that make up the accepted grid (footnote and prose rows never enter it;
-    wrap-merging happens only afterwards, on the accepted lines).
+    measured reconstruction of the accepted grid — the share of the
+    region's words the grid reconstructs (footnote and prose rows detract
+    honestly, so tables with footnotes score below 1.0), candidate the
+    region lines that make up the accepted grid (footnote and prose rows
+    never enter it; wrap-merging happens only afterwards, on the accepted
+    lines).
     """
     region_words = sum(len(t.split()) for ln in region for _x0, _x1, t in ln.spans)
     fine = _group_rows(region, wrap=False)
@@ -728,6 +765,8 @@ def _hypothesis(region: list[_Line], page: _Page
     y0 = min(r.y for r in kept) - 2.0
     y1 = max(r.y for r in kept) + 2.0
     keep_reason = "no viable column split"
+    best: tuple[float, list[float], list[_Line]] | None = None
+    best_fidelity = 0.0
     for lefts in band_sets:
         if len(lefts) < 2:
             continue
@@ -749,13 +788,21 @@ def _hypothesis(region: list[_Line], page: _Page
         # the gate judges the wrap-merged grid (fragmented cells of fine
         # rows would otherwise look like non-spanning single-band rows)
         reason = _gate(grid_rows, lefts, page, y0, y1)
-        if reason is None:
-            grid_words = sum(len(t.split())
-                             for ln in lines for _x0, _x1, t in ln.spans)
-            fidelity = (grid_words / region_words) if region_words else 1.0
-            return lefts, None, fidelity, lines
-        keep_reason = reason
-    return None, keep_reason, 0.0, []
+        if reason is not None:
+            keep_reason = reason
+            continue
+        grid_words = sum(len(t.split())
+                         for ln in lines for _x0, _x1, t in ln.spans)
+        fidelity = (grid_words / region_words) if region_words else 1.0
+        score = _advice_share(lefts, band_sets[0])
+        # strictly greater scores replace; ties keep the earlier candidate
+        # (the header-anchored split is the table's own declaration)
+        if best is None or score > best[0]:
+            best = (score, lefts, lines)
+            best_fidelity = fidelity
+    if best is None:
+        return None, keep_reason, 0.0, []
+    return best[1], None, best_fidelity, best[2]
 
 
 class _TableExtraction:
@@ -883,7 +930,7 @@ class PdfLayoutBackend:
     """Offline, vendor-neutral layout extraction (PyMuPDF only)."""
 
     name = "pdf_layout"
-    output_version = "tables-03"
+    output_version = "tables-04"
 
     def is_available(self) -> tuple[bool, str]:
         try:
