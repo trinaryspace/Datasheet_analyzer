@@ -37,6 +37,7 @@ from datasheet_analyzer.models import CorpusManifest, DocType, PlotSet, RawDocum
 from datasheet_analyzer.publish import write_corpus
 from datasheet_analyzer.publish.plots import (
     fetch_plot_images,
+    render_figure_regions,
     render_plot_pages_fallback,
 )
 from datasheet_analyzer.publish.writer import doc_dir_name
@@ -254,8 +255,16 @@ def build_part(
         plotset = build_plotset(raw, part_number)
         plotsets.append(plotset)
 
-        # pixel fetch only for html-derived docs
-        if raw.extractor != "pdf_text":
+        # pixel fetch only for html-derived docs; pdf_layout figures are
+        # clip-rendered from their vector regions (never fetched)
+        if raw.extractor == "pdf_layout":
+            doc_abs = part_dir / f"docs/{doc_dir_name(raw)}"
+            rendered = render_figure_regions(
+                plotset, doc_abs, Path(raw.source.path),
+                dpi=settings.plot_image_dpi,
+            )
+            log.info("plot pixels: %d clip-rendered (pdf_layout)", rendered)
+        elif raw.extractor != "pdf_text":
             doc_abs = part_dir / f"docs/{doc_dir_name(raw)}"
             plot_fetcher = CachingBinaryFetcher(
                 settings.cache_dir / "http-bin",

@@ -84,7 +84,8 @@ def render_section_markdown(
             out.append("**Footnotes:**")
             out.append("")
             for fn in table.footnotes:
-                out.append(f"- {fn.marker} {fn.text}")
+                bullet = " ".join(part for part in ("-", fn.marker, fn.text) if part)
+                out.append(bullet)
             out.append("")
         if i < len(table_files):
             out += [f"*Machine-readable: `{table_files[i].name}`*", ""]

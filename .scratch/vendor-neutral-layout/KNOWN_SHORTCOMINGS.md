@@ -1,11 +1,11 @@
-# Known shortcomings — vendor-neutral layout (as of ticket 04)
+# Known shortcomings — vendor-neutral layout (as of ticket 05)
 
 Written after ticket 03 (tables + reconstruction gate) landed at `84ba05b`
 and kept current through ticket 04 (best-scoring retry ladder + `dsa
-status` stats). Honest ledger of things that are partial, heuristic, or
-instrumented-but-thin, so they can be circled back to. Grouped by where
-they likely belong; severity = impact on the multi-vendor claim, not
-effort.
+status` stats) and ticket 05 (footnotes + figures vertical). Honest ledger
+of things that are partial, heuristic, or instrumented-but-thin, so they
+can be circled back to. Grouped by where they likely belong; severity =
+impact on the multi-vendor claim, not effort.
 
 ## Functional gaps
 
@@ -26,11 +26,20 @@ effort.
   functionality either. The phase-4 gate only proves captioned vendors
   (AD9081 29/29, HMC520A 6/6). Heading-anchored hypotheses would need
   care to not hallucinate. → ticket 06/07, high.
-- **Footnote bodies are never attached to tables.** Ticket 03 only
-  *detaches* footnote lines from grids (signature-based) so they stay
-  paragraphs; they are not attached to `TableBlock.footnotes` with cited
-  markers. `specs.json` rows therefore carry no footnote text. → ticket
-  05 (explicitly owns this), medium.
+- **Fixed in ticket 05: footnote bodies attach to their table with cited
+  markers.** Superscript citation markers are detected from span geometry
+  (size ≤ 0.82× the row's max span, glyph-box center above the row's
+  vertical middle, glued to the previous span — measured 0.61-0.75× on
+  AD9081/HMC520A) and land in `TableBlock.cited_markers`; the trailing
+  numbered lines below the grid attach as `Footnote(marker, body)` with
+  bare-canonical markers ("1.", "(1)", "1Reference" → "1"), wrapped
+  continuations merge into the open footnote (AD9081 p5's footnote 1 is two
+  lines), and marker-less bodies attach positionally to the table directly
+  above them (ticket item 3). Measured on the gate: AD9081 Table 3 cites
+  footnotes 1+2 ("201" = value 20 + citation 1 is a real second citation),
+  its body text lands in the corpus exactly once, and a golden question
+  citing footnote text verifies at 100%. Residuals (below, "Footnote
+  geometry" heuristics).
 - **Ladder fixed in ticket 04: every band set is gated and scored, and
   only the best-scoring grid wins** (SPEC story 13). The selector is
   `_advice_share`: the share of header-anchored column edges the candidate
@@ -50,8 +59,31 @@ effort.
   *declared* as separate columns by the engine's own rule (see the header
   anchor tau item below). The selection rule is a guard, not a guarantee.
 - **No per-part golden Q&A for non-TI parts yet.** `golden_qa.yaml`
-  covers AFE7950 only; AD9081/HMC520A have no verified question sets.
-  → ticket 07, medium.
+  covers AFE7950 only. Ticket 05 shipped a *minimal* `golden_qa_AD9081.yaml`
+  (footnote-citing + spec + plot questions, verified 100% offline in the
+  gate test) as the boundary decision — the full per-part benchmark
+  rollout (all parts, `dsa verify` hard-fail wiring, SPEC story 26) is
+  ticket 07, medium.
+- **Interleaved footnotes stay paragraphs.** A footnote line that sits
+  *between* grid rows (HMC520A p4's "1 See JEDEC ..." thermal note inside
+  the Table-3 region) is dropped from the grid but never becomes a
+  `Footnote` — only rows *after* the last multi-band grid row attach.
+  Honest (nothing lost; it renders as a paragraph) but the citation link
+  is missed. Mid-grid footnotes are rare; a position-insensitive attach
+  would risk swallowing real grid rows. → revisit with real cases,
+  medium.
+- **Figure clips are region estimates, not art bounds.** The clip is the
+  rectangle above the caption (prev caption or page top → caption line):
+  single-figure pages may include the page header, and two-column figure
+  pairs share one band image (each caption gets its own record, both
+  pointing at the same rendered band). No embedded-image PDFs exist in
+  the gate set; a PDF with raster figures under captions would render
+  them the same way (clip includes the image), unverified. → revisit
+  with real raster figures, low.
+- **QPA1003P yields zero figures** — it has no "Figure N." captions at
+  all (its block diagram is captionless), so the honest result is an
+  empty plots.json. Same class as the captionless-tables gap: title-
+  anchored figures would need the same care. → ticket 06/07, low.
 
 ## Citation and verification nuances
 
@@ -104,6 +136,42 @@ effort.
 - **Caption regex covers "Table N." / "Table N-M." / "Table N: M"**
   separators only. Exotic forms (e.g. centered captions, "TABLE III.",
   caption-below) are untested.
+- **Marker size ratio = 0.82 fixed** in `_row_markers`: a superscript
+  citation must be ≤0.82× the row's max span size with ≥1 pt difference.
+  AD9081/HMC520A markers measure 0.61-0.75× — the threshold absorbs the
+  spread, but a legit marker at 0.85× or a chemical subscript smaller
+  than 0.82× with a raised box would misread. No boundary test.
+- **A "10^6"-style exponent is geometrically identical to a glued
+  superscript marker** (measured: HMC520A's ">1 × 106 Hours" '6' has the
+  same size/rise as its real markers) — it lands in `cited_markers` as an
+  orphan (the footnote-marker audit flags it; nothing in the product
+  prints it). Rejecting it would also reject real after-digit markers
+  (AD9081's "29001", "× 0.8142" — both measure identically). Pinned by a
+  synthetic test; the trade-off is recorded, not "fixed".
+- **`_FOOTNOTE_GAP = 28 pt` and the continuation threshold (pitch×0.92)**
+  bound the trailing-block scan: a marker-less sentence within 28 pt of
+  the grid's last multi-band row attaches positionally — a real
+  paragraph sitting directly under a table in that window would be
+  swallowed (no geometric signal separates them; AD9081/HMC520A trailing
+  notes measure 12-26 pt). The all-caps heading guard ("6 GHZ TO 10
+  GHZ ...") and the post-marked-block stop pin the observed shapes only.
+- **Multi-band grid-end rule**: the footnote scan starts after the last
+  row that spans column bands (both the first-page and continuation
+  branches share the rule); a table whose *final* rows are single-band
+  sub-headers (none observed) would read them as footnote continuations
+  within the window. The hmc520a p3 shape (all-caps sub-table headings
+  between grid rows) is pinned by test. Every trailing row — marker
+  rows included — must sit within 28 pt of the grid end (or of the last
+  attached row) to belong to the block; a numbered line far below a
+  table is never claimed by it.
+- **Same-band caption rule (`≤ _FIGURE_MARGIN` = 12 pt)**: side-by-side
+  captions measured 0.07-7.9 pt apart; a stacked caption pair closer
+  than 12 pt (figure rows are ≥180 pt apart on every real page) would
+  share a clip. No boundary test.
+- **Prose-drop threshold `_PROSE_WORDS = 8`** (see above) doubles as the
+  footnote-continuation fence: a wrapped footnote fragment of ≤8 words
+  that sits >cont_th below its marker line would become a grid row
+  again. Pinned at the 8-word boundary in the positional-attach test.
 
 ## Engineering debt
 
@@ -116,7 +184,12 @@ effort.
   block index would be sturdier.
 - **Continuation vs first-page row filtering share logic**: partially
   deduped post-review (`_is_repeated_header`), but footnote/prose
-  handling still exists in two places.
+  handling still exists in two places (first-page `run()` vs the
+  continuation branch).
+- **`figure_anchor_map()` re-opens the PDF** at render time (publish
+  stage) — deterministic, drift-free, and ~0.3-0.5 s per doc, but the
+  same two-phase scan as extraction. A cached geometry side-channel
+  would avoid the reopen on repeat builds.
 - **`PIPELINE_VERSION` 0.2.0 → 0.3.0 was outside ticket 03's letter**
   (defensible under the cache-invalidation invariant; `extractor_version`
   is the real staleness guard). Keep both in lockstep when output schema

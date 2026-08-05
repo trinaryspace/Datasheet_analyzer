@@ -150,12 +150,15 @@ class TestCaptionAnchoredTables:
         # indented sub-row shares the parameter column; empty cells stay empty
         assert "| Gain Error |  |  | 1.5 |  | % FSR |" in md
         assert "| Integral Nonlinearity (INL) | Shuffling disabled |  | 8.0 |  | LSB |" in md
-        # the footnote and the trailing prose stay honest paragraphs, never rows
-        assert "1 For dc-coupled applications, the maximum output current applies." in md
+        # ticket 05: the numbered footnote attaches to the block under its
+        # own "**Footnotes:**" heading — never a grid row; the trailing
+        # unmarked note stays an honest paragraph
+        foot = md.split("## Table 3.")[1].split("**Footnotes:**")[1].split("##")[0]
+        assert "- 1 For dc-coupled applications, the maximum output current applies." in foot
         assert "Stresses at or above those listed under the rating table may cause damage." in md
         # the footnote text does not appear as a table row
-        table_region = md.split("## Table 3.")[1].split("**Test conditions:**")[1]
-        assert "dc-coupled applications" not in table_region
+        table_rows = md.split("## Table 3.")[1].split("**Test conditions:**")[1]
+        assert "| 1 For dc-coupled" not in table_rows
 
         csv = (_doc_dir(result) / "tables" / "1-specifications-t01.csv").read_text(
             encoding="utf-8")

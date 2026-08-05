@@ -10,6 +10,7 @@ import re
 
 from datasheet_analyzer.config import PLOTS_SCHEMA_VERSION
 from datasheet_analyzer.models import PlotRecord, PlotSet, RawDocument, SectionNode
+from datasheet_analyzer.structure.corpus import slugify
 
 MEASURE_KEYWORDS: list[str] = [
     "acpr",
@@ -84,6 +85,19 @@ def caption_tags(caption: str) -> list[str]:
     return [kw for kw in MEASURE_KEYWORDS if kw in lowered]
 
 
+def plot_id(section: SectionNode, idx: int) -> str:
+    """Stable plot id: section number + sequence ("4.12.1-f007").
+
+    Honestly unnumbered sections (pdf_layout parts) key by their slugified
+    title ("dac-f001") — otherwise two unnumbered figure sections of one
+    part (AD9081's DAC and ADC subsections) would both emit "-f016" and
+    collide on the same image file.
+    """
+    if section.number:
+        return f"{section.number}-f{idx + 1:03d}"
+    return f"{slugify(section.title)}-f{idx + 1:03d}"
+
+
 def build_plotset(raw: RawDocument, part_number: str) -> PlotSet:
     """Convert every FigureRef in every section to a PlotRecord.
 
@@ -97,7 +111,7 @@ def build_plotset(raw: RawDocument, part_number: str) -> PlotSet:
         tags_base = section_tags(section)
         for idx, fig in enumerate(section.figures):
             rec = PlotRecord(
-                id=f"{section.number}-f{idx + 1:03d}",
+                id=plot_id(section, idx),
                 section=section.number,
                 caption=fig.caption,
                 figure_number=figure_number(fig.caption),

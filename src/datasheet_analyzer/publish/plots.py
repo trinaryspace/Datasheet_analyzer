@@ -14,6 +14,10 @@ from pathlib import Path
 import fitz
 
 from datasheet_analyzer.extract.http import BinaryFetcher
+from datasheet_analyzer.extract.pdf_layout import (
+    figure_anchor_map,
+    figure_caption_key,
+)
 from datasheet_analyzer.models import PlotRecord, PlotSet
 
 log = logging.getLogger(__name__)
@@ -102,6 +106,61 @@ def fetch_plot_images(plotset: PlotSet, doc_dir: Path, *, fetcher: BinaryFetcher
         dest.write_bytes(best[1])
         _set_record_file(record, dest, doc_dir)
         written += 1
+    return written
+
+
+def render_figure_regions(
+    plotset: PlotSet, doc_dir: Path, pdf_path: Path, *, dpi: int
+) -> int:
+    """Clip-render each cataloged figure's vector region (pdf_layout path).
+
+    The clip is the region above the figure's own "Figure N." caption
+    (SPEC story 20), recomputed deterministically with the extractor's own
+    caption scan via ``figure_anchor_map`` so the image always matches the
+    cataloged caption and page. Records whose caption is not found on any
+    section page keep ``file == ""`` — cataloged but honestly unpictured.
+    """
+    doc_dir = Path(doc_dir)
+    pdf_path = Path(pdf_path)
+    written = 0
+    anchors = figure_anchor_map(pdf_path)
+    if not anchors or not plotset.plots:
+        return 0
+    matrix = fitz.Matrix(dpi / 72, dpi / 72)
+    with fitz.open(str(pdf_path)) as pdf:
+        for record in plotset.plots:
+            if record.file:
+                continue
+            key = figure_caption_key(record.caption)
+            hit = None
+            for (pgnum, cap), (top, y) in anchors.items():
+                if cap != key:
+                    continue
+                if record.page_start is not None and pgnum < record.page_start:
+                    continue
+                if record.page_end is not None and pgnum > record.page_end:
+                    continue
+                hit = (pgnum, top, y)
+                break
+            if hit is None or hit[2] - hit[1] < 6.0:
+                log.warning("no clip anchor for plot %s (%s)",
+                            record.id, record.caption[:60])
+                continue
+            pgnum, top, y = hit
+            if pgnum - 1 >= len(pdf):
+                continue
+            page = pdf[pgnum - 1]
+            clip = fitz.Rect(0.0, max(0.0, top), page.rect.width, y - 3.0)
+            try:
+                pix = page.get_pixmap(matrix=matrix, clip=clip)
+            except Exception as exc:  # noqa: BLE001 — honesty over crash
+                log.warning("clip render failed for plot %s: %s", record.id, exc)
+                continue
+            dest = _plot_file_path(doc_dir, record, ".png")
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            dest.write_bytes(pix.tobytes("png"))
+            _set_record_file(record, dest, doc_dir)
+            written += 1
     return written
 
 

@@ -237,3 +237,109 @@ class TestGateTables:
             assert stats.tables_accepted == 0, name
             assert result.manifest.stats.n_tables == 0, name
             assert len(_blob(result)) > 500, name
+
+
+class TestGateFootnotesAndFigures:
+    """Ticket 05: footnotes from font geometry + figures rendered from
+    vector regions, proven on the real gate PDFs."""
+
+    def test_ad9081_footnotes_attach_with_markers_once(self, gate):
+        result = gate["AD9081"]
+        blob = _blob(result)
+        assert "**Footnotes:**" in blob
+        # footnote 1 of Table 3 (p5) — the continuation is merged into the
+        # body and the block appears exactly once, never as paragraphs
+        assert blob.count("For dc-coupled applications, the maximum full-scale output "
+                          "current is limited by the maximum VCMOUT specification.") == 1
+        assert blob.count("The actual measured full-scale power is frequency dependent "
+                          "due to DAC sinc response, impedance mismatch loss, and "
+                          "balun insertion loss.") == 1
+
+    def test_ad9081_spec_citation_resolves_marker_to_footnote(self, gate):
+        import json
+
+        from datasheet_analyzer.query import SpecQuery, format_answer
+
+        result = gate["AD9081"]
+        doc_dir = next((result.part_dir / "docs").glob("datasheet-*"))
+        specs = json.loads((doc_dir / "specs.json").read_text(encoding="utf-8"))
+        row = next(r for r in specs["records"]
+                   if "Full-Scale Sine Wave Output Power with AC Coupling2" in r["symbol"])
+        # table 3 cites footnote 2 on this row and footnote 1 on the DC
+        # coupling row ("201" = value 20 + citation 1) — both real, both
+        # detected from the superscript geometry
+        assert sorted(row["cited_markers"]) == ["1", "2"], row["cited_markers"]
+        dc = next(r for r in specs["records"]
+                  if "50" in r["conditions"] and "shunt to GND" in r["conditions"])
+        # the printed "201" is value 20 + citation 1: the marker survives in
+        # the max cell and the record cites footnote 1
+        assert dc["max"] == "201" and "1" in dc["cited_markers"]
+        # the glued superscript text stays in the symbol (project convention)
+        rec = SpecQuery(result.part_dir).find(
+            symbol="Full-Scale Sine Wave Output Power")[0]
+        answer = format_answer([rec])
+        assert "frequency dependent due to DAC sinc response" in answer
+
+    def test_gate_verifies_100_percent_with_ad9081_golden(self, gate):
+        # the ticket's golden question citing footnote text verifies at 100%
+        # (SPEC story 26 mechanics; the full per-part golden rollout is 07)
+        from datasheet_analyzer.evalh.citations import (
+            summarize,
+            verify_questions,
+        )
+        from datasheet_analyzer.evalh.golden import load_golden
+        from datasheet_analyzer.extract.pdf_structure import page_texts
+
+        result = gate["AD9081"]
+        pdf = REPO / "ad9081.pdf"
+        if not pdf.exists():
+            pytest.skip("ad9081.pdf not present at repo root")
+        questions = load_golden(REPO / "tests" / "fixtures" / "golden_qa_AD9081.yaml")
+        res = verify_questions(questions, result.part_dir, page_texts(pdf))
+        summary = summarize(res)
+        assert summary["passed"] == summary["total"] == len(questions)
+        # every text question matched a covering section file (plot questions
+        # short-circuit by design and are checked against plots.json instead)
+        unclaimed = set(summary["questions_without_covering_section"])
+        assert unclaimed <= {q.id for q in questions if q.plot_query}
+
+    def test_gate_figures_render_as_files_and_plot_query_finds_them(self, gate):
+        from datasheet_analyzer.query import find_plots
+
+        pdf = REPO / "ad9081.pdf"
+        if not pdf.exists():
+            pytest.skip("ad9081.pdf not present at repo root")
+        result = gate["AD9081"]
+        assert result.manifest.stats.n_figures >= 100
+        files = list((result.part_dir / "docs").glob("*/figures/*/*.png"))
+        assert len(files) >= 100
+        assert all(f.stat().st_size > 1024 for f in files)
+
+        found = find_plots(result.part_dir,
+                           q="HD2 vs. fOUT over Digital Scale, 6 GSPS")
+        assert found, "dsa plots query must resolve the vector figure"
+        assert found[0].file and (result.part_dir / found[0].file).stat().st_size > 1024
+
+    def test_hmc520a_figures_render_under_captions(self, gate):
+        result = gate["HMC520A"]
+        assert result.manifest.stats.n_figures >= 100
+        files = list((result.part_dir / "docs").glob("*/figures/*/*.png"))
+        assert len(files) >= 100
+        plots = json.loads(
+            next((result.part_dir / "docs").glob("*/plots.json")).read_text(
+                encoding="utf-8"))
+        caption = "Conversion Gain vs. RF Frequency at Various Temperatures"
+        hits = [p for p in plots["plots"] if caption in p["caption"]]
+        assert hits and (result.part_dir / hits[0]["file"]).exists()
+
+    def test_lm741_old_ti_figures_render(self, gate):
+        # old-TI section pages carry captioned vector figures too — they get
+        # image files even though lm741 has no "Table N." captions at all
+        result = gate["LM741"]
+        plots = json.loads(
+            next((result.part_dir / "docs").glob("*/plots.json")).read_text(
+                encoding="utf-8"))["plots"]
+        files = list((result.part_dir / "docs").glob("*/figures/*/*.png"))
+        assert len(plots) >= 3 and len(files) == len(plots)
+        for rec in plots:
+            assert rec["file"] and (result.part_dir / rec["file"]).stat().st_size > 1024

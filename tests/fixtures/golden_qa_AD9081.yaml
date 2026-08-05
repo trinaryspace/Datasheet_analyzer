@@ -1,0 +1,34 @@
+# Golden Q&A set for the AD9081 datasheet (phase-4 gate PDF, pdf_layout path).
+# Minimal set shipped by ticket 05 to prove the footnote-citation and
+# figure-render answer paths at the verify seam; every expected_substring
+# was verified against the printed PDF page text. The full per-part golden
+# benchmark rollout (all parts, spec/plot queries, hard-fail wiring) is
+# ticket 07.
+#
+# q1 cites text that exists in the corpus ONLY because ticket 05 attaches
+# footnote bodies to their table (footnote 1 of "Table 3. DAC DC
+# Specifications", page 5).
+questions:
+  - id: q1-dc-coupled-fullscale-limit
+    question: Why is the full-scale output current limited for dc-coupled applications?
+    expected_substrings: ["dc-coupled applications", "maximum VCMOUT specification"]
+    pages: [5]
+    kind: direct
+    notes: answer is footnote 1 text of Table 3, attached with the table
+
+  - id: q2-fullscale-sine-power
+    question: What is the full-scale sine wave output power with AC coupling?
+    expected_substrings: ["Full-Scale Sine Wave Output Power", "AC coupling",
+                          "2:1 balun", "3.3", "dBm"]
+    pages: [5]
+    kind: direct
+    spec_query: {symbol: "Full-Scale Sine Wave Output Power"}
+    notes: the symbol cell carries the glued superscript citation "AC Coupling2"
+
+  - id: p1-hd2-6gsps
+    question: Which figure shows HD2 vs fOUT over digital scale at a 6 GSPS DAC sample rate?
+    expected_substrings: ["HD2 vs. fOUT over Digital Scale, 6 GSPS"]
+    pages: [27]
+    kind: plot
+    plot_query: {caption_contains: "HD2 vs. fOUT over Digital Scale, 6 GSPS"}
+    notes: vector plot clip-rendered from the region above its caption
