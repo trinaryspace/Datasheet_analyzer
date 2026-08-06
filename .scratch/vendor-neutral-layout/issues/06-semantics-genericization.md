@@ -10,19 +10,23 @@ brief matcher. All applied without per-vendor branches.
 
 **Blocked by:** 03 — Tables: caption-anchored hypotheses + reconstruction gate
 
-**Boundary (06/07 scope reconciliation, decided at kickoff):** the
+**Boundary (06/07/09 scope reconciliation, decided at kickoff):** the
 ledger's 06-tagged items — merged-cell materialization ("high", deferral
-note written at the 04/06 boundary) and captionless-era tables (also
-high) — are **not** in this ticket's letter. 06 is semantics
+note written at the 04/06 boundary), captionless-era tables (also high),
+and continuation-row page attribution — are **not** in ticket 07's
+letter either (07 is gate provisioning + per-part golden Q&A: SPEC
+stories 26–27). All were re-ticketed to **09 — Layout materialization +
+continuation-page attribution** (`.scratch/vendor-neutral-layout/issues/
+09-layout-materialization.md`) at the 06/07/09 kickoff, and the ledger's
+"→ ticket 07" pointers were corrected there. 06 is semantics
 genericization (shared lexicons + positional inference, SPEC stories
 22–25); grid *materialization* (SPEC story 12) and hallucination-guarded
 heading-anchored hypotheses (SPEC story 10, "captionless doubles must
 stay paragraphs") are reconstruction designs that deserve their own
 probe-backed synthetic fixtures and a rejection-gate design, not a
-lexicon change. Both are re-deferred to ticket 07 here and the ledger's
-pointers are corrected; the 04/06 note ("explicitly deferred to ticket
-06") is superseded by this entry. Title-anchored figures ride along to
-07 for the same reason.
+lexicon change. The 04/06 note ("explicitly deferred to ticket 06") is
+superseded by this entry. Title-anchored figures ride along to 09 for
+the same reason.
 
 **Status:** shipped (commit on `feat/pdf-layout-paragraph-core`, ticket 05
 pattern: TDD at `build_part`, gate-PDF measured proof, ledger updated)

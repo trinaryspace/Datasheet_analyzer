@@ -119,6 +119,18 @@ def _spec_fields(rec) -> str:
     )
 
 
+def _default_golden_path(part: str) -> Path:
+    """Per-part golden discovery (SPEC story 26): each part verifies
+    against tests/fixtures/golden_qa_<PART>.yaml, so a missing benchmark
+    is a hard failure, never a silent zero-question pass."""
+    return (
+        Path(__file__).resolve().parent.parent.parent
+        / "tests"
+        / "fixtures"
+        / f"golden_qa_{part}.yaml"
+    )
+
+
 def _cmd_verify(args: argparse.Namespace) -> int:
     from datasheet_analyzer.evalh.citations import contains, summarize, verify_questions
     from datasheet_analyzer.evalh.golden import (
@@ -135,7 +147,23 @@ def _cmd_verify(args: argparse.Namespace) -> int:
         print(f"no corpus at {part_dir} — run `dsa build` first", file=sys.stderr)
         return 2
 
-    questions = load_golden(Path(args.golden))
+    golden = Path(args.golden) if args.golden else _default_golden_path(args.part)
+    if not golden.exists():
+        print(
+            f"verify error: no golden benchmark for part {args.part}: {golden} missing. "
+            "Write tests/fixtures/golden_qa_<PART>.yaml (see golden_qa_AD9081.yaml "
+            "for the format) or pass --golden <file>.",
+            file=sys.stderr,
+        )
+        return 2
+    questions = load_golden(golden)
+    if not questions:
+        print(
+            f"verify error: golden benchmark {golden} has 0 questions — nothing "
+            "to verify; every part must be provably verified or provably not.",
+            file=sys.stderr,
+        )
+        return 2
     pages = page_texts(Path(args.pdf)) if args.pdf else []
     if not pages:
         print("warning: --pdf not given; page-truth check disabled", file=sys.stderr)
@@ -404,7 +432,8 @@ def main(argv: list[str] | None = None) -> int:
     p_verify.add_argument("--specs", action="store_true", help="also verify spec_query entries")
     p_verify.add_argument(
         "--golden",
-        default=str(Path(__file__).parent.parent.parent / "tests" / "fixtures" / "golden_qa.yaml"),
+        default="",
+        help="explicit golden file (default: discover tests/fixtures/golden_qa_<PART>.yaml)",
     )
     p_verify.set_defaults(func=_cmd_verify)
 

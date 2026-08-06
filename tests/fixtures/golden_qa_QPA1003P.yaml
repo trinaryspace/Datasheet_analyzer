@@ -1,0 +1,76 @@
+# Golden Q&A set for the QPA1003P datasheet (Rev. I, phase-4 gate PDF,
+# pdf_layout path). Qorvo part with no PDF outline (per-page sections) and
+# no "Table N." / "Figure N." captions at all: the corpus honestly carries
+# 0 tables / 0 spec records / 0 figures, so this golden is text-questions
+# only — "100% on text, --specs, and plot lookups" for this part means the
+# text benchmark at 100% and the spec/plot question counts staying
+# honestly empty (recorded decision; see KNOWN_SHORTCOMINGS.md — the
+# captionless-era and title-anchored work is re-ticketed to 09).
+# Every expected_substring was verified against the printed PDF page text
+# (page_texts) AND the built corpus section covering that page.
+questions:
+  - id: q01-band-and-output-power
+    question: What frequency range does the QPA1003P cover and what saturated output power does it provide?
+    expected_substrings: ["1 – 8 GHz", "10 W", "saturated output power"]
+    pages: [1]
+    kind: direct
+
+  - id: q02-process
+    question: Which process is the QPA1003P fabricated on?
+    expected_substrings: ["0.15um", "GaN on SiC", "QGaN15"]
+    pages: [1]
+    kind: direct
+
+  - id: q03-efficiency-and-gain
+    question: What power-added efficiency and large-signal gain are typical?
+    expected_substrings: ["30%", "25 dB"]
+    pages: [1]
+    kind: direct
+
+  - id: q04-test-conditions
+    question: Under what conditions are the electrical specifications measured?
+    expected_substrings: ["+28 V", "650 mA", "CW"]
+    pages: [2]
+    kind: direct
+
+  - id: q05-output-power-at-1ghz
+    question: What is the output power at PIN = 15 dBm and 1 GHz?
+    expected_substrings: ["39.7", "dBm"]
+    pages: [2]
+    kind: direct
+
+  - id: q06-pae-at-4ghz
+    question: What power-added efficiency is typical at 4 GHz with PIN = 15 dBm?
+    expected_substrings: ["35", "%"]
+    pages: [2]
+    kind: direct
+
+  - id: q07-thermal-resistance
+    question: What is the junction-to-case thermal resistance at TBASE = 85°C and PDISS = 18.2 W?
+    expected_substrings: ["Thermal Resistance", "3.62", "°C/W"]
+    pages: [15]
+    kind: direct
+
+  - id: q08-channel-temperature
+    question: What is the quiescent channel temperature?
+    expected_substrings: ["Channel Temperature", "151", "°C"]
+    pages: [15]
+    kind: direct
+
+  - id: q09-rf-input-impedance
+    question: What impedance is the RF input matched to?
+    expected_substrings: ["matched to 50", "Ω"]
+    pages: [16]
+    kind: direct
+
+  - id: q10-esd-and-msl
+    question: What are the ESD human body model rating and moisture sensitivity level?
+    expected_substrings: ["Human Body Model", "0B", "MSL3"]
+    pages: [20]
+    kind: direct
+
+  - id: q11-reflow-temperature
+    question: Is the package compatible with lead-free soldering and what is the peak reflow temperature?
+    expected_substrings: ["lead-free", "260°C"]
+    pages: [19]
+    kind: direct

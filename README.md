@@ -69,9 +69,11 @@ dsa verify --part AFE7950 --pdf afe7950.pdf
 # Also verify deterministic spec lookups
 dsa verify --part AFE7950 --pdf afe7950.pdf --specs
 
-# Second reference part, same path
+# Second reference part, same build path
 dsa build afe7953.pdf --part AFE7953
-dsa verify --part AFE7953 --pdf afe7953.pdf
+# (no golden_qa_AFE7953.yaml exists — `dsa verify --part AFE7953` fails
+# loudly instead of running another part's benchmark; per-part goldens
+# live in tests/fixtures/golden_qa_<PART>.yaml)
 
 # One invocation builds every PDF in a directory as its own part corpus
 # (part = uppercase filename stem; flat scan; failing jobs are isolated)
@@ -167,7 +169,8 @@ Token counts everywhere are `chars/4` (see `tokens.py`).
 ## Development
 
 ```bash
-python -m pytest tests/ -q    # 214 tests, ~8 s, fully offline
+python -m pytest tests/ -q    # 342 tests, ~85 s, fully offline (the
+                              # phase-4 gate builds four real PDFs)
 python -m ruff check src tests
 ```
 
@@ -176,10 +179,14 @@ Tests are hermetic: TI pages replay from `tests/fixtures/recorded_http/`
 and the LLM is a fake client. Integration tests use the real `afe7950.pdf` /
 `afe7953.pdf` (skip-guarded) plus recorded fixtures.
 
-`tests/fixtures/golden_qa.yaml` is the objective function: 19 questions with
-hand-verified answers and page cites, covering direct corpus reads, spec
-queries, and plot queries. Extend it when new answer paths ship; `dsa verify`
-must stay at 100% for supported paths.
+Per-part goldens in `tests/fixtures/golden_qa_<PART>.yaml` are the
+objective function: hand-verified answers and page cites covering direct
+corpus reads, spec queries, and plot queries (AFE7950 carries the 19-Q
+historical benchmark; the four gate parts AD9081/LM741/QPA1003P/HMC520A
+each have their own, all verified 100% offline). `dsa verify --part X`
+discovers the part's golden by name and fails loudly when it is missing —
+extend a set when new answer paths ship; `dsa verify` must stay at 100%
+for supported paths.
 
 ## Caveats
 

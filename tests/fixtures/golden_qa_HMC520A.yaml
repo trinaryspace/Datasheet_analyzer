@@ -1,0 +1,91 @@
+# Golden Q&A set for the HMC520A datasheet (Rev. A, phase-4 gate PDF,
+# pdf_layout path). Hittite-era ADI part: unnumbered outline, 6 captioned
+# tables -> 30 spec records, 107 figure captions. Mix of text questions
+# (prose/theory), spec_query questions (Table 1 rows whose min/typ/max
+# materialized cleanly), and plot questions (vector figure captions).
+# Every expected_substring was verified against the printed PDF page text
+# (page_texts) AND the built corpus section covering that page.
+questions:
+  - id: q01-title-band-and-technology
+    question: What is the HMC520A and over what band does it operate?
+    expected_substrings: ["6 GHz to 10 GHz", "GaAs", "MMIC", "I/Q Mixer"]
+    pages: [1]
+    kind: direct
+
+  - id: q02-spec-test-conditions
+    question: Under what conditions are the specifications measured?
+    expected_substrings: ["15 dBm", "100 MHz", "25°C"]
+    pages: [3]
+    kind: direct
+
+  - id: q03-rf-range
+    question: What is the RF frequency range of the HMC520A?
+    expected_substrings: ["RF RANGE", "6", "10", "GHz"]
+    pages: [3]
+    kind: direct
+    spec_query: {symbol: "RF RANGE"}
+
+  - id: q04-lo-amplitude
+    question: What LO drive amplitude do the specifications use?
+    expected_substrings: ["LO AMPLITUDE", "15", "dBm"]
+    pages: [3]
+    kind: direct
+    spec_query: {symbol: "LO AMPLITUDE"}
+
+  - id: q05-if-frequency-range
+    question: What is the IF frequency range of the HMC520A?
+    expected_substrings: ["IF FREQUENCY RANGE", "DC", "3.5", "GHz"]
+    pages: [3]
+    kind: direct
+    spec_query: {symbol: "IF FREQUENCY RANGE"}
+
+  - id: q06-absmax-rf-input-power
+    question: What is the absolute maximum RF input power?
+    expected_substrings: ["RF Input Power", "20", "dBm"]
+    pages: [4]
+    kind: direct
+
+  - id: q07-absmax-lo-input-power
+    question: What is the absolute maximum LO input power?
+    expected_substrings: ["LO Input Power", "27", "dBm"]
+    pages: [4]
+    kind: direct
+
+  - id: q08-junction-temperature-and-lifetime
+    question: What is the maximum junction temperature and the lifetime at it?
+    expected_substrings: ["175°C", "1 × 106", "Hours"]
+    pages: [4]
+    kind: direct
+
+  - id: q09-operating-temperature-range
+    question: What is the operating temperature range of the HMC520A?
+    expected_substrings: ["−40°C", "+85°C"]
+    pages: [4]
+    kind: direct
+
+  - id: q10-theory-of-operation
+    question: How can the HMC520A be used in a receiver and a transmitter?
+    expected_substrings: ["image reject mixer", "single sideband upconverter", "passive"]
+    pages: [25]
+    kind: direct
+
+  - id: p1-conversion-gain-vs-temp
+    question: Which figure shows conversion gain vs RF frequency at various temperatures?
+    expected_substrings: ["Conversion Gain vs. RF Frequency at Various Temperatures"]
+    pages: [6]
+    kind: plot
+    plot_query: {caption_contains: "Conversion Gain vs. RF Frequency at Various Temperatures"}
+
+  - id: p2-noise-figure-vs-lo-power
+    question: Which figure shows noise figure vs RF frequency at various LO powers?
+    expected_substrings: ["Noise Figure vs. RF Frequency at Various LO Powers"]
+    pages: [6]
+    kind: plot
+    plot_query: {caption_contains: "Noise Figure vs. RF Frequency at Various LO Powers"}
+
+  - id: p3-isolation-vs-frequency
+    question: Which figure shows isolation vs RF frequency at LO = 15 dBm?
+    expected_substrings: ["Isolation vs. RF Frequency", "LO = 15 dBm"]
+    pages: [23]
+    kind: plot
+    plot_query: {caption_contains: "Isolation vs. RF Frequency at LO = 15 dBm"}

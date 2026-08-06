@@ -87,10 +87,7 @@ def _make_part(part_dir):
 
 
 def test_verify_summary_counts_only_passing(tmp_path, monkeypatch, capsys):
-    settings = Settings(parts_dir=tmp_path / "parts", cache_dir=tmp_path / ".cache").resolve()
-    part_dir = settings.parts_dir / "T"
-    part_dir.mkdir(parents=True)
-    _make_part(part_dir)
+    settings = _part_settings(tmp_path)
     golden_path = tmp_path / "golden.yaml"
     golden_path.write_text(yaml.safe_dump(GOLDEN), encoding="utf-8")
 
@@ -105,3 +102,93 @@ def test_verify_summary_counts_only_passing(tmp_path, monkeypatch, capsys):
     # round that up to 2/2.
     assert out.count("**1/2 passed**") == 2
     assert "**2/2 passed**" not in out
+
+
+PLOT_ONLY_GOLDEN = {
+    "questions": [
+        {
+            "id": "plot-pass-only",
+            "question": "passes",
+            "expected_substrings": ["DSA = 0"],
+            "pages": [29],
+            "plot_query": {"caption_contains": "Output Fullscale"},
+        },
+    ]
+}
+
+
+def _part_settings(tmp_path):
+    settings = Settings(parts_dir=tmp_path / "parts", cache_dir=tmp_path / ".cache").resolve()
+    part_dir = settings.parts_dir / "T"
+    part_dir.mkdir(parents=True)
+    _make_part(part_dir)
+    return settings
+
+
+class TestPerPartGoldenDiscovery:
+    """SPEC story 26: `dsa verify --part X` resolves golden_qa_<PART>.yaml
+    by part name and hard-fails (no silent zero-question pass) when a
+    part's benchmark is missing or empty."""
+
+    def test_default_golden_is_per_part_by_name(self):
+        path = cli._default_golden_path("AFE7950")
+        assert path.name == "golden_qa_AFE7950.yaml"
+        assert path.parent.name == "fixtures"
+
+    def test_verify_discovers_golden_from_part_name(self, tmp_path, monkeypatch, capsys):
+        settings = _part_settings(tmp_path)
+        golden_path = tmp_path / "golden_qa_T.yaml"
+        golden_path.write_text(yaml.safe_dump(PLOT_ONLY_GOLDEN), encoding="utf-8")
+
+        monkeypatch.setattr("datasheet_analyzer.cli.get_settings", lambda: settings)
+        monkeypatch.setattr(
+            "datasheet_analyzer.cli._default_golden_path",
+            lambda part: golden_path,
+        )
+        # no --golden flag: discovery + full verification, quiet success
+        exit_code = cli.main(["verify", "--part", "T", "--specs"])
+        assert exit_code == 0
+        assert "**1/1 passed" in capsys.readouterr().out
+
+    def test_verify_hard_fails_when_part_golden_missing(self, tmp_path, monkeypatch, capsys):
+        settings = _part_settings(tmp_path)
+        missing = tmp_path / "golden_qa_NOSUCHPART.yaml"
+        assert not missing.exists()
+
+        monkeypatch.setattr("datasheet_analyzer.cli.get_settings", lambda: settings)
+        monkeypatch.setattr(
+            "datasheet_analyzer.cli._default_golden_path",
+            lambda part: missing,
+        )
+        exit_code = cli.main(["verify", "--part", "T"])
+        captured = capsys.readouterr()
+        assert exit_code == 2
+        assert "no golden benchmark" in captured.err
+        assert "NOSUCHPART" in captured.err
+
+    def test_verify_hard_fails_on_empty_golden(self, tmp_path, monkeypatch, capsys):
+        settings = _part_settings(tmp_path)
+        golden_path = tmp_path / "golden_qa_T.yaml"
+        golden_path.write_text("questions: []\n", encoding="utf-8")
+
+        monkeypatch.setattr("datasheet_analyzer.cli.get_settings", lambda: settings)
+        monkeypatch.setattr(
+            "datasheet_analyzer.cli._default_golden_path",
+            lambda part: golden_path,
+        )
+        exit_code = cli.main(["verify", "--part", "T"])
+        captured = capsys.readouterr()
+        assert exit_code == 2
+        assert "0 questions" in captured.err
+
+    def test_verify_explicit_golden_missing_fails_loudly(self, tmp_path, monkeypatch, capsys):
+        # previously an unhandled FileNotFoundError traceback
+        settings = _part_settings(tmp_path)
+        missing = tmp_path / "no-such-golden.yaml"
+
+        monkeypatch.setattr("datasheet_analyzer.cli.get_settings", lambda: settings)
+        exit_code = cli.main(["verify", "--part", "T", "--golden", str(missing)])
+        captured = capsys.readouterr()
+        assert exit_code == 2
+        assert "no golden benchmark" in captured.err
+        assert "FileNotFoundError" not in captured.err

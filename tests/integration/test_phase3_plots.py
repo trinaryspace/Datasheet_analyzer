@@ -17,7 +17,7 @@ from datasheet_analyzer.tokens import count_tokens
 
 RECORDED = Path(__file__).parent.parent / "fixtures" / "recorded_http"
 RECORDED_BIN = Path(__file__).parent.parent / "fixtures" / "recorded_http_bin"
-GOLDEN = Path(__file__).parent.parent / "fixtures" / "golden_qa.yaml"
+GOLDEN = Path(__file__).parent.parent / "fixtures" / "golden_qa_AFE7950.yaml"
 
 # Minimal valid GIF for the 511 plots we don't need real pixels for.
 TINY_GIF = (

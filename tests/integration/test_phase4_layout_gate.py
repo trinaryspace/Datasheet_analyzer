@@ -37,23 +37,36 @@ def _squash_text(text: str) -> str:
 
 
 REPO = Path(__file__).parent.parent.parent
+FIXTURES = Path(__file__).parent.parent / "fixtures"
+GATE_PDFS = FIXTURES / "pdf"
 
+# Ungated fixtures (SPEC "Testing Decisions"): the four PDFs are committed
+# under tests/fixtures/pdf/ — a missing fixture is a hard failure, never a
+# skip. Ticket 07 kickoff decision: root copies (AGENTS.md build examples)
+# stay as the documented working location; git stores the identical blobs
+# once.
 GATE: dict[str, dict] = {
     "AD9081": {
-        "pdf": REPO / "ad9081.pdf", "part": "AD9081", "override": "", "vendor": "adi",
+        "pdf": GATE_PDFS / "ad9081.pdf", "part": "AD9081", "override": "", "vendor": "adi",
+        "golden": FIXTURES / "golden_qa_AD9081.yaml",
         "noise": ["of 45", "analog.com", "Rev. 0 |", "Data Sheet"],
         "content": ["12 GSPS", "Full-scale output current range",
                     "Test Conditions/Comments"],
     },
     "LM741": {
-        "pdf": REPO / "lm741.pdf", "part": "LM741", "override": "unknown",
+        "pdf": GATE_PDFS / "lm741.pdf", "part": "LM741", "override": "unknown",
         "vendor": "unknown",
+        "golden": FIXTURES / "golden_qa_LM741.yaml",
         "noise": ["www.ti.com", "Submit Documentation Feedback", "Copyright (c)",
                   "Product Folder Links"],
         "content": ["overload protection", "Absolute Maximum Ratings"],
     },
     "QPA1003P": {
-        "pdf": REPO / "QPA1003P.pdf", "part": "QPA1003P", "override": "", "vendor": "qorvo",
+        "pdf": GATE_PDFS / "QPA1003P.pdf", "part": "QPA1003P", "override": "", "vendor": "qorvo",
+        # honest text-only golden (0 tables/0 specs/0 figures) — record:
+        # spec/plot question counts stay 0 so "100%" means text at 100%
+        # and the honest zeros asserted by the corpus tests
+        "golden": FIXTURES / "golden_qa_QPA1003P.yaml",
         # the sniffed revision lands in provenance comments ("<!-- source:
         # Rev. I p.1 -->", lm741's SNOSC25D precedent) so only the full
         # furniture line is checked, never the bare "Rev. I" token
@@ -61,7 +74,8 @@ GATE: dict[str, dict] = {
         "content": ["wideband high power MMIC", "matched to 50"],
     },
     "HMC520A": {
-        "pdf": REPO / "hmc520a.pdf", "part": "HMC520A", "override": "", "vendor": "adi",
+        "pdf": GATE_PDFS / "hmc520a.pdf", "part": "HMC520A", "override": "", "vendor": "adi",
+        "golden": FIXTURES / "golden_qa_HMC520A.yaml",
         "noise": ["of 32", "Rev. A | Page", "| Page"],
         "content": ["Rev. 0 to Rev. A", "Conversion loss"],
     },
@@ -70,11 +84,10 @@ GATE: dict[str, dict] = {
 
 @pytest.fixture(scope="module")
 def gate(tmp_path_factory):
-    """One offline corpus per gate part; skip-guarded like AFE7950."""
+    """One offline corpus per gate part. Ungated: fixtures are committed."""
     results: dict[str, object] = {}
     for name, spec in GATE.items():
-        if not spec["pdf"].exists():
-            pytest.skip(f"{spec['pdf'].name} not present at repo root")
+        assert spec["pdf"].exists(), f"gate fixture missing: {spec['pdf']}"
         tmp = tmp_path_factory.mktemp(f"gate-{name}")
         settings = Settings(parts_dir=tmp / "parts", cache_dir=tmp / ".cache").resolve()
         results[name] = build_part(
@@ -205,9 +218,7 @@ class TestGateTables:
         import fitz
 
         result = gate["AD9081"]
-        pdf = REPO / "ad9081.pdf"
-        if not pdf.exists():
-            pytest.skip("ad9081.pdf not present at repo root")
+        pdf = GATE["AD9081"]["pdf"]
         page_texts = {
             p.number + 1: _squash_text(p.get_text())
             for p in fitz.open(str(pdf))
@@ -255,6 +266,27 @@ class TestGateTables:
             assert result.manifest.stats.n_tables == 0, name
             assert len(_blob(result)) > 500, name
 
+    def test_qpa1003p_honest_zeros_are_recorded(self, gate):
+        # ticket-07 kickoff decision: QPA1003P's corpus carries 0 spec
+        # records and 0 plot files — its golden is text-only and the zeros
+        # are asserted here, so "100%" can never cover a fabricated spec
+        # or plot path (the captionless-era/title-anchored work is
+        # re-ticketed to 09)
+        result = gate["QPA1003P"]
+        assert result.manifest.stats.n_specs == 0
+        assert result.manifest.stats.n_figures == 0
+        assert result.manifest.stats.n_plot_files == 0
+        spec_files = list((result.part_dir / "docs").glob("*/specs.json"))
+        assert not spec_files or all(
+            json.loads(p.read_text(encoding="utf-8"))["records"] == []
+            for p in spec_files
+        )
+        plot_files = list((result.part_dir / "docs").glob("*/plots.json"))
+        assert not plot_files or all(
+            json.loads(p.read_text(encoding="utf-8"))["plots"] == []
+            for p in plot_files
+        )
+
 
 class TestGateFootnotesAndFigures:
     """Ticket 05: footnotes from font geometry + figures rendered from
@@ -297,35 +329,9 @@ class TestGateFootnotesAndFigures:
         answer = format_answer([rec])
         assert "frequency dependent due to DAC sinc response" in answer
 
-    def test_gate_verifies_100_percent_with_ad9081_golden(self, gate):
-        # the ticket's golden question citing footnote text verifies at 100%
-        # (SPEC story 26 mechanics; the full per-part golden rollout is 07)
-        from datasheet_analyzer.evalh.citations import (
-            summarize,
-            verify_questions,
-        )
-        from datasheet_analyzer.evalh.golden import load_golden
-        from datasheet_analyzer.extract.pdf_structure import page_texts
-
-        result = gate["AD9081"]
-        pdf = REPO / "ad9081.pdf"
-        if not pdf.exists():
-            pytest.skip("ad9081.pdf not present at repo root")
-        questions = load_golden(REPO / "tests" / "fixtures" / "golden_qa_AD9081.yaml")
-        res = verify_questions(questions, result.part_dir, page_texts(pdf))
-        summary = summarize(res)
-        assert summary["passed"] == summary["total"] == len(questions)
-        # every text question matched a covering section file (plot questions
-        # short-circuit by design and are checked against plots.json instead)
-        unclaimed = set(summary["questions_without_covering_section"])
-        assert unclaimed <= {q.id for q in questions if q.plot_query}
-
     def test_gate_figures_render_as_files_and_plot_query_finds_them(self, gate):
         from datasheet_analyzer.query import find_plots
 
-        pdf = REPO / "ad9081.pdf"
-        if not pdf.exists():
-            pytest.skip("ad9081.pdf not present at repo root")
         result = gate["AD9081"]
         assert result.manifest.stats.n_figures >= 100
         files = list((result.part_dir / "docs").glob("*/figures/*/*.png"))
@@ -360,3 +366,58 @@ class TestGateFootnotesAndFigures:
         assert len(plots) >= 3 and len(files) == len(plots)
         for rec in plots:
             assert rec["file"] and (result.part_dir / rec["file"]).stat().st_size > 1024
+
+
+class TestGateGoldens:
+    """Ticket 07: per-part golden benchmarks, 100% on text + --specs +
+    plot lookups for every gate part in a plain offline pytest run.
+    Ground truth of every golden_qa_<PART>.yaml came from printed page
+    text (page_texts) and was author-probed against the built corpus
+    before shipping; these tests prove the seam itself."""
+
+    @pytest.mark.parametrize("name", ["AD9081", "LM741", "QPA1003P", "HMC520A"])
+    def test_golden_verifies_100_percent_on_text(self, gate, name):
+        from datasheet_analyzer.evalh.citations import (
+            summarize,
+            verify_questions,
+        )
+        from datasheet_analyzer.evalh.golden import load_golden
+        from datasheet_analyzer.extract.pdf_structure import page_texts
+
+        spec = GATE[name]
+        questions = load_golden(spec["golden"])
+        assert questions, f"{name}: golden must not be empty"
+        res = verify_questions(questions, gate[name].part_dir, page_texts(spec["pdf"]))
+        summary = summarize(res)
+        assert summary["passed"] == summary["total"] == len(questions), name
+        unclaimed = set(summary["questions_without_covering_section"])
+        assert unclaimed <= {q.id for q in questions if q.plot_query}, name
+
+    @pytest.mark.parametrize("name", ["AD9081", "LM741", "QPA1003P", "HMC520A"])
+    def test_dsa_verify_end_to_end_100_percent(self, gate, name, monkeypatch, capsys):
+        # the user-facing command: per-part golden discovery (no --golden),
+        # full text + spec-query + plot-query verification against the
+        # built corpus, zero exit. QPA1003P's spec block honestly prints
+        # 0/0 (text-only golden: no spec_query entries exist to verify).
+        from datasheet_analyzer import cli
+        from datasheet_analyzer.config import Settings
+        from datasheet_analyzer.evalh.golden import load_golden
+
+        spec = GATE[name]
+        result = gate[name]
+        settings = Settings(
+            parts_dir=result.part_dir.parent, cache_dir=result.part_dir.parent / ".cache"
+        ).resolve()
+        monkeypatch.setattr("datasheet_analyzer.cli.get_settings", lambda: settings)
+        code = cli.main(["verify", "--part", name, "--specs", "--pdf", str(spec["pdf"])])
+        assert code == 0, name
+        out = capsys.readouterr().out
+        questions = load_golden(spec["golden"])
+        assert f"**{len(questions)}/{len(questions)} passed" in out, name
+        # summary counts are derived from the benchmark itself, so a golden
+        # edit can never silently drift the expectations above
+        n_spec = sum(1 for q in questions if q.spec_query)
+        n_plot = sum(1 for q in questions if q.plot_query)
+        assert f"**{n_spec}/{n_spec} passed" in out, name
+        if n_plot:
+            assert f"**{n_plot}/{n_plot} passed" in out, name

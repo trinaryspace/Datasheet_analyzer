@@ -1,13 +1,20 @@
-# Golden Q&A set for the AD9081 datasheet (phase-4 gate PDF, pdf_layout path).
-# Minimal set shipped by ticket 05 to prove the footnote-citation and
-# figure-render answer paths at the verify seam; every expected_substring
-# was verified against the printed PDF page text. The full per-part golden
-# benchmark rollout (all parts, spec/plot queries, hard-fail wiring) is
-# ticket 07.
+# Golden Q&A set for the AD9081 datasheet (phase-4 gate PDF, pdf_layout
+# path). Set shipped by ticket 05 (footnote-citation + figure-render
+# answer paths) and extended by ticket 07 with a provably-complete spec
+# query + hard-fail wiring; every expected_substring was verified against
+# the printed PDF page text.
 #
 # q1 cites text that exists in the corpus ONLY because ticket 05 attaches
 # footnote bodies to their table (footnote 1 of "Table 3. DAC DC
 # Specifications", page 5).
+#
+# q2's original spec_query was removed at ticket 07: it had never been
+# executed by any test, and the CLI's `--specs` check proved it cannot
+# pass — the row's value cells live on child rows (the parent record
+# honestly keeps empty min/typ/max, per the "values on child rows" rule),
+# so no record for that symbol carries "3.3"/"dBm". The footnote answer
+# path it guards stays text-verified here; q3-spec carries a spec_query
+# whose records resolve complete values.
 questions:
   - id: q1-dc-coupled-fullscale-limit
     question: Why is the full-scale output current limited for dc-coupled applications?
@@ -22,8 +29,16 @@ questions:
                           "2:1 balun", "3.3", "dBm"]
     pages: [5]
     kind: direct
-    spec_query: {symbol: "Full-Scale Sine Wave Output Power"}
-    notes: the symbol cell carries the glued superscript citation "AC Coupling2"
+    notes: the symbol cell carries the glued superscript citation "AC Coupling2";
+      values live on child rows, so no spec_query here (see header note)
+
+  - id: q3-spec-gain-matching
+    question: What is the gain matching of the DAC channels with AC coupling?
+    expected_substrings: ["Gain Matching", "0.7", "% FSR"]
+    pages: [5]
+    kind: direct
+    spec_query: {symbol: "Gain Matching"}
+    notes: Table 3 row with complete min/typ/max on the parent record
 
   - id: p1-hd2-6gsps
     question: Which figure shows HD2 vs fOUT over digital scale at a 6 GSPS DAC sample rate?

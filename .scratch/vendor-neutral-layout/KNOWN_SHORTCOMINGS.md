@@ -1,9 +1,10 @@
-# Known shortcomings — vendor-neutral layout (as of ticket 06)
+# Known shortcomings — vendor-neutral layout (as of ticket 07)
 
 Written after ticket 03 (tables + reconstruction gate) landed at `84ba05b`
 and kept current through ticket 04 (best-scoring retry ladder + `dsa
-status` stats), ticket 05 (footnotes + figures vertical) and ticket 06
-(semantics genericization). Honest ledger
+status` stats), ticket 05 (footnotes + figures vertical), ticket 06
+(semantics genericization) and ticket 07 (gate provisioning + per-part
+golden Q&A, scope-reconciled at the 06/07/09 kickoff). Honest ledger
 of things that are partial, heuristic, or instrumented-but-thin, so they
 can be circled back to. Grouped by where they likely belong; severity =
 impact on the multi-vendor claim, not effort.
@@ -23,7 +24,9 @@ impact on the multi-vendor claim, not effort.
   (lexicons + positional inference, SPEC stories 22–25) and grid
   materialization is a reconstruction design that needs its own
   probe-backed synthetic fixture set, not a lexicon change (recorded in
-  the 06 issue file). → ticket 07 (grid materialization), high.
+  the 06 issue file). Re-ticketed at the 06/07/09 kickoff: the 07 letter
+  is gate provisioning + per-part golden Q&A, not layout materialization.
+  → ticket 09 (grid materialization), high.
 - **Captionless-era tables get nothing.** lm741 (old TI) and QPA1003P
   (Qorvo) have no "Table N." captions — their tables are heading-anchored —
   so they yield **0 tables / 0 specs**, honestly, but with zero
@@ -31,8 +34,9 @@ impact on the multi-vendor claim, not effort.
   (AD9081 29/29, HMC520A 6/6). Heading-anchored hypotheses would need
   care to not hallucinate (SPEC story 10: captionless doubles must stay
   paragraphs — that guard is a rejection-gate design, bigger than a
-  lexicon change). → ticket 07, high (06/07 boundary decision recorded
-  in the 06 issue file).
+  lexicon change). → ticket 09, high (06/07/09 boundary decision
+  recorded in the 07 issue file; the 06 issue file pointer that said
+  "ticket 07" is corrected).
 - **Fixed in ticket 05: footnote bodies attach to their table with cited
   markers.** Superscript citation markers are detected from span geometry
   (size ≤ 0.82× the row's max span, glyph-box center above the row's
@@ -65,12 +69,23 @@ impact on the multi-vendor claim, not effort.
   ≥12 pt apart are advice edges at all — a genuinely wide cell is then
   *declared* as separate columns by the engine's own rule (see the header
   anchor tau item below). The selection rule is a guard, not a guarantee.
-- **No per-part golden Q&A for non-TI parts yet.** `golden_qa.yaml`
-  covers AFE7950 only. Ticket 05 shipped a *minimal* `golden_qa_AD9081.yaml`
-  (footnote-citing + spec + plot questions, verified 100% offline in the
-  gate test) as the boundary decision — the full per-part benchmark
-  rollout (all parts, `dsa verify` hard-fail wiring, SPEC story 26) is
-  ticket 07, medium.
+- **Fixed in ticket 07: per-part golden benchmarks + `dsa verify`
+  hard-fail** (SPEC story 26). Every part resolves its own
+  `tests/fixtures/golden_qa_<PART>.yaml` (the former `golden_qa.yaml` is
+  now `golden_qa_AFE7950.yaml`); a part without a benchmark (or a golden
+  with zero questions) fails `dsa verify` loudly with a non-zero exit —
+  never a silent zero-question pass. Shipped benchmarks, all verified
+  100% offline in the ungated gate test: AFE7950 (19 Q),
+  golden_qa_AD9081.yaml (4 Q — ticket-05 minimal set plus a provably-
+  complete spec_query added at 07 after the CLI `--specs` check proved
+  the original never-executed symbol query hits a child-row-valued table),
+  LM741 (12 Q — text
+  + 2 plot, spec n/a: 0 tables), QPA1003P (11 Q — text-only by design:
+  0 tables/0 figures/0 specs recorded honest, decision in the 07 issue
+  file), HMC520A (13 Q — text + 3 spec + 3 plot). AFE7953 (second TI
+  reference part) still has no benchmark of its own — `dsa verify
+  --part AFE7953` now hard-fails instead of silently running the AFE7950
+  golden, medium.
 - **Interleaved footnotes stay paragraphs.** A footnote line that sits
   *between* grid rows (HMC520A p4's "1 See JEDEC ..." thermal note inside
   the Table-3 region) is dropped from the grid but never becomes a
@@ -89,9 +104,11 @@ impact on the multi-vendor claim, not effort.
   with real raster figures, low.
 - **QPA1003P yields zero figures** — it has no "Figure N." captions at
   all (its block diagram is captionless), so the honest result is an
-  empty plots.json. Same class as the captionless-tables gap: title-
-  anchored figures would need the same care. → ticket 07, low (rides
-  along with the heading-anchored-hypotheses work).
+  empty plots.json (kept honest by the per-part golden: QPA1003P's
+  benchmark is text-only and its 0/0 spec+plot counts are asserted).
+  Same class as the captionless-tables gap: title-anchored figures would
+  need the same care. → ticket 09, low (rides along with the
+  heading-anchored-hypotheses work).
 
 ## Citation and verification nuances
 
@@ -102,7 +119,7 @@ impact on the multi-vendor claim, not effort.
   on later pages — every one is found within ±2 pages (the block's
   span). The corpus-verify gate therefore asserts ≥80% rather than
   100%. Per-row page attribution inside merged grids is the fix.
-  → ticket 07 (citations), medium.
+  → ticket 09 (citations), medium.
 - **Pin verification has a text-rendering blind spot.** Glued
   superscript markers render differently in page text than in cells
   (e.g. 'Maximum Aperture Jitter2' on p9 verifies neither way). 1/189

@@ -1,9 +1,10 @@
 """Golden Q&A loader + report renderer.
 
-The golden set lives in tests/fixtures/golden_qa.yaml and doubles as the
-project's datasheet QA benchmark (no public one exists). `verify` mode is
-deterministic; the optional `qa` mode (needs an LLM key) simulates an agent
-answering from the corpus and measures tokens consumed.
+Golden sets live per part in tests/fixtures/golden_qa_<PART>.yaml (the
+AFE7950 benchmark doubled as the project's datasheet QA benchmark; no
+public one exists). `verify` mode is deterministic; the optional `qa`
+mode (needs an LLM key) simulates an agent answering from the corpus and
+measures tokens consumed.
 """
 
 from __future__ import annotations

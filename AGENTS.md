@@ -37,12 +37,14 @@ dsa build ad9081.pdf --part AD9081 --vendor adi         # explicit vendor overri
 dsa batch datasheets/                                   # one part corpus per PDF in a dir (serial today)
 dsa verify --part AFE7950 --pdf afe7950.pdf             # golden Q&A + token economics
 dsa verify --part AFE7950 --pdf afe7950.pdf --specs     # + spec_query checks
+# verify resolves golden_qa_<PART>.yaml per part (tests/fixtures) and
+# hard-fails (exit 2) when a part has no benchmark — no silent zero-question pass
 dsa query --part AFE7950 --symbol DACRES                # deterministic spec lookup
 dsa add-doc register_map.pdf --part AFE7950 --type register_map
 dsa plots --part AFE7950 --q "Output Fullscale"
 dsa status                                             # vendor + detection evidence + per-doc extraction stats
 
-# test (fully offline, ~8 s)
+# test (fully offline, ~85 s — the ungated phase-4 gate builds four real PDFs)
 python -m pytest tests/ -q
 python -m ruff check src tests
 ```
@@ -117,13 +119,19 @@ parts/<PART>/
 4. **Tests are hermetic.** No network (ReplayFetcher/MappingFetcher), no LLM
    (FakeClient), no reliance on machine state. Real-input coverage comes from
    recorded fixtures (`tests/fixtures/recorded_http/`, 41 files) + the real
-   `afe7950.pdf` / `afe7953.pdf` and the four Phase-4 gate PDFs
-   (`ad9081.pdf`/`lm741.pdf`/`QPA1003P.pdf`/`hmc520a.pdf`, skip-guarded;
-   `pdf_layout` is offline by construction). Synthetic PDFs are built
-   in-test via fitz.
-5. **Golden Q&A is the objective function.** `tests/fixtures/golden_qa.yaml`
-   (19 questions) is the benchmark (no public one exists). Extend it whenever
-   new answer paths ship; `dsa verify` must stay at 100% for supported paths.
+   `afe7950.pdf` / `afe7953.pdf` (skip-guarded) and the four Phase-4 gate
+   PDFs (`tests/fixtures/pdf/` — committed, **ungated**: a missing fixture
+   is a hard test failure; `pdf_layout` is offline by construction; the
+   repo-root copies stay the documented `dsa build` working files).
+   Synthetic PDFs are built in-test via fitz.
+5. **Golden Q&A is the objective function.** Per-part benchmarks at
+   `tests/fixtures/golden_qa_<PART>.yaml` (the AFE7950 set — 19 questions —
+   is the historical benchmark; no public one exists). `dsa verify`
+   discovers a part's benchmark by name and hard-fails when it is missing
+   or empty — every corpus is provably verified or provably not. Extend
+   the sets whenever new answer paths ship; `dsa verify` must stay at 100%
+   for supported paths (gate parts: AD9081 4 Q, LM741 12 Q, QPA1003P 11 Q
+   text-only, HMC520A 13 Q).
 6. **Caching keyed by identity.** Extraction cache = (content_hash, backend).
    Schema/version changes that alter output must invalidate via filename or
    embedded version fields.

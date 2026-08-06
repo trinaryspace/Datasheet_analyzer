@@ -1,0 +1,81 @@
+# Golden Q&A set for the LM741 datasheet (SNOSC25D, phase-4 gate PDF,
+# pdf_layout path). Old-TI captionless-era part: 0 tables / 0 spec records,
+# 3 figure captions (2 of them covered by plot questions here) — text +
+# plot questions only (recorded decision: spec queries are n/a when a
+# part's corpus honestly has no specs.json records). Every expected_
+# substring was verified against the printed PDF page text (page_texts)
+# AND the built corpus section covering that page.
+questions:
+  - id: q01-features-protection
+    question: What protection and latch-up behavior does the LM741 feature?
+    expected_substrings: ["Overload Protection on the Input and Output", "No Latch-Up"]
+    pages: [1]
+    kind: direct
+
+  - id: q02-general-purpose-description
+    question: What is the LM741 and which industry standard does it improve on?
+    expected_substrings: ["general-purpose operational", "LM709"]
+    pages: [1]
+    kind: direct
+
+  - id: q03-supply-voltage
+    question: What are the absolute maximum supply voltages for the LM741 and LM741C?
+    expected_substrings: ["±22", "±18"]
+    pages: [4]
+    kind: direct
+
+  - id: q04-power-dissipation
+    question: What is the absolute maximum power dissipation?
+    expected_substrings: ["500", "mW"]
+    pages: [4]
+    kind: direct
+
+  - id: q05-differential-input-voltage
+    question: What is the absolute maximum differential input voltage?
+    expected_substrings: ["±30", "V"]
+    pages: [4]
+    kind: direct
+
+  - id: q06-input-voltage-range
+    question: What is the absolute maximum input voltage?
+    expected_substrings: ["±15", "V"]
+    pages: [4]
+    kind: direct
+
+  - id: q07-input-offset-voltage
+    question: What is the input offset voltage of the LM741 at TA = 25°C?
+    expected_substrings: ["Input offset voltage", "5", "mV"]
+    pages: [5]
+    kind: direct
+
+  - id: q08-input-resistance
+    question: What is the typical input resistance of the LM741?
+    expected_substrings: ["Input resistance", "2", "MΩ"]
+    pages: [5]
+    kind: direct
+
+  - id: q09-common-mode-rejection
+    question: What is the common-mode rejection ratio of the LM741A?
+    expected_substrings: ["Common-mode rejection ratio", "80", "95", "dB"]
+    pages: [6]
+    kind: direct
+
+  - id: q10-single-or-dual-supply
+    question: Can the LM741 operate from a single power supply?
+    expected_substrings: ["single or dual power supply"]
+    pages: [7]
+    kind: direct
+
+  - id: p1-noninverting-amplifier-circuit
+    question: Which figure shows the LM741 noninverting amplifier circuit?
+    expected_substrings: ["LM741 Noninverting Amplifier Circuit"]
+    pages: [9]
+    kind: plot
+    plot_query: {caption_contains: "LM741 Noninverting Amplifier Circuit"}
+
+  - id: p2-application-waveforms
+    question: Which figure shows the waveforms of the LM741 noninverting amplifier circuit?
+    expected_substrings: ["Waveforms for LM741 Noninverting Amplifier Circuit"]
+    pages: [10]
+    kind: plot
+    plot_query: {caption_contains: "Waveforms for LM741 Noninverting Amplifier Circuit"}

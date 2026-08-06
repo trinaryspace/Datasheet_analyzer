@@ -19,7 +19,7 @@ from datasheet_analyzer.query import SpecQuery
 
 RECORDED = Path(__file__).parent.parent / "fixtures" / "recorded_http"
 RECORDED_BIN = Path(__file__).parent.parent / "fixtures" / "recorded_http_bin"
-GOLDEN = Path(__file__).parent.parent / "fixtures" / "golden_qa.yaml"
+GOLDEN = Path(__file__).parent.parent / "fixtures" / "golden_qa_AFE7950.yaml"
 
 TINY_GIF = (
     b"GIF89a\x01\x00\x01\x00\x00\x00\x00!\xf9\x04\x00\x00\x00\x00\x00,"

@@ -1,9 +1,12 @@
 """Shared fixtures and helpers.
 
 Layout:
+- tests/fixtures/pdf/       the four real phase-4 gate PDFs (ungated —
+                            committed fixtures, pdf_layout never touches
+                            the network)
 - tests/fixtures/ti_html/   recorded real TI document-viewer pages (no network in tests)
 - tests/fixtures/synthetic/ hand-built edge-case HTML
-- tests/fixtures/golden_qa.yaml  the golden Q&A eval set
+- tests/fixtures/golden_qa_<PART>.yaml  per-part golden Q&A eval sets
 """
 
 from __future__ import annotations
@@ -16,15 +19,17 @@ import pytest
 FIXTURES = Path(__file__).parent / "fixtures"
 TI_HTML = FIXTURES / "ti_html"
 SYNTHETIC = FIXTURES / "synthetic"
-GOLDEN_QA = FIXTURES / "golden_qa.yaml"
+GATE_PDFS = FIXTURES / "pdf"
+GOLDEN_QA = FIXTURES / "golden_qa_AFE7950.yaml"
 REPO_ROOT = Path(__file__).parent.parent
 AFE7950_PDF = REPO_ROOT / "afe7950.pdf"
-# Phase 4 gate: real PDFs at the repo root, ungated-offline by construction
-# (pdf_layout never touches the network); skip-guarded like AFE7950_PDF.
-AD9081_PDF = REPO_ROOT / "ad9081.pdf"
-LM741_PDF = REPO_ROOT / "lm741.pdf"
-QPA1003P_PDF = REPO_ROOT / "QPA1003P.pdf"
-HMC520A_PDF = REPO_ROOT / "hmc520a.pdf"
+# Phase 4 gate: real PDFs under tests/fixtures/pdf, ungated by
+# construction (committed fixtures; pdf_layout never touches the
+# network). AFE7950_PDF above stays skip-guarded like the TI path.
+AD9081_PDF = GATE_PDFS / "ad9081.pdf"
+LM741_PDF = GATE_PDFS / "lm741.pdf"
+QPA1003P_PDF = GATE_PDFS / "QPA1003P.pdf"
+HMC520A_PDF = GATE_PDFS / "hmc520a.pdf"
 
 
 @pytest.fixture
