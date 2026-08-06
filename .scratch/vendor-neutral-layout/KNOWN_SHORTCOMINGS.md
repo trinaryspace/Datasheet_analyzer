@@ -192,7 +192,14 @@ impact on the multi-vendor claim, not effort.
   dotted tokens ("Rev. 1.2") and "Document No."-style ids (a PHASE_4_PLAN
   design seed, unmeasured so far) fall through to the honest "" — the
   shape list is what it is, deliberately not prose-aware, and a "Rev."
-  mention in title-page prose (rare) wins over the title block.
+  mention in title-page prose (rare) wins over the title block. Also:
+  the first page carrying *either* shape is the answer — a page-1 TI
+  doc-id short-circuits a "Rev." token on page 2/3 within the window — so
+  the "Rev-token wins within a page" rule never re-opens an earlier page.
+  Cache note: cached raws embed the acquire-time revision, so ticket 06
+  bumped `pdf_layout` extractor_version tables-05 → tables-06
+  (invariant #6) — resume the lockstep discipline from the Engineering
+  debt section.
   Deterministic, boundary-pinned by synthetic tests in `test_acquire.py`,
   recorded here for the record.
 
