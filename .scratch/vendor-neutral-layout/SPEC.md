@@ -1,7 +1,14 @@
 ---
 title: Vendor-neutral layout core + multi-vendor gate
-labels: [ready-for-agent]
+labels: [shipped]
 ---
+
+**Status: superseded by `Reports/PHASE_4_REPORT.md`** (the measured
+completion record, per the batch-build convention — a shipped spec closes
+as superseded by its report, never by assertion). Tickets 01–07 shipped
+on `feat/pdf-layout-paragraph-core`; the open items it defers to ticket 09
+(layout materialization) and the heuristics ledger continue to live in
+`KNOWN_SHORTCOMINGS.md` and `issues/09-layout-materialization.md`.
 
 ## Problem Statement
 
@@ -245,8 +252,8 @@ must all build with 100% golden verification.
   ADR 0003 (layout core supersedes the no-layout-analysis stance),
   ADR 0004 (honest unnumbered section identity); batch ADR 0001 carries the
   consistency addendum. Full working plan: `Reports/PHASE_4_PLAN.md`
-  (to be superseded by `PHASE_4_REPORT.md` with measured token economics
-  and extraction stats once shipped).
+  (superseded by `Reports/PHASE_4_REPORT.md`, this spec's completion
+  record — measured token economics and extraction stats per gate part).
 - Domain vocabulary refreshed in CONTEXT.md: Vendor, VendorProfile, Layout
   core, Furniture.
 - Probe facts underpinning the design: AD9081 tables carry vertical rulings

@@ -20,7 +20,6 @@ FIXTURES = Path(__file__).parent / "fixtures"
 TI_HTML = FIXTURES / "ti_html"
 SYNTHETIC = FIXTURES / "synthetic"
 GATE_PDFS = FIXTURES / "pdf"
-GOLDEN_QA = FIXTURES / "golden_qa_AFE7950.yaml"
 REPO_ROOT = Path(__file__).parent.parent
 AFE7950_PDF = REPO_ROOT / "afe7950.pdf"
 # Phase 4 gate: real PDFs under tests/fixtures/pdf, ungated by

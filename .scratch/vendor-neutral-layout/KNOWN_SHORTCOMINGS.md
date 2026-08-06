@@ -1,4 +1,4 @@
-# Known shortcomings — vendor-neutral layout (as of ticket 07)
+# Known shortcomings — vendor-neutral layout (as of ticket 08)
 
 Written after ticket 03 (tables + reconstruction gate) landed at `84ba05b`
 and kept current through ticket 04 (best-scoring retry ladder + `dsa
@@ -8,6 +8,21 @@ golden Q&A, scope-reconciled at the 06/07/09 kickoff). Honest ledger
 of things that are partial, heuristic, or instrumented-but-thin, so they
 can be circled back to. Grouped by where they likely belong; severity =
 impact on the multi-vendor claim, not effort.
+
+## Fixed in ticket 08 (docs catch-up, not engine)
+
+The shipped-docs-and-report ticket (08) removed the last stale doctrine —
+README's "other vendors need a new extraction backend" caveat and the
+`detect_vendor` docstring's "backend does not exist yet" line, both dead
+since the engine shipped — generalized the AGENTS.md ohm gotcha to the
+both-glyph rule, refreshed the PyMuPDF role line (it *is* the pdf_layout
+extraction floor), and shipped `Reports/PHASE_4_REPORT.md` as the
+measured completion record superseding the plan and this SPEC. Every
+number in the report was re-measured from repo state on the day it was
+written. Nothing listed in this ledger changed behavior; all open items
+keep their ticket-09 pointers, and the report does not overstate them
+(the ≥80% pin band and the captionless-era 0-table corpora stay OPEN
+here).
 
 ## Functional gaps
 

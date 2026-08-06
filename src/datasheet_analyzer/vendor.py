@@ -85,8 +85,9 @@ def detect_vendor(path: Path) -> tuple[str, str]:
     """Brand-mark detection on page-1 text, then filename.
 
     Returns ``(vendor, evidence)``. Nothing matched -> ``(DEFAULT_VENDOR, "")``:
-    unknown PDFs keep today's routing instead of picking up a backend that
-    does not exist yet (the layout backend lands with the layout engine).
+    unknown PDFs keep the project default routing, recorded honestly with
+    empty evidence; a brand-less PDF that needs a different chain pins
+    explicitly via ``--vendor`` (the LM741 gate fixture's decision).
     """
     from datasheet_analyzer.extract.pdf_structure import first_page_text
 

@@ -25,9 +25,12 @@ with every answer traceable to a printed page number.
 
 Pipeline: `PDF → acquire → extract → structure → enrich → publish → eval`
 
-- **Extract** — primary backend pulls TI's document-viewer HTML (real tables,
-  MathML, footnotes — no OCR, no hallucination). A degraded `pdf_text` backend
-  handles register maps / errata / app notes (paragraphs only).
+- **Extract** — TI datasheets use TI's document-viewer HTML (real tables,
+  MathML, footnotes — no OCR, no hallucination); every other vendor and
+  era routes to a vendor-neutral offline layout engine (`pdf_layout`,
+  PyMuPDF-only, zero vendor assumptions — tables, specs, plots, page
+  citations straight from the PDF). A degraded `pdf_text` backend handles
+  register maps / errata / app notes (paragraphs only).
 - **Structure** — HTML tables become atomic, span-expanded blocks with their
   conditions preamble + footnotes attached; sections get page ranges from the
   PDF's printed TOC; tables get exact pinned pages where possible.
@@ -74,6 +77,12 @@ dsa build afe7953.pdf --part AFE7953
 # (no golden_qa_AFE7953.yaml exists — `dsa verify --part AFE7953` fails
 # loudly instead of running another part's benchmark; per-part goldens
 # live in tests/fixtures/golden_qa_<PART>.yaml)
+
+# Non-TI part: vendor detected and pinned from page-1 brand text, built
+# and verified fully offline through the pdf_layout floor
+dsa build ad9081.pdf --part AD9081 --vendor adi         # ADI part, explicit pin
+dsa verify --part AD9081 --pdf tests/fixtures/pdf/ad9081.pdf --specs
+# (A brand-less PDF pins --vendor unknown instead — see the LM741 gate fixture)
 
 # One invocation builds every PDF in a directory as its own part corpus
 # (part = uppercase filename stem; flat scan; failing jobs are isolated)
@@ -190,19 +199,24 @@ for supported paths.
 
 ## Caveats
 
-- **Content path is TI-specific.** Other vendors need a new extraction
-  backend (`ExtractionBackend` protocol in `extract/base.py`); non-datasheet
-  PDFs already work via `pdf_text`.
+- **Content path is vendor-neutral.** TI keeps its HTML viewer path;
+  ADI / Qorvo / older TI / vendor N+1 datasheets route to the offline
+  `pdf_layout` floor (PyMuPDF-only, no per-vendor layout rules — adding
+  a vendor is a brand-lexicon data change, not engine code). Non-datasheet
+  PDFs (register maps / errata / app notes) use `pdf_text` for any vendor.
 - Table page pinning is exact where the table is locatable in PDF page text;
   otherwise the table honestly keeps its section-level page range.
 - Spec values are verbatim strings — no float parsing or numeric comparison.
-- **PyMuPDF is AGPL-3.0** (used for TOC/identity/verification, not content
-  extraction). Fine for local research; review before commercial use.
+- **PyMuPDF is AGPL-3.0** — it is the engine behind the offline
+  `pdf_layout` extraction floor, and TI's HTML path uses it for
+  TOC/identity/verification. Fine for local research; review before
+  commercial use.
 
 ## Repository docs
 
 - `AGENTS.md` — architecture contract, invariants, module map
-- `PHASE_1_REPORT.md` / `PHASE_2_REPORT.md` / `PHASE_3_REPORT.md` — measured
-  results per phase (all three phases are shipped)
-- `PHASE_2_PLAN.md` / `PHASE_3_PLAN.md` — completed execution contracts,
-  superseded by their reports
+- `PHASE_1_REPORT.md` / `PHASE_2_REPORT.md` / `PHASE_3_REPORT.md` /
+  `PHASE_4_REPORT.md` — measured results per phase (all four phases are
+  shipped; PHASE 4 covers the vendor-neutral layout core + four-part gate)
+- `PHASE_2_PLAN.md` / `PHASE_3_PLAN.md` / `PHASE_4_PLAN.md` — completed
+  execution contracts, superseded by their reports

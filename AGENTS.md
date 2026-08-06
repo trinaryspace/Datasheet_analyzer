@@ -2,9 +2,10 @@
 
 Read this before writing any code in this repo. It is the architecture
 contract: what exists, the invariants that must not be broken, and the
-conventions every change must follow. Phases 1–3 are shipped; measured
-results live in `PHASE_1_REPORT.md`, `PHASE_2_REPORT.md`, `PHASE_3_REPORT.md`
-(the old `PHASE_2_PLAN.md` / `PHASE_3_PLAN.md` are superseded completion
+conventions every change must follow. Phases 1–4 are shipped; measured
+results live in `PHASE_1_REPORT.md`, `PHASE_2_REPORT.md`, `PHASE_3_REPORT.md`,
+`PHASE_4_REPORT.md` (the old `PHASE_2_PLAN.md` / `PHASE_3_PLAN.md` /
+`PHASE_4_PLAN.md` are superseded completion
 records).
 
 ## What this is
@@ -20,6 +21,17 @@ Reference parts (built corpora under `parts/`):
 | AFE7950 | `afe7950.pdf` | SBASA41E | 146 | 39 | 619 | 514 |
 | AFE7953 | `afe7953.pdf` | SBASAN1A | 134 | 39 | 536 | 492 |
 
+Gate parts (built in-tests from the ungated `tests/fixtures/pdf/` copies; measured in `PHASE_4_REPORT.md`):
+
+| Part | Vendor | Revision | Pages | Sections | Tables acc/rej | Specs | Plot files | Verify |
+|---|---|---|---|---|---|---|---|---|
+| AD9081 | adi | Rev. 0 | 45 | 34 | 29/0 | 547 | 100 | 4 Q @ 100% |
+| LM741 | unknown* | SNOSC25D | 17 | 40 | 0/0 | 0 | 3 | 12 Q @ 100% |
+| QPA1003P | qorvo | Rev. I | 20 | 20 | 0/0 | 0 | 0 | 11 Q @ 100% |
+| HMC520A | adi | Rev. A | 32 | 36 | 6/0 | 30 | 107 | 13 Q @ 100% |
+
+*LM741 carries no page-1 brand mark; the gate pins it `--vendor unknown` (recorded as cli-override evidence).
+
 Pipeline: `PDF → acquire → extract → structure → enrich → publish → eval`
 
 ## Commands (verified, Git Bash on Windows)
@@ -34,6 +46,8 @@ source .venv/Scripts/activate       # puts `dsa` and `python` on PATH
 dsa build afe7950.pdf --part AFE7950                    # corpus + specs.json + plots.json
 dsa build afe7953.pdf --part AFE7953                    # second reference part
 dsa build ad9081.pdf --part AD9081 --vendor adi         # explicit vendor override (default: detected + pinned)
+dsa build lm741.pdf --part LM741                         # brand-less: pin --vendor unknown for the layout floor
+dsa verify --part AD9081 --pdf tests/fixtures/pdf/ad9081.pdf --specs  # non-TI golden (per-part yaml)
 dsa batch datasheets/                                   # one part corpus per PDF in a dir (serial today)
 dsa verify --part AFE7950 --pdf afe7950.pdf             # golden Q&A + token economics
 dsa verify --part AFE7950 --pdf afe7950.pdf --specs     # + spec_query checks
@@ -144,8 +158,7 @@ parts/<PART>/
 - Python ≥ 3.10. pydantic v2 (models are mutable; attribute assignment OK).
 - Sub/superscripts are glued to base text (`T_A`, `1st`, `850MHz(2)`) — this
   is deliberate; do not "fix" the spacing.
-- TI emits **U+2126 OHM SIGN**, not U+03A9. Preserve verbatim in extraction;
-  canonicalization belongs to derived artifacts (`specs.json`).
+- Both ohm glyphs — **U+2126 OHM SIGN** (TI) and **U+03A9** (ADI, both measured in AD9081) — are preserved verbatim in extraction (do not "fix" the glyph); canonicalization belongs to derived artifacts (`specs.json`).
 - Footnote citation markers are read from `<sup>` elements while HTML
   structure is available — after flattening they're ambiguous. Stored in
   `TableBlock.cited_markers`.
@@ -156,7 +169,9 @@ parts/<PART>/
 - Revision-history-style pages: `h1` headings, id-less containers —
   `parse_section` has a last-resort "first substantial subsection" fallback.
 - Windows: console encoding must be UTF-8 (cli.py does it; tests print unicode
-  freely). PyMuPDF is AGPL-3.0 — used for structure/verification only.
+  freely). PyMuPDF is AGPL-3.0 — it *is* the offline `pdf_layout` extraction floor
+  (fonts, spans, rulings, vector figure regions); TI's HTML path uses it for
+  structure/verification only.
 - Ruff runs on `src` and `tests`; line length 100; keep it clean.
 
 ## Definition of done (every change)
