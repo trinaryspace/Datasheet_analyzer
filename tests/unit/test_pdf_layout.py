@@ -226,7 +226,10 @@ class TestFurniture:
             paras = _paras(_section_md(result, f"{i}-section-{i}"))
             assert paras == [f"Unique body line of page {i}."]
             md = _section_md(result, f"{i}-section-{i}")
-            for noise in ("Data Sheet", "Rev. 0", "of 5"):
+            # "Rev. 0" itself legitimately lives in the provenance comment
+            # (the sniffed revision, ticket 06 — lm741's SNOSC25D precedent
+            # below); the furniture check must use the full footer line
+            for noise in ("Data Sheet", f"Rev. 0 | {i} of 5", "of 5"):
                 assert noise not in md, f"{noise!r} leaked into {i}-section-{i}"
 
     def test_qorvo_style_footer_and_header_stripped(self, tmp_path):

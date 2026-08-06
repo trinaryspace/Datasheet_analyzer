@@ -1261,7 +1261,7 @@ class PdfLayoutBackend:
     """Offline, vendor-neutral layout extraction (PyMuPDF only)."""
 
     name = "pdf_layout"
-    output_version = "tables-05"
+    output_version = "tables-06"
 
     def is_available(self) -> tuple[bool, str]:
         try:

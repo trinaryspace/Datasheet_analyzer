@@ -22,10 +22,14 @@ log = logging.getLogger(__name__)
 
 SOURCES_FILE = "sources.json"
 
+# Doc-type shared lexicon (SPEC story 24): TI prefixes (sbaa/slaa/swra)
+# and ADI user-guide prefixes (ug-####) are app notes; order errata →
+# register → note → datasheet means register/regmap words always beat a
+# ug- prefix. The \b boundary keeps mid-word "ug" from ever counting.
 _HINTS: list[tuple[re.Pattern[str], DocType]] = [
     (re.compile(r"errata", re.IGNORECASE), DocType.ERRATA),
     (re.compile(r"register|regmap|reg[-_ ]?map|programming", re.IGNORECASE), DocType.REGISTER_MAP),
-    (re.compile(r"app[-_ ]?note|sbaa|slaa|swra", re.IGNORECASE), DocType.APP_NOTE),
+    (re.compile(r"app[-_ ]?note|sbaa|slaa|swra|\bug[-_ ]?\d+", re.IGNORECASE), DocType.APP_NOTE),
     (re.compile(r"datasheet|data[-_ ]?sheet|^[a-z0-9]+\.pdf$", re.IGNORECASE), DocType.DATASHEET),
 ]
 

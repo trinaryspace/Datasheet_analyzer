@@ -54,7 +54,10 @@ GATE: dict[str, dict] = {
     },
     "QPA1003P": {
         "pdf": REPO / "QPA1003P.pdf", "part": "QPA1003P", "override": "", "vendor": "qorvo",
-        "noise": ["of 20", "Data Sheet Rev. I", "Rev. I"],
+        # the sniffed revision lands in provenance comments ("<!-- source:
+        # Rev. I p.1 -->", lm741's SNOSC25D precedent) so only the full
+        # furniture line is checked, never the bare "Rev. I" token
+        "noise": ["of 20", "Data Sheet Rev. I, January 2026"],
         "content": ["wideband high power MMIC", "matched to 50"],
     },
     "HMC520A": {
@@ -141,6 +144,20 @@ class TestGateCorpora:
         files = {p.name for p in (result.part_dir / "docs").glob("**/sections/*.md")}
         assert "features.md" in files
         assert "revision-history.md" in files
+
+    def test_gate_revisions_sniffed_from_the_shared_lexicon(self, gate):
+        # SPEC story 23: "Rev. A"-style tokens for ADI/Qorvo-era parts and
+        # TI document ids for TI parts, out of one lexicon — no per-vendor
+        # branches. Measured on the real PDFs: AD9081 "Rev. 0" title line,
+        # HMC520A "Rev. A | Page 2 of 32" footer, QPA1003P "Data Sheet
+        # Rev. I, January 2026", lm741 keeps its document id "SNOSC25D".
+        expected = {"AD9081": "Rev. 0", "HMC520A": "Rev. A",
+                    "QPA1003P": "Rev. I", "LM741": "SNOSC25D"}
+        for name, rev in expected.items():
+            result = gate[name]
+            sources = json.loads(
+                (result.part_dir / "sources.json").read_text(encoding="utf-8"))
+            assert sources[0]["revision"] == rev, name
 
 
 class TestGateTables:

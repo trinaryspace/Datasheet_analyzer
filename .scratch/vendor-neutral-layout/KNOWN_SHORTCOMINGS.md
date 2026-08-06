@@ -1,8 +1,9 @@
-# Known shortcomings — vendor-neutral layout (as of ticket 05)
+# Known shortcomings — vendor-neutral layout (as of ticket 06)
 
 Written after ticket 03 (tables + reconstruction gate) landed at `84ba05b`
 and kept current through ticket 04 (best-scoring retry ladder + `dsa
-status` stats) and ticket 05 (footnotes + figures vertical). Honest ledger
+status` stats), ticket 05 (footnotes + figures vertical) and ticket 06
+(semantics genericization). Honest ledger
 of things that are partial, heuristic, or instrumented-but-thin, so they
 can be circled back to. Grouped by where they likely belong; severity =
 impact on the multi-vendor claim, not effort.
@@ -17,15 +18,21 @@ impact on the multi-vendor claim, not effort.
   *replicates* a spanning cell across grid rows/columns. A table that
   depends on explicit span semantics (e.g. a parameter symbol spanning
   condition rows without indentation) loses that association. No synthetic
-  test exercises real spans. Decision at the 04/06 boundary: explicitly
-  deferred to ticket 06 (04's scope is the retry ladder + stats only).
-  → ticket 06, high.
+  test exercises real spans. Boundary notes: deferred at 04/06 to ticket
+  06, then re-deferred at the 06/07 kickoff — 06 shipped semantics only
+  (lexicons + positional inference, SPEC stories 22–25) and grid
+  materialization is a reconstruction design that needs its own
+  probe-backed synthetic fixture set, not a lexicon change (recorded in
+  the 06 issue file). → ticket 07 (grid materialization), high.
 - **Captionless-era tables get nothing.** lm741 (old TI) and QPA1003P
   (Qorvo) have no "Table N." captions — their tables are heading-anchored —
   so they yield **0 tables / 0 specs**, honestly, but with zero
   functionality either. The phase-4 gate only proves captioned vendors
   (AD9081 29/29, HMC520A 6/6). Heading-anchored hypotheses would need
-  care to not hallucinate. → ticket 06/07, high.
+  care to not hallucinate (SPEC story 10: captionless doubles must stay
+  paragraphs — that guard is a rejection-gate design, bigger than a
+  lexicon change). → ticket 07, high (06/07 boundary decision recorded
+  in the 06 issue file).
 - **Fixed in ticket 05: footnote bodies attach to their table with cited
   markers.** Superscript citation markers are detected from span geometry
   (size ≤ 0.82× the row's max span, glyph-box center above the row's
@@ -83,7 +90,8 @@ impact on the multi-vendor claim, not effort.
 - **QPA1003P yields zero figures** — it has no "Figure N." captions at
   all (its block diagram is captionless), so the honest result is an
   empty plots.json. Same class as the captionless-tables gap: title-
-  anchored figures would need the same care. → ticket 06/07, low.
+  anchored figures would need the same care. → ticket 07, low (rides
+  along with the heading-anchored-hypotheses work).
 
 ## Citation and verification nuances
 
@@ -172,6 +180,21 @@ impact on the multi-vendor claim, not effort.
   footnote-continuation fence: a wrapped footnote fragment of ≤8 words
   that sits >cont_th below its marker line would become a grid row
   again. Pinned at the 8-word boundary in the positional-attach test.
+
+- **Revision sniffing is lexicon-literal, not prose-aware.** Ticket 06
+  `sniff_revision` matches the shared shapes only: capitalized "Rev."
+  + token (`[A-Z][A-Z0-9]?` or 1-3 digits — "Rev. 0", "Rev. A",
+  "Rev. I"), "Rev. N to Rev. M" shapes keep the last token (the current
+  revision), and TI document ids must contain at least one digit
+  (SBASA41E/SNOSC25D pass; the old regex read bare all-letter S-words
+  like "SUPPORT" as document ids — measured false positive on AD9081
+  page 1, now pinned dead). Lowercase "rev. a", all-caps "REV. 0",
+  dotted tokens ("Rev. 1.2") and "Document No."-style ids (a PHASE_4_PLAN
+  design seed, unmeasured so far) fall through to the honest "" — the
+  shape list is what it is, deliberately not prose-aware, and a "Rev."
+  mention in title-page prose (rare) wins over the title block.
+  Deterministic, boundary-pinned by synthetic tests in `test_acquire.py`,
+  recorded here for the record.
 
 ## Engineering debt
 

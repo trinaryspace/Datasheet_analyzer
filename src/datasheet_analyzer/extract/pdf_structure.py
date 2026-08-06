@@ -66,14 +66,33 @@ def first_page_text(path: Path) -> str:
         return doc[0].get_text() if doc.page_count else ""
 
 
+# Revision shapes from a shared lexicon (SPEC story 23): "Rev. "-token
+# captions for any vendor's era ("Rev. 0", "Rev. A", "Rev. I", and
+# revision-history "Rev. N to Rev. M" — the last token is the current
+# revision) and TI document ids. TI ids always carry a digit
+# ("SBASA41E", "SNOSC25D") — requiring one keeps bare all-letter S-words
+# like "SUPPORT" from reading as document ids (measured AD9081 p.1 trap).
+# Capital "Rev" only: "Revision N"/"REVISED"/"REVISION HISTORY" are not
+# tokens. The Rev-token form wins within a page, the TI id otherwise.
+_REV_SHAPE = re.compile(r"\bRev[.\s]*([A-Z][A-Z0-9]?|\d{1,3})")
+_TI_DOC_ID = re.compile(r"\bS[A-Z]{2}[A-Z0-9]*\d[A-Z0-9]*\b")
+
+
 def sniff_revision(path: Path, max_pages: int = 3) -> str:
-    """Pull the TI document id (e.g. 'SBASA41E') from the first pages."""
-    pat = re.compile(r"\b(S[A-Z]{2}[A-Z0-9]{2,6}[A-Z]?)\b")
+    """Sniff the document revision from the first pages.
+
+    Returns the normalized "Rev. N" token ("Rev. 0", "Rev. A", ...) or the
+    TI document id; "" is the honest no-match answer.
+    """
     with fitz.open(path) as doc:
         for page in list(doc)[:max_pages]:
-            m = pat.search(page.get_text())
+            text = page.get_text()
+            revs = _REV_SHAPE.findall(text)
+            if revs:
+                return f"Rev. {revs[-1]}"
+            m = _TI_DOC_ID.search(text)
             if m:
-                return m.group(1)
+                return m.group(0)
     return ""
 
 
