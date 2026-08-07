@@ -75,12 +75,6 @@ def _section_md(result, stem: str) -> str:
     return path.read_text(encoding="utf-8")
 
 
-def _section_md(result, stem: str) -> str:
-    path = _doc_dir(result) / "sections" / f"{stem}.md"
-    assert path.exists(), f"missing section file {path.name}"
-    return path.read_text(encoding="utf-8")
-
-
 def _plot_files(result) -> list[Path]:
     return list(_doc_dir(result).rglob("figures/*/*.png"))
 

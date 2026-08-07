@@ -1,8 +1,9 @@
 # Golden Q&A set for the LM741 datasheet (SNOSC25D, phase-4 gate PDF,
 # pdf_layout path). Old-TI captionless-era part: heading-anchored tables
-# since ticket 09 (5 tables: abs-max + ESD + recommended operating
-# conditions on p4, electrical characteristics on p5/p6) -> 58 spec
-# records; 3 figure captions (2 covered by plot questions). The ticket-07
+# since ticket 09 (6 tables: abs-max + ESD + recommended operating
+# conditions on p4, electrical characteristics on p5/p6, orderable part
+# numbers on p13) -> 71 spec records; 3 figure captions (2 covered by
+# plot questions). The ticket-07
 # "text + plot only" boundary is superseded — the abstract spec questions
 # below resolve real records (author-probed: values + pages measured from
 # the built corpus). Every expected_substring was verified against the

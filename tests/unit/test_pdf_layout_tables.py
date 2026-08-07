@@ -647,6 +647,26 @@ class TestCaptionlessSemantics:
         for needle in ("+29.5 V", "+28 V", "1300 mA", "650 mA", "-55 to 150 C"):
             assert blob.count(needle) == 1, needle
 
+    def test_prose_under_heading_stays_paragraphs(self, tmp_path):
+        # SPEC story 10's rejection guard, pinned: a heading-anchored
+        # region whose first row carries no parameter-header token is
+        # prose, never a grid (the captionless-doubles guard) — even with
+        # a drawn emphasis band under the heading
+        lines = [
+            (36.0, 100.0, "Product Description", 14.04),
+            (36.0, 132.0, "The QPA1003P is a wideband high power MMIC", 10.0),
+            (36.0, 146.0, "amplifier on GaN on SiC process with 1 to 8 GHz", 10.0),
+            (36.0, 160.0, "coverage and 10 W of saturated output power.", 10.0),
+        ]
+        result = self._build(tmp_path, "prose.pdf", lines,
+                             toc=[[1, "1 Page One", 1]],
+                             rects=[(36.0, 92.0, 576.0, 110.0)], rulings=[])
+        assert result.manifest.stats.n_tables == 0
+        md = _section_md(result, "1-page-one")
+        assert "## Unnumbered table" not in md
+        for needle in ("wideband high power MMIC", "GaN on SiC", "10 W of saturated"):
+            assert needle in md, needle
+
     def test_trailing_note_lines_attach_as_footnotes_not_grid_rows(self, tmp_path):
         # LM741 p4 shape: note lines print as multi-word spans whose starts
         # sit far apart (word-span width) while the inter-span gaps are tiny

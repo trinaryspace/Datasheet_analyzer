@@ -63,9 +63,9 @@ GATE: dict[str, dict] = {
     },
     "QPA1003P": {
         "pdf": GATE_PDFS / "QPA1003P.pdf", "part": "QPA1003P", "override": "", "vendor": "qorvo",
-        # honest text-only golden (0 tables/0 specs/0 figures) — record:
-        # spec/plot question counts stay 0 so "100%" means text at 100%
-        # and the honest zeros asserted by the corpus tests
+        # ticket 09 superseded the honest zeros: the golden mixes text +
+        # spec_query + plot_query questions (5 tables / 41 specs / 4
+        # title-anchored figures measured), asserted by the corpus tests
         "golden": FIXTURES / "golden_qa_QPA1003P.yaml",
         # the sniffed revision lands in provenance comments ("<!-- source:
         # Rev. I p.1 -->", lm741's SNOSC25D precedent) so only the full
@@ -430,8 +430,9 @@ class TestGateGoldens:
     def test_dsa_verify_end_to_end_100_percent(self, gate, name, monkeypatch, capsys):
         # the user-facing command: per-part golden discovery (no --golden),
         # full text + spec-query + plot-query verification against the
-        # built corpus, zero exit. QPA1003P's spec block honestly prints
-        # 0/0 (text-only golden: no spec_query entries exist to verify).
+        # built corpus, zero exit. The spec/plot counts are derived from
+        # the benchmark itself, so a golden edit can never silently drift
+        # the expectations below (LM741 3 spec, QPA1003P 2 spec + 1 plot).
         from datasheet_analyzer import cli
         from datasheet_analyzer.config import Settings
         from datasheet_analyzer.evalh.golden import load_golden
