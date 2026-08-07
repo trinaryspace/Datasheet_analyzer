@@ -25,10 +25,10 @@ Gate parts (built in-tests from the ungated `tests/fixtures/pdf/` copies; measur
 
 | Part | Vendor | Revision | Pages | Sections | Tables acc/rej | Specs | Plot files | Verify |
 |---|---|---|---|---|---|---|---|---|
-| AD9081 | adi | Rev. 0 | 45 | 34 | 29/0 | 547 | 100 | 4 Q @ 100% |
-| LM741 | unknown* | SNOSC25D | 17 | 40 | 0/0 | 0 | 3 | 12 Q @ 100% |
-| QPA1003P | qorvo | Rev. I | 20 | 20 | 0/0 | 0 | 0 | 11 Q @ 100% |
-| HMC520A | adi | Rev. A | 32 | 36 | 6/0 | 30 | 107 | 13 Q @ 100% |
+| AD9081 | adi | Rev. 0 | 45 | 34 | 29/0 | 549 | 100 | 4 Q @ 100% |
+| LM741 | unknown* | SNOSC25D | 17 | 40 | 6/2 | 71 | 3 | 15 Q @ 100% (12 text + 3 spec) |
+| QPA1003P | qorvo | Rev. I | 20 | 20 | 5/2 | 41 | 4 | 14 Q @ 100% (11 text + 2 spec + 1 plot) |
+| HMC520A | adi | Rev. A | 32 | 36 | 6/1 | 30 | 107 | 13 Q @ 100% |
 
 *LM741 carries no page-1 brand mark; the gate pins it `--vendor unknown` (recorded as cli-override evidence).
 
@@ -83,7 +83,7 @@ codes, not colors.
 | `extract/pdf_structure.py` | PyMuPDF: content hash, page count, **printed TOC (authoritative page numbers)**, per-page text (verification/pinning only), revision sniffing from a shared lexicon ("Rev."-token shapes — "Rev. 0"/"Rev. A"/"Rev. I", "Rev. N to Rev. M" keeps the last token — plus TI doc-ids, digit-required so bare S-words like "SUPPORT" never read as ids). Layout analysis lives in `pdf_layout`, never here. | `read_toc`, `page_texts`, `compute_content_hash`, `make_source`, `split_number`, `sniff_revision` |
 | `extract/http.py` | Fetchers. `CachingFetcher` (disk cache `.cache/http`), `CachingBinaryFetcher` (`.cache/http-bin`), `ReplayFetcher`/`ReplayBinaryFetcher` (hermetic tests: miss = hard error), `MappingFetcher`. | `Fetcher` / `BinaryFetcher` protocols |
 | `extract/ti_html.py` | Primary TI content backend: TI document-viewer HTML (real tables, MathML, footnotes — no OCR, no hallucination). TI keeps this path; every other vendor routes to the layout floor. | `TiHtmlBackend`, `parse_toc`, `parse_section` |
-| `extract/pdf_layout.py` | **Vendor-neutral layout floor** (offline, PyMuPDF-only): furniture by slot recurrence + universal page-machinery patterns (zero vendor strings), structure ladder (outline → printed-TOC dot-leader parse → per-page), page-ranged sections, honest unnumbered identity, (tickets 03–04) tables: caption-anchored hypotheses, pitch-based row grouping with wrapped-cell merging, header-anchored column clusters + a best-scoring retry ladder (every band set gated and scored; the header-declared edge share selects the winner, ties keep ladder order), a reconstruction gate (rejected hypotheses recorded with reasons in `ExtractionStats`), multi-page continuation merging, test-conditions preamble attachment, and (ticket 05) footnotes + figures: superscript citation markers from span font geometry (`_Span` carries size + glyph box; glued, raised, ≤0.82× markers land in `TableBlock.cited_markers`), trailing numbered lines attach as bare-canonical `Footnote`s with wrapped-continuation merging and positional marker-less attach; `Figure N.`-caption catalog (`FigureRef`, caption line consumed, table regions end at figure captions) plus `figure_anchor_map()`/`figure_caption_key()` clip geometry for the publisher. | `PdfLayoutBackend`, `parse_printed_toc`, `figure_anchor_map`, `figure_caption_key` |
+| `extract/pdf_layout.py` | **Vendor-neutral layout floor** (offline, PyMuPDF-only): furniture by slot recurrence + universal page-machinery patterns (zero vendor strings), structure ladder (outline → printed-TOC dot-leader parse → per-page), page-ranged sections, honest unnumbered identity, (tickets 03–04) tables: caption-anchored hypotheses, pitch-based row grouping with wrapped-cell merging, header-anchored column clusters + a best-scoring retry ladder (every band set gated and scored; the header-declared edge share selects the winner, ties prefer the coarsest split, i.e. fewest bands — a finer tie can only carve interior words of declared columns), a reconstruction gate (rejected hypotheses recorded with reasons in `ExtractionStats`; inter-span, not start-to-start, clustering so multi-word-span note lines classify as sentences), multi-page continuation merging, test-conditions preamble attachment, and (ticket 05) footnotes + figures: superscript citation markers from span font geometry (`_Span` carries size + glyph box; glued, raised, ≤0.82× markers land in `TableBlock.cited_markers`), trailing numbered lines attach as bare-canonical `Footnote`s with wrapped-continuation merging and positional marker-less attach; `Figure N.`-caption catalog (`FigureRef`, caption line consumed, table regions end at figure captions) plus `figure_anchor_map()`/`figure_caption_key()` clip geometry for the publisher. (Ticket 09) heading-anchored tables for the captionless era (regions under printed section headings run the same ladder + gate; header-token lines and lone section numbers split anchors sanely; side-by-side pairs split first at their mirrored header; captionless tables render "## Unnumbered table", never a fabricated number), rowspan materialization (spanning symbols replicate into child rows by indent chain / nearest-anchor fill), title-anchored figures (heading-sized line inside a drawn emphasis band with a big rect under its own x-column → `FigureRef`), and per-row page attribution of merged multi-page grids (`TableBlock.row_pages`). | `PdfLayoutBackend`, `parse_printed_toc`, `figure_anchor_map`, `figure_caption_key`, `figure_title_anchor_map` |
 | `extract/pdf_text.py` | Degraded backend for register maps/errata/app notes: paragraphs only, no trusted tables/figures, contextual page-number stripping. | `PdfTextBackend` |
 | `structure/tables.py` | HTML table → atomic `TableBlock`; full rowspan/colspan expansion; markdown + CSV precomputed. | `html_table_to_block`, `cited_markers`, `cell_text` |
 | `structure/footnotes.py` | `div.tablenote` → `Footnote`; orphan/uncited audit. | `parse_tablenote`, `attach_footnotes`, `audit_table_footnotes` |
@@ -91,7 +91,7 @@ codes, not colors.
 | `structure/pagemap.py` | Sections → PDF pages (exact number → fuzzy title → inherit, with provenance report); exact table-page pinning via PDF page text. | `assign_pages`, `pin_table_pages` |
 | `structure/roles.py` | Header → semantic role (symbol/name/conditions/min/typ/max/value/unit). Deterministic regex + positional inference for empty TI headers. | `assign_roles`, `classify_table` |
 | `structure/units.py` | Unit canonicalization (U+2126 → ohm, etc.) for `specs.json` only. | `canonical_unit`, `normalize_text`, `CANONICAL_UNITS` |
-| `structure/specs.py` | `RawDocument` → `SpecSet` / `specs.json`. Pure transform over `TableBlock` grids. Skips `pdf_text` docs. | `table_to_records`, `build_specset` |
+| `structure/specs.py` | `RawDocument` → `SpecSet` / `specs.json`. Pure transform over `TableBlock` grids. Skips `pdf_text` docs. A merged multi-page grid's per-row pages (`row_pages`) beat the table's caption page, so continuation rows cite their own printed page. | `table_to_records`, `build_specset` |
 | `structure/plots.py` | `RawDocument` → `PlotSet` / `plots.json`. Stable IDs + section/caption tags. | `build_plotset`, `figure_number`, `section_tags`, `caption_tags` |
 | `structure/corpus.py` | `RawDocument` → per-section render plans (markdown + CSV twins). | `build_section_plans`, `section_stem`, `slugify` |
 | `enrich/llm.py` | LLM interface + `AnthropicClient` + `FakeClient`. All LLM use goes through `LLMClient`. | — |
@@ -143,9 +143,9 @@ parts/<PART>/
    is the historical benchmark; no public one exists). `dsa verify`
    discovers a part's benchmark by name and hard-fails when it is missing
    or empty — every corpus is provably verified or provably not. Extend
-   the sets whenever new answer paths ship; `dsa verify` must stay at 100%
-   for supported paths (gate parts: AD9081 4 Q, LM741 12 Q, QPA1003P 11 Q
-   text-only, HMC520A 13 Q).
+    the sets whenever new answer paths ship; `dsa verify` must stay at 100%
+    for supported paths (gate parts: AD9081 4 Q, LM741 15 Q (12 text + 3
+    spec), QPA1003P 14 Q (11 text + 2 spec + 1 plot), HMC520A 13 Q).
 6. **Caching keyed by identity.** Extraction cache = (content_hash, backend).
    Schema/version changes that alter output must invalidate via filename or
    embedded version fields.

@@ -1,13 +1,15 @@
 # Golden Q&A set for the QPA1003P datasheet (Rev. I, phase-4 gate PDF,
 # pdf_layout path). Qorvo part with no PDF outline (per-page sections) and
-# no "Table N." / "Figure N." captions at all: the corpus honestly carries
-# 0 tables / 0 spec records / 0 figures, so this golden is text-questions
-# only — "100% on text, --specs, and plot lookups" for this part means the
-# text benchmark at 100% and the spec/plot question counts staying
-# honestly empty (recorded decision; see KNOWN_SHORTCOMINGS.md — the
-# captionless-era and title-anchored work is re-ticketed to 09).
-# Every expected_substring was verified against the printed PDF page text
-# (page_texts) AND the built corpus section covering that page.
+# no "Table N." / "Figure N." captions at all. Since ticket 09 the
+# heading-anchored pass lands its real tables (abs-max + recommended
+# operating conditions pair split at the mirrored header, electrical
+# specifications, thermal table, handling precautions — 5 tables, 41 spec
+# records) and the title-anchored pass lands 4 figures (block diagram +
+# the layout/plot headings), so this golden now mixes text, spec_query and
+# plot_query questions (the ticket-07 text-only boundary is superseded;
+# recorded in KNOWN_SHORTCOMINGS.md + issue 09). Every expected_substring
+# was verified against the printed PDF page text (page_texts) AND the
+# built corpus section covering that page.
 questions:
   - id: q01-band-and-output-power
     question: What frequency range does the QPA1003P cover and what saturated output power does it provide?
@@ -74,3 +76,31 @@ questions:
     expected_substrings: ["lead-free", "260°C"]
     pages: [19]
     kind: direct
+
+  - id: s1-spec-output-power
+    question: What output power does the QPA1003P deliver at the different frequencies?
+    expected_substrings: ["39.7", "40.7", "39.9", "dBm"]
+    pages: [2]
+    kind: direct
+    spec_query: {symbol: "Output Power @ P"}
+    notes: ticket-09 materialized children of the electrical table; the
+      "IN = 15 dBm" superscript prints as its own cell fragment and lives
+      in the records' name fields, the frequency fragments in the name
+      fields of the parent-merged rows (values 39.7/40.7/39.9 dBm printed
+      on page 2)
+
+  - id: s2-spec-frequency-range
+    question: What frequency range does the QPA1003P cover?
+    expected_substrings: ["1", "8", "GHz"]
+    pages: [2]
+    kind: direct
+    spec_query: {symbol: "Operational Frequency Range"}
+
+  - id: p1-functional-block-diagram
+    question: Where is the functional block diagram of the QPA1003P?
+    expected_substrings: ["Functional Block Diagram"]
+    pages: [1]
+    kind: plot
+    plot_query: {caption_contains: "Functional Block Diagram"}
+    notes: title-anchored figure (no "Figure N." caption exists; the title
+      band prints at 14 pt inside a drawn emphasis band)

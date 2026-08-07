@@ -17,6 +17,7 @@ from datasheet_analyzer.extract.http import BinaryFetcher
 from datasheet_analyzer.extract.pdf_layout import (
     figure_anchor_map,
     figure_caption_key,
+    figure_title_anchor_map,
 )
 from datasheet_analyzer.models import PlotRecord, PlotSet
 
@@ -124,7 +125,8 @@ def render_figure_regions(
     pdf_path = Path(pdf_path)
     written = 0
     anchors = figure_anchor_map(pdf_path)
-    if not anchors or not plotset.plots:
+    title_anchors = figure_title_anchor_map(pdf_path)
+    if not plotset.plots:
         return 0
     matrix = fitz.Matrix(dpi / 72, dpi / 72)
     with fitz.open(str(pdf_path)) as pdf:
@@ -142,6 +144,18 @@ def render_figure_regions(
                     continue
                 hit = (pgnum, top, y)
                 break
+            if hit is None:
+                # ticket 09: captionless-era figures anchor by their printed
+                # title band (QPA1003P block diagram + performance plots)
+                for (pgnum, cap), (top, y) in title_anchors.items():
+                    if cap != key:
+                        continue
+                    if record.page_start is not None and pgnum < record.page_start:
+                        continue
+                    if record.page_end is not None and pgnum > record.page_end:
+                        continue
+                    hit = (pgnum, top, y)
+                    break
             if hit is None or hit[2] - hit[1] < 6.0:
                 log.warning("no clip anchor for plot %s (%s)",
                             record.id, record.caption[:60])

@@ -17,8 +17,10 @@ _ROLE_PATTERNS: list[tuple[re.Pattern, str]] = [
     (re.compile(r"(?i)^(typ|typical)(\(\d+\))?$"), "typ"),
     (re.compile(r"(?i)^(nom|nominal)(\(\d+\))?$"), "typ"),
     (re.compile(r"(?i)^(max|maximum)(\(\d+\))?$"), "max"),
-    (re.compile(r"(?i)^unit(\(\d+\))?$"), "unit"),
-    (re.compile(r"(?i)^value(\(\d+\))?$"), "value"),
+    (re.compile(r"(?i)^unit(s)?(\(\d+\))?$"), "unit"),
+    # QPA1003P's 2-column value tables use "Value / Range" (measured on
+    # page 2); TI's bare "VALUE" stays covered by the pattern above.
+    (re.compile(r"(?i)^value(\s*/\s*range)?(\(\d+\))?$"), "value"),
     (re.compile(r"(?i)^parameter(\(\d+\))?$"), "parameter"),
     # thermal metric spans the symbol+name columns like a colspan PARAMETER
     (re.compile(r"(?i)^thermal metric(\(\d+\))?$"), "parameter"),

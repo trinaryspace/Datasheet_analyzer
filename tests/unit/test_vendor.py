@@ -244,7 +244,7 @@ class TestManifestVendor:
         assert result.manifest.vendor == "ti"
         from datasheet_analyzer.config import PIPELINE_VERSION
 
-        assert result.manifest.pipeline_version == PIPELINE_VERSION == "0.3.0"
+        assert result.manifest.pipeline_version == PIPELINE_VERSION == "0.4.0"
         data = json.loads((result.part_dir / "manifest.json").read_text(encoding="utf-8"))
         assert data["vendor"] == "ti"
         doc = result.manifest.documents[0]

@@ -1,13 +1,112 @@
-# Known shortcomings — vendor-neutral layout (as of ticket 08)
+# Known shortcomings — vendor-neutral layout (as of ticket 09)
 
 Written after ticket 03 (tables + reconstruction gate) landed at `84ba05b`
 and kept current through ticket 04 (best-scoring retry ladder + `dsa
 status` stats), ticket 05 (footnotes + figures vertical), ticket 06
-(semantics genericization) and ticket 07 (gate provisioning + per-part
-golden Q&A, scope-reconciled at the 06/07/09 kickoff). Honest ledger
-of things that are partial, heuristic, or instrumented-but-thin, so they
-can be circled back to. Grouped by where they likely belong; severity =
-impact on the multi-vendor claim, not effort.
+(semantics genericization), ticket 07 (gate provisioning + per-part
+golden Q&A, scope-reconciled at the 06/07/09 kickoff) and ticket 09
+(layout materialization — this ticket's four items are CLOSED below).
+Honest ledger of things that are partial, heuristic, or
+instrumented-but-thin, so they can be circled back to. Grouped by where
+they likely belong; severity = impact on the multi-vendor claim, not
+effort.
+
+## Fixed in ticket 09 (layout materialization, issue 09)
+
+All four ticket-09 items shipped and are pinned by synthetic fixtures +
+the gate's real-PDF builds:
+
+- **Rowspan materialization** (ledger "grid materialization", high): two
+  measured rules reconstruct spanning cells — an indent-chain child (band
+  start ≥ 12 pt right of the column edge) becomes "parent + own text",
+  and an empty first cell inherits the nearest anchor row by baseline
+  distance (ties prefer above). Band headers and value-carrying rows
+  never replicate. Pinned by `TestRowSpanMaterialization` (synthetic
+  AD9081 Table 3 shape): parent + 3 children resolve through
+  `dsa query`; the AD9081 gate now asserts the 4-record shape.
+- **Heading-anchored tables** (ledger "captionless-era tables", high):
+  captionless regions under printed section headings run the exact same
+  ladder + gate, with a guard set: `_HEADER_TOKENS` (first row must carry
+  a parameter-header token — prose sections, TOC pages, plot-axis labels
+  and pin-diagram fragments never fire), the 8-word preamble strip, and
+  side-by-side pairs split FIRST at their mirrored header (two atomic
+  grids instead of a fused one; a failing zone falls back to the
+  region-wide hypothesis and the old reject-then-split path). Header
+  words at heading size ('Parameter', 'Min', 'Units', ...) are
+  token-excluded from being anchors, so they never carve the region.
+  Measured: LM741 6 tables (abs-max, ESD, recommended operating
+  conditions, electrical characteristics, LM741C electrical, orderable
+  part numbers) → 71 spec records; QPA1003P 5 tables (abs-max +
+  recommended operating pair, electrical specifications, thermal,
+  handling precautions) → 41 spec records. Captionless tables render
+  "## Unnumbered table" — never a fabricated number (pinned).
+- **Title-anchored figures** (ledger "QPA1003P yields zero figures",
+  low): a heading-sized line inside a drawn emphasis band with a large
+  rect under its own x-column and no same-column prose below becomes a
+  `FigureRef`; the publisher renders it via `figure_title_anchor_map()`.
+  Measured: QPA1003P 4 figures (Functional Block Diagram p1, Power
+  Dissipation and Maximum Gate Current p15, Applications Circuit and Pin
+  Layout p16, EVB Layout Assembly p17) — its plots.json stops being
+  honestly-empty; the golden gained a plot question.
+- **Per-row page attribution** (ledger "merged multi-page tables cite
+  only the first page", medium): continuation rows append
+  `TableBlock.row_pages`; `specs.py` prefers the row's own page. The
+  gate's pin band re-measured: **172/212 = 81.1%** exact-page on AD9081
+  (stricter than the ticket-08 168/189 = 88.9% under first-page-only
+  citation; the gate asserts ≥ 78%). The residual classes are recorded
+  below ("Composite-symbol pin misses").
+
+**Boundary changes recorded** (06/07 correction precedent, never a
+rewrite): the ticket-07 recorded honest zeros for lm741 (12 Q, spec n/a)
+and QPA1003P (11 Q text-only, 0 specs/0 figures) are SUPERSEDED — their
+goldens now mix text + spec_query + plot_query questions (author-probed
+against the built corpora before shipping) and the gate tests assert the
+materialized state. The kgate's ≥80% pin band is superseded by the
+measured 81.1% band below (assert ≥ 78%). The 6.4 Thermal Information
+table stays paragraphs (its first row "LM741" carries no header token —
+the guard's honest rejection, recorded at the time of the guard design).
+
+**Honest residuals left OPEN** (each measured, each traceable in the
+corpus):
+
+- **Composite-symbol pin misses** (the gate's 40 residuals): ~20 rows of
+  Table 16's p13 continuation block cite the page their VALUES printed on
+  while the materialized/carried symbol text printed on the block's first
+  page ('Single-Tone, fDAC = 6 GSPS' vs the 'fOUT = …' rows); ~15
+  Table 3/4/6/18 rows whose composite symbol never prints contiguously
+  ('Full-Scale Sine Wave Output Power with AC Coupling2', 'ADC ANALOG
+  INPUTS Return Loss', 'VCO Output Divide by 2', 'MSB/LSB First Data
+  Format SCLK Clock High/Low' — the printer splits the parent and child
+  onto separate lines); plus the known 'Maximum Aperture Jitter2'
+  text-rendering blind spot (1 row). Every value still verifies on the
+  cited page's text; the composite symbol string itself cannot.
+- **Mid-span-parent fragility**: nearest-anchor fill chooses by baseline
+  distance; a parent whose glyph box vertically centers over a long span
+  with an equal-distance anchor on the far side would pick the wrong
+  parent. Measured on all gate PDFs: none wrong today (ties prefer the
+  anchor printed above), no boundary test.
+- **Fused device-split rows** (LM741 abs-max/rec-ops): the per-variant
+  sub-rows ('LM741, LM741A' vs 'LM741C') merge the printed maxima into one
+  record set ('±22' + '±18') — the values are all in the records, but the
+  variant→value mapping is not machine-readable.
+- **p14 inherited-symbol citations**: continuation rows that INHERIT the
+  last printed parameter text (the p13/p14 fOUT rows) carry a symbol that
+  never printed on their own page — honest (the values did), unverifiable
+  by page-text lookup (see the pin band).
+- **QPA1003P p1 ordering table stays paragraphs**: its header words
+  ('Part No.', 'Description') print at 12 pt and 'Description' is not a
+  header token, so the region never anchors; the block-diagram panel's
+  pin-number labels also interleave the table's rows. Honest, in-corpus,
+  low value (2 rows).
+- **LM741 6.4 Thermal Information stays paragraphs** (recorded in the
+  guard design): first row 'LM741' has no header token.
+- **Note-fragment residuals in grids**: LM741's abs-max grid keeps two
+  trailing rows built from wrapped note fragments ('Storage only, which
+  Operating Conditions …' — the '(1)' marker row itself attached as a
+  footnote, but its wide continuation lines land in the grid), and
+  QPA1003P's p15 thermal grid keeps 'Notes:' fragments; AD9081 Table 8
+  keeps the footnote-1 tail '5.55 GHz.' as a last grid row. Every word is
+  in the corpus; the rows are structural noise, not data.
 
 ## Fixed in ticket 08 (docs catch-up, not engine)
 
@@ -41,7 +140,7 @@ here).
   probe-backed synthetic fixture set, not a lexicon change (recorded in
   the 06 issue file). Re-ticketed at the 06/07/09 kickoff: the 07 letter
   is gate provisioning + per-part golden Q&A, not layout materialization.
-  → ticket 09 (grid materialization), high.
+  FIXED in ticket 09 (rowspan materialization, below).
 - **Captionless-era tables get nothing.** lm741 (old TI) and QPA1003P
   (Qorvo) have no "Table N." captions — their tables are heading-anchored —
   so they yield **0 tables / 0 specs**, honestly, but with zero
@@ -49,9 +148,8 @@ here).
   (AD9081 29/29, HMC520A 6/6). Heading-anchored hypotheses would need
   care to not hallucinate (SPEC story 10: captionless doubles must stay
   paragraphs — that guard is a rejection-gate design, bigger than a
-  lexicon change). → ticket 09, high (06/07/09 boundary decision
-  recorded in the 07 issue file; the 06 issue file pointer that said
-  "ticket 07" is corrected).
+  lexicon change) — FIXED in ticket 09 (heading-anchored hypotheses, below; the boundary
+   decision is recorded in the 07 issue file and the ticket-09 ship notes).
 - **Fixed in ticket 05: footnote bodies attach to their table with cited
   markers.** Superscript citation markers are detected from span geometry
   (size ≤ 0.82× the row's max span, glyph-box center above the row's
@@ -122,8 +220,7 @@ here).
   empty plots.json (kept honest by the per-part golden: QPA1003P's
   benchmark is text-only and its 0/0 spec+plot counts are asserted).
   Same class as the captionless-tables gap: title-anchored figures would
-  need the same care. → ticket 09, low (rides along with the
-  heading-anchored-hypotheses work).
+  need the same care. FIXED in ticket 09 (title-anchored figures, below).
 
 ## Citation and verification nuances
 
@@ -134,7 +231,7 @@ here).
   on later pages — every one is found within ±2 pages (the block's
   span). The corpus-verify gate therefore asserts ≥80% rather than
   100%. Per-row page attribution inside merged grids is the fix.
-  → ticket 09 (citations), medium.
+  FIXED in ticket 09 (per-row page attribution, below).
 - **Pin verification has a text-rendering blind spot.** Glued
   superscript markers render differently in page text than in cells
   (e.g. 'Maximum Aperture Jitter2' on p9 verifies neither way). 1/189

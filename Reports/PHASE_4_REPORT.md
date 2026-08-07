@@ -139,15 +139,52 @@ gate fixture is a hard failure, never a skip.
 - [x] `dsa verify` at 100% per part (text + `--specs` + plot) in a plain `pytest` run; AFE7950 TI regression still 19/19
 - [x] Token economics measured per part: ~1.2–3.3k avg per question vs 5.7–21.2k full dump (4–7× cheaper)
 - [x] `--vendor` override + evidence pinning recorded in the inventory; `dsa status` surfaces vendor/evidence/stats
-- [x] lm741/QPA1003P honest 0-table corpora (no captionless hallucination; every line still in the corpus)
+- [x] lm741/QPA1003P honest 0-table corpora (no captionless hallucination; every line still in the corpus) — superseded by ticket 09 (see the addendum): both parts now yield heading-anchored tables + specs
 - [x] PhD-style verifiability: every number in this report re-runnable via `dsa build` / `dsa verify` / the gate tests
+
+## Ticket 09 addendum (shipped, supersedes the three bullets below)
+
+Ticket 09 (layout materialization) closed all four items this report
+listed as OPEN. Re-measured on this branch (2026-08-07) from the same
+fixtures, same seam (`build_part(use_llm=False)` + the gate's own check):
+
+- **Merged-cell materialization**: spanning parameter symbols replicate
+  into their child rows (indent-chain + nearest-anchor fill; band headers
+  never replicate). `dsa query --part AD9081 --symbol "Full-Scale Output
+  Current Range"` now resolves the parent + 3 value-carrying children
+  (the parent honestly keeps empty min/typ/max). Pinned by synthetic
+  fixtures + the gate.
+- **Heading-anchored tables for the captionless era**: lm741/QPA1003P
+  now yield tables + specs (guard set: header-token first row, preamble
+  strip, token-vs-anchor splitting, mirrored-pair pre-split). Measured:
+  **LM741 6 tables / 71 spec records; QPA1003P 5 tables / 41 spec
+  records** — the ticket-07 honest zeros are superseded (recorded in the
+  ledger + golden headers; their goldens grew spec/plot questions,
+  verified 100%: LM741 15 Q = 12 text + 3 spec; QPA1003P 14 Q = 11 text +
+  2 spec + 1 plot). Captionless tables render "## Unnumbered table" —
+  never a fabricated number.
+- **Title-anchored figures for QPA1003P**: 4 figures (Functional Block
+  Diagram p1 + the p15/p16/p17 layout headings) render plot files; its
+  plots.json stops being honestly-empty.
+- **Per-row page attribution + the pin band**: the gate re-measured
+  **172/212 = 81.1%** exact-page pinning on AD9081 — stricter than the
+  ticket-08 168/189 = 88.9% (rows now verify by the page their values
+  printed on, and materialized composite symbols only print fragmented).
+  The ≥80% band is superseded; the gate asserts ≥ 78% with the residual
+  classes recorded in the ledger.
+
+The 352-test suite (was 342) is green offline; `ruff check src tests`
+clean. Residuals kept honestly OPEN are itemized in
+`KNOWN_SHORTCOMINGS.md` ("Fixed in ticket 09" section).
 
 ## Honest limitations (OPEN items, not overstating the claim)
 
 - **The gate's ≥80% pin band is the citation ceiling**: merged multi-page
   tables cite only their first page (88.9% exact-page on AD9081). Per-row
-  page attribution lands in ticket 09 — "→ ticket 09 (citations)" in
-  `KNOWN_SHORTCOMINGS.md`.
+  page attribution landed in ticket 09 — the band re-measured at
+  **172/212 = 81.1%** (see the addendum above), with the composite-symbol
+  residual classes kept OPEN in the ledger; the report's original 88.9%
+  figure was measured under first-page-only citation.
 - **lm741/QPA1003P have 0 tables / 0 specs** (and QPA1003P 0 figures):
   the engine only proposes caption-anchored tables, and these PDFs' tables
   are heading-anchored. The honest result is a paragraph-only corpus with
@@ -155,10 +192,15 @@ gate fixture is a hard failure, never a skip.
   lookups) is not there for the captionless era. Heading-anchored
   hypotheses (and title-anchored figures) are ticket 09, high — recorded
   in the ledger; the gate's honest zeros are asserted by test so "100%
-  verification" never covers fabricated specs.
+  verification" never covers fabricated specs. **SUPERSEDED by ticket 09**
+  (see the addendum): these parts now yield 6/5 tables, 71/41 specs and
+  QPA1003P 4 figure files, and the zeros' replacement is asserted by test.
 - **Merged-cell (rowspan/colspan) materialization is absent** (ticket 09,
   high, ledger): wrapping cells merge per row and empty cells stay
   honestly empty, but nothing replicates a spanning cell across rows.
+  **SUPERSEDED by ticket 09** (see the addendum): spanning symbols
+  replicate via the indent-chain / nearest-anchor rules, pinned by
+  synthetic fixtures.
 - **Stats count caption occurrences, not distinct tables**: AD9081
   reports "29 accepted" for 21 distinct tables (multi-page tables count
   once per caption line) — `dsa status` inherits that semantics; read any
@@ -198,3 +240,4 @@ reproducible baseline).
 - Ticket-09 materialization (merged-cell grids, heading-anchored tables,
   title-anchored figures, continuation-row page attribution) — parked in
   `.scratch/vendor-neutral-layout/issues/09-layout-materialization.md`.
+  **Not out of scope anymore**: shipped as ticket 09 — see the addendum.

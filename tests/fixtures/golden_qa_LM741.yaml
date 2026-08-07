@@ -1,10 +1,13 @@
 # Golden Q&A set for the LM741 datasheet (SNOSC25D, phase-4 gate PDF,
-# pdf_layout path). Old-TI captionless-era part: 0 tables / 0 spec records,
-# 3 figure captions (2 of them covered by plot questions here) — text +
-# plot questions only (recorded decision: spec queries are n/a when a
-# part's corpus honestly has no specs.json records). Every expected_
-# substring was verified against the printed PDF page text (page_texts)
-# AND the built corpus section covering that page.
+# pdf_layout path). Old-TI captionless-era part: heading-anchored tables
+# since ticket 09 (5 tables: abs-max + ESD + recommended operating
+# conditions on p4, electrical characteristics on p5/p6) -> 58 spec
+# records; 3 figure captions (2 covered by plot questions). The ticket-07
+# "text + plot only" boundary is superseded — the abstract spec questions
+# below resolve real records (author-probed: values + pages measured from
+# the built corpus). Every expected_substring was verified against the
+# printed PDF page text (page_texts) AND the built corpus section covering
+# that page.
 questions:
   - id: q01-features-protection
     question: What protection and latch-up behavior does the LM741 feature?
@@ -65,6 +68,32 @@ questions:
     expected_substrings: ["single or dual power supply"]
     pages: [7]
     kind: direct
+
+  - id: s1-spec-supply-absmax
+    question: What are the absolute maximum supply voltages of the LM741 variants?
+    expected_substrings: ["±22", "±18"]
+    pages: [4]
+    kind: direct
+    spec_query: {symbol: "Supply"}
+    notes: heading-anchored abs-max records; the device-variant sub-rows
+      carry the fused per-variant maxima ("±22 ±18" shape on the printed
+      page)
+
+  - id: s2-spec-common-mode-rejection
+    question: What common-mode rejection ratio does the LM741 achieve?
+    expected_substrings: ["80", "95", "dB"]
+    pages: [5]
+    kind: direct
+    spec_query: {symbol: "Common-mode"}
+    notes: 6.5-electrical record (min 80 / typ 95 dB); the LM741A table on
+      p6 prints the same values
+
+  - id: s3-spec-power-dissipation
+    question: What is the absolute maximum power dissipation of the LM741?
+    expected_substrings: ["500", "mW"]
+    pages: [4]
+    kind: direct
+    spec_query: {symbol: "Power dissipation"}
 
   - id: p1-noninverting-amplifier-circuit
     question: Which figure shows the LM741 noninverting amplifier circuit?

@@ -75,6 +75,12 @@ def _section_md(result, stem: str) -> str:
     return path.read_text(encoding="utf-8")
 
 
+def _section_md(result, stem: str) -> str:
+    path = _doc_dir(result) / "sections" / f"{stem}.md"
+    assert path.exists(), f"missing section file {path.name}"
+    return path.read_text(encoding="utf-8")
+
+
 def _plot_files(result) -> list[Path]:
     return list(_doc_dir(result).rglob("figures/*/*.png"))
 
@@ -175,6 +181,89 @@ class TestFigureRendering:
         for fle in files:
             assert fle.stat().st_size > 0
             assert _pixel_darkness(fle, 0.3, 0.6) < 300
+
+
+class TestTitleAnchoredFigures:
+    """Ticket 09: captionless-era figures anchor by their printed title
+    band — QPA1003P's 'Functional Block Diagram' shape (14 pt title inside
+    a drawn emphasis band with a large vector rect directly below, prose
+    headings never fire). Through the build_part seam."""
+
+    @staticmethod
+    def _make_title_pdf(path: Path, title: str, body_first_x: float,
+                        big_rect: bool, body_words: int) -> None:
+        """A 14 pt title inside an 18 pt emphasis band, a big drawn rect
+        below (optional), and a body-prose line either in the title's own
+        column (x=36) or the neighboring one (x=316)."""
+        doc = fitz.open()
+        page = doc.new_page(width=612.0, height=792.0)
+        font = fitz.Font("helv")
+        page.draw_rect(fitz.Rect(36.0, 92.0, 295.0, 110.0),
+                       color=(0, 0, 0), width=1.0, fill=(0.85, 0.85, 0.85))
+        if big_rect:
+            page.draw_rect(fitz.Rect(36.0, 120.0, 295.0, 300.0),
+                           color=(0, 0, 0), fill=(0.2, 0.2, 0.2))
+        tw = fitz.TextWriter(page.rect)
+        tw.append((36.0, 107.0), title, font=font, fontsize=14.04)
+        tw.write_text(page)
+        phrase = " ".join(["payload"] * body_words)
+        page.insert_text((body_first_x, 320.0), phrase, fontsize=9.96)
+        page.insert_text((36.0, 360.0), "1  Note line for the figure block.", fontsize=8.0)
+        doc.set_toc([[1, "1 Page One", 1]])
+        doc.save(str(path))
+        doc.close()
+
+    def _build(self, tmp_path, name: str, title, body_first_x, big_rect,
+               body_words, body_size=9.96) -> object:
+        pdf = Path(tmp_path) / name
+        self._make_title_pdf(pdf, title, body_first_x, big_rect, body_words)
+        settings = Settings(parts_dir=tmp_path / "parts",
+                            cache_dir=tmp_path / ".cache").resolve()
+        res = build_part(pdf, part_number="P1", settings=settings,
+                         vendor="unknown", use_llm=False)
+        return res
+
+    def test_title_band_with_rect_below_yields_figure(self, tmp_path):
+        # neighbor-column prose (the 'Applications' bullets at x=316) must
+        # not block the title's claim
+        result = self._build(tmp_path, "bd.pdf", "Functional Block Diagram",
+                             body_first_x=316.0, big_rect=True, body_words=7)
+        plots = json.loads((_doc_dir(result) / "plots.json").read_text(
+            encoding="utf-8"))["plots"]
+        assert len(plots) == 1
+        rec = plots[0]
+        assert rec["caption"] == "Functional Block Diagram"
+        assert rec["page_start"] == 1
+        assert rec["file"], "title-anchored figure must render"
+        fle = result.part_dir / rec["file"]
+        assert fle.stat().st_size > 1024
+        # the clip contains the drawn rect (dark) not the caption area
+        assert _pixel_darkness(fle, 0.45, 0.55) < 300
+        found = find_plots(result.part_dir, caption="Functional Block Diagram")
+        assert found and found[0].file
+        md = _section_md(result, "1-page-one")
+        assert "Functional Block Diagram" in md
+
+    def test_same_column_prose_below_band_blocks_figure(self, tmp_path):
+        # body prose directly under the title band in its own x-column is a
+        # heading with a paragraph below, not a figure — even with a rect
+        result = self._build(tmp_path, "bd2.pdf", "General Description Text",
+                             body_first_x=36.0, big_rect=True, body_words=9)
+        assert json.loads((_doc_dir(result) / "plots.json").read_text(
+            encoding="utf-8"))["plots"] == []
+        md = _section_md(result, "1-page-one")
+        assert "payload payload payload payload payload payload payload payload payload" in md
+
+    def test_note_line_under_drawing_stays_honest(self, tmp_path):
+        # a short footnote-styled line below a title band is not prose and
+        # never becomes a figure (p15 'Power Dissipation...' shape keeps
+        # only the title)
+        result = self._build(tmp_path, "bd3.pdf", "Power Dissipation and Maximum Gate Current",
+                             body_first_x=316.0, big_rect=True, body_words=3)
+        plots = json.loads((_doc_dir(result) / "plots.json").read_text(
+            encoding="utf-8"))["plots"]
+        assert len(plots) == 1
+        assert plots[0]["caption"] == "Power Dissipation and Maximum Gate Current"
 
 
 class TestFigureBoundaries:

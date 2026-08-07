@@ -42,6 +42,11 @@ def table_to_records(
         cited += [m for m in _MARKER_RE.findall(row_text) if m not in cited]
 
         unit_text = _cell_for_role(row, roles, "unit")
+        # ticket 09: a merged multi-page grid carries per-row pages; a row's
+        # own printed page beats the table's caption page, so continuation
+        # rows are never cited by a page they do not appear on.
+        row_page = table.row_pages[row_index] if len(table.row_pages) > row_index \
+            else None
         record = SpecRecord(
             section=section.number,
             table_index=table_index,
@@ -57,7 +62,8 @@ def table_to_records(
             unit=canonical_unit(unit_text, unknown=unknown_units),
             footnotes=table.footnotes,
             cited_markers=cited,
-            page=table.page if table.page is not None else section.page_start,
+            page=row_page if row_page is not None
+            else (table.page if table.page is not None else section.page_start),
             row_verbatim=list(row),
         )
         records.append(record)

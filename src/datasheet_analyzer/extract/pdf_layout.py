@@ -115,22 +115,26 @@ def _squash(text: str) -> str:
     return _NONALNUM.sub("", _WS.sub(" ", text).lower())
 
 
-def _span_line_text(spans: list[dict]) -> str:
+def _span_line_text(spans: list) -> str:
     """Join spans with a glue rule: no space when the next span starts
     right at the previous one's end (sub/superscripts), else a space —
-    mirrors the project's glued-sub/superscript convention."""
+    mirrors the project's glued-sub/superscript convention. Accepts both
+    dict-mode spans and the engine's own ``_Span`` objects."""
     parts: list[str] = []
     prev_x1: float | None = None
     prev_size = 0.0
     for sp in spans:
-        text = sp["text"]
+        if isinstance(sp, _Span):
+            text, x0, x1, size = sp.text, sp.x0, sp.x1, sp.size
+        else:
+            text, x0, x1, size = sp["text"], sp["bbox"][0], sp["bbox"][2], sp["size"]
         if not text:
             continue
-        if prev_x1 is not None and sp["bbox"][0] - prev_x1 > 0.5 * prev_size:
+        if prev_x1 is not None and x0 - prev_x1 > 0.5 * prev_size:
             parts.append(" ")
         parts.append(text)
-        prev_x1 = sp["bbox"][2]
-        prev_size = sp["size"]
+        prev_x1 = x1
+        prev_size = size
     return _WS.sub(" ", "".join(parts)).strip()
 
 
@@ -169,7 +173,8 @@ class _Line:
 
 
 class _Page:
-    __slots__ = ("_path", "_rulings", "index", "is_toc_page", "lines", "text")
+    __slots__ = ("_boxes", "_path", "_rulings", "index", "is_toc_page",
+                 "lines", "text")
 
     def __init__(self, index: int, lines: list[_Line], text: str, path: Path):
         self.index = index          # 1-based PDF page number
@@ -178,6 +183,7 @@ class _Page:
         self.is_toc_page = False    # set by the printed-TOC scan
         self._path = path
         self._rulings: list[tuple[float, float, float]] | None = None
+        self._boxes: list[tuple[float, float, float, float]] | None = None
 
     def v_rulings(self) -> list[tuple[float, float, float]]:
         """Vertical drawing lines on this page as (x, y0, y1), lazy.
@@ -197,6 +203,25 @@ class _Page:
             except Exception:  # noqa: BLE001 — honesty over crash
                 log.warning("pdf_layout: drawing scan failed on page %d", self.index)
         return self._rulings
+
+    def boxes(self) -> list[tuple[float, float, float, float]]:
+        """All drawing rects on this page as (x0, y0, x1, y1), lazy.
+
+        Ticket 09's title-anchored figure hypothesis reads drawn structure:
+        a figure title sits inside a small emphasis band with a large
+        content rect directly below (measured on QPA1003P: 16-18 pt heading
+        bands over 187-232 pt diagram/plot boxes)."""
+        if self._boxes is None:
+            self._boxes = []
+            try:
+                with fitz.open(self._path) as doc:
+                    for d in doc[self.index - 1].get_drawings():
+                        r = d["rect"]
+                        if r.width > 1.0 and r.height > 1.0:
+                            self._boxes.append((r.x0, r.y0, r.x1, r.y1))
+            except Exception:  # noqa: BLE001 — honesty over crash
+                log.warning("pdf_layout: box scan failed on page %d", self.index)
+        return self._boxes
 
 
 def _load_pages(path: Path) -> list[_Page]:
@@ -235,12 +260,19 @@ def _threshold(n_pages: int) -> int:
     return max(_MIN_PAGES, math.ceil(_MIN_PAGES_FRAC * n_pages))
 
 
-def _matches_pattern(text: str, page_index: int) -> bool:
+def _matches_pattern(text: str, page_index: int, x: float = 0.0,
+                     y: float = 0.0) -> bool:
+    """Universal page-machinery patterns, plus the bare page number when it
+    prints in the page's own number gutters (x < 80 pt or the footer band)
+    — the LM741 prints values that equal the page index in its tables
+    (measured: p5's '5' max column), and a mid-body digit is data, never
+    furniture."""
     return bool(
         _N_OF_M.match(text)
         or _PAGE_OF.match(text)
         or _REV_BARE.match(text)
-        or (text.isdigit() and int(text) == page_index)
+        or (text.isdigit() and int(text) == page_index
+            and (x < 80.0 or y > 700.0))
     )
 
 
@@ -269,7 +301,7 @@ def _furniture_sets(pages: list[_Page]) -> list[set[int]]:
             key = _band_key(line.y)
             if key not in recurring:
                 continue
-            if _matches_pattern(line.text, page.index):
+            if _matches_pattern(line.text, page.index, line.x, line.y):
                 out[page.index - 1].add(i)
                 continue
             same_text = set()
@@ -566,6 +598,56 @@ _MARKER_SIZE_RATIO = 0.82
 # last row (measured 12-26 pt on AD9081/HMC520A); continuations then follow
 # at the wrap threshold of the table's own pitch.
 _FOOTNOTE_GAP = 28.0
+# Rowspan materialization (ticket 09): an empty parameter cell inherits the
+# nearest anchor by baseline distance; this epsilon keeps exact-distance
+# ties (measured 12.8 pt above and below on AD9081 p5) on the anchor printed
+# above the empty row.
+_ROW_ANCHOR_TIE = 0.01
+# Heading-anchored table hypothesis (ticket 09, SPEC story 10): a region
+# under a printed section heading is hypothesized exactly like a captioned
+# region — the same ladder, gate and honesty rules decide. A heading is an
+# anchor when its printed line matches a section title key OR its spans are
+# heading-sized (measured: LM741 body headings 11.0 pt, QPA1003P 14.04 pt,
+# and HMC520A's 10.98 pt table sub-labels must NOT fire the anchor).
+_HEADING_SIZE = 11.0
+# Captionless-era tables carry a real header row — measured on every gate
+# part: LM741's 'MIN MAX UNIT' / 'PARAMETER TEST CONDITIONS MIN TYP MAX
+# UNIT' / 'THERMAL METRIC(1) ... UNIT', QPA1003P's 'Parameter Value /
+# Range' / 'Parameter Min Typ Max Units'. The prose sections and plot-axis
+# labels that would otherwise reconstruct as ragged grids have none, so a
+# heading-anchored region whose first row carries no parameter-header token
+# stays honestly a paragraph (SPEC story 10's rejection gate).
+_HEADER_TOKENS = frozenset({
+    "min", "max", "typ", "tpy", "nom",
+    "unit", "units", "value", "values", "valuerange", "parameter",
+    "rating", "ratings",
+    "testconditions", "testcondition", "thermal", "thermalmetric",
+    "partno", "partnumber",
+})
+# The side-by-side fallback: when a heading-anchored region fails the gate,
+# and its header row's word clusters show one inter-group gap this wide
+# (measured 106 pt between QPA1003P's side-by-side Absolute Maximum Ratings
+# and Recommended Operating Conditions — vs LM741's widest legit intra-table
+# gap of ~120 pt between its own far-apart columns), the region is split at
+# that gap and each side is hypothesized as its own table.
+_SPLIT_GAP = 90.0
+# Lateral-uniformity rule in the gate: a band whose cell starts cluster into
+# two groups tens of points apart fuses two side-by-side columns (measured
+# 78 pt in QPA1003P's fused pair vs < 25 pt spread inside any real column).
+_SUB_COLUMN_GAP = 60.0
+# Title-anchored figure hypothesis (ticket 09): a figure title is a
+# heading-sized line that sits inside a drawn heading band, with the band's
+# own large rect (≥ this size) or vector content directly below. Measured:
+# QPA1003P's headings print inside 16-18 pt emphasis bands over 170-232 pt
+# diagram/plot boxes; prose headings ('Product Features', 'Applications')
+# sit outside any band and never fire.
+_TITLE_SIZE = 13.0
+_TITLE_BAND_H_MIN = 10.0
+_TITLE_RECT_MIN = 25.0
+# The figure title's emphasis band may be followed by a small gap before the
+# drawn content (measured 6.5 pt on QPA1003P p1); the region scan counts
+# rects that start within this window of the band's bottom.
+_TITLE_CONTENT_GAP = 20.0
 _UNIT_WORDS = frozenset({
     "ghz", "mhz", "khz", "hz", "dbm", "dbc", "db", "v", "mv", "kv", "uv",
     "a", "ma", "ua", "ohm", "ω", "kω", "mω", "w", "mw", "lsb", "bits",
@@ -697,12 +779,23 @@ def _footnote_prose_like(row: _Row) -> bool:
 
 
 def _cluster_count(row: _Row) -> int:
-    """How many x-clusters a row's spans touch (gap > header tau starts a
-    new cluster). Multi-band rows are grid data; footnote bodies and their
-    wrapped continuations are single-band, and a footnote's sentence must
-    not spread across the table's columns."""
-    xs = sorted({round(s.x0, 1) for s in row.spans})
-    return 1 + sum(1 for a, b in itertools.pairwise(xs) if b - a > _HDR_ANCHOR_TAU)
+    """How many x-clusters a row's spans touch. Multi-band rows are grid
+    data; footnote bodies and their wrapped continuations are single-band,
+    and a footnote's sentence must not spread across the table's columns.
+
+    The cluster boundary is the *inter-span* gap (next span's start minus
+    the previous span's end), not the start-to-start distance: a span
+    covers several words (measured: TI printers emit one span per few
+    words), so consecutive spans of one sentence sit ~2.4 pt apart while
+    their starts diverge by the span's own width — start-to-start
+    clustering would read every footnote line as multi-column (LM741's
+    '(N)' notes measure 6-10 such false columns)."""
+    spans = sorted(row.spans, key=lambda s: s.x0)
+    clusters = 1
+    for a, b in itertools.pairwise(spans):
+        if b.x0 - a.x1 > _HDR_ANCHOR_TAU:
+            clusters += 1
+    return clusters
 
 
 def _row_band_count(row: _Row) -> int:
@@ -847,6 +940,53 @@ def _gate(rows: list[_Row], lefts: list[float], page: _Page,
     if len(lefts) < 2:
         return "single column"
 
+    # (ticket 09) Reconstruction completeness: every word of a grid row must
+    # fall inside some band — the bands tile from lefts[0] to +inf, so any
+    # span left of the first band is a word the grid would silently drop.
+    # LM741's MIN/MAX/UNIT-only header would otherwise strand the whole
+    # parameter column outside the bands while still passing occupancy.
+    for row in rows:
+        if any(s.x0 < lefts[0] for s in row.spans):
+            return "words fall outside the column bands"
+
+    # (ticket 09) Lateral uniformity: a band whose cell starts cluster into
+    # two groups far apart fuses two side-by-side columns (QPA1003P's pair of
+    # 2-column tables would otherwise fuse into a 4-column grid with two
+    # stable columns). The fusion is judged per row — a *row* carrying
+    # starts tens of points apart inside one band means the band holds two
+    # columns; a wide column whose rows simply start at different offsets
+    # (LM741's conditions column spans 120 pt) never trips it. Glued
+    # superscript citation markers sit inside their cell by geometry
+    # (measured "AC Coupling2" 143 pt in from the cell's start) and must
+    # not read as a second column.
+    for lo, hi in zip(lefts, lefts[1:] + [math.inf]):
+        for row in rows:
+            max_size = max((s.size for s in row.spans), default=0.0)
+            raw = sorted((s for s in row.spans if lo <= s.x0 < hi),
+                         key=lambda s: s.x0)
+            starts = [
+                s.x0 for s in raw
+                if not (s.size <= _MARKER_SIZE_RATIO * max_size
+                        and max_size - s.size >= 1.0)
+            ]
+            clusters = _cluster_lefts(starts, _HDR_ANCHOR_TAU)
+            for a, z in itertools.pairwise(clusters):
+                if z - a < _SUB_COLUMN_GAP:
+                    continue
+                # a glued composite (superscript/subscript fragments of one
+                # cell, e.g. "Output Power @ f0 (dBm)", or AD9081's RSET
+                # superscript bridging to its '= 5 kΩ' tail) is not a
+                # fusion — the second group must start as a genuinely
+                # separate text run: a real gap from its *raw* predecessor
+                # (marker-bridges included), of real words
+                second = [s for s in raw if s.x0 >= z]
+                if not any(len(s.text.strip()) >= 3 for s in second):
+                    continue
+                first_of_z = second[0]
+                prev = raw[raw.index(first_of_z) - 1]
+                if first_of_z.x0 - prev.x1 > 0.5 * prev.size:
+                    return "side-by-side columns fused into one band"
+
     ruled = any(
         (lefts[0] - 4.0 <= x <= lefts[-1] + 60.0)
         and y1 > region_y0 and y0 < region_y1
@@ -889,13 +1029,86 @@ def _gate(rows: list[_Row], lefts: list[float], page: _Page,
     return None
 
 
+def _row_y(row: _Row) -> float:
+    return row.lines[0].y if row.lines else row.y
+
+
+def _materialize_band0(grid: list[list[str]], row_ys: list[float],
+                       starts: list[float | None], lefts: list[float]) -> None:
+    """Ticket 09: rowspan materialization of the parameter column.
+
+    The engine's grids are band-expanded but span-silent — a parent cell
+    that spans several rows keeps its association only if it replicates.
+    Two measured shapes are reconstructed:
+
+    1. **Indent chain** (AD9081 Table 3, QPA1003P p2): the parent's text
+       prints on its own row and the children print one indent level deeper
+       (band start >= the header-anchor tau away from the column's left
+       edge — measured 14.9-17.0 pt vs 6.4-8.5 pt for ordinary rows). The
+       child's cell becomes "parent + own text", so 'AC Coupling' under
+       'Full-Scale Output Current Range' reads
+       'Full-Scale Output Current Range AC Coupling'. Band headers on the
+       column's own left edge ('DAC ACCURACY') never replicate into
+       single-indent rows ('Gain Error'), which stay clean.
+    2. **Empty child rows** (continuation rows of a multi-row span: AD9081
+       p5's second DC Coupling shunt row, QPA1003P's 'Frequency = 1 GHz'
+       rows whose parent prints mid-span): the empty first cell inherits
+       the *nearest* anchor row's first cell (above or below, by baseline
+       distance — ties prefer the anchor printed above). The parent text
+       vertically centered over its span puts the closest anchor inside
+       the span, so the nearest anchor is the true parent.
+    """
+    if len(grid) <= 1 or not lefts:
+        return
+    band0 = lefts[0]
+    parent = -1
+    anchors = [i for i, row in enumerate(grid) if row[0].strip()]
+    for i, row in enumerate(grid):
+        if starts[i] is not None:
+            depth = starts[i] - band0
+            # a parent is an *indented, value-less* row (conditions allowed):
+            # 'Full-Scale Output Current Range' spans its 'AC Coupling'
+            # children, while top-level band headers ('DAC ACCURACY', depth
+            # 0) and value-carrying rows ('Gain Error') never replicate
+            # (measured indent levels: 6.4-8.5 pt rows vs 14.9-17.0 pt
+            # children on AD9081; band headers sit on the column's own edge)
+            if depth >= _HDR_ANCHOR_TAU and parent >= 0:
+                row[0] = f"{grid[parent][0]} {row[0]}"
+            elif 0.0 < depth < _HDR_ANCHOR_TAU:
+                has_values = any(c.strip() for c in row[2:])
+                parent = i if not has_values else parent
+            continue
+        if not row[0].strip():
+            above = [a for a in anchors if a < i]
+            below = [a for a in anchors if a > i]
+            best: tuple[float, int] | None = None
+            if above:
+                best = (row_ys[i] - row_ys[above[-1]], above[-1])
+            if below:
+                cand = (row_ys[below[0]] - row_ys[i], below[0])
+                # ties keep the anchor printed above (AD9081 p5)
+                if best is None or cand[0] < best[0] - _ROW_ANCHOR_TIE:
+                    best = cand
+            if best is not None:
+                row[0] = grid[best[1]][0]
+
+
 def _block_from(rows: list[_Row], lefts: list[float], caption: str,
                 conditions: str, page_number: int,
                 footnotes: list[Footnote] | None = None,
                 cited_markers: list[str] | None = None) -> TableBlock:
     headers = _row_cells(rows[0], lefts)
-    grid = [r for r in (_row_cells(r, lefts) for r in rows[1:])
-            if any(c.strip() for c in r)]
+    kept = [(r, _row_cells(r, lefts)) for r in rows[1:]
+            if any(c.strip() for c in _row_cells(r, lefts))]
+    grid = [cells for _r, cells in kept]
+    row_ys = [_row_y(r) for r, _c in kept]
+    band1 = lefts[1] if len(lefts) > 1 else math.inf
+    starts = [
+        min((s.x0 for s in r.spans if lefts[0] <= s.x0 < band1), default=None)
+        for r, _c in kept
+    ]
+    row_pages = [page_number] * len(grid)
+    _materialize_band0(grid, row_ys, starts, lefts)
     return TableBlock(
         caption=caption,
         headers=headers,
@@ -906,6 +1119,7 @@ def _block_from(rows: list[_Row], lefts: list[float], caption: str,
         markdown=grid_markdown(headers, grid),
         csv=grid_csv(headers, grid),
         page=page_number,
+        row_pages=row_pages,
     )
 
 
@@ -920,14 +1134,19 @@ def _merge_footnotes(base: list[Footnote], extra: list[Footnote]) -> list[Footno
 
 class _AcceptedTable:
     """An accepted table + the geometry it was accepted with (continuations
-    reuse the exact same columns so multi-page tables stay one atomic grid)."""
+    reuse the exact same columns so multi-page tables stay one atomic grid).
 
-    __slots__ = ("block", "header_sig", "lefts")
+    ``last_anchor`` is the block's most recently printed parameter-cell
+    text (ticket 09): continuation rows with an empty parameter cell carry
+    it across the page break in reading order."""
+
+    __slots__ = ("block", "header_sig", "last_anchor", "lefts")
 
     def __init__(self, block: TableBlock, lefts: list[float]):
         self.block = block
         self.lefts = lefts
         self.header_sig = _squash(" ".join(block.headers))
+        self.last_anchor = block.grid[-1][0] if block.grid else ""
 
 
 def _is_repeated_header(row: _Row, lefts: list[float], header_sig: str) -> bool:
@@ -968,6 +1187,15 @@ def _hypothesis(region: list[_Line], page: _Page
     outvotes the grid the header itself declares (which reproduces every
     advice edge by construction). Ties keep the ladder's exploration order
     (primary split first).
+
+    Ties prefer the *coarsest* passing split (fewest bands): a fine
+    all-word split that reproduces every header edge scores 1.0 too, and
+    its extra bands are degenerate — they carve the interior words of wide
+    cells (measured: LM741's 'Supply voltage' word gap of 31 pt, QPA1003P's
+    superscript + wrapped 'Frequency = N GHz' continuation lines) into
+    separate columns. The header row's own declaration wins a tie by band
+    count; a split that merged real columns (Min|Typ 25-34 pt apart) loses
+    the advice edges it merged and scores below.
 
     Returns (lefts, reason, fidelity, kept_rows): lefts is the accepted
     column geometry (or None), reason the rejection string, fidelity the
@@ -1023,9 +1251,12 @@ def _hypothesis(region: list[_Line], page: _Page
                          for ln in lines for s in ln.spans)
         fidelity = (grid_words / region_words) if region_words else 1.0
         score = _advice_share(lefts, band_sets[0])
-        # strictly greater scores replace; ties keep the earlier candidate
-        # (the header-anchored split is the table's own declaration)
-        if best is None or score > best[0]:
+        # strictly greater scores replace; ties keep the coarsest candidate
+        # (fewest bands — the header-anchored split is the table's own
+        # declaration and equals the fineness of the declaration; a finer
+        # tie can only be carving interior words of declared columns)
+        if best is None or score > best[0] or (
+                score == best[0] and len(lefts) < len(best[1])):
             best = (score, lefts, lines, candidate)
             best_fidelity = fidelity
     if best is None:
@@ -1033,12 +1264,124 @@ def _hypothesis(region: list[_Line], page: _Page
     return best[1], None, best_fidelity, best[3]
 
 
+def _is_heading_anchor(line: _Line, title_keys: frozenset[str]) -> bool:
+    """A printed section heading is a table-anchor candidate (ticket 09,
+    SPEC story 10): its line matches a section title key, or its spans are
+    heading-sized (measured: LM741 body headings 11.0 pt, QPA1003P
+    14.04 pt — HMC520A's 10.98 pt table sub-labels never fire).
+
+    A heading-sized line that reads as a known parameter-header token is a
+    table header cell, never a heading (measured on QPA1003P: its
+    'Parameter'/'Min'/'Units'/'Part No.'/'Value / Range' header words
+    print at 11.04-12.0 pt — treating them as anchors would carve the
+    region into empty slivers between header words and starve every
+    heading-anchored table under them). LM741's lone section-number lines
+    ('6.1', '6.5') stay anchors — they are printed section prefixes, not
+    header cells."""
+    if title_keys and _squash(line.text) in title_keys:
+        return True
+    if _squash(line.text) in _HEADER_TOKENS:
+        return False
+    return any(s.size >= _HEADING_SIZE for s in line.spans)
+
+
+def _strip_leading_preamble(region: list[tuple[int, _Line]]
+                            ) -> list[tuple[int, _Line]]:
+    """Heading-anchored regions start below the printed heading; a leading
+    single-band sentence line directly under it is the test-conditions
+    preamble (measured: LM741 'over operating free-air temperature range
+    (unless otherwise noted)...', QPA1003P 'Test conditions unless otherwise
+    noted: 25 °C, ...'). The captioned path attaches preambles as
+    conditions; here the equivalent rows drop out of the grid and rejoin
+    the paragraph stream when the region is rejected."""
+    out = list(region)
+    while out:
+        line = out[0][1]
+        # a preamble is ONE glued text run: every next span starts right at
+        # the previous one's end (LM741's condition line measures 2.7 pt
+        # joins, sub/superscript tails included) — a real header row's
+        # column starts sit tens of points apart ('MIN' vs 'MAX' vs 'UNIT')
+        spans = sorted(line.spans, key=lambda s: s.x0)
+        glued = len(spans) <= 1 or all(
+            b.x0 - a.x1 <= 0.5 * a.size for a, b in itertools.pairwise(spans))
+        if not glued:
+            break
+        # the whole sentence stays a preamble at the prose-word boundary
+        # too (LM741's condition line measures exactly 8 words); a real
+        # header row ('PARAMETER TEST CONDITIONS MIN TYP MAX UNIT' = 7)
+        # never pops
+        if len(_WS.sub(" ", line.text).split()) < _PROSE_WORDS:
+            break
+        out.pop(0)
+    return out
+
+
+def _has_header_row(region: list[tuple[int, _Line]]) -> bool:
+    """The region's first row must read like a parametric header (see
+    ``_HEADER_TOKENS``) — the captionless-era rejection gate. The row is
+    the first baseline group — QPA1003P prints each header word as its own
+    line on one baseline, and a full-width header row spans several lines
+    ('PARAMETER TEST CONDITIONS MIN TYP MAX UNIT' prints as words too)."""
+    if not region:
+        return False
+    rows = _group_rows([ln for _i, ln in region], wrap=False)
+    if not rows:
+        return False
+    tokens = {_squash(t) for ln in rows[0].lines for t in ln.text.split()}
+    return bool(tokens & _HEADER_TOKENS)
+
+
+def _mirror_split(region: list[tuple[int, _Line]]) -> list[list[tuple[int, _Line]]]:
+    """Side-by-side pairs share one heading band (QPA1003P p2: 'Absolute
+    Maximum Ratings | Recommended Operating Conditions' — two 2-column
+    tables on one baseline group). When the region's header word clusters
+    reflect in pairs ('Parameter | Value / Range | Parameter | Value /
+    Range'), the region splits at the pair midpoint and each side is
+    hypothesized independently. Returns [] when the header does not mirror.
+
+    The header row is the region's first *baseline group* (QPA1003P prints
+    each header word as its own line at the same y), never one physical
+    line."""
+    region_lines = [ln for _i, ln in region]
+    rows = _group_rows(region_lines, wrap=False)
+    if not rows:
+        return []
+    clusters: list[tuple[float, list[_Span]]] = []
+    for s in sorted(rows[0].spans, key=lambda sp: sp.x0):
+        if clusters and s.x0 - clusters[-1][0] < _HDR_ANCHOR_TAU:
+            clusters[-1][1].append(s)
+        else:
+            clusters.append((s.x0, [s]))
+    n = len(clusters)
+    if n < 4 or n % 2:
+        return []
+    for i in range(n // 2):
+        left = _squash(" ".join(s.text for s in clusters[i][1]))
+        right = _squash(" ".join(s.text for s in clusters[i + n // 2][1]))
+        if left != right:
+            return []
+    mid = (clusters[n // 2 - 1][0] + clusters[n // 2][0]) / 2.0
+    zones: list[list[tuple[int, _Line]]] = [[], []]
+    for idx, ln in region:
+        kept = [s for s in ln.spans if s.x0 < mid]
+        if kept:
+            out = _Line(ln.block, ln.y, min(s.x0 for s in kept), ln.text, kept)
+            zones[0].append((idx, out))
+        kept = [s for s in ln.spans if s.x0 >= mid]
+        if kept:
+            out = _Line(ln.block, ln.y, min(s.x0 for s in kept), ln.text, kept)
+            zones[1].append((idx, out))
+    return [z for z in zones if z]
+
+
 class _TableExtraction:
     """Per-document table extraction state + statistics.
 
     Runs one page at a time; repeated captions (multi-page tables) merge
     their continuation rows into the first page's atomic block, reusing the
-    exact column geometry the block was accepted with.
+    exact column geometry the block was accepted with. Ticket 09 adds the
+    heading-anchored pass (SPEC story 10) with the same ladder + gate, and
+    per-row page attribution for merged multi-page grids.
     """
 
     def __init__(self, pages: list[_Page]):
@@ -1051,6 +1394,7 @@ class _TableExtraction:
         self.rejected = 0
         self.reasons: list[str] = []
         self.fidelities: list[float] = []
+        self._last_reason = ""
 
     def _preamble(self, page: _Page, cap_idx: int, furniture: set[int],
                   title_keys: frozenset[str], consumed: set[int]
@@ -1102,17 +1446,30 @@ class _TableExtraction:
             if acc is not None:
                 # continuation page: extend the existing atomic grid with the
                 # same columns; footnotes and a repeated header row are
-                # dropped by signature
+                # dropped by signature. Every appended row records the page
+                # it was printed on (ticket 09: per-row page attribution),
+                # and rows whose parameter cell is empty carry the block's
+                # last printed parameter text (the page-13 'fOUT' rows of a
+                # page-12 'fDAC' group inherit their parent across the page
+                # break — the measured ACLR continuation shape).
                 rows = _group_rows([ln for _i, ln in region], wrap=False)
                 kept_ids: set[int] = set()
                 grid_rows: list[_Row] = []
+                carried = acc.last_anchor
                 for row in rows:
                     if _is_footnote_row(row):
                         continue  # collected as a footnote below
                     if _is_repeated_header(row, acc.lefts, acc.header_sig):
                         kept_ids.update(id(ln) for ln in row.lines)
                         continue  # repeated header row: caption-like furniture
-                    acc.block.grid.append(_row_cells(row, acc.lefts))
+                    cells = _row_cells(row, acc.lefts)
+                    if not cells[0].strip() and carried:
+                        cells[0] = carried
+                    elif cells[0].strip():
+                        carried = cells[0]
+                        acc.last_anchor = carried
+                    acc.block.grid.append(cells)
+                    acc.block.row_pages.append(page.index)
                     kept_ids.update(id(ln) for ln in row.lines)
                     grid_rows.append(row)
                 acc.block.csv = grid_csv(acc.block.headers, acc.block.grid)
@@ -1140,43 +1497,119 @@ class _TableExtraction:
 
             pre_idx, conditions = self._preamble(
                 page, i, furniture, title_keys, self.consumed[page.index - 1])
-            region_lines = [ln for _i, ln in region]
-            lefts, reason, fidelity, kept_rows = _hypothesis(
-                region_lines, page)
-            if lefts is not None:
-                fine = _group_rows(region_lines, wrap=False)
-                # the grid's last row is the last one that spans bands;
-                # single-band rows below it are footnote continuations
-                grid_end = max((r.y for r in kept_rows
-                                if _row_band_count(r) > 1), default=0.0)
-                footnotes, fn_rows = _scan_table_footnotes(
-                    fine, grid_end, _row_pitch(fine))
-                attached_ids = {id(ln) for row in fn_rows for ln in row.lines}
-                grid_rows = [r for r in kept_rows
-                             if not any(id(ln) in attached_ids
-                                        for ln in r.lines)]
-                markers = list(dict.fromkeys(
-                    m for row in grid_rows for m in _row_markers(row)))
-                block = _block_from(_group_rows(
-                    [ln for r in grid_rows for ln in r.lines]), lefts,
-                    lines[i].text.strip(), conditions,
-                    page.index,
-                    footnotes=footnotes,
-                    cited_markers=markers)
-                self.by_page.setdefault(page.index, []).append(block)
+            block, lefts, _fidelity, reason = self._accept_hypothesis(
+                page, region, lines[i].text.strip(), conditions)
+            if block is not None and lefts is not None:
                 self.accs[key] = _AcceptedTable(block, lefts)
-                by_id = {id(ln): idx for idx, ln in region}
-                consumed = [by_id[id(ln)] for row in grid_rows
-                            for ln in row.lines]
-                consumed += [by_id[id(ln)] for row in fn_rows
-                             for ln in row.lines]
-                self._consume(page, consumed + pre_idx + [i])
-                self.accepted += 1
-                self.fidelities.append(fidelity)
+                self._consume(page, pre_idx + [i])
             else:
                 self.rejected += 1
                 self.reasons.append(reason)
             i = j
+
+        self._run_heading_anchored(page, furniture, title_keys)
+
+    def _run_heading_anchored(self, page: _Page, furniture: set[int],
+                              title_keys: frozenset[str]) -> None:
+        """Ticket 09, SPEC story 10: captionless-era tables are anchored by
+        their printed section heading and hypothesized with the exact same
+        ladder + gate as captioned tables — a captionless double either
+        reconstructs honestly or stays paragraphs. Side-by-side pairs
+        (QPA1003P p2) split first at their mirrored header into two zones;
+        when a zone fails, the region-wide hypothesis and the old
+        reject-then-split fallback keep their honesty.
+        """
+        consumed = self.consumed[page.index - 1]
+        lines = page.lines
+        i = 0
+        while i < len(lines):
+            if (i in furniture or i in consumed
+                    or _CAPTION_RE.match(lines[i].text.strip())
+                    or not _is_heading_anchor(lines[i], title_keys)):
+                i += 1
+                continue
+            region: list[tuple[int, _Line]] = []
+            j = i + 1
+            while j < len(lines):
+                line = lines[j]
+                if (j in furniture or j in consumed
+                        or _CAPTION_RE.match(line.text.strip())
+                        or _FIGURE_CAPTION_RE.match(line.text.strip())
+                        or _is_heading_anchor(line, title_keys)):
+                    break
+                region.append((j, line))
+                j += 1
+            region = _strip_leading_preamble(region)
+            if not region:
+                i = j
+                continue
+            if not _has_header_row(region):
+                i = j
+                continue
+            self.detected += 1
+            zones = _mirror_split(region)
+            split_blocks: list[TableBlock] = []
+            for zone in zones:
+                part, _l2, _f2, zone_reason = self._accept_hypothesis(
+                    page, zone)
+                if part is not None:
+                    split_blocks.append(part)
+                else:
+                    self.rejected += 1
+                    self.reasons.append(zone_reason)
+            # a mirrored header declares two tables side by side (QPA1003P
+            # p2): shipping both halves beats shipping the fused grid; only
+            # when a zone fails does the region-wide hypothesis get its say
+            if len(split_blocks) == len(zones) and zones:
+                i = j
+                continue
+            block, _lefts, _fid, reason = self._accept_hypothesis(page, region)
+            if block is None and not zones:
+                self.rejected += 1
+                self.reasons.append(reason)
+            i = j
+
+    def _accept_hypothesis(
+        self, page: _Page, region: list[tuple[int, _Line]],
+        caption: str = "", conditions: str = "",
+    ) -> tuple[TableBlock | None, list[float] | None, float, str]:
+        """Run the ladder + gate over a region and, when accepted, build the
+        block, consume its rows + footnotes and return (block, lefts,
+        fidelity, ""). The shared implementation of the captioned and
+        heading-anchored paths (ticket 09)."""
+        region_lines = [ln for _i, ln in region]
+        lefts, reason, fidelity, kept_rows = _hypothesis(region_lines, page)
+        if lefts is None:
+            self._last_reason = reason
+            return None, None, 0.0, reason
+        fine = _group_rows(region_lines, wrap=False)
+        # the grid's last row is the last one that spans bands; single-band
+        # rows below it are footnote continuations
+        grid_end = max((r.y for r in kept_rows
+                        if _row_band_count(r) > 1), default=0.0)
+        footnotes, fn_rows = _scan_table_footnotes(
+            fine, grid_end, _row_pitch(fine))
+        attached_ids = {id(ln) for row in fn_rows for ln in row.lines}
+        grid_rows = [r for r in kept_rows
+                     if not any(id(ln) in attached_ids for ln in r.lines)]
+        markers = list(dict.fromkeys(
+            m for row in grid_rows for m in _row_markers(row)))
+        block = _block_from(_group_rows(
+            [ln for r in grid_rows for ln in r.lines]), lefts,
+            caption, conditions,
+            page.index,
+            footnotes=footnotes,
+            cited_markers=markers)
+        self.by_page.setdefault(page.index, []).append(block)
+        by_id = {id(ln): idx for idx, ln in region}
+        consumed = [by_id[id(ln)] for row in grid_rows
+                    for ln in row.lines]
+        consumed += [by_id[id(ln)] for row in fn_rows
+                     for ln in row.lines]
+        self._consume(page, consumed)
+        self.accepted += 1
+        self.fidelities.append(fidelity)
+        return block, lefts, fidelity, ""
 
     def stats(self) -> ExtractionStats:
         return ExtractionStats(
@@ -1196,14 +1629,25 @@ class _FigureExtraction:
     never duplicated into the paragraph stream. Nothing else is consumed:
     figure-internal labels stay honest paragraphs, and the clip geometry
     for rendering is recomputed at publish time via ``figure_anchor_map``
-    (same caption scan, drift-free)."""
+    (same caption scan, drift-free).
+
+    Ticket 09 adds title-anchored figures (SPEC story 10's guard applied to
+    figures): a captionless-era drawing gets its own FigureRef when its
+    title — a heading-sized line inside a drawn emphasis band — has a large
+    vector rect directly below and no body-prose lines between (the QPA1003P
+    block diagram and its performance-plot bands; prose headings like
+    'Product Features' sit outside any band and never fire).
+    """
 
     def __init__(self, pages: list[_Page]):
         self.pages = pages
         self.by_page: dict[int, list[FigureRef]] = {}
         self.consumed: list[set[int]] = [set() for _ in pages]
 
-    def run(self, page: _Page) -> None:
+    def run(self, page: _Page, furniture: set[int],
+            title_keys: frozenset[str],
+            consumed_tables: set[int] | None = None) -> None:
+        consumed = consumed_tables or set()
         for i, line in enumerate(page.lines):
             m = _FIGURE_CAPTION_RE.match(line.text.strip())
             if not m:
@@ -1214,6 +1658,68 @@ class _FigureExtraction:
                           image_url="", page=page.index)
             )
             self.consumed[page.index - 1].add(i)
+        self._run_title_anchored(page, furniture, title_keys, consumed)
+
+    def _run_title_anchored(self, page: _Page, furniture: set[int],
+                            title_keys: frozenset[str],
+                            consumed_tables: set[int]) -> None:
+        lines = page.lines
+        boxes = page.boxes()
+        anchors: list[tuple[int, float, tuple[float, float, float, float]]] = []
+        for i, line in enumerate(lines):
+            if (i in furniture or i in consumed_tables
+                    or (title_keys and _squash(line.text) in title_keys)
+                    or _FIGURE_CAPTION_RE.match(line.text.strip())
+                    or _CAPTION_RE.match(line.text.strip())
+                    or max((s.size for s in line.spans), default=0.0) < _TITLE_SIZE):
+                continue
+            band = None
+            for b in boxes:
+                if (b[0] <= line.x <= b[2] and b[1] - 2.0 <= line.y <= b[3]
+                        and b[3] - b[1] >= _TITLE_BAND_H_MIN):
+                    band = b
+                    break
+            if band is None:
+                continue
+            if len(line.text.split()) < 3:
+                continue  # 'GND'/'VG' labels inside a drawn diagram are
+                # not figure titles (measured 14.1 pt on QPA1003P p17)
+            anchors.append((i, line.y, band))
+        page_bottom = max((ln.y for ln in lines), default=700.0) + 40.0
+        for k, (i, _y, band) in enumerate(anchors):
+            bottom = anchors[k + 1][2][1] if k + 1 < len(anchors) else page_bottom
+            content_ok = any(
+                bx[2] - bx[0] >= _TITLE_RECT_MIN and bx[3] - bx[1] >= _TITLE_RECT_MIN
+                and bx[0] <= line.x <= bx[2]  # the rect sits under the title's
+                and bx[1] <= band[3] + _TITLE_CONTENT_GAP  # own column — a side
+                and bx[3] >= band[3] + _TITLE_CONTENT_GAP   # box never counts
+                for bx in boxes
+            )
+            prose_ok = all(
+                not (len(ln.text.split()) >= 6 and
+                     max((s.size for s in ln.spans), default=0.0) >= 8.5)
+                and not (len(ln.text.split()) >= 4 and
+                         max((s.size for s in ln.spans), default=0.0) >= 11.0)
+                for ln in page.lines
+                if band[3] < ln.y <= bottom
+                # prose in the *title's own x-column* only: QPA1003P's block
+                # diagram sits left of the 'Applications' bullets + ordering
+                # table on the same page (measured x: band 36-295 vs text
+                # at 316+) — a neighboring column is not body prose of the
+                # figure. The clip itself stays the full-width band (the
+                # side-by-side artifact class of caption-anchored figures).
+                and max((s.x1 for s in ln.spans), default=0.0) >= band[0]
+                and ln.x <= band[2]
+            )
+            if not (content_ok and prose_ok):
+                continue
+            self.by_page.setdefault(page.index, []).append(
+                FigureRef(caption=lines[i].text.strip(), conditions="",
+                          image_url="", page=page.index)
+            )
+            self.consumed[page.index - 1].add(i)
+            log.info("pdf_layout: title-anchored figure on page %d: %r",
+                     page.index, lines[i].text.strip()[:60])
 
 
 def figure_anchor_map(path: Path) -> dict[tuple[int, str], tuple[float, float]]:
@@ -1257,11 +1763,46 @@ def figure_caption_key(caption: str) -> str:
     return _squash(caption)
 
 
+def figure_title_anchor_map(path: Path
+                            ) -> dict[tuple[int, str], tuple[float, float]]:
+    """(page, squashed title) -> (clip_top, clip_bottom) for every
+    title-anchored figure in a PDF (ticket 09).
+
+    The clip runs from the title's drawn emphasis band down to the next
+    banded title (or page bottom), so the rendered image is exactly the
+    drawing band the extractor cataloged. Recomputed deterministically at
+    publish time with the same scan, mirroring ``figure_anchor_map``.
+    """
+    pages = _load_pages(path)
+    out: dict[tuple[int, str], tuple[float, float]] = {}
+    for page in pages:
+        boxes = page.boxes()
+        anchors: list[tuple[float, tuple[float, float, float, float]]] = []
+        for ln in page.lines:
+            if max((s.size for s in ln.spans), default=0.0) < _TITLE_SIZE:
+                continue
+            band = None
+            for b in boxes:
+                if (b[0] <= ln.x <= b[2] and b[1] - 2.0 <= ln.y <= b[3]
+                        and b[3] - b[1] >= _TITLE_BAND_H_MIN):
+                    band = b
+                    break
+            if band is not None:
+                anchors.append((ln.y, band))
+        page_bottom = max((ln.y for ln in page.lines), default=700.0) + 40.0
+        for k, (y, band) in enumerate(anchors):
+            bottom = anchors[k + 1][1][1] if k + 1 < len(anchors) else page_bottom
+            out[(page.index, figure_caption_key(next(
+                ln.text.strip() for ln in page.lines if ln.y == y)))] = (
+                band[1], bottom)
+    return out
+
+
 class PdfLayoutBackend:
     """Offline, vendor-neutral layout extraction (PyMuPDF only)."""
 
     name = "pdf_layout"
-    output_version = "tables-06"
+    output_version = "tables-07"
 
     def is_available(self) -> tuple[bool, str]:
         try:
@@ -1290,7 +1831,8 @@ class PdfLayoutBackend:
         title_keys = _title_keys(entries)
         for page in pages:
             tables.run(page, furniture[page.index - 1], title_keys)
-            figures.run(page)
+            figures.run(page, furniture[page.index - 1], title_keys,
+                        consumed_tables=tables.consumed[page.index - 1])
         if entries:
             sections = _sections_from_entries(
                 pages, entries, furniture, tables, figures)

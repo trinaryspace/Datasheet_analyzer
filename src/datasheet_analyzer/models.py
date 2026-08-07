@@ -92,6 +92,12 @@ class TableBlock(BaseModel):
     csv: str = ""
     html: str = ""
     page: int | None = None
+    # Per-row page attribution of merged multi-page grids (`pdf_layout`):
+    # grid[i] was printed on row_pages[i]. Empty for HTML backends, where
+    # every row shares the table's single page. Continuation rows of a
+    # multi-page table cite their own printed page, so answers never cite a
+    # row by a page it does not appear on.
+    row_pages: list[int | None] = Field(default_factory=list)
 
     @property
     def n_rows(self) -> int:

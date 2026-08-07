@@ -14,7 +14,7 @@ from pathlib import Path
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-PIPELINE_VERSION = "0.3.0"
+PIPELINE_VERSION = "0.4.0"
 SPECS_SCHEMA_VERSION = "1"
 PLOTS_SCHEMA_VERSION = "1"
 

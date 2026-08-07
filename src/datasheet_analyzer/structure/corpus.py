@@ -75,7 +75,10 @@ def render_section_markdown(
         out += [para, ""]
 
     for i, table in enumerate(section.tables):
-        title = table.caption or f"Table {i + 1}"
+        # a captionless (heading-anchored) table is never renamed "Table N"
+        # — no such number exists in the source, and fabricating one would
+        # invite bogus citations (ticket 09 honest degradation)
+        title = table.caption or "Unnumbered table"
         out += [f"## {title}", ""]
         if table.conditions:
             out += [f"> **Test conditions:** {table.conditions}", ""]
