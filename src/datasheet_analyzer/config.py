@@ -15,8 +15,14 @@ from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 PIPELINE_VERSION = "0.4.0"
-SPECS_SCHEMA_VERSION = "1"
-PLOTS_SCHEMA_VERSION = "1"
+# "2": phase 5, ticket 04 added the per-record `confidence` grade to every
+# spec and plot record. The field is additive (an older file still loads,
+# reading `unknown`), but a corpus published without it answers every query
+# ungraded, so the version bump is what makes `batch.skip_reason` republish it
+# once instead of skipping it forever — the same publish-cache-key rule
+# `SEARCH_SCHEMA_VERSION` already carries for `search_index.json`.
+SPECS_SCHEMA_VERSION = "2"
+PLOTS_SCHEMA_VERSION = "2"
 SEARCH_SCHEMA_VERSION = "1"
 
 

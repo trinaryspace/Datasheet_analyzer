@@ -11,10 +11,10 @@ hits carrying citation, confidence and `matched_via`. `SpecQuery` and
 existing callers; new code should use `Retriever` directly and gets no new
 features here. The renderers below stay — formatting is a front-end job — but
 they take their citation strings from `Citation`, never build their own.
-`format_spec_hits` / `format_no_match` render typed `SpecHit`s (rung and
-confidence included); `format_search_hits` renders the BM25 full-text hits of
-ticket 03; `format_answer` keeps the record-list shape for callers that
-predate them.
+`format_spec_hits` / `format_plot_hits` / `format_no_match` render typed hits
+(rung and confidence included); `format_search_hits` renders the BM25
+full-text hits of ticket 03; `format_answer` / `format_plot_answer` keep the
+record-list shape for callers that predate them.
 """
 
 from __future__ import annotations
@@ -23,7 +23,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from datasheet_analyzer.models import PlotRecord, SpecRecord
-from datasheet_analyzer.retrieve import Citation, Retriever, SearchHit, SpecHit
+from datasheet_analyzer.retrieve import Citation, PlotHit, Retriever, SearchHit, SpecHit
 
 
 @dataclass
@@ -157,6 +157,25 @@ def find_plots(
         q=q, caption=caption, conditions=conditions, section=section, tags=tags
     )
     return [h.record for h in hits]
+
+
+def format_plot_hits(hits: list[PlotHit], limit: int = 8) -> str:
+    """Render typed plot hits — same line as `format_plot_answer` plus the
+    `[via <rung> · <confidence>]` tail every graded answer path carries."""
+    if not hits:
+        return "No matching plots."
+    lines: list[str] = []
+    for hit in hits[:limit]:
+        rec = hit.record
+        cond = f" — {rec.conditions}" if rec.conditions else ""
+        file_str = f" — file: {rec.file}" if rec.file else ""
+        lines.append(
+            f"{rec.caption} — §{rec.section} ({hit.citation.pages})"
+            f"{cond}{file_str} [via {hit.matched_via} · {hit.confidence}]"
+        )
+    if len(hits) > limit:
+        lines.append(f"... and {len(hits) - limit} more matches")
+    return "\n".join(lines)
 
 
 def format_plot_answer(records: list[PlotRecord], limit: int = 8) -> str:

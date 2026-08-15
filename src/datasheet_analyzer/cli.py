@@ -6,7 +6,7 @@ Commands:
   verify --part NAME        golden Q&A citation verification (deterministic)
   query --part NAME         deterministic spec lookup (alias ladder; --json)
   search --part NAME "..."  BM25 full-text search, cited by construction (--json)
-  plots --part NAME         deterministic plot lookup
+  plots --part NAME         deterministic plot lookup (--json)
   status                    configuration + detected parts
   version                   print version
 """
@@ -268,7 +268,9 @@ def _cmd_search(args: argparse.Namespace) -> int:
 
 
 def _cmd_plots(args: argparse.Namespace) -> int:
-    from datasheet_analyzer.query import format_plot_answer
+    import json
+
+    from datasheet_analyzer.query import format_plot_hits
     from datasheet_analyzer.retrieve import Retriever
 
     settings = get_settings()
@@ -283,19 +285,44 @@ def _cmd_plots(args: argparse.Namespace) -> int:
         section=args.section or "",
         tags=tags,
     )
-    print(format_plot_answer([h.record for h in hits]))
+    if args.json:
+        # Shape owned by PlotHit.as_dict(), like every other JSON surface.
+        payload = {
+            "part": args.part,
+            "query": {"q": args.q, "section": args.section, "tags": tags},
+            "hits": [h.as_dict() for h in hits],
+        }
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+        return 0 if hits else 1
+    print(format_plot_hits(hits))
     return 0 if hits else 1
 
 
+def _confidence_line(stats) -> str:
+    """`confidence: specs 412 high / 190 medium / 17 low` — `""` when ungraded.
+
+    The counts are read from the manifest, where the publisher recorded them;
+    the CLI only decides how they read on a terminal. A corpus built before
+    per-record grading existed carries no mix and prints no line, rather than
+    printing zeros that would look like a graded corpus with no confidence.
+    """
+    parts = []
+    for label, mix in (("specs", stats.spec_confidence), ("plots", stats.plot_confidence)):
+        if mix:
+            counts = " / ".join(f"{n} {grade}" for grade, n in mix.items())
+            parts.append(f"{label} {counts}")
+    return f"    confidence: {'; '.join(parts)}" if parts else ""
+
+
 def _part_vendor_info(part: Path) -> tuple[str, str, list[str], list[str]]:
-    """(vendor, evidence, backends, doc_stats_lines) for a part.
+    """(vendor, evidence, backends, stats_lines) for a part.
 
     Vendor + evidence always come from sources.json — the pinned acquire
     record (a built part's manifest only mirrors it, and legacy manifests
-    predate the field). Backends and per-document extraction stats come
-    from the manifest's extraction stats when the part is built, loaded
-    through `CorpusIndex` so the CLI never parses corpus JSON itself.
-    ("", "", [], []) when nothing is registered.
+    predate the field). Backends, the per-record confidence mix and the
+    per-document extraction stats come from the manifest when the part is
+    built, loaded through `CorpusIndex` so the CLI never parses corpus JSON
+    itself. ("", "", [], []) when nothing is registered.
     """
     from datasheet_analyzer.acquire import load_inventory
     from datasheet_analyzer.models import DocType
@@ -313,6 +340,9 @@ def _part_vendor_info(part: Path) -> tuple[str, str, list[str], list[str]]:
         backends = list(
             dict.fromkeys(st.backend for st in m.extraction_stats.values() if st.backend)
         )
+        confidence = _confidence_line(m.stats)
+        if confidence:
+            doc_lines.append(confidence)
         for doc in m.documents:
             st = m.extraction_stats.get(doc.content_hash)
             if st is None:
@@ -341,7 +371,7 @@ def _cmd_status(_args: argparse.Namespace) -> int:
         for part in sorted(p for p in settings.parts_dir.iterdir() if p.is_dir()):
             has_index = (part / "INDEX.md").exists()
             label = f"  part: {part.name} {'[built]' if has_index else '[partial]'}"
-            vendor, evidence, backends, doc_lines = _part_vendor_info(part)
+            vendor, evidence, backends, stat_lines = _part_vendor_info(part)
             if vendor:
                 label += f" vendor: {vendor}"
                 if evidence:
@@ -351,7 +381,7 @@ def _cmd_status(_args: argparse.Namespace) -> int:
             else:
                 label += " vendor: (none)"
             print(label)
-            for line in doc_lines:
+            for line in stat_lines:
                 print(line)
     return 0
 
@@ -451,6 +481,11 @@ def main(argv: list[str] | None = None) -> int:
     p_plots.add_argument("--section", default="", help="exact section number")
     p_plots.add_argument(
         "--tag", default="", help="comma-separated tags (all must match)"
+    )
+    p_plots.add_argument(
+        "--json",
+        action="store_true",
+        help="emit hits (with matched_via + confidence) as JSON",
     )
     p_plots.set_defaults(func=_cmd_plots)
 

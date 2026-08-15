@@ -10,6 +10,8 @@ import re
 
 from datasheet_analyzer.config import SPECS_SCHEMA_VERSION
 from datasheet_analyzer.models import RawDocument, SectionNode, SpecRecord, SpecSet, SpecTableInfo
+from datasheet_analyzer.structure.aliases import load_lexicon
+from datasheet_analyzer.structure.confidence import grade_spec_record
 from datasheet_analyzer.structure.roles import assign_roles, classify_table
 from datasheet_analyzer.structure.units import canonical_unit, normalize_text
 
@@ -31,6 +33,9 @@ def table_to_records(
     roles, unmapped_headers = assign_roles(table.headers)
     kind = classify_table(table.headers, roles)
     unknown_units: set[str] = set()
+    # One lexicon for the whole table: the confidence rule asks it once per
+    # row whether a unit was expected (`structure/confidence.py`).
+    lexicon = load_lexicon()
 
     records: list[SpecRecord] = []
     for row_index, row in enumerate(table.grid):
@@ -66,6 +71,10 @@ def table_to_records(
             else (table.page if table.page is not None else section.page_start),
             row_verbatim=list(row),
         )
+        # Graded here, where the evidence still exists: the table's
+        # reconstruction provenance, its page pinning and the row's own cells
+        # are all gone by the time a record reaches `retrieve/`.
+        record.confidence = grade_spec_record(record, table, section, lexicon=lexicon)
         records.append(record)
 
     info = SpecTableInfo(

@@ -77,6 +77,18 @@ def padded(text: str) -> str:
     return f" {normalize(text)} "
 
 
+@cache
+def _padded_alias(phrase: str) -> str:
+    """`padded()` memoized over the lexicon's own fixed phrase vocabulary.
+
+    Only alias phrases go through it — they are a few hundred fixed strings,
+    while record text is unbounded and must not be cached. `entry_for` runs
+    once per spec record at build time, so the same ~500 phrases would
+    otherwise be re-normalized hundreds of thousands of times per part.
+    """
+    return padded(phrase)
+
+
 def tokens(text: str) -> list[str]:
     """Meaningful normalized tokens, question scaffolding removed."""
     return [t for t in normalize(text).split() if t not in _STOPWORDS]
@@ -158,6 +170,33 @@ class AliasLexicon:
         for entry in self.entries:
             if entry.symbol.lower() == key:
                 return entry
+        return None
+
+    def entry_for(self, symbol: str, name: str = "") -> AliasEntry | None:
+        """The entry that claims a *record*, or None — the coverage rule.
+
+        A record is claimed when the lexicon knows its symbol as a canonical
+        symbol, as a member of a prefix family, or by one of its alias phrases
+        appearing in the record's own symbol or name text (the layout floor
+        prints `Junction temperature` where TI prints `TJ`).
+
+        This is the one place that rule lives: `scripts/seed_aliases.py`
+        measures coverage with it and `structure/confidence.py` asks it whether
+        a unit was expected, so the measured coverage and the grade can never
+        disagree about what the lexicon covers.
+        """
+        entry = self.by_symbol(symbol)
+        if entry is not None:
+            return entry
+        low = symbol.strip().lower()
+        haystacks = [padded(text) for text in (symbol, name) if text]
+        for candidate in self.entries:
+            if low and any(low.startswith(p.lower()) for p in candidate.match_prefixes):
+                return candidate
+            for alias in candidate.names:
+                phrase = _padded_alias(alias)
+                if any(phrase in haystack for haystack in haystacks):
+                    return candidate
         return None
 
     def phrase_hits(self, query: str) -> list[tuple[AliasEntry, str]]:

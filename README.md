@@ -102,7 +102,7 @@ descriptions even with a key set); `batch` accepts the same `--no-cache` /
 
 ```bash
 dsa query --part AFE7950 --symbol DACRES
-# DAC resolution (DACRES): 14 bits — §4.5, p.7 [table 0 row 0] [via symbol · unknown]
+# DAC resolution (DACRES): 14 bits — §4.5, p.7 [table 0 row 0] [via symbol · high]
 
 dsa query --part AFE7953 --symbol DACRES
 dsa query --part AFE7950 --section 4.10 --name SYSREF
@@ -115,7 +115,7 @@ and every answer reports the rung that found it:
 
 ```bash
 dsa query --part AFE7950 --name "junction temperature"
-# Junction temperature (TJ): 150 °C — §4.1, p.4 … [via alias:junction temperature · unknown]
+# Junction temperature (TJ): 150 °C — §4.1, p.4 … [via alias:junction temperature · high]
 
 dsa query --part AFE7950 --symbol IDD        # the whole IVDD* supply-current family
 dsa query --part AFE7950 --name "junction temperature" --json
@@ -126,6 +126,21 @@ is a YAML edit, never a code change. `--section` still AND-s with the term.
 A query that matches nothing says so and lists the nearest candidates in the
 corpus — it never guesses. Answers carry verbatim values, units, conditions,
 footnote markers, and page cites.
+
+### Trust an answer: the confidence grade
+
+Every spec and plot record is graded when the corpus is built, and the grade is
+printed after the rung (`[via symbol · high]`) and returned in `--json`:
+
+| Grade | What it means |
+|---|---|
+| `high` | pinned to an exact printed page, reconstructed from the table's own declared columns, and the row prints a value |
+| `medium` | the page is a section range, or the row printed no value at all |
+| `low` | the grid was rescued by the layout engine's retry ladder, or a value's unit is missing where its alias family expects one |
+| `unknown` | ungraded — a corpus built before grading existed; rebuild it |
+
+`low` is not "wrong": it is "open the printed page before you quote this". The
+mix per part is recorded in `manifest.json` and printed by `dsa status`.
 
 ### Search the text (every hit already cited)
 
@@ -156,10 +171,11 @@ and a bare `105` ranks nothing. A corpus built before search existed says
 dsa plots --part AFE7950 --q "Output Fullscale"
 dsa plots --part AFE7950 --q "Gain Error" --section 4.12.1
 dsa plots --part AFE7950 --tag "tx,800mhz"
+dsa plots --part AFE7950 --q "Output Fullscale" --json
 ```
 
 Returns matching `plots.json` records (caption, conditions, section, page,
-and the image file path under `figures/`) for an agent to open.
+confidence, and the image file path under `figures/`) for an agent to open.
 
 ### Read content by section
 
@@ -197,7 +213,8 @@ with the honest `pdf_text` backend (paragraphs only; no trusted tables, no
 ### Other commands
 
 ```bash
-dsa status    # config, LLM availability, built parts + per-doc extraction stats
+dsa status    # config, LLM availability, built parts, per-part confidence mix
+              # + per-doc extraction stats
 dsa version
 ```
 

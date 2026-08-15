@@ -22,6 +22,7 @@ SYNTHETIC = FIXTURES / "synthetic"
 GATE_PDFS = FIXTURES / "pdf"
 REPO_ROOT = Path(__file__).parent.parent
 AFE7950_PDF = REPO_ROOT / "afe7950.pdf"
+AFE7953_PDF = REPO_ROOT / "afe7953.pdf"
 # Phase 4 gate: real PDFs under tests/fixtures/pdf, ungated by
 # construction (committed fixtures; pdf_layout never touches the
 # network). AFE7950_PDF above stays skip-guarded like the TI path.
@@ -99,3 +100,17 @@ def afe7950_pdf() -> Path:
     if not AFE7950_PDF.exists():
         pytest.skip("afe7950.pdf not present at repo root")
     return AFE7950_PDF
+
+
+@pytest.fixture(scope="module")
+def afe7953_pdf() -> Path:
+    """The second reference PDF, skip-guarded like AFE7950's.
+
+    Only the printed page *text* is ever read from it — the AFE7953 corpus
+    itself is the one committed under `parts/`, because no recorded TI
+    document-viewer pages exist for this part and the ti_html backend cannot
+    be replayed offline for it.
+    """
+    if not AFE7953_PDF.exists():
+        pytest.skip("afe7953.pdf not present at repo root")
+    return AFE7953_PDF

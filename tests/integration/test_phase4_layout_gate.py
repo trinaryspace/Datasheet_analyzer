@@ -505,6 +505,81 @@ class TestSearchIndexEconomics:
             assert " ".join(probe) in " ".join(body.split()), name
 
 
+class TestConfidenceMix:
+    """Phase 5, ticket 04: every spec and plot record is graded, the mix is
+    recorded per part in the manifest, and the grade is metadata only — no
+    record's value or page moves because grading landed.
+
+    The mix is printed rather than pinned to exact numbers: it is a measured
+    property of four real datasheets, and pinning it would turn every honest
+    extraction improvement into a test failure. What *is* asserted is that the
+    counts are complete, that they match the records on disk, and that the
+    three captionless-era corpora really are all-`low` for the documented
+    reason (their grids only ever reconstruct on a rescue split).
+    """
+
+    def test_mix_is_recorded_per_part_and_matches_the_records(self, gate, capsys):
+        from datasheet_analyzer.retrieve import CorpusIndex
+        from datasheet_analyzer.structure.confidence import mix
+
+        rows: list[str] = []
+        for name in GATE:
+            result = gate[name]
+            stats = result.manifest.stats
+            index = CorpusIndex.load(result.part_dir)
+            specs = [rec for doc in index.docs for rec in doc.specs]
+            plots = [rec for doc in index.docs for rec in doc.plots]
+            assert stats.spec_confidence == mix(specs), name
+            assert sum(stats.spec_confidence.values()) == len(specs) == stats.n_specs
+            if plots:
+                assert stats.plot_confidence == mix(plots), name
+                assert sum(stats.plot_confidence.values()) == len(plots)
+            # nothing may be ungraded: every record went through the rule
+            assert "unknown" not in stats.spec_confidence, name
+            assert "unknown" not in stats.plot_confidence, name
+            rows.append(
+                f"  {name:<9} specs {len(specs):>4}  "
+                + "  ".join(f"{g:>6} {n:>4}" for g, n in stats.spec_confidence.items())
+                + f"   |  plots {len(plots):>4}  "
+                + "  ".join(f"{g:>6} {n:>4}" for g, n in stats.plot_confidence.items())
+            )
+        with capsys.disabled():
+            print("\nconfidence mix, four gate corpora\n" + "\n".join(rows) + "\n")
+
+    def test_a_rescued_grid_is_why_the_captionless_corpora_are_low(self, gate):
+        """LM741, QPA1003P and HMC520A print their tables under section
+        headings with no caption and no header-declared column geometry the
+        data obeys: measured, their grids only ever pass the gate on a rescue
+        split, so every row is honestly `low`. AD9081's captioned ADI tables
+        reconstruct from their own headers and produce all three grades."""
+        for name in ("LM741", "QPA1003P", "HMC520A"):
+            stats = gate[name].manifest.stats
+            assert stats.spec_confidence["low"] == stats.n_specs, name
+        ad9081 = gate["AD9081"].manifest.stats.spec_confidence
+        assert min(ad9081.values()) > 0, ad9081
+
+    def test_no_recorded_value_or_page_moved(self, gate):
+        """Criterion: grading changes no answer. `alias_seed_symbols.json` is a
+        harvest of these corpora's spec rows — values *and* pages — recorded
+        before this ticket; every one of them must still read identically."""
+        from datasheet_analyzer.retrieve import CorpusIndex
+
+        recorded = json.loads(
+            (FIXTURES / "alias_seed_symbols.json").read_text(encoding="utf-8")
+        )["parts"]
+        fields = ("min", "typ", "max", "value", "section", "page")
+        for name in GATE:
+            fresh: dict[tuple, dict] = {}
+            for doc in CorpusIndex.load(gate[name].part_dir).docs:
+                for rec in doc.specs:
+                    key = (rec.symbol, rec.name, rec.unit.canonical)
+                    fresh.setdefault(key, {f: getattr(rec, f) for f in fields})
+            for row in recorded[name]:
+                key = (row["symbol"], row["name"], row["unit_canonical"])
+                assert key in fresh, f"{name}: {key} disappeared"
+                assert fresh[key] == {f: row[f] for f in fields}, f"{name}: {key}"
+
+
 class TestGateGoldens:
     """Ticket 07: per-part golden benchmarks, 100% on text + --specs +
     plot lookups for every gate part in a plain offline pytest run.

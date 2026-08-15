@@ -17,17 +17,21 @@ import json
 import logging
 from pathlib import Path
 
+from datasheet_analyzer.config import PLOTS_SCHEMA_VERSION, SPECS_SCHEMA_VERSION
 from datasheet_analyzer.models import (
     CorpusManifest,
     CorpusStats,
     ExtractionStats,
+    PlotRecord,
     PlotSet,
     RawDocument,
     SectionFile,
     SourceDocument,
+    SpecRecord,
     SpecSet,
 )
 from datasheet_analyzer.publish.search_index import build_search_index, write_search_index
+from datasheet_analyzer.structure.confidence import mix as confidence_mix
 from datasheet_analyzer.structure.corpus import SectionPlan
 from datasheet_analyzer.tokens import count_tokens
 
@@ -46,6 +50,44 @@ def doc_dir_name_for_source(source: SourceDocument) -> str:
 
 def doc_dir_name(raw: RawDocument) -> str:
     return doc_dir_name_for_source(raw.source)
+
+
+def _artifact_schema_current(doc_dir: Path, filename: str, version: str) -> bool:
+    """Whether a published JSON artifact carries the current schema version.
+
+    A *missing* file reads as current here, unlike `search_index_current`, and
+    the asymmetry is deliberate: `search_index.json` is written for every
+    published document, so its absence is always staleness, while
+    `specs.json` / `plots.json` are only written for documents that have
+    trusted tables at all — a `pdf_text` register map legitimately has
+    neither, and demanding one would put that part in a rebuild loop. What is
+    checked is the version of a file that *is* there. Anything unreadable
+    reads as stale, which is the safe direction: rebuild.
+    """
+    path = doc_dir / filename
+    if not path.exists():
+        return True
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return False
+    return isinstance(data, dict) and data.get("schema_version") == version
+
+
+def specs_current(doc_dir: Path) -> bool:
+    """Whether `doc_dir`'s `specs.json` is of the current schema (or absent).
+
+    The publish-cache-key check for spec records, called by the batch skip
+    gate. `SPECS_SCHEMA_VERSION` is bumped whenever a published spec record
+    gains or changes a field, so a corpus written before that field existed
+    republishes once instead of serving it forever without.
+    """
+    return _artifact_schema_current(doc_dir, "specs.json", SPECS_SCHEMA_VERSION)
+
+
+def plots_current(doc_dir: Path) -> bool:
+    """`plots.json`'s twin of `specs_current`, keyed on `PLOTS_SCHEMA_VERSION`."""
+    return _artifact_schema_current(doc_dir, "plots.json", PLOTS_SCHEMA_VERSION)
 
 
 def write_corpus(
@@ -78,6 +120,10 @@ def write_corpus(
     )
     specsets_by_hash = {s.doc_hash: s for s in (specsets or [])}
     plotsets_by_hash = {p.doc_hash: p for p in (plotsets or [])}
+    # Per-part confidence mix, accumulated across the part's documents so the
+    # manifest carries one measured number per grade (ticket 04).
+    graded_specs: list[SpecRecord] = []
+    graded_plots: list[PlotRecord] = []
 
     for raw, plans, descriptions in docs:
         doc_rel = f"docs/{doc_dir_name(raw)}"
@@ -92,6 +138,7 @@ def write_corpus(
                 specset.model_dump_json(indent=2), encoding="utf-8"
             )
             stats.n_specs += len(specset.records)
+            graded_specs.extend(specset.records)
 
         plotset = plotsets_by_hash.get(raw.source.content_hash)
         if plotset is not None:
@@ -99,6 +146,7 @@ def write_corpus(
                 plotset.model_dump_json(indent=2), encoding="utf-8"
             )
             stats.n_plot_files += sum(1 for p in plotset.plots if p.file)
+            graded_plots.extend(plotset.plots)
 
         manifest.documents.append(raw.source)
         extraction = raw.extraction_stats
@@ -160,6 +208,10 @@ def write_corpus(
 
     (part_dir / "INDEX.md").write_text(index_md, encoding="utf-8")
     stats.index_tokens = count_tokens(index_md)
+    if graded_specs:
+        stats.spec_confidence = confidence_mix(graded_specs)
+    if graded_plots:
+        stats.plot_confidence = confidence_mix(graded_plots)
 
     manifest.stats = stats
     (part_dir / "manifest.json").write_text(
@@ -169,6 +221,10 @@ def write_corpus(
         "corpus written: %s (%d sections, %d tables, %d spec records, %d tokens, index %d tokens)",
         part_dir, stats.n_sections, stats.n_tables, stats.n_specs,
         stats.total_tokens, stats.index_tokens,
+    )
+    log.info(
+        "confidence mix: specs %s; plots %s",
+        stats.spec_confidence or "(none)", stats.plot_confidence or "(none)",
     )
     log.info(
         "search index: %d bytes over %d bytes of section markdown (%.0f%%)",

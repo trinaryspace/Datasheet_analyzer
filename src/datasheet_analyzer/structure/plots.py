@@ -10,6 +10,7 @@ import re
 
 from datasheet_analyzer.config import PLOTS_SCHEMA_VERSION
 from datasheet_analyzer.models import PlotRecord, PlotSet, RawDocument, SectionNode
+from datasheet_analyzer.structure.confidence import grade_plot_record
 from datasheet_analyzer.structure.corpus import slugify
 
 MEASURE_KEYWORDS: list[str] = [
@@ -122,6 +123,11 @@ def build_plotset(raw: RawDocument, part_number: str) -> PlotSet:
                 file="",
                 tags=tags_base + caption_tags(fig.caption),
             )
+            # Graded on how precisely the figure can be cited and identified
+            # (`structure/confidence.py`); `file` is populated by a later
+            # stage and is deliberately not part of the grade — a plot the
+            # pixels stage skipped is still a correctly cataloged figure.
+            rec.confidence = grade_plot_record(rec)
             plots.append(rec)
     return PlotSet(
         schema_version=PLOTS_SCHEMA_VERSION,

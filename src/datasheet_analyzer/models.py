@@ -34,6 +34,33 @@ class DocType(str, Enum):
     UNKNOWN = "unknown"
 
 
+class Confidence(str, Enum):
+    """How much a single extracted record can be trusted on its own.
+
+    `ExtractionStats` grades a whole *document*; an answer needs the grade per
+    *record*, so an agent can say "this one is `low` — open p.47" instead of
+    asserting a shaky number. Graded at structure time by
+    `structure/confidence.py`, which documents the rule.
+
+    `UNKNOWN` is the honest default: a corpus built before the field existed
+    carries no grade on disk and loads as ungraded rather than as an
+    optimistic `HIGH`.
+    """
+
+    HIGH = "high"
+    MEDIUM = "medium"
+    LOW = "low"
+    UNKNOWN = "unknown"
+
+
+# How the layout engine arrived at a reconstructed grid (`TableBlock.reconstruction`).
+# The header-anchored split is the table's own declaration of its columns; a
+# rescue is a coarser retry-ladder split that only won because that declaration
+# did not pass the gate — which is exactly what makes its rows `low`.
+RECONSTRUCTION_HEADER = "header-anchored"
+RECONSTRUCTION_RESCUED = "rescued"
+
+
 class SourceDocument(BaseModel):
     """A registered input document. Identity is sha256 of the file bytes."""
 
@@ -98,6 +125,13 @@ class TableBlock(BaseModel):
     # multi-page table cite their own printed page, so answers never cite a
     # row by a page it does not appear on.
     row_pages: list[int | None] = Field(default_factory=list)
+    # How this grid was reconstructed, when it had to be (`pdf_layout`):
+    # `RECONSTRUCTION_HEADER` — the table's own header-declared column edges
+    # passed the gate on the first try; `RECONSTRUCTION_RESCUED` — only a
+    # coarser retry-ladder split did. `""` means the question does not apply
+    # (an HTML backend's table is structurally declared by its source) or the
+    # document predates the field. Read by the per-record confidence grade.
+    reconstruction: str = ""
 
     @property
     def n_rows(self) -> int:
@@ -191,6 +225,13 @@ class CorpusStats(BaseModel):
     # section markdown they index. Additive — 0 on older corpora.
     section_bytes: int = 0
     search_index_bytes: int = 0
+    # Phase 5 per-record confidence mix: how many spec / plot records of this
+    # part carry each grade (`{"high": 412, "medium": 190, "low": 17}`, and
+    # `"unknown"` only when something really is ungraded). Recorded per part
+    # so the mix is a measured number in every manifest — `dsa status` prints
+    # it — rather than a claim in a report. Additive: `{}` on older corpora.
+    spec_confidence: dict[str, int] = Field(default_factory=dict)
+    plot_confidence: dict[str, int] = Field(default_factory=dict)
 
 
 class ExtractionStats(BaseModel):
@@ -261,6 +302,10 @@ class SpecRecord(BaseModel):
     cited_markers: list[str] = Field(default_factory=list)
     page: int | None = None
     row_verbatim: list[str] = Field(default_factory=list)
+    # Per-record extraction confidence (`structure/confidence.py` owns the
+    # rule). Additive: a corpus built before it existed has no value on disk
+    # and loads as `UNKNOWN` — honestly ungraded, never optimistically high.
+    confidence: Confidence = Confidence.UNKNOWN
 
 
 class SpecTableInfo(BaseModel):
@@ -296,6 +341,9 @@ class PlotRecord(BaseModel):
     image_url: str = ""  # source URL as cataloged
     file: str = ""  # corpus-relative path, "" until pixels exist
     tags: list[str] = Field(default_factory=list)  # section + caption tags
+    # Per-record extraction confidence, same contract as `SpecRecord`: a plot
+    # is graded on how precisely it can be cited and identified.
+    confidence: Confidence = Confidence.UNKNOWN
 
 
 class PlotSet(BaseModel):

@@ -64,7 +64,12 @@ from datasheet_analyzer.extract.base import get_backend
 from datasheet_analyzer.extract.pdf_structure import compute_content_hash
 from datasheet_analyzer.models import CorpusManifest, CorpusStats
 from datasheet_analyzer.pipeline import build_part
-from datasheet_analyzer.publish import doc_dir_name_for_source, search_index_current
+from datasheet_analyzer.publish import (
+    doc_dir_name_for_source,
+    plots_current,
+    search_index_current,
+    specs_current,
+)
 from datasheet_analyzer.vendor import select_backend
 
 STATUS_DONE = "done"
@@ -280,11 +285,23 @@ def _publish_artifacts_stale(part_dir: Path, manifest: CorpusManifest) -> bool:
     would answer `dsa search` with nothing at all. Making the search index
     part of the skip gate is what "caching keyed by identity" means for a
     publish-time schema — the corpus republishes once and then skips again.
+
+    `specs.json` and `plots.json` are the same kind of artifact and are gated
+    the same way, on `SPECS_SCHEMA_VERSION` / `PLOTS_SCHEMA_VERSION`. Without
+    that, a part whose extractor version did not move — every `ti_html` part,
+    since the layout engine's `output_version` bumps say nothing about TI's
+    HTML path — would keep pre-`confidence` records forever and answer every
+    query ungraded. Nothing here re-derives a grade: the gate only decides
+    whether to republish, and grading stays where it belongs, at structure
+    time.
     """
-    return any(
-        not search_index_current(part_dir / "docs" / doc_dir_name_for_source(doc))
-        for doc in manifest.documents
-    )
+    for doc in manifest.documents:
+        doc_dir = part_dir / "docs" / doc_dir_name_for_source(doc)
+        if not search_index_current(doc_dir):
+            return True
+        if not specs_current(doc_dir) or not plots_current(doc_dir):
+            return True
+    return False
 
 
 def skip_reason(job: BatchJob, *, settings: Settings, force: bool = False) -> str:
@@ -293,8 +310,10 @@ def skip_reason(job: BatchJob, *, settings: Settings, force: bool = False) -> st
     A job is skipped only when the part's corpus manifest exists, records the
     current ``PIPELINE_VERSION``, every published document's recorded
     ``extractor_version`` still matches what its backend produces today,
-    every published document carries a current-schema ``search_index.json``
-    (``_publish_artifacts_stale``), and
+    every published document carries current-schema publish artifacts —
+    ``search_index.json``, and a ``specs.json`` / ``plots.json`` of the
+    current schema wherever one was written (``_publish_artifacts_stale``) —
+    and
     the PDF's sha256 matches the hash of the document recorded for this file
     in the part's inventory AND the manifest's published documents
     (`content_hash` is the source document's identity — never mtime or size).
@@ -306,7 +325,7 @@ def skip_reason(job: BatchJob, *, settings: Settings, force: bool = False) -> st
     means "not safe to skip".
 
     The extractor check is separate from ``PIPELINE_VERSION`` on purpose. The
-    layout engine bumps its own ``output_version`` (tables-05 -> 06 -> 07)
+    layout engine bumps its own ``output_version`` (tables-05 -> 06 -> 07 -> 08)
     without necessarily moving ``PIPELINE_VERSION``; ``build_part`` already
     invalidates a stale *extraction cache* that way, but a batch run that
     skips the job never reaches that code, so without this the gate would

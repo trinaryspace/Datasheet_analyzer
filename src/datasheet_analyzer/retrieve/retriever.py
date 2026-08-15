@@ -23,8 +23,11 @@ candidates, never a rung-6 guess.
 `search()` (ticket 03) is the second retrieval path: BM25 over the
 `search_index.json` built at publish, returning section hits cited from the
 manifest. A corpus built before the index existed does not crash and does not
-silently answer nothing — `search_unavailable()` says to rebuild. Ticket 04
-fills in `confidence`.
+silently answer nothing — `search_unavailable()` says to rebuild.
+
+Every spec and plot hit also carries the record's own `confidence` (ticket 04),
+read off the record — never recomputed here, and never used to drop, hide or
+reorder a hit. Grading is metadata; retrieval order stays the ladder's.
 """
 
 from __future__ import annotations

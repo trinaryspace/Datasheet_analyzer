@@ -73,6 +73,8 @@ import fitz  # PyMuPDF
 
 from datasheet_analyzer.extract.pdf_structure import read_toc
 from datasheet_analyzer.models import (
+    RECONSTRUCTION_HEADER,
+    RECONSTRUCTION_RESCUED,
     ExtractionStats,
     FigureRef,
     Footnote,
@@ -1096,7 +1098,8 @@ def _materialize_band0(grid: list[list[str]], row_ys: list[float],
 def _block_from(rows: list[_Row], lefts: list[float], caption: str,
                 conditions: str, page_number: int,
                 footnotes: list[Footnote] | None = None,
-                cited_markers: list[str] | None = None) -> TableBlock:
+                cited_markers: list[str] | None = None,
+                reconstruction: str = "") -> TableBlock:
     headers = _row_cells(rows[0], lefts)
     kept = [(r, _row_cells(r, lefts)) for r in rows[1:]
             if any(c.strip() for c in _row_cells(r, lefts))]
@@ -1120,6 +1123,7 @@ def _block_from(rows: list[_Row], lefts: list[float], caption: str,
         csv=grid_csv(headers, grid),
         page=page_number,
         row_pages=row_pages,
+        reconstruction=reconstruction,
     )
 
 
@@ -1175,7 +1179,7 @@ def _advice_share(lefts: list[float], advice: list[float]) -> float:
 
 def _hypothesis(region: list[_Line], page: _Page
                 ) -> tuple[list[float] | None, str | None, float,
-                            list[_Row]]:
+                            list[_Row], str]:
     """Score one region against the retry ladder.
 
     Every band set (header-anchored first, then the all-word retry ladder)
@@ -1197,14 +1201,18 @@ def _hypothesis(region: list[_Line], page: _Page
     count; a split that merged real columns (Min|Typ 25-34 pt apart) loses
     the advice edges it merged and scores below.
 
-    Returns (lefts, reason, fidelity, kept_rows): lefts is the accepted
-    column geometry (or None), reason the rejection string, fidelity the
-    measured reconstruction of the accepted grid — the share of the
-    region's words the grid reconstructs (footnote and prose rows detract
+    Returns (lefts, reason, fidelity, kept_rows, reconstruction): lefts is
+    the accepted column geometry (or None), reason the rejection string,
+    fidelity the measured reconstruction of the accepted grid — the share of
+    the region's words the grid reconstructs (footnote and prose rows detract
     honestly, so tables with footnotes score below 1.0), kept_rows the
     accepted fine rows (marker citation context for ticket 05's superscript
     detection; footnote and prose rows never enter the set, and
-    wrap-merging happens afterwards on their lines).
+    wrap-merging happens afterwards on their lines), and reconstruction which
+    rung of the ladder won — the table's own header-declared columns
+    (`RECONSTRUCTION_HEADER`) or an all-word rescue split
+    (`RECONSTRUCTION_RESCUED`). Phase 5 ticket 04 grades a rescued grid's
+    rows `low`: they are a reconstruction the table itself never declared.
     """
     region_words = sum(len(s.text.split()) for ln in region for s in ln.spans)
     fine = _group_rows(region, wrap=False)
@@ -1213,7 +1221,7 @@ def _hypothesis(region: list[_Line], page: _Page
         if not _is_footnote_row(row):
             kept.append(row)
     if not kept:
-        return None, "no rows", 0.0, []
+        return None, "no rows", 0.0, [], ""
 
     band_sets = [_header_bands(kept)] + [
         _word_bands(kept, tau) for tau in _COLUMN_TAUS
@@ -1223,7 +1231,10 @@ def _hypothesis(region: list[_Line], page: _Page
     keep_reason = "no viable column split"
     best: tuple[float, list[float], list[_Line], list[_Row]] | None = None
     best_fidelity = 0.0
-    for lefts in band_sets:
+    # band_sets[0] is the header's own declaration; anything after it is a
+    # rescue, which is what the per-record confidence grade reads.
+    best_rescued = False
+    for rung, lefts in enumerate(band_sets):
         if len(lefts) < 2:
             continue
         # Prose rows drop out: a fine row confined to one band whose cell is
@@ -1259,9 +1270,11 @@ def _hypothesis(region: list[_Line], page: _Page
                 score == best[0] and len(lefts) < len(best[1])):
             best = (score, lefts, lines, candidate)
             best_fidelity = fidelity
+            best_rescued = rung > 0
     if best is None:
-        return None, keep_reason, 0.0, []
-    return best[1], None, best_fidelity, best[3]
+        return None, keep_reason, 0.0, [], ""
+    return (best[1], None, best_fidelity, best[3],
+            RECONSTRUCTION_RESCUED if best_rescued else RECONSTRUCTION_HEADER)
 
 
 def _is_heading_anchor(line: _Line, title_keys: frozenset[str]) -> bool:
@@ -1578,7 +1591,8 @@ class _TableExtraction:
         fidelity, ""). The shared implementation of the captioned and
         heading-anchored paths (ticket 09)."""
         region_lines = [ln for _i, ln in region]
-        lefts, reason, fidelity, kept_rows = _hypothesis(region_lines, page)
+        lefts, reason, fidelity, kept_rows, reconstruction = _hypothesis(
+            region_lines, page)
         if lefts is None:
             self._last_reason = reason
             return None, None, 0.0, reason
@@ -1599,7 +1613,8 @@ class _TableExtraction:
             caption, conditions,
             page.index,
             footnotes=footnotes,
-            cited_markers=markers)
+            cited_markers=markers,
+            reconstruction=reconstruction)
         self.by_page.setdefault(page.index, []).append(block)
         by_id = {id(ln): idx for idx, ln in region}
         consumed = [by_id[id(ln)] for row in grid_rows
@@ -1802,7 +1817,11 @@ class PdfLayoutBackend:
     """Offline, vendor-neutral layout extraction (PyMuPDF only)."""
 
     name = "pdf_layout"
-    output_version = "tables-07"
+    # tables-08: every accepted grid records how it was reconstructed
+    # (`TableBlock.reconstruction`), which the per-record confidence grade
+    # reads. A cached raw from tables-07 has no such field, so it is stale by
+    # the embedded-version rule and re-extracts once.
+    output_version = "tables-08"
 
     def is_available(self) -> tuple[bool, str]:
         try:

@@ -84,19 +84,12 @@ def covers(lexicon: AliasLexicon, row: dict) -> str:
 
     A row is covered when the lexicon knows its symbol as a canonical symbol,
     as a member of a prefix family, or by one of its alias phrases appearing
-    in the row's own symbol or name text.
+    in the row's own symbol or name text. The rule itself lives in
+    `AliasLexicon.entry_for`, which `structure/confidence.py` also asks, so
+    the measured coverage and the shipped grade can never disagree.
     """
-    symbol, name = row["symbol"], row["name"]
-    entry = lexicon.by_symbol(symbol)
-    if entry is not None:
-        return entry.symbol
-    low = symbol.lower()
-    for candidate in lexicon.entries:
-        if any(low.startswith(p.lower()) for p in candidate.match_prefixes):
-            return candidate.symbol
-        if candidate.describes(symbol) or candidate.describes(name):
-            return candidate.symbol
-    return ""
+    entry = lexicon.entry_for(row["symbol"], row["name"])
+    return entry.symbol if entry is not None else ""
 
 
 def coverage(lexicon: AliasLexicon, rows: list[dict]) -> tuple[int, int, Counter]:

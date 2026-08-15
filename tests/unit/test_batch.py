@@ -342,6 +342,55 @@ def test_stale_search_index_schema_rebuilds_part(batch_env):
     assert by_part["TEST9000"].status == STATUS_SKIPPED
 
 
+@pytest.mark.parametrize("artifact", ["specs.json", "plots.json"])
+def test_stale_spec_or_plot_schema_rebuilds_part(batch_env, artifact):
+    """Phase 5, ticket 04: `specs.json` / `plots.json` are publish artifacts
+    with their own schema versions, so they gate the skip like the search
+    index does.
+
+    Ticket 04 added the per-record `confidence` grade to both files. A part
+    whose extractor version never moved — every `ti_html` part — would
+    otherwise be reported "already built" forever and keep answering with
+    ungraded records.
+    """
+    pdfs, settings = batch_env
+    assert run_batch(pdfs, settings=settings, use_llm=False).ok
+    staled = list((settings.parts_dir / "PLAIN" / "docs").glob(f"*/{artifact}"))
+    assert staled, f"PLAIN published no {artifact} — the test would be vacuous"
+    for path in staled:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        data["schema_version"] = "0"
+        path.write_text(json.dumps(data), encoding="utf-8")
+
+    report = run_batch(pdfs, settings=settings, use_llm=False)
+    by_part = {j.part: j for j in report.jobs}
+    assert by_part["PLAIN"].status == STATUS_DONE
+    assert by_part["TEST9000"].status == STATUS_SKIPPED
+
+    # republished once, then skipped again — not a permanent rebuild loop
+    again = {j.part: j for j in run_batch(pdfs, settings=settings, use_llm=False).jobs}
+    assert again["PLAIN"].status == STATUS_SKIPPED
+
+
+@pytest.mark.parametrize("artifact", ["specs.json", "plots.json"])
+def test_absent_spec_or_plot_file_does_not_force_a_rebuild(batch_env, artifact):
+    """A document with no trusted tables writes neither file (a `pdf_text`
+    register map is the real case). Absence must therefore read as "nothing to
+    verify", or such a part would rebuild on every single run."""
+    from datasheet_analyzer.publish import plots_current, specs_current
+
+    pdfs, settings = batch_env
+    assert run_batch(pdfs, settings=settings, use_llm=False).ok
+    removed = list((settings.parts_dir / "PLAIN" / "docs").glob(f"*/{artifact}"))
+    assert removed, f"PLAIN published no {artifact} — the test would be vacuous"
+    for path in removed:
+        path.unlink()
+        assert specs_current(path.parent) and plots_current(path.parent)
+
+    by_part = {j.part: j for j in run_batch(pdfs, settings=settings, use_llm=False).jobs}
+    assert by_part["PLAIN"].status == STATUS_SKIPPED
+
+
 def test_corrupt_manifest_rebuilds_part(batch_env):
     pdfs, settings = batch_env
     assert run_batch(pdfs, settings=settings, use_llm=False).ok

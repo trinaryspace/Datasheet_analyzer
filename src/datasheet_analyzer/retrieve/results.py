@@ -5,11 +5,12 @@ knows how to render itself. Front ends print `citation.label`; they never
 assemble `p.N` themselves, so the citation format can never drift between the
 CLI, `query.py` and (Phase 5, ticket 07) the MCP server.
 
-`confidence` is a placeholder in this ticket. Ticket 04 lands an additive
-`confidence` field on `SpecRecord` / `PlotRecord` computed at structure time;
-the hit constructors read it off the record via `record_confidence()`, so
-grading starts flowing through here the moment that field exists — no change
-needed in this module.
+`confidence` is the record's own grade, computed at structure time by
+`structure/confidence.py` (ticket 04) and read off the record here by
+`record_confidence()`. A record from a corpus built before grading existed has
+no grade on disk and reads `unknown` — honestly ungraded, never optimistically
+`high`. Section and full-text hits carry `unknown` by construction: a grade is
+a property of an extracted *record*, and a section file is verbatim text.
 
 `matched_via` names the rung that produced the hit, so a caller can tell an
 exact symbol hit from a loose substring one:
@@ -31,18 +32,20 @@ from dataclasses import dataclass
 
 from datasheet_analyzer.models import PlotRecord, SectionFile, SpecRecord
 
-# Until ticket 04 grades records, every hit is honestly ungraded rather than
-# optimistically "high".
+# An ungraded record is honestly ungraded rather than optimistically "high".
 CONFIDENCE_UNKNOWN = "unknown"
 
 
 def record_confidence(record: object) -> str:
-    """The record's own confidence grade, or `unknown` when ungraded.
+    """The record's own confidence grade as a plain string, or `unknown`.
 
     Reads the field defensively so corpora built before ticket 04 — which have
-    no grade on disk — degrade to `unknown` instead of failing to load.
+    no grade on disk — degrade to `unknown` instead of failing to load, and
+    unwraps the `Confidence` enum so every hit, every `as_dict()` and every
+    front end sees the same plain `"high"` / `"medium"` / `"low"` string.
     """
-    return getattr(record, "confidence", "") or CONFIDENCE_UNKNOWN
+    value = getattr(record, "confidence", "")
+    return str(getattr(value, "value", value) or "") or CONFIDENCE_UNKNOWN
 
 
 @dataclass(frozen=True)
@@ -167,6 +170,29 @@ class PlotHit:
     def file(self) -> str:
         """Corpus-relative image path, `""` until pixels exist."""
         return self.record.file
+
+    def as_dict(self) -> dict:
+        """JSON-ready view: the figure, its citation, rung and grade.
+
+        Same rule as `SpecHit.as_dict` — the shape lives in the retrieval core
+        so `dsa plots --json` and (ticket 07) the MCP server cannot drift.
+        """
+        rec = self.record
+        return {
+            "id": rec.id,
+            "caption": rec.caption,
+            "figure_number": rec.figure_number,
+            "conditions": rec.conditions,
+            "section": self.citation.section,
+            "page_start": self.citation.page_start,
+            "page_end": self.citation.page_end,
+            "doc": self.citation.doc,
+            "citation": self.citation.label,
+            "file": rec.file,
+            "tags": list(rec.tags),
+            "matched_via": self.matched_via,
+            "confidence": self.confidence,
+        }
 
 
 @dataclass(frozen=True)

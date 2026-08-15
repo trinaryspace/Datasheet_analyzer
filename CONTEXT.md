@@ -56,6 +56,16 @@ Nothing on any rung means an explicit no-match with nearest candidates, never
 a guess.
 _Avoid_: search, ranking, scoring, matcher chain
 
+**Confidence**:
+The per-record grade (`high` / `medium` / `low`, or `unknown` when a corpus
+predates grading) that says how far one extracted row can be trusted without
+opening the printed page. Computed once, at structure time, from evidence
+that exists only there — how the grid was reconstructed, whether the page is
+pinned or a section range, whether the row printed a value and a unit. It is
+metadata about the extraction, never a filter and never a claim about the
+datasheet: a `low` record is still returned, still verbatim, still cited.
+_Avoid_: score, quality, accuracy, probability, trust level
+
 **Search index**:
 The precomputed inverted index of one document's section files
 (`search_index.json`, written at publish): per section, how often each token
