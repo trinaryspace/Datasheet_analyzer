@@ -56,6 +56,21 @@ Nothing on any rung means an explicit no-match with nearest candidates, never
 a guess.
 _Avoid_: search, ranking, scoring, matcher chain
 
+**Search index**:
+The precomputed inverted index of one document's section files
+(`search_index.json`, written at publish): per section, how often each token
+appears and how long the section is. It is derived data with a
+`schema_version`, rebuilt with the corpus, never hand-edited, and never a
+substitute for the sections themselves — it holds counts, not content.
+_Avoid_: database, cache, embeddings, vector store
+
+**Snippet**:
+The excerpt a search hit quotes back: the text around the best-scoring term,
+grown to sentence boundaries, cut from the section file at query time rather
+than stored. It is evidence for the hit, never the answer — the answer is on
+the cited page.
+_Avoid_: summary, preview, abstract, description
+
 **Part**:
 A named device (e.g. AFE7950) and its corpus: a folder under `parts/`
 holding an index, inventory, manifest, and one document directory per source

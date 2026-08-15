@@ -38,7 +38,8 @@ Pipeline: `PDF → acquire → extract → structure → enrich → publish → 
   LLM writes only the section descriptions (optional); all corpus content is
   verbatim-extracted. Without an API key, descriptions are deterministic.
 - **Publish** — per-section markdown with CSV twins of every table,
-  `specs.json`, `plots.json` + `figures/` image files, and `manifest.json`.
+  `specs.json`, `plots.json` + `figures/` image files, a `search_index.json`
+  BM25 index per document, and `manifest.json`.
 - **Eval** — `dsa verify` runs the golden Q&A: every answer must appear in the
   corpus section covering the cited page **and** in the cited PDF page itself,
   plus deterministic spec-query and plot-query checks.
@@ -126,6 +127,29 @@ A query that matches nothing says so and lists the nearest candidates in the
 corpus — it never guesses. Answers carry verbatim values, units, conditions,
 footnote markers, and page cites.
 
+### Search the text (every hit already cited)
+
+```bash
+dsa search --part AFE7950 "sysref setup"
+# 1. §4.10 SYSREF Timing — §4.10, p.31-33 [score 8.41 · via fulltext]
+#    SYSREF setup time must be met for deterministic latency. …
+
+dsa search --part AFE7950 "thermal pad" --limit 3
+dsa search --part AFE7950 "dBc/Hz" --json
+```
+
+Ranked with BM25 over a `search_index.json` built at publish — no ripgrep, no
+subprocess, no network. Every hit carries the section's page range **from the
+manifest**, so a caller never attributes a page itself, plus a ±240-char
+snippet grown to sentence boundaries.
+
+The tokenizer is built for datasheets: no stemming, ASCII-only lowercasing (so
+`Ω` U+2126 and `Ω` U+03A9 stay distinct, as does `RθJA`), and compound unit
+strings index whole and split (`dBc/Hz` finds `dbc/hz`, `dbc` or `hz`). Bare
+numbers are deliberately *not* indexed — `dsa query` is the exact-value path,
+and a bare `105` ranks nothing. A corpus built before search existed says
+"rebuild to enable search" instead of returning an empty result.
+
 ### Find a plot
 
 ```bash
@@ -152,7 +176,8 @@ parts/AFE7950/
     ├── tables/*.csv       # machine-readable twins of each section table
     ├── figures/           # plot image files referenced by plots.json
     ├── specs.json         # parametric spec records (symbol/name/conditions/min/typ/max/unit/page)
-    └── plots.json         # searchable plot catalog + file map
+    ├── plots.json         # searchable plot catalog + file map
+    └── search_index.json  # BM25 index over sections/*.md (what `dsa search` ranks)
 ```
 
 Every answer should quote values **with units** and cite `p.N` from the
@@ -195,7 +220,7 @@ Token counts everywhere are `chars/4` (see `tokens.py`).
 ## Development
 
 ```bash
-python -m pytest tests/ -q    # 342 tests, ~85 s, fully offline (the
+python -m pytest tests/ -q    # 508 tests, ~65 s, fully offline (the
                               # phase-4 gate builds four real PDFs)
 python -m ruff check src tests
 ```

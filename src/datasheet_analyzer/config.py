@@ -17,6 +17,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 PIPELINE_VERSION = "0.4.0"
 SPECS_SCHEMA_VERSION = "1"
 PLOTS_SCHEMA_VERSION = "1"
+SEARCH_SCHEMA_VERSION = "1"
 
 
 class Settings(BaseSettings):

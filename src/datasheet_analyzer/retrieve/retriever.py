@@ -20,7 +20,11 @@ already returned, so a record whose unit is missing still answers. Nothing
 matches at all → an empty list plus `suggest_specs()` for the nearest
 candidates, never a rung-6 guess.
 
-Ticket 03 adds the BM25 `search()` path, ticket 04 fills in `confidence`.
+`search()` (ticket 03) is the second retrieval path: BM25 over the
+`search_index.json` built at publish, returning section hits cited from the
+manifest. A corpus built before the index existed does not crash and does not
+silently answer nothing — `search_unavailable()` says to rebuild. Ticket 04
+fills in `confidence`.
 """
 
 from __future__ import annotations
@@ -29,15 +33,18 @@ from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
 
-from datasheet_analyzer.models import PlotRecord, SectionFile, SpecRecord
+from datasheet_analyzer.config import SEARCH_SCHEMA_VERSION
+from datasheet_analyzer.models import PlotRecord, SearchIndex, SectionFile, SpecRecord
 from datasheet_analyzer.retrieve.index import CorpusIndex, IndexedDoc
 from datasheet_analyzer.retrieve.results import (
     Citation,
     PlotHit,
+    SearchHit,
     SectionHit,
     SpecHit,
     record_confidence,
 )
+from datasheet_analyzer.retrieve.search import ScoredSection, score_sections, snippet
 from datasheet_analyzer.structure.aliases import (
     FUZZY_MIN_TOKENS,
     FUZZY_THRESHOLD,
@@ -290,9 +297,79 @@ class Retriever:
             )
         return hits
 
+    def search(self, query: str, *, limit: int = 10) -> list[SearchHit]:
+        """Rank the part's sections against `query` with BM25 (see `search.py`).
+
+        Every hit is cited from the manifest entry of the section it names, so
+        the caller never attributes a page. A part with no usable index
+        returns `[]`; ask `search_unavailable()` for the reason rather than
+        reading an empty list as "nothing matched".
+        """
+        indexes = self._search_indexes()
+        if not indexes:
+            return []
+        sections_by_file = {sec.file: sec for sec in self.index.sections}
+        hits: list[SearchHit] = []
+        for scored in score_sections(indexes, query, limit=limit):
+            section = sections_by_file.get(scored.section_file) or _orphan_section(
+                scored, self.index
+            )
+            hits.append(
+                SearchHit(
+                    section=section,
+                    citation=Citation.for_section(section),
+                    score=scored.score,
+                    snippet=snippet(self.index.section_text(section), scored.terms),
+                    terms=scored.terms,
+                )
+            )
+        return hits
+
+    def search_unavailable(self) -> str:
+        """`""` when the part is searchable, else why it is not.
+
+        An older corpus predates `search_index.json` entirely, and one built
+        against a superseded schema cannot be scored honestly either. Both say
+        so, naming the fix, instead of returning zero hits that read like "the
+        datasheet does not mention that".
+        """
+        if self._search_indexes():
+            return ""
+        part = self.index.part_number or self.index.part_dir.name
+        return (
+            f"no full-text index for part {part} — this corpus predates search "
+            f"(or was built against an older index schema). Rebuild to enable "
+            f"search: dsa build <pdf> --part {part}"
+        )
+
+    def _search_indexes(self) -> list[tuple[str, SearchIndex]]:
+        """`(doc dir name, index)` for every document with a current index."""
+        return [
+            (doc.name, doc.search)
+            for doc in self.index.docs
+            if doc.search is not None
+            and doc.search.schema_version == SEARCH_SCHEMA_VERSION
+        ]
+
     def section_text(self, section: SectionFile) -> str:
         """Markdown body of a section file (lazily read, then cached)."""
         return self.index.section_text(section)
+
+
+def _orphan_section(scored: ScoredSection, index: CorpusIndex) -> SectionFile:
+    """A stand-in entry for an indexed section the manifest does not list.
+
+    Only reachable when `manifest.json` is unreadable or out of step with the
+    documents on disk. The hit still points at a real file and still cites —
+    honestly as `p.?`, because no page range survives to quote.
+    """
+    doc = next((d for d in index.docs if d.name == scored.doc), None)
+    return SectionFile(
+        number="",
+        title=Path(scored.file).stem,
+        file=scored.section_file,
+        doc_hash=doc.doc_hash if doc else "",
+    )
 
 
 def _passes(rec: SpecRecord, *, section: str, also_name: str) -> bool:

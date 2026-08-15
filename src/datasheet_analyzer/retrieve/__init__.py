@@ -11,10 +11,12 @@ from datasheet_analyzer.retrieve.results import (
     CONFIDENCE_UNKNOWN,
     Citation,
     PlotHit,
+    SearchHit,
     SectionHit,
     SpecHit,
 )
 from datasheet_analyzer.retrieve.retriever import Retriever
+from datasheet_analyzer.retrieve.search import ScoredSection, score_sections
 
 __all__ = [
     "CONFIDENCE_UNKNOWN",
@@ -23,7 +25,10 @@ __all__ = [
     "IndexedDoc",
     "PlotHit",
     "Retriever",
+    "ScoredSection",
+    "SearchHit",
     "SectionHit",
     "SpecHit",
     "clear_index_cache",
+    "score_sections",
 ]

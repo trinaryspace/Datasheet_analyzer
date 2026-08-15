@@ -12,7 +12,10 @@ when any job failed (the CLI maps that to exit code 1).
 Re-running a batch over the same directory skips parts that are already
 built and unchanged: a job is skipped when the part's manifest exists with
 the current ``PIPELINE_VERSION``, every published document's recorded
-``extractor_version`` still matches what its backend emits today, and the
+``extractor_version`` still matches what its backend emits today, every
+published document carries a current-schema ``search_index.json`` (the
+publish-time artifacts are part of the key too, so a corpus that predates
+full-text search republishes once), and the
 PDF's sha256 matches the hash recorded for it in the part's inventory
 (never mtime or size). ``--force``
 disables the check; ``--no-cache`` (``use_cache=False``) also rebuilds,
@@ -61,6 +64,7 @@ from datasheet_analyzer.extract.base import get_backend
 from datasheet_analyzer.extract.pdf_structure import compute_content_hash
 from datasheet_analyzer.models import CorpusManifest, CorpusStats
 from datasheet_analyzer.pipeline import build_part
+from datasheet_analyzer.publish import doc_dir_name_for_source, search_index_current
 from datasheet_analyzer.vendor import select_backend
 
 STATUS_DONE = "done"
@@ -267,12 +271,30 @@ def _extractor_stale(manifest: CorpusManifest) -> bool:
     return False
 
 
+def _publish_artifacts_stale(part_dir: Path, manifest: CorpusManifest) -> bool:
+    """True when a published document is missing a current publish artifact.
+
+    Extraction is not the only thing that can go out of date: the publish
+    stage writes derived artifacts too, and a corpus published before
+    `search_index.json` existed (or against an older `SEARCH_SCHEMA_VERSION`)
+    would answer `dsa search` with nothing at all. Making the search index
+    part of the skip gate is what "caching keyed by identity" means for a
+    publish-time schema — the corpus republishes once and then skips again.
+    """
+    return any(
+        not search_index_current(part_dir / "docs" / doc_dir_name_for_source(doc))
+        for doc in manifest.documents
+    )
+
+
 def skip_reason(job: BatchJob, *, settings: Settings, force: bool = False) -> str:
     """Nonempty reason to skip ``job``, or "" when it must build.
 
     A job is skipped only when the part's corpus manifest exists, records the
     current ``PIPELINE_VERSION``, every published document's recorded
-    ``extractor_version`` still matches what its backend produces today, and
+    ``extractor_version`` still matches what its backend produces today,
+    every published document carries a current-schema ``search_index.json``
+    (``_publish_artifacts_stale``), and
     the PDF's sha256 matches the hash of the document recorded for this file
     in the part's inventory AND the manifest's published documents
     (`content_hash` is the source document's identity — never mtime or size).
@@ -303,6 +325,8 @@ def skip_reason(job: BatchJob, *, settings: Settings, force: bool = False) -> st
         if manifest.pipeline_version != PIPELINE_VERSION:
             return ""
         if _extractor_stale(manifest):
+            return ""
+        if _publish_artifacts_stale(part_dir, manifest):
             return ""
         pdf_hash = compute_content_hash(job.pdf_path)
         published = {s.content_hash for s in manifest.documents}

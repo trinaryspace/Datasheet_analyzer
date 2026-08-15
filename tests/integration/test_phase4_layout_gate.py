@@ -431,6 +431,80 @@ class TestAliasSeedInventory:
             )
 
 
+class TestSearchIndexEconomics:
+    """Phase 5, ticket 03: the full-text index is measured on real corpora.
+
+    Size is recorded per part in `CorpusStats` (so every manifest carries the
+    number the phase report quotes) and printed here two ways, because one
+    ratio alone would flatter or damn it unfairly:
+
+    - against the **whole corpus on disk**, which is what "must not dominate
+      the corpus" means and where the index is a single-digit percentage;
+    - against the **section markdown it indexes**, the strict comparison. The
+      index is never larger than that text, but it is the same order of
+      magnitude — a datasheet's prose vocabulary is large and its section
+      files are mostly numeric tables that the index deliberately skips.
+    """
+
+    def test_index_size_is_recorded_and_does_not_dominate(self, gate, capsys):
+        from datasheet_analyzer.publish import INDEX_FILENAME
+
+        rows: list[str] = []
+        for name in GATE:
+            result = gate[name]
+            stats = result.manifest.stats
+            on_disk = sum(
+                p.stat().st_size
+                for p in (result.part_dir / "docs").glob(f"*/{INDEX_FILENAME}")
+            )
+            assert on_disk == stats.search_index_bytes, name
+            assert stats.section_bytes > 0, name
+            corpus_bytes = sum(
+                p.stat().st_size for p in result.part_dir.rglob("*") if p.is_file()
+            )
+            of_corpus = stats.search_index_bytes / corpus_bytes
+            of_text = stats.search_index_bytes / stats.section_bytes
+            rows.append(
+                f"  {name:<9} index {stats.search_index_bytes:>7,} B   "
+                f"sections {stats.section_bytes:>8,} B   corpus {corpus_bytes:>9,} B   "
+                f"{of_corpus:>5.1%} of corpus   {of_text:>5.0%} of section text"
+            )
+            assert of_corpus < 0.15, f"{name}: index dominates the corpus ({of_corpus:.1%})"
+            assert of_text < 1.0, f"{name}: index exceeds the text it indexes ({of_text:.0%})"
+
+        with capsys.disabled():
+            print("\nsearch index size, four gate corpora\n" + "\n".join(rows) + "\n")
+
+    def test_every_document_of_every_gate_part_is_searchable(self, gate):
+        from datasheet_analyzer.retrieve import Retriever
+
+        for name in GATE:
+            retriever = Retriever.for_part(gate[name].part_dir)
+            assert retriever.search_unavailable() == "", name
+
+    def test_search_finds_real_content_with_a_real_page_cite(self, gate):
+        """A search hit is cited by construction — the page comes from the
+        manifest, and the quoted snippet is text the section file contains."""
+        from datasheet_analyzer.retrieve import Retriever
+
+        probes = {
+            "AD9081": ("full-scale output current", "12 GSPS"),
+            "LM741": ("overload protection", "Absolute Maximum Ratings"),
+            "QPA1003P": ("wideband high power MMIC", "matched to 50"),
+            "HMC520A": ("conversion loss", "Revision History"),
+        }
+        for name, (query, _other) in probes.items():
+            result = gate[name]
+            hits = Retriever.for_part(result.part_dir).search(query, limit=3)
+            assert hits, f"{name}: {query!r} found nothing"
+            top = hits[0]
+            assert top.citation.page_start is not None, name
+            assert top.snippet, name
+            body = (result.part_dir / top.section.file).read_text(encoding="utf-8")
+            probe = top.snippet.strip("…").split(" ")[1:6]
+            assert " ".join(probe) in " ".join(body.split()), name
+
+
 class TestGateGoldens:
     """Ticket 07: per-part golden benchmarks, 100% on text + --specs +
     plot lookups for every gate part in a plain offline pytest run.

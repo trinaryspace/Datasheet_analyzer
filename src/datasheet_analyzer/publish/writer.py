@@ -8,6 +8,7 @@ Layout per part:
       docs/<doc_type>-<hash8>/
         sections/*.md
         tables/*.csv
+        search_index.json
 """
 
 from __future__ import annotations
@@ -23,16 +24,28 @@ from datasheet_analyzer.models import (
     PlotSet,
     RawDocument,
     SectionFile,
+    SourceDocument,
     SpecSet,
 )
+from datasheet_analyzer.publish.search_index import build_search_index, write_search_index
 from datasheet_analyzer.structure.corpus import SectionPlan
 from datasheet_analyzer.tokens import count_tokens
 
 log = logging.getLogger(__name__)
 
 
+def doc_dir_name_for_source(source: SourceDocument) -> str:
+    """Corpus directory name of one source document (`datasheet-a1b2c3d4`).
+
+    Takes the `SourceDocument` rather than the `RawDocument` so a reader that
+    only has a manifest — the batch skip gate, say — can name the same
+    directory the publisher wrote, without re-extracting.
+    """
+    return f"{source.doc_type.value}-{source.content_hash[:8]}"
+
+
 def doc_dir_name(raw: RawDocument) -> str:
-    return f"{raw.source.doc_type.value}-{raw.source.content_hash[:8]}"
+    return doc_dir_name_for_source(raw.source)
 
 
 def write_corpus(
@@ -52,6 +65,9 @@ def write_corpus(
     extraction stats are recorded (backend always; table counts by the layout
     engine). Optional `specsets` are written as `docs/<doc>/specs.json`.
     Optional `plotsets` are written as `docs/<doc>/plots.json`.
+    Every document also gets `docs/<doc>/search_index.json` — the BM25 index
+    over the section markdown written here, so what is searchable is exactly
+    what is readable.
     """
     part_dir = Path(part_dir)
     part_dir.mkdir(parents=True, exist_ok=True)
@@ -100,8 +116,18 @@ def write_corpus(
         manifest.extraction_stats[raw.source.content_hash] = extraction
         stats.n_sections += len(plans)
 
+        # Full-text index for this document, built from the very markdown the
+        # loop below writes. Section token lengths come back out of it so the
+        # manifest can budget a search hit without loading the index.
+        search = build_search_index(
+            plans, part_number=part_dir.name, doc_hash=raw.source.content_hash
+        )
+        stats.search_index_bytes += write_search_index(doc_abs, search)
+        search_tokens = {s.file: s.length for s in search.sections}
+
         for plan in plans:
             (doc_abs / plan.file).write_text(plan.markdown, encoding="utf-8")
+            stats.section_bytes += len(plan.markdown.encode("utf-8"))
             for tf in plan.table_files:
                 (doc_abs / tf.name).write_text(tf.csv, encoding="utf-8")
 
@@ -128,6 +154,7 @@ def write_corpus(
                     description=descriptions.get(sec.number or sec.title, ""),
                     n_tables=len(sec.tables),
                     n_figures=len(sec.figures),
+                    search_tokens=search_tokens.get(plan.file, 0),
                 )
             )
 
@@ -142,5 +169,10 @@ def write_corpus(
         "corpus written: %s (%d sections, %d tables, %d spec records, %d tokens, index %d tokens)",
         part_dir, stats.n_sections, stats.n_tables, stats.n_specs,
         stats.total_tokens, stats.index_tokens,
+    )
+    log.info(
+        "search index: %d bytes over %d bytes of section markdown (%.0f%%)",
+        stats.search_index_bytes, stats.section_bytes,
+        100.0 * stats.search_index_bytes / stats.section_bytes if stats.section_bytes else 0.0,
     )
     return manifest

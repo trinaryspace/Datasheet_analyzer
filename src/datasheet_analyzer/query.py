@@ -12,8 +12,9 @@ existing callers; new code should use `Retriever` directly and gets no new
 features here. The renderers below stay — formatting is a front-end job — but
 they take their citation strings from `Citation`, never build their own.
 `format_spec_hits` / `format_no_match` render typed `SpecHit`s (rung and
-confidence included); `format_answer` keeps the record-list shape for callers
-that predate them.
+confidence included); `format_search_hits` renders the BM25 full-text hits of
+ticket 03; `format_answer` keeps the record-list shape for callers that
+predate them.
 """
 
 from __future__ import annotations
@@ -22,7 +23,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from datasheet_analyzer.models import PlotRecord, SpecRecord
-from datasheet_analyzer.retrieve import Citation, Retriever, SpecHit
+from datasheet_analyzer.retrieve import Citation, Retriever, SearchHit, SpecHit
 
 
 @dataclass
@@ -116,6 +117,26 @@ def format_no_match(term: str, suggestions: list[str]) -> str:
         return f"{head} No near candidates in this corpus either."
     listed = "\n".join(f"  - {s}" for s in suggestions)
     return f"{head} Nearest candidates:\n{listed}"
+
+
+def format_search_hits(hits: list[SearchHit]) -> str:
+    """Render BM25 hits: rank, heading, citation, score, then the snippet.
+
+    The section header is printed here rather than baked into `hit.snippet` —
+    the hit carries the heading and the citation as fields, and deciding how
+    they read on a terminal is a front end's job.
+    """
+    if not hits:
+        return "No matching sections."
+    lines: list[str] = []
+    for rank, hit in enumerate(hits, 1):
+        lines.append(
+            f"{rank}. {hit.heading} — {hit.citation.label} "
+            f"[score {hit.score:.2f} · via {hit.matched_via}]"
+        )
+        if hit.snippet:
+            lines.append(f"   {hit.snippet}")
+    return "\n".join(lines)
 
 
 def find_plots(

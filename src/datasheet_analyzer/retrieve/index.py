@@ -12,9 +12,9 @@ without anyone having to remember to invalidate it. A part with no
 on and is therefore never cached: it is re-read every time, which is honest
 rather than silently stale.
 
-Degradation is honest throughout: an unreadable `manifest.json`, `specs.json`
-or `plots.json` is warned about and skipped, never raised — a corrupt document
-must not take the whole part down.
+Degradation is honest throughout: an unreadable `manifest.json`, `specs.json`,
+`plots.json` or `search_index.json` is warned about and skipped, never raised
+— a corrupt document must not take the whole part down.
 """
 
 from __future__ import annotations
@@ -28,6 +28,7 @@ from datasheet_analyzer.models import (
     CorpusManifest,
     PlotRecord,
     PlotSet,
+    SearchIndex,
     SectionFile,
     SpecRecord,
     SpecSet,
@@ -56,6 +57,10 @@ class IndexedDoc:
     doc_hash: str = ""
     specs: tuple[SpecRecord, ...] = ()
     plots: tuple[PlotRecord, ...] = ()
+    # `search_index.json`, or None for a corpus built before full-text search
+    # existed. None is what `Retriever.search_unavailable()` reports on, so an
+    # older corpus is told to rebuild rather than silently answering nothing.
+    search: SearchIndex | None = None
 
 
 @dataclass(frozen=True)
@@ -97,15 +102,18 @@ class CorpusIndex:
             for doc_dir in sorted(d for d in docs_dir.iterdir() if d.is_dir()):
                 specset = _load_json_model(doc_dir / "specs.json", SpecSet)
                 plotset = _load_json_model(doc_dir / "plots.json", PlotSet)
+                search = _load_json_model(doc_dir / "search_index.json", SearchIndex)
                 docs.append(
                     IndexedDoc(
                         name=doc_dir.name,
                         doc_hash=(
                             (specset.doc_hash if specset else "")
                             or (plotset.doc_hash if plotset else "")
+                            or (search.doc_hash if search else "")
                         ),
                         specs=tuple(specset.records) if specset else (),
                         plots=tuple(plotset.plots) if plotset else (),
+                        search=search,
                     )
                 )
         return cls(

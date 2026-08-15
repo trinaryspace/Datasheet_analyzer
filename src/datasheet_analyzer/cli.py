@@ -5,6 +5,7 @@ Commands:
   batch <dir>               build every PDF in a directory as its own part (unchanged parts skipped; --force rebuilds; --workers N parallel, default 4)
   verify --part NAME        golden Q&A citation verification (deterministic)
   query --part NAME         deterministic spec lookup (alias ladder; --json)
+  search --part NAME "..."  BM25 full-text search, cited by construction (--json)
   plots --part NAME         deterministic plot lookup
   status                    configuration + detected parts
   version                   print version
@@ -233,6 +234,39 @@ def _cmd_query(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_search(args: argparse.Namespace) -> int:
+    import json
+
+    from datasheet_analyzer.query import format_search_hits
+    from datasheet_analyzer.retrieve import Retriever
+
+    settings = get_settings()
+    part_dir = settings.parts_dir / args.part
+    if not (part_dir / "manifest.json").exists():
+        print(f"no corpus at {part_dir} — run `dsa build` first", file=sys.stderr)
+        return 2
+
+    retriever = Retriever.for_part(part_dir)
+    # An unsearchable corpus degrades with the core's own message (rebuild to
+    # enable search), never as an empty result set that reads like "no match".
+    unavailable = retriever.search_unavailable()
+    if unavailable:
+        print(unavailable, file=sys.stderr)
+        return 2
+
+    hits = retriever.search(args.query, limit=args.limit)
+    if args.json:
+        payload = {
+            "part": args.part,
+            "query": args.query,
+            "hits": [h.as_dict() for h in hits],
+        }
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+        return 0 if hits else 1
+    print(format_search_hits(hits))
+    return 0 if hits else 1
+
+
 def _cmd_plots(args: argparse.Namespace) -> int:
     from datasheet_analyzer.query import format_plot_answer
     from datasheet_analyzer.retrieve import Retriever
@@ -401,6 +435,15 @@ def main(argv: list[str] | None = None) -> int:
         help="emit hits (with matched_via + confidence) as JSON",
     )
     p_query.set_defaults(func=_cmd_query)
+
+    p_search = sub.add_parser("search", help="full-text search with page citations")
+    p_search.add_argument("--part", required=True)
+    p_search.add_argument("query", help="free text, e.g. \"sysref setup\"")
+    p_search.add_argument("--limit", type=int, default=5, help="max hits (default 5)")
+    p_search.add_argument(
+        "--json", action="store_true", help="emit hits (score, citation, snippet) as JSON"
+    )
+    p_search.set_defaults(func=_cmd_search)
 
     p_plots = sub.add_parser("plots", help="deterministic plot lookup")
     p_plots.add_argument("--part", required=True)

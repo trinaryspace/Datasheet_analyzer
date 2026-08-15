@@ -19,6 +19,7 @@ exact symbol hit from a loose substring one:
 | specs | `symbol`, `alias:<phrase>`, `alias-prefix:<prefix>`, `symbol-substring`, `name-substring`, `fuzzy`, `section`, `all` |
 | plots | `caption`, `conditions`, `section`, `tag`, `all` |
 | sections | `number`, `title`, `page`, `all` |
+| search | `fulltext` |
 
 The spec ladder itself lives in `retrieve.retriever`; the alias data behind
 its `alias:` rungs lives in `registry/aliases.yaml`.
@@ -176,3 +177,50 @@ class SectionHit:
     citation: Citation
     matched_via: str = ""
     confidence: str = CONFIDENCE_UNKNOWN
+
+
+@dataclass(frozen=True)
+class SearchHit:
+    """One BM25 full-text hit: the section, its citation, score and snippet.
+
+    The citation is built from the manifest entry, not from the snippet, so a
+    search result is **cited by construction** — a caller never attributes a
+    page itself, which is the whole reason the corpus records page ranges.
+
+    The section's heading travels as structured fields (`section.number` /
+    `section.title`, exposed together as `heading`) rather than glued onto the
+    front of `snippet`: formatting is a front end's job, and a caller that
+    wants only the excerpt should not have to unpick a header from it.
+    """
+
+    section: SectionFile
+    citation: Citation
+    score: float = 0.0
+    snippet: str = ""
+    terms: tuple[str, ...] = ()
+    matched_via: str = "fulltext"
+    confidence: str = CONFIDENCE_UNKNOWN
+
+    @property
+    def heading(self) -> str:
+        """`§4.5 Transmitter Electrical Characteristics`, number optional."""
+        if self.section.number:
+            return f"§{self.section.number} {self.section.title}".strip()
+        return self.section.title
+
+    def as_dict(self) -> dict:
+        """JSON-ready view — the one shape the CLI and the MCP server share."""
+        return {
+            "section": self.section.number,
+            "title": self.section.title,
+            "file": self.section.file,
+            "doc": self.citation.doc,
+            "page_start": self.citation.page_start,
+            "page_end": self.citation.page_end,
+            "citation": self.citation.label,
+            "score": round(self.score, 6),
+            "snippet": self.snippet,
+            "terms": list(self.terms),
+            "matched_via": self.matched_via,
+            "confidence": self.confidence,
+        }

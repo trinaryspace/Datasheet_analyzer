@@ -301,6 +301,47 @@ def test_missing_manifest_rebuilds_part(batch_env):
     assert by_part["TEST9000"].status == STATUS_SKIPPED
 
 
+def test_missing_search_index_rebuilds_part(batch_env):
+    """Publish artifacts are part of the skip gate too (Phase 5, ticket 03).
+
+    A corpus published before `search_index.json` existed would otherwise skip
+    forever and answer `dsa search` with nothing at all. It must republish
+    once — and then skip again.
+    """
+    from datasheet_analyzer.publish import INDEX_FILENAME
+
+    pdfs, settings = batch_env
+    assert run_batch(pdfs, settings=settings, use_llm=False).ok
+    for path in (settings.parts_dir / "PLAIN" / "docs").glob(f"*/{INDEX_FILENAME}"):
+        path.unlink()
+
+    report = run_batch(pdfs, settings=settings, use_llm=False)
+    by_part = {j.part: j for j in report.jobs}
+    assert by_part["PLAIN"].status == STATUS_DONE  # rebuilt, not skipped
+    assert by_part["TEST9000"].status == STATUS_SKIPPED
+
+    # ...and the republished corpus skips again: the gate is a one-shot fix,
+    # not a permanent rebuild.
+    again = {j.part: j for j in run_batch(pdfs, settings=settings, use_llm=False).jobs}
+    assert again["PLAIN"].status == STATUS_SKIPPED
+
+
+def test_stale_search_index_schema_rebuilds_part(batch_env):
+    from datasheet_analyzer.publish import INDEX_FILENAME
+
+    pdfs, settings = batch_env
+    assert run_batch(pdfs, settings=settings, use_llm=False).ok
+    for path in (settings.parts_dir / "PLAIN" / "docs").glob(f"*/{INDEX_FILENAME}"):
+        data = json.loads(path.read_text(encoding="utf-8"))
+        data["schema_version"] = "0"
+        path.write_text(json.dumps(data), encoding="utf-8")
+
+    report = run_batch(pdfs, settings=settings, use_llm=False)
+    by_part = {j.part: j for j in report.jobs}
+    assert by_part["PLAIN"].status == STATUS_DONE
+    assert by_part["TEST9000"].status == STATUS_SKIPPED
+
+
 def test_corrupt_manifest_rebuilds_part(batch_env):
     pdfs, settings = batch_env
     assert run_batch(pdfs, settings=settings, use_llm=False).ok

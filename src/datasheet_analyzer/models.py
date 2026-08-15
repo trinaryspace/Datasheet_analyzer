@@ -167,6 +167,9 @@ class SectionFile(BaseModel):
     description: str = ""
     n_tables: int = 0
     n_figures: int = 0
+    # Indexed search-token count (Phase 5): the section's length as BM25 sees
+    # it. Additive — 0 on corpora built before the search index existed.
+    search_tokens: int = 0
 
 
 class CorpusStats(BaseModel):
@@ -182,6 +185,12 @@ class CorpusStats(BaseModel):
     boilerplate_tokens_removed: int = 0
     sections_with_pages: int = 0
     sections_without_pages: int = 0
+    # Phase 5 search index economics, recorded per part so the ratio is a
+    # measured number in every manifest rather than a claim in a report:
+    # the bytes every `search_index.json` occupies, against the bytes of the
+    # section markdown they index. Additive — 0 on older corpora.
+    section_bytes: int = 0
+    search_index_bytes: int = 0
 
 
 class ExtractionStats(BaseModel):
@@ -296,6 +305,36 @@ class PlotSet(BaseModel):
     part_number: str = ""
     doc_hash: str = ""
     plots: list[PlotRecord] = Field(default_factory=list)
+
+
+class SearchSection(BaseModel):
+    """One indexed section file: its term frequencies and its token length.
+
+    `file` is the *document*-relative path (`sections/4-5.md`), so a document
+    directory carries a self-contained index that survives being moved with
+    the part. Positions are deliberately not stored: snippets are recovered by
+    re-reading the section file, which is cheap and keeps the index small.
+    """
+
+    file: str = ""
+    length: int = 0
+    tokens: dict[str, int] = Field(default_factory=dict)
+
+
+class SearchIndex(BaseModel):
+    """A document's inverted index (search_index.json), built at publish.
+
+    `df` is the per-token document frequency across this document's sections
+    and `avgdl` their mean length — the two corpus statistics BM25 needs. A
+    part with several documents merges them at query time.
+    """
+
+    schema_version: str = ""
+    part_number: str = ""
+    doc_hash: str = ""
+    sections: list[SearchSection] = Field(default_factory=list)
+    df: dict[str, int] = Field(default_factory=dict)
+    avgdl: float = 0.0
 
 
 class GoldenQuestion(BaseModel):

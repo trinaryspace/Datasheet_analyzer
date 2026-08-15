@@ -396,11 +396,14 @@ class TestCliIsFormatOnly:
             "rglob",              # walking the corpus
             "specs.json",         # parsing corpus artifacts
             "plots.json",
+            "search_index.json",
             "model_validate_json",
             "SpecSet",
             "PlotSet",
             "SpecRecord",
             "PlotRecord",
+            "SearchIndex",
+            "bm25",               # ranking belongs to retrieve/search.py
             "§",                  # hand-built citation strings
             "p.{",
         ],
