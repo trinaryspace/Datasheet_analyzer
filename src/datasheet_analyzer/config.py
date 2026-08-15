@@ -50,6 +50,10 @@ class Settings(BaseSettings):
     # Plot pixel rendering (PDF fallback)
     plot_image_dpi: int = 150
 
+    # `dsa batch` worker pool: --workers flag overrides; this env-backed
+    # value is the default; 4 is the fallback.
+    batch_workers: int = Field(default=4, ge=1)
+
     def resolve(self) -> Settings:
         self.parts_dir = self.parts_dir.resolve()
         self.cache_dir = self.cache_dir.resolve()

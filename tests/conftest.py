@@ -35,14 +35,17 @@ HMC520A_PDF = GATE_PDFS / "hmc520a.pdf"
 def make_synthetic_pdf():
     """Factory for the shared synthetic part PDF: 2 pages, TOC with
     Features (p.1) + Absolute Maximum Ratings (p.2). One fixture so every
-    pipeline-level test builds the same input bytes."""
+    pipeline-level test builds the same input bytes; ``marker`` (default "")
+    appends to the page-1 text to produce deliberately different bytes while
+    keeping the structural shape identical."""
 
-    def _make(path: Path) -> None:
+    def _make(path: Path, marker: str = "") -> None:
         doc = fitz.open()
         p1 = doc.new_page()
         p1.insert_text(
             (72, 72),
-            "TEST9000 Features page. Quad RF sampling 12GSPS transmit DACs.",
+            "TEST9000 Features page. Quad RF sampling 12GSPS transmit DACs."
+            + marker,
         )
         p2 = doc.new_page()
         p2.insert_text(

@@ -10,8 +10,9 @@ from __future__ import annotations
 
 import logging
 import os
-import threading
+import tempfile
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -49,6 +50,13 @@ from datasheet_analyzer.vendor import select_backend, warn_vendor_drift
 
 log = logging.getLogger(__name__)
 
+BUILD_STAGES: tuple[str, ...] = (
+    "extracting",
+    "structuring",
+    "enriching",
+    "publishing",
+)
+
 
 @dataclass
 class BuildResult:
@@ -71,6 +79,43 @@ def _load_cached_raw(settings: Settings, content_hash: str, backend: str) -> Raw
     return None
 
 
+def _atomic_write_text(path: Path, text: str) -> None:
+    """Write ``text`` to ``path`` atomically: unique temp file + rename.
+
+    Concurrent writers of the same path can never produce a partially
+    written file: each write lands in its own temp file and the visible path
+    flips only at the rename. This is what makes it safe for parallel batch
+    jobs whose PDFs share the same (hash, backend) extraction-cache identity
+    to race on one path; a failed write removes its temp file and leaves the
+    destination untouched.
+
+    The rename is retried briefly on ``PermissionError``: on Windows the
+    destination is locked while another thread has it open for reading, so a
+    parallel batch can otherwise lose a race it would win on POSIX.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=path.name + ".", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(text)
+            fh.flush()
+            os.fsync(fh.fileno())
+        for attempt in range(10):
+            try:
+                os.replace(tmp, path)
+                break
+            except PermissionError:  # Windows: destination briefly locked
+                time.sleep(0.01 * (attempt + 1))
+        else:
+            os.replace(tmp, path)  # last try — surface the error if still contended
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+
+
 def _store_cached_raw(settings: Settings, raw: RawDocument) -> None:
     """Atomic cache write: unique temp file + rename, so concurrent jobs
     sharing identical bytes can never leave a torn/corrupt cache entry.
@@ -80,19 +125,7 @@ def _store_cached_raw(settings: Settings, raw: RawDocument) -> None:
     the replace itself races under contention and is retried briefly.)
     """
     path = _extract_cache_path(settings, raw.source.content_hash, raw.extractor)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(f"{path.name}.{os.getpid()}.{threading.get_ident()}.tmp")
-    try:
-        tmp.write_text(raw.model_dump_json(indent=2), encoding="utf-8")
-        for attempt in range(10):
-            try:
-                tmp.replace(path)
-                return
-            except PermissionError:  # Windows: destination briefly locked
-                time.sleep(0.01 * (attempt + 1))
-        tmp.replace(path)  # last try — surface the error if still contended
-    finally:
-        tmp.unlink(missing_ok=True)
+    _atomic_write_text(path, raw.model_dump_json(indent=2))
 
 
 def _brief_and_facts(raw: RawDocument) -> tuple[str, list[str]]:
@@ -189,11 +222,24 @@ def build_part(
     vendor: str = "",
     use_cache: bool = True,
     use_llm: bool = True,
+    on_progress: Callable[[str], None] | None = None,
 ) -> BuildResult:
-    """Build a part corpus. ``vendor`` = explicit override of detection
-    (recorded as cli-override evidence); "" = detection/pinned value."""
+    """Build one part corpus end to end.
+
+    ``vendor`` = explicit override of detection (recorded as cli-override
+    evidence); "" = detection/pinned value.
+
+    ``on_progress`` is an additive hook: when supplied it is called at each
+    stage boundary (``extracting``, ``structuring``, ``enriching``,
+    ``publishing``) before that stage's work starts. Callers that omit it get
+    the exact behavior they always had.
+    """
     pdf_path = Path(pdf_path)
     part_dir = settings.parts_dir / part_number
+
+    def _progress(stage: str) -> None:
+        if on_progress is not None:
+            on_progress(stage)
 
     # acquire: load inventory or bootstrap from the CLI pdf
     inventory = load_inventory(part_dir)
@@ -220,6 +266,7 @@ def build_part(
 
     # extract each document (datasheet via the vendor's preferred backend,
     # companions via pdf_text)
+    _progress("extracting")
     docs: list[RawDocument] = []
     any_cached = True
     for source in inventory:
@@ -243,6 +290,7 @@ def build_part(
         log.warning("no ANTHROPIC_API_KEY — using deterministic descriptions")
 
     all_plans: list[tuple[RawDocument, list[SectionPlan], dict[str, str]]] = []
+    _progress("structuring")
     specsets: list[PlotSet] = []
     plotsets: list[PlotSet] = []
     doc_summaries: list[tuple[str, str, int, str]] = []
@@ -294,6 +342,7 @@ def build_part(
         )
 
     # enrich: one INDEX.md grouping sections by document
+    _progress("enriching")
     metas: list[SectionMeta] = []
     for raw, plans, descriptions in all_plans:
         doc_dir = f"docs/{doc_dir_name(raw)}"
@@ -322,6 +371,7 @@ def build_part(
     )
 
     # publish
+    _progress("publishing")
     manifest = write_corpus(
         part_dir, all_plans, index_md,
         pipeline_version=PIPELINE_VERSION,

@@ -48,7 +48,7 @@ dsa build afe7953.pdf --part AFE7953                    # second reference part
 dsa build ad9081.pdf --part AD9081 --vendor adi         # explicit vendor override (default: detected + pinned)
 dsa build lm741.pdf --part LM741                         # brand-less: pin --vendor unknown for the layout floor
 dsa verify --part AD9081 --pdf tests/fixtures/pdf/ad9081.pdf --specs  # non-TI golden (per-part yaml)
-dsa batch datasheets/                                   # one part corpus per PDF in a dir (serial today)
+dsa batch datasheets/                                   # one part corpus per PDF in a dir (unchanged parts skipped; --workers N parallel, default 4)
 dsa verify --part AFE7950 --pdf afe7950.pdf             # golden Q&A + token economics
 dsa verify --part AFE7950 --pdf afe7950.pdf --specs     # + spec_query checks
 # verify resolves golden_qa_<PART>.yaml per part (tests/fixtures) and
@@ -101,8 +101,8 @@ codes, not colors.
 | `query.py` | Deterministic spec lookup against built `specs.json` files; plot lookup against `plots.json`. | `SpecQuery`, `format_answer`, `find_plots`, `format_plot_answer` |
 | `evalh/citations.py` | Golden Q&A verification: corpus-contains AND page-truth, two-tier (exact then squash-normalized). | `verify_questions`, `load_golden_yaml`, `contains`, `squash` |
 | `evalh/golden.py` | Report rendering + token economics measurement. | `render_verification_report`, `estimate_lookup_tokens` |
-| `pipeline.py` | Orchestration + extraction cache (`.cache/extract/<hash>__<backend>.json`, atomic write-temp + rename). Vendor routing via the pinned vendor; `--vendor` repins the inventory; drift warnings never re-route. | `build_part` |
-| `batch.py` | Batch runner: flat `*.pdf` scan of a directory, one job per PDF (part = uppercase stem), failure isolation, per-job summary + `BatchReport`. Serial today (workers/hash-gate/events land in later tickets). | `run_batch`, `run_job`, `discover_jobs`, `BatchReport`, `BatchError`, `STATUS_*` |
+| `pipeline.py` | Orchestration + extraction cache (`.cache/extract/<hash>__<backend>.json`, atomic write-temp + rename with a Windows rename retry). Vendor routing via the pinned vendor; `--vendor` repins the inventory; drift warnings never re-route. `build_part` takes an additive `on_progress` stage-boundary callback (extracting/structuring/enriching/publishing; no-op default — existing callers unchanged; batch's event emitter wires into it). | `build_part` |
+| `batch.py` | Batch runner: flat `*.pdf` scan of a directory, one job per PDF (part = uppercase stem), failure isolation, per-job summary + `BatchReport`. Hash-gated skip (`skip_reason`: manifest + `PIPELINE_VERSION` + inventory sha256; `--force` / `--no-cache` disable it; changed PDFs re-register). Stage events: every transition (queued/extracting/structuring/enriching/publishing/done/failed/skipped) emits one prefixed terminal line AND one JSONL record (`.cache/batches/<dirstem>-<run>/batch.jsonl`; header event carries the job list) via `EventEmitter` — the JSONL is the monitoring source of truth; `build_part`'s additive `on_progress` callback (no-op default) is what fired inside jobs. Parallel dispatch: bounded `ThreadPoolExecutor` (`--workers N`, env `DSA_BATCH_WORKERS` default 4; `workers=1` is the exact serial path), job-scoped wiring (backend/fetchers/LLM client created per job — no shared mutable pipeline state), final events as jobs complete, report in run order; extraction-cache writes are atomic (write-temp + rename) so identical PDF bytes can never corrupt `.cache/extract/<hash>__<backend>.json`. | `run_batch`, `run_job`, `discover_jobs`, `skip_reason`, `EventEmitter`, `log_path_for`, `BatchReport`, `BatchError`, `STATUS_*` |
 | `cli.py` | argparse CLI. Reconfigures stdout/stderr to UTF-8 (Windows cp1252). | `main` |
 
 ### Corpus layout (the product)
