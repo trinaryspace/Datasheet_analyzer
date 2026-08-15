@@ -1,0 +1,18 @@
+# Secrets — never tracked (ANTHROPIC_API_KEY lives here)
+.env
+
+# Virtualenv
+.venv/
+
+# Regenerable extraction/HTTP cache.
+# Tests do not read this: they use tests/fixtures/recorded_http_bin and
+# per-test tmp cache dirs, so untracking it is safe for a fresh clone.
+.cache/
+
+# Tool caches
+.pytest_cache/
+.ruff_cache/
+
+# Python bytecode
+__pycache__/
+*.pyc
