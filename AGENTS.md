@@ -98,12 +98,13 @@ codes, not colors.
 | `enrich/index.py` | INDEX.md builder under a hard token budget (staged degradation). `DeterministicWriter` (offline) / `LLMWriter` (one batched call, falls back safely). | `build_index_markdown`, `SectionMeta` |
 | `publish/writer.py` | Writes corpus + `manifest.json`; also writes `docs/<doc>/specs.json` and `docs/<doc>/plots.json` when the corresponding sets are supplied. | `write_corpus`, `doc_dir_name` |
 | `publish/plots.py` | Downloads/render plot images into `figures/` and updates `PlotRecord.file`. `render_figure_regions` clip-renders pdf_layout figures from the region above their `Figure N.` caption (geometry via `figure_anchor_map`, drift-free); ti_html downloads + full-page fallback stay as before. | `fetch_plot_images`, `render_figure_regions`, `render_plot_pages_fallback` |
-| `query.py` | Deterministic spec lookup against built `specs.json` files; plot lookup against `plots.json`. | `SpecQuery`, `format_answer`, `find_plots`, `format_plot_answer` |
-| `evalh/citations.py` | Golden Q&A verification: corpus-contains AND page-truth, two-tier (exact then squash-normalized). | `verify_questions`, `load_golden_yaml`, `contains`, `squash` |
-| `evalh/golden.py` | Report rendering + token economics measurement. | `render_verification_report`, `estimate_lookup_tokens` |
+| `retrieve/` | **The retrieval core — every corpus lookup, once.** `index.py`: `CorpusIndex.load(part_dir)` reads a part's `manifest.json` + every `specs.json` / `plots.json` once and caches it on corpus identity `(part dir, manifest.json mtime + size, PIPELINE_VERSION)`, so a rebuild invalidates naturally and a part with no manifest is never cached (no identity → re-read, never stale); section bodies load lazily. `retriever.py`: `Retriever.specs/plots/sections` return typed hits. `results.py`: `Citation` (the only place `p.N` / `p.N-M` / `§N, p.N` is spelled), `SpecHit`, `PlotHit`, `SectionHit` — each carrying doc, page range, `matched_via` (`symbol` \| `symbol-substring` \| `name-substring` \| `section` \| … ) and `confidence` (honest `unknown` until per-record grading ships). Corrupt `manifest.json` / `specs.json` / `plots.json` warns and skips; it never takes the part down. | `CorpusIndex`, `Retriever`, `Citation`, `SpecHit`, `PlotHit`, `SectionHit`, `clear_index_cache` |
+| `query.py` | **Back-compat shim over `retrieve/`** (deprecated as an implementation; signatures and record-list returns kept for existing callers) plus the record renderers, which take their citation strings from `Citation`. | `SpecQuery`, `format_answer`, `find_plots`, `format_plot_answer` |
+| `evalh/citations.py` | Golden Q&A verification: corpus-contains AND page-truth, two-tier (exact then squash-normalized). Also the `spec_query` / `plot_query` pass rules (page match + value substrings; plots additionally need an on-disk image >1 KB) — they run against `retrieve/`, not against a walk of their own. | `verify_questions`, `verify_spec_queries`, `verify_plot_queries`, `load_golden_yaml`, `contains`, `squash` |
+| `evalh/golden.py` | Report rendering + token economics measurement. | `render_verification_report`, `render_spec_query_report`, `render_plot_query_report`, `render_token_economics`, `estimate_lookup_tokens` |
 | `pipeline.py` | Orchestration + extraction cache (`.cache/extract/<hash>__<backend>.json`, atomic write-temp + rename with a Windows rename retry). Vendor routing via the pinned vendor; `--vendor` repins the inventory; drift warnings never re-route. `build_part` takes an additive `on_progress` stage-boundary callback (extracting/structuring/enriching/publishing; no-op default — existing callers unchanged; batch's event emitter wires into it). | `build_part` |
 | `batch.py` | Batch runner: flat `*.pdf` scan of a directory, one job per PDF (part = uppercase stem), failure isolation, per-job summary + `BatchReport`. Hash-gated skip (`skip_reason`: manifest + `PIPELINE_VERSION` + inventory sha256; `--force` / `--no-cache` disable it; changed PDFs re-register). Stage events: every transition (queued/extracting/structuring/enriching/publishing/done/failed/skipped) emits one prefixed terminal line AND one JSONL record (`.cache/batches/<dirstem>-<run>/batch.jsonl`; header event carries the job list) via `EventEmitter` — the JSONL is the monitoring source of truth; `build_part`'s additive `on_progress` callback (no-op default) is what fired inside jobs. Parallel dispatch: bounded `ThreadPoolExecutor` (`--workers N`, env `DSA_BATCH_WORKERS` default 4; `workers=1` is the exact serial path), job-scoped wiring (backend/fetchers/LLM client created per job — no shared mutable pipeline state), final events as jobs complete, report in run order; extraction-cache writes are atomic (write-temp + rename) so identical PDF bytes can never corrupt `.cache/extract/<hash>__<backend>.json`. | `run_batch`, `run_job`, `discover_jobs`, `skip_reason`, `EventEmitter`, `log_path_for`, `BatchReport`, `BatchError`, `STATUS_*` |
-| `cli.py` | argparse CLI. Reconfigures stdout/stderr to UTF-8 (Windows cp1252). | `main` |
+| `cli.py` | argparse CLI, **formatting only** — it holds no retrieval logic (see the seam under Conventions). Reconfigures stdout/stderr to UTF-8 (Windows cp1252). | `main` |
 
 ### Corpus layout (the product)
 
@@ -172,6 +173,15 @@ parts/<PART>/
   freely). PyMuPDF is AGPL-3.0 — it *is* the offline `pdf_layout` extraction floor
   (fonts, spans, rulings, vector figure regions); TI's HTML path uses it for
   structure/verification only.
+- **No retrieval logic in a front end.** `cli.py` (and, from ticket 07, the MCP
+  server) may only format what `retrieve/` returns: no corpus walk, no
+  `specs.json` / `plots.json` parsing, no hand-built `p.N` or `§N` string.
+  Citations come from `Citation`, so the CLI and the MCP server can never drift
+  apart in what they cite. `tests/unit/test_retrieve.py::TestCliIsFormatOnly`
+  fails the moment that creeps back in.
+- The retrieval index is an in-process cache. Tests get a fresh one from the
+  autouse `fresh_retrieval_cache` fixture; production code invalidates by
+  rebuilding the corpus (which rewrites `manifest.json`).
 - Ruff runs on `src` and `tests`; line length 100; keep it clean.
 
 ## Definition of done (every change)

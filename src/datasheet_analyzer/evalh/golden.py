@@ -9,9 +9,11 @@ measures tokens consumed.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 
 from datasheet_analyzer.evalh.citations import (
+    QueryResult,
     QuestionResult,
     load_golden_yaml,
     summarize,
@@ -57,6 +59,68 @@ def render_verification_report(results: list[QuestionResult]) -> str:
             )
     lines.append("")
     return "\n".join(lines)
+
+
+def _query_report(
+    title: str,
+    results: list[QueryResult],
+    query_field: str,
+    detail: Callable[[QueryResult], str],
+) -> str:
+    passed = sum(1 for r in results if r.ok)
+    lines = [
+        f"## {title} (deterministic)",
+        "",
+        f"**{passed}/{len(results)} passed**",
+        "",
+        "| # | Question | Query | Result |",
+        "|---|---|---|---|",
+    ]
+    for i, r in enumerate(results, 1):
+        query = getattr(r.question, query_field) or {}
+        query_str = ", ".join(f"{k}={v!r}" for k, v in query.items())
+        status = "✅" if r.ok else "❌"
+        lines.append(f"| {i} | {r.question.question} | {query_str} | {status} {detail(r)} |")
+    return "\n".join(lines)
+
+
+def render_spec_query_report(results: list[QueryResult]) -> str:
+    """Spec-query verification table (the `dsa verify --specs` block)."""
+
+    def detail(r: QueryResult) -> str:
+        if r.ok:
+            return f"{r.n_records} record(s)"
+        return f"{r.n_records} record(s), page/value mismatch"
+
+    return _query_report("Spec query verification", results, "spec_query", detail)
+
+
+def render_plot_query_report(results: list[QueryResult]) -> str:
+    """Plot-query verification table (always run when goldens carry plots)."""
+
+    def detail(r: QueryResult) -> str:
+        if r.ok:
+            return f"{r.n_verified} plot file(s)"
+        return f"{r.n_records} match(es), {r.n_verified} valid file(s)"
+
+    return _query_report("Plot query verification", results, "plot_query", detail)
+
+
+def render_token_economics(tokens: dict) -> str:
+    """Measured per-question token cost of the corpus lookup path."""
+    return "\n".join(
+        [
+            "## Token cost per question (measured on the built corpus)",
+            "",
+            f"- INDEX.md (always loaded): {tokens['index_tokens']} tokens",
+            (
+                "- avg question total (index + section): "
+                f"{tokens['avg_per_question']:.0f} tokens"
+            ),
+            f"- worst question total: {tokens['max_per_question']} tokens",
+            f"- naive full-corpus dump: {tokens['full_dump_tokens']} tokens",
+        ]
+    )
 
 
 def estimate_lookup_tokens(part_dir: Path, results: list[QuestionResult]) -> dict:

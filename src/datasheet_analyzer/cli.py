@@ -113,14 +113,6 @@ def _cmd_batch(args: argparse.Namespace) -> int:
     return 0 if report.ok else 1
 
 
-def _spec_fields(rec) -> str:
-    return (
-        f"{rec.symbol} {rec.name} {rec.conditions} "
-        f"{rec.min} {rec.typ} {rec.max} {rec.value} "
-        f"{rec.unit.verbatim} {rec.unit.canonical}"
-    )
-
-
 def _default_golden_path(part: str) -> Path:
     """Per-part golden discovery (SPEC story 26): each part verifies
     against tests/fixtures/golden_qa_<PART>.yaml, so a missing benchmark
@@ -134,14 +126,21 @@ def _default_golden_path(part: str) -> Path:
 
 
 def _cmd_verify(args: argparse.Namespace) -> int:
-    from datasheet_analyzer.evalh.citations import contains, summarize, verify_questions
+    from datasheet_analyzer.evalh.citations import (
+        summarize,
+        verify_plot_queries,
+        verify_questions,
+        verify_spec_queries,
+    )
     from datasheet_analyzer.evalh.golden import (
         estimate_lookup_tokens,
         load_golden,
+        render_plot_query_report,
+        render_spec_query_report,
+        render_token_economics,
         render_verification_report,
     )
     from datasheet_analyzer.extract.pdf_structure import page_texts
-    from datasheet_analyzer.query import SpecQuery, find_plots
 
     settings = get_settings()
     part_dir = settings.parts_dir / args.part
@@ -172,103 +171,33 @@ def _cmd_verify(args: argparse.Namespace) -> int:
     results = verify_questions(questions, part_dir, pages)
     print(render_verification_report(results))
     if pages:
-        tokens = estimate_lookup_tokens(part_dir, results)
-        print("## Token cost per question (measured on the built corpus)")
-        print()
-        print(f"- INDEX.md (always loaded): {tokens['index_tokens']} tokens")
-        print(f"- avg question total (index + section): {tokens['avg_per_question']:.0f} tokens")
-        print(f"- worst question total: {tokens['max_per_question']} tokens")
-        print(f"- naive full-corpus dump: {tokens['full_dump_tokens']} tokens")
+        print(render_token_economics(estimate_lookup_tokens(part_dir, results)))
 
     summary = summarize(results)
     failed = summary["failed"] != 0
 
     if args.specs:
-        spec_questions = [q for q in questions if q.spec_query]
-        spec_results: list[tuple] = []
-        for q in spec_questions:
-            recs = SpecQuery(part_dir).find(**q.spec_query)
-            # Multi-row answers (e.g. DSA range + step, VCO coverage) are
-            # verified across the query result set: every expected substring
-            # must appear on at least one record whose page is in the cited
-            # page list.
-            paged_recs = [r for r in recs if r.page is not None and r.page in q.pages]
-            if paged_recs:
-                ok = all(
-                    any(contains(_spec_fields(r), sub) for r in paged_recs)
-                    for sub in q.expected_substrings
-                )
-            else:
-                ok = False
-            spec_results.append((q, ok, recs))
-
+        spec_results = verify_spec_queries(questions, part_dir)
         print()
-        print("## Spec query verification (deterministic)")
-        print()
-        print(f"**{sum(1 for _, ok, _ in spec_results if ok)}/{len(spec_results)} passed**")
-        print()
-        print("| # | Question | Query | Result |")
-        print("|---|---|---|---|")
-        for i, (q, ok, recs) in enumerate(spec_results, 1):
-            query_str = ", ".join(f"{k}={v!r}" for k, v in (q.spec_query or {}).items())
-            status = "✅" if ok else "❌"
-            detail = f"{len(recs)} record(s)" if ok else f"{len(recs)} record(s), page/value mismatch"
-            print(f"| {i} | {q.question} | {query_str} | {status} {detail} |")
-        if not all(ok for _, ok, _ in spec_results):
+        print(render_spec_query_report(spec_results))
+        if any(not r.ok for r in spec_results):
             failed = True
 
-    # Plot query verification (Phase 3): every plot_query must match at least
-    # one PlotRecord whose image file exists and is >1 KB, on the right page.
-    plot_questions = [q for q in questions if q.plot_query]
-    if plot_questions:
-        plot_results: list[tuple] = []
-        for q in plot_questions:
-            query = q.plot_query or {}
-            recs = find_plots(
-                part_dir,
-                caption=query.get("caption_contains", ""),
-                conditions=query.get("conditions_contain", ""),
-                section=query.get("section", ""),
-            )
-            paged = [r for r in recs if r.page_start is not None and r.page_start in q.pages]
-            file_hits = []
-            for r in paged:
-                if not r.file:
-                    continue
-                fpath = part_dir / r.file
-                try:
-                    if fpath.exists() and fpath.stat().st_size > 1024:
-                        file_hits.append(r)
-                except OSError:
-                    pass
-            ok = bool(file_hits)
-            if ok and q.expected_substrings:
-                text = " ".join(r.caption + " " + r.conditions for r in file_hits)
-                ok = all(contains(text, sub) for sub in q.expected_substrings)
-            plot_results.append((q, ok, recs, file_hits))
-
+    # Plot query verification (Phase 3) runs whenever the golden set carries
+    # plot questions; the pass rule lives in evalh, not here.
+    plot_results = verify_plot_queries(questions, part_dir)
+    if plot_results:
         print()
-        print("## Plot query verification (deterministic)")
-        print()
-        print(
-            f"**{sum(1 for _, ok, _, _ in plot_results if ok)}/{len(plot_results)} passed**"
-        )
-        print()
-        print("| # | Question | Query | Result |")
-        print("|---|---|---|---|")
-        for i, (q, ok, recs, file_hits) in enumerate(plot_results, 1):
-            query_str = ", ".join(f"{k}={v!r}" for k, v in (q.plot_query or {}).items())
-            status = "✅" if ok else "❌"
-            detail = f"{len(file_hits)} plot file(s)" if ok else f"{len(recs)} match(es), {len(file_hits)} valid file(s)"
-            print(f"| {i} | {q.question} | {query_str} | {status} {detail} |")
-        if not all(ok for _, ok, _, _ in plot_results):
+        print(render_plot_query_report(plot_results))
+        if any(not r.ok for r in plot_results):
             failed = True
 
     return 0 if not failed else 1
 
 
 def _cmd_query(args: argparse.Namespace) -> int:
-    from datasheet_analyzer.query import SpecQuery, format_answer
+    from datasheet_analyzer.query import format_answer
+    from datasheet_analyzer.retrieve import Retriever
 
     settings = get_settings()
     part_dir = settings.parts_dir / args.part
@@ -276,17 +205,18 @@ def _cmd_query(args: argparse.Namespace) -> int:
         print(f"no corpus at {part_dir} — run `dsa build` first", file=sys.stderr)
         return 2
 
-    recs = SpecQuery(part_dir).find(
+    hits = Retriever.for_part(part_dir).specs(
         symbol=args.symbol or "",
         name=args.name or "",
         section=args.section or "",
     )
-    print(format_answer(recs))
-    return 0 if recs else 1
+    print(format_answer([h.record for h in hits]))
+    return 0 if hits else 1
 
 
 def _cmd_plots(args: argparse.Namespace) -> int:
-    from datasheet_analyzer.query import find_plots, format_plot_answer
+    from datasheet_analyzer.query import format_plot_answer
+    from datasheet_analyzer.retrieve import Retriever
 
     settings = get_settings()
     part_dir = settings.parts_dir / args.part
@@ -295,14 +225,13 @@ def _cmd_plots(args: argparse.Namespace) -> int:
         return 2
 
     tags = [t.strip() for t in args.tag.split(",") if t.strip()] if args.tag else []
-    recs = find_plots(
-        part_dir,
+    hits = Retriever.for_part(part_dir).plots(
         q=args.q or "",
         section=args.section or "",
         tags=tags,
     )
-    print(format_plot_answer(recs))
-    return 0 if recs else 1
+    print(format_plot_answer([h.record for h in hits]))
+    return 0 if hits else 1
 
 
 def _part_vendor_info(part: Path) -> tuple[str, str, list[str], list[str]]:
@@ -311,11 +240,13 @@ def _part_vendor_info(part: Path) -> tuple[str, str, list[str], list[str]]:
     Vendor + evidence always come from sources.json — the pinned acquire
     record (a built part's manifest only mirrors it, and legacy manifests
     predate the field). Backends and per-document extraction stats come
-    from the manifest's extraction stats when the part is built. ("", "",
-    [], []) when nothing is registered.
+    from the manifest's extraction stats when the part is built, loaded
+    through `CorpusIndex` so the CLI never parses corpus JSON itself.
+    ("", "", [], []) when nothing is registered.
     """
     from datasheet_analyzer.acquire import load_inventory
-    from datasheet_analyzer.models import CorpusManifest, DocType
+    from datasheet_analyzer.models import DocType
+    from datasheet_analyzer.retrieve import CorpusIndex
 
     sources = load_inventory(part) if (part / "sources.json").exists() else []
     vendor, evidence = "", ""
@@ -324,33 +255,26 @@ def _part_vendor_info(part: Path) -> tuple[str, str, list[str], list[str]]:
         vendor, evidence = ds.vendor, ds.vendor_evidence
     backends: list[str] = []
     doc_lines: list[str] = []
-    manifest_path = part / "manifest.json"
-    if manifest_path.exists():
-        try:
-            m = CorpusManifest.model_validate_json(
-                manifest_path.read_text(encoding="utf-8")
-            )
-        except (ValueError, OSError, TypeError):
-            m = None
-        if m is not None:
-            backends = list(
-                dict.fromkeys(st.backend for st in m.extraction_stats.values() if st.backend)
-            )
-            for doc in m.documents:
-                st = m.extraction_stats.get(doc.content_hash)
-                if st is None:
-                    continue
-                line = (f"    {doc.doc_type.value}-{doc.content_hash[:8]}: backend "
-                        f"{st.backend} · tables: {st.tables_detected} detected / "
-                        f"{st.tables_accepted} accepted / {st.tables_rejected} rejected")
-                if st.mean_fidelity > 0.0:
-                    line += f" · fidelity {st.mean_fidelity:.2f}"
-                if st.rejection_reasons:
-                    shown = "; ".join(st.rejection_reasons[:3])
-                    if len(st.rejection_reasons) > 3:
-                        shown += "; …"
-                    line += f" · rejection reasons: {shown}"
-                doc_lines.append(line)
+    m = CorpusIndex.load(part).manifest
+    if m is not None:
+        backends = list(
+            dict.fromkeys(st.backend for st in m.extraction_stats.values() if st.backend)
+        )
+        for doc in m.documents:
+            st = m.extraction_stats.get(doc.content_hash)
+            if st is None:
+                continue
+            line = (f"    {doc.doc_type.value}-{doc.content_hash[:8]}: backend "
+                    f"{st.backend} · tables: {st.tables_detected} detected / "
+                    f"{st.tables_accepted} accepted / {st.tables_rejected} rejected")
+            if st.mean_fidelity > 0.0:
+                line += f" · fidelity {st.mean_fidelity:.2f}"
+            if st.rejection_reasons:
+                shown = "; ".join(st.rejection_reasons[:3])
+                if len(st.rejection_reasons) > 3:
+                    shown += "; …"
+                line += f" · rejection reasons: {shown}"
+            doc_lines.append(line)
     return vendor, evidence, backends, doc_lines
 
 

@@ -1,0 +1,151 @@
+"""Typed retrieval results — citation, confidence, and how the hit matched.
+
+A hit is never a formatted string: it is the record plus a `Citation` that
+knows how to render itself. Front ends print `citation.label`; they never
+assemble `p.N` themselves, so the citation format can never drift between the
+CLI, `query.py` and (Phase 5, ticket 07) the MCP server.
+
+`confidence` is a placeholder in this ticket. Ticket 04 lands an additive
+`confidence` field on `SpecRecord` / `PlotRecord` computed at structure time;
+the hit constructors read it off the record via `record_confidence()`, so
+grading starts flowing through here the moment that field exists — no change
+needed in this module.
+
+`matched_via` names the rung that produced the hit, so a caller can tell an
+exact symbol hit from a loose substring one:
+
+| Lookup | Values (strongest first) |
+|---|---|
+| specs | `symbol`, `symbol-substring`, `name-substring`, `section`, `all` |
+| plots | `caption`, `conditions`, `section`, `tag`, `all` |
+| sections | `number`, `title`, `page`, `all` |
+
+Ticket 02 adds the `alias:<term>` rung to the spec ladder.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+from datasheet_analyzer.models import PlotRecord, SectionFile, SpecRecord
+
+# Until ticket 04 grades records, every hit is honestly ungraded rather than
+# optimistically "high".
+CONFIDENCE_UNKNOWN = "unknown"
+
+
+def record_confidence(record: object) -> str:
+    """The record's own confidence grade, or `unknown` when ungraded.
+
+    Reads the field defensively so corpora built before ticket 04 — which have
+    no grade on disk — degrade to `unknown` instead of failing to load.
+    """
+    return getattr(record, "confidence", "") or CONFIDENCE_UNKNOWN
+
+
+@dataclass(frozen=True)
+class Citation:
+    """Where a hit came from: document, section, printed page or page range.
+
+    `doc` is the corpus document directory name (`datasheet-a1b2c3d4`), which
+    is also the on-disk path segment, so a caller can go from a citation to the
+    files that produced it without a second lookup.
+    """
+
+    doc: str = ""
+    doc_hash: str = ""
+    section: str = ""
+    page_start: int | None = None
+    page_end: int | None = None
+
+    @property
+    def pages(self) -> str:
+        """`p.7`, `p.29-37`, or an honest `p.?` when the page is unpinned."""
+        if self.page_start is None:
+            return "p.?"
+        if self.page_end is not None and self.page_end != self.page_start:
+            return f"p.{self.page_start}-{self.page_end}"
+        return f"p.{self.page_start}"
+
+    @property
+    def label(self) -> str:
+        """`§4.5, p.7` — the citation as an agent should quote it."""
+        if self.section:
+            return f"§{self.section}, {self.pages}"
+        return self.pages
+
+    def __str__(self) -> str:  # pragma: no cover - convenience only
+        return self.label
+
+    @classmethod
+    def for_spec(cls, record: SpecRecord, *, doc: str = "", doc_hash: str = "") -> Citation:
+        return cls(
+            doc=doc,
+            doc_hash=doc_hash,
+            section=record.section,
+            page_start=record.page,
+            page_end=record.page,
+        )
+
+    @classmethod
+    def for_plot(cls, record: PlotRecord, *, doc: str = "", doc_hash: str = "") -> Citation:
+        return cls(
+            doc=doc,
+            doc_hash=doc_hash,
+            section=record.section,
+            page_start=record.page_start,
+            page_end=record.page_end,
+        )
+
+    @classmethod
+    def for_section(cls, section: SectionFile, *, doc: str = "") -> Citation:
+        return cls(
+            doc=doc or _doc_from_file(section.file),
+            doc_hash=section.doc_hash,
+            section=section.number,
+            page_start=section.page_start,
+            page_end=section.page_end,
+        )
+
+
+def _doc_from_file(rel_path: str) -> str:
+    """`docs/datasheet-a1b2c3d4/sections/4-5.md` -> `datasheet-a1b2c3d4`."""
+    parts = rel_path.replace("\\", "/").split("/")
+    if len(parts) >= 2 and parts[0] == "docs":
+        return parts[1]
+    return ""
+
+
+@dataclass(frozen=True)
+class SpecHit:
+    """One parametric spec record with its citation and match provenance."""
+
+    record: SpecRecord
+    citation: Citation
+    matched_via: str = ""
+    confidence: str = CONFIDENCE_UNKNOWN
+
+
+@dataclass(frozen=True)
+class PlotHit:
+    """One cataloged plot with its citation and match provenance."""
+
+    record: PlotRecord
+    citation: Citation
+    matched_via: str = ""
+    confidence: str = CONFIDENCE_UNKNOWN
+
+    @property
+    def file(self) -> str:
+        """Corpus-relative image path, `""` until pixels exist."""
+        return self.record.file
+
+
+@dataclass(frozen=True)
+class SectionHit:
+    """One corpus section file with its citation and match provenance."""
+
+    section: SectionFile
+    citation: Citation
+    matched_via: str = ""
+    confidence: str = CONFIDENCE_UNKNOWN

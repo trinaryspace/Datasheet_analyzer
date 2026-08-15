@@ -31,6 +31,17 @@ QPA1003P_PDF = GATE_PDFS / "QPA1003P.pdf"
 HMC520A_PDF = GATE_PDFS / "hmc520a.pdf"
 
 
+@pytest.fixture(autouse=True)
+def fresh_retrieval_cache():
+    """Hermetic per invariant #4: the retrieval core caches a loaded corpus
+    in-process, so one test's part must never be visible to the next."""
+    from datasheet_analyzer.retrieve import clear_index_cache
+
+    clear_index_cache()
+    yield
+    clear_index_cache()
+
+
 @pytest.fixture
 def make_synthetic_pdf():
     """Factory for the shared synthetic part PDF: 2 pages, TOC with

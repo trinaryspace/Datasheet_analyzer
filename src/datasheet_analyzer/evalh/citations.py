@@ -9,6 +9,11 @@ For each golden question we check, per expected substring:
 Matching is two-tier: exact containment first, then an alnum-squashed
 comparison that is immune to dash/space/ligature differences between the
 HTML source and PDF text layer.
+
+Golden questions carrying a `spec_query` / `plot_query` are verified here too
+(`verify_spec_queries` / `verify_plot_queries`), against the retrieval core.
+That work used to sit inline in `cli.py`; retrieval and its pass/fail rules
+belong behind the seam, and the CLI now only renders the results.
 """
 
 from __future__ import annotations
@@ -19,7 +24,8 @@ from pathlib import Path
 
 import yaml
 
-from datasheet_analyzer.models import GoldenQuestion
+from datasheet_analyzer.models import GoldenQuestion, SpecRecord
+from datasheet_analyzer.retrieve import PlotHit, Retriever, SpecHit
 
 _NONALNUM = re.compile(r"[^a-z0-9]+")
 
@@ -113,6 +119,105 @@ def verify_questions(
             ]
         results.append(res)
     return results
+
+
+@dataclass
+class QueryResult:
+    """Outcome of one golden `spec_query` / `plot_query`.
+
+    `n_records` is how many records the query matched at all; `n_verified` is
+    how many survived the page + value check (for plots, how many also have an
+    on-disk image file). The gap between them is what the report shows when a
+    question fails.
+    """
+
+    question: GoldenQuestion
+    ok: bool = False
+    n_records: int = 0
+    n_verified: int = 0
+
+
+def _spec_fields(rec: SpecRecord) -> str:
+    """Every verbatim field a golden expected-substring may match against."""
+    return (
+        f"{rec.symbol} {rec.name} {rec.conditions} "
+        f"{rec.min} {rec.typ} {rec.max} {rec.value} "
+        f"{rec.unit.verbatim} {rec.unit.canonical}"
+    )
+
+
+def verify_spec_queries(
+    questions: list[GoldenQuestion], part_dir: Path
+) -> list[QueryResult]:
+    """Deterministic spec-lookup verification for every `spec_query` golden.
+
+    Multi-row answers (e.g. DSA range + step, VCO coverage) are verified across
+    the whole result set: every expected substring must appear on at least one
+    record whose page is in the question's cited page list.
+    """
+    retriever = Retriever.for_part(part_dir)
+    results: list[QueryResult] = []
+    for q in questions:
+        if not q.spec_query:
+            continue
+        hits: list[SpecHit] = retriever.specs(**q.spec_query)
+        paged = [h for h in hits if h.record.page is not None and h.record.page in q.pages]
+        ok = bool(paged) and all(
+            any(contains(_spec_fields(h.record), sub) for h in paged)
+            for sub in q.expected_substrings
+        )
+        results.append(
+            QueryResult(question=q, ok=ok, n_records=len(hits), n_verified=len(paged))
+        )
+    return results
+
+
+def verify_plot_queries(
+    questions: list[GoldenQuestion], part_dir: Path
+) -> list[QueryResult]:
+    """Deterministic plot-lookup verification for every `plot_query` golden.
+
+    A plot question passes only when a matching record is on a cited page AND
+    its image file exists on disk at more than 1 KB — a catalog entry without
+    pixels is not an answer.
+    """
+    part_dir = Path(part_dir)
+    retriever = Retriever.for_part(part_dir)
+    results: list[QueryResult] = []
+    for q in questions:
+        if not q.plot_query:
+            continue
+        query = q.plot_query
+        hits: list[PlotHit] = retriever.plots(
+            caption=query.get("caption_contains", ""),
+            conditions=query.get("conditions_contain", ""),
+            section=query.get("section", ""),
+        )
+        paged = [
+            h for h in hits
+            if h.record.page_start is not None and h.record.page_start in q.pages
+        ]
+        with_files = [h for h in paged if _plot_file_present(part_dir, h.file)]
+        ok = bool(with_files)
+        if ok and q.expected_substrings:
+            text = " ".join(h.record.caption + " " + h.record.conditions for h in with_files)
+            ok = all(contains(text, sub) for sub in q.expected_substrings)
+        results.append(
+            QueryResult(
+                question=q, ok=ok, n_records=len(hits), n_verified=len(with_files)
+            )
+        )
+    return results
+
+
+def _plot_file_present(part_dir: Path, rel_file: str) -> bool:
+    if not rel_file:
+        return False
+    path = part_dir / rel_file
+    try:
+        return path.exists() and path.stat().st_size > 1024
+    except OSError:
+        return False
 
 
 def load_page_texts(pdf_path: Path) -> list[str]:
