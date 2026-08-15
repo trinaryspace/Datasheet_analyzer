@@ -11,6 +11,7 @@ itself and reports what it cost.
 """
 
 from datasheet_analyzer.retrieve.index import CorpusIndex, IndexedDoc, clear_index_cache
+from datasheet_analyzer.retrieve.project import ProjectRetriever
 from datasheet_analyzer.retrieve.results import (
     CONFIDENCE_UNKNOWN,
     Citation,
@@ -36,6 +37,7 @@ from datasheet_analyzer.retrieve.pack import (  # isort: skip
     PackExcerpt,
     PackLine,
     build_pack,
+    build_project_pack,
     validate_pack,
 )
 
@@ -56,12 +58,14 @@ __all__ = [
     "PackExcerpt",
     "PackLine",
     "PlotHit",
+    "ProjectRetriever",
     "Retriever",
     "ScoredSection",
     "SearchHit",
     "SectionHit",
     "SpecHit",
     "build_pack",
+    "build_project_pack",
     "clear_index_cache",
     "score_sections",
     "validate_pack",

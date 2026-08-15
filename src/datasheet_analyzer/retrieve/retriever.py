@@ -112,6 +112,16 @@ class Retriever:
         return self.index.part_dir
 
     @property
+    def part(self) -> str:
+        """The part number every hit from this retriever is cited under.
+
+        Falls back to the corpus directory name so an unbuilt or
+        manifest-less part still names *something* — a hit that cannot say
+        which datasheet it came from is not cited (see `Citation.part`).
+        """
+        return self.index.part_number or self.index.part_dir.name
+
+    @property
     def lexicon(self) -> AliasLexicon:
         return load_lexicon()
 
@@ -137,11 +147,11 @@ class Retriever:
         term = (symbol or name).strip()
         if not term:
             label = "section" if section else "all"
-            return _build_hits([(d, r, None, label) for d, r in pool])
+            return _build_hits([(d, r, None, label) for d, r in pool], part=self.part)
 
         for candidates in self._spec_ladder(term, from_symbol=bool(symbol), pool=pool):
             if candidates:
-                return _build_hits(candidates)
+                return _build_hits(candidates, part=self.part)
         return []
 
     def suggest_specs(self, term: str, limit: int = 5) -> list[str]:
@@ -292,7 +302,9 @@ class Retriever:
                 hits.append(
                     PlotHit(
                         record=rec,
-                        citation=Citation.for_plot(rec, doc=doc.name, doc_hash=doc.doc_hash),
+                        citation=Citation.for_plot(
+                            rec, doc=doc.name, doc_hash=doc.doc_hash, part=self.part
+                        ),
                         matched_via=_plot_matched_via(rec, q, caption, conditions, section, tags),
                         confidence=record_confidence(rec),
                     )
@@ -362,7 +374,7 @@ class Retriever:
             hits.append(
                 SectionHit(
                     section=sec,
-                    citation=Citation.for_section(sec),
+                    citation=Citation.for_section(sec, part=self.part),
                     matched_via=_section_matched_via(sec, number, title, page),
                 )
             )
@@ -388,7 +400,7 @@ class Retriever:
             hits.append(
                 SearchHit(
                     section=section,
-                    citation=Citation.for_section(section),
+                    citation=Citation.for_section(section, part=self.part),
                     score=scored.score,
                     snippet=snippet(self.index.section_text(section), scored.terms),
                     terms=scored.terms,
@@ -490,7 +502,7 @@ def _by_phrase_length(
         yield group
 
 
-def _build_hits(candidates: list[_Candidate]) -> list[SpecHit]:
+def _build_hits(candidates: list[_Candidate], *, part: str = "") -> list[SpecHit]:
     """Order by the `expect_unit` tie-break, then wrap in typed hits.
 
     The sort is stable and the key is binary, so document order survives and a
@@ -501,7 +513,9 @@ def _build_hits(candidates: list[_Candidate]) -> list[SpecHit]:
     return [
         SpecHit(
             record=rec,
-            citation=Citation.for_spec(rec, doc=doc.name, doc_hash=doc.doc_hash),
+            citation=Citation.for_spec(
+                rec, doc=doc.name, doc_hash=doc.doc_hash, part=part
+            ),
             matched_via=matched_via,
             confidence=record_confidence(rec),
         )

@@ -252,6 +252,53 @@ parts/AFE7950/
 Every answer should quote values **with units** and cite `p.N` from the
 section header.
 
+### Group parts into a design (`dsa project`)
+
+A **project** is the noun above `part`: an explicit list of parts plus the
+free text that joins them, with one always-loadable `PROJECT_INDEX.md` for
+the whole board.
+
+```bash
+dsa project new rf-frontend --interfaces "AFE7950 TX -> HMC520A DSA -> board edge"
+dsa project add rf-frontend AFE7950 --role "quad RF transceiver"
+dsa project add rf-frontend HMC520A AD9081
+dsa project build rf-frontend        # writes PROJECT_INDEX.md under its budget
+dsa project status                   # every project and its parts
+```
+
+```
+projects/rf-frontend/
+├── project.json        # name, parts[] (+ role), interfaces, notes, timestamps
+└── PROJECT_INDEX.md    # always-loadable, hard budget (4000 tok)
+```
+
+Membership is explicit — no BOM or netlist parsing. A part with no built
+corpus is refused with the build command that would fix it, so a project
+never points at nothing. `project.json` is meant to be hand-edited: the
+`interfaces` note and each part's `role` are yours, and a rebuild never
+rewrites them.
+
+Then ask the whole design one question. Every hit is labelled with the part
+it came from, and a question two parts answer returns both:
+
+```bash
+dsa ask --project rf-frontend "does anything here need a 1.8 V rail?"
+dsa search --project rf-frontend "sysref"
+dsa query  --project rf-frontend --name "junction temperature"
+dsa plots  --project rf-frontend --q "gain"
+```
+
+```
+## rf-frontend — project (AFE7950, HMC520A, AD9081)
+### Answer
+[AFE7950] VDD1P8  1.8V supply: 1.75 V (min) — §4.3, p.6  [high]
+[AD9081] VDD1P8  1.8 V supply: 1.75 V (min) — §Power Supply, p.9  [medium]
+### Verify
+AFE7950 — Printed page 6 of afe7950.pdf.  Confidence: high.
+```
+
+`--part` and `--project` are mutually exclusive, and one of them is required.
+
 ### Add companion documents
 
 ```bash
@@ -267,7 +314,7 @@ with the honest `pdf_text` backend (paragraphs only; no trusted tables, no
 
 ```bash
 dsa status    # config, LLM availability, built parts, per-part confidence mix
-              # + per-doc extraction stats
+              # + per-doc extraction stats + projects
 dsa version
 ```
 
@@ -278,9 +325,11 @@ Environment variables (prefix `DSA_`, or `.env` file):
 | Variable | Default | Purpose |
 |---|---|---|
 | `DSA_PARTS_DIR` | `parts` | where corpora are written |
+| `DSA_PROJECTS_DIR` | `projects` | where projects are written |
 | `DSA_CACHE_DIR` | `.cache` | HTTP + extraction caches |
 | `DSA_INDEX_TOKEN_BUDGET` | `3000` | hard INDEX.md budget |
 | `DSA_ASK_BUDGET` | `4000` | default `dsa ask` pack budget (`--budget` overrides) |
+| `DSA_PROJECT_INDEX_TOKEN_BUDGET` | `4000` | hard PROJECT_INDEX.md budget |
 | `DSA_LLM_DESCRIPTIONS` | `true` | use LLM for INDEX descriptions |
 | `DSA_MODEL` | `claude-haiku-4-5` | Anthropic model for descriptions |
 | `ANTHROPIC_API_KEY` | — | enables LLM enrichment |

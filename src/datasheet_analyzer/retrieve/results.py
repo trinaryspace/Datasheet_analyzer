@@ -55,6 +55,13 @@ class Citation:
     `doc` is the corpus document directory name (`datasheet-a1b2c3d4`), which
     is also the on-disk path segment, so a caller can go from a citation to the
     files that produced it without a second lookup.
+
+    `part` is which corpus the hit came from. It is always filled by
+    `Retriever` (ticket 06), because once a question can be asked across a
+    whole project the part is part of "where this came from" — an answer that
+    does not say which datasheet it read is not cited. `label` deliberately
+    does not print it: the citation format is what `dsa verify` measures, and
+    naming the part is a front end's decision.
     """
 
     doc: str = ""
@@ -62,6 +69,7 @@ class Citation:
     section: str = ""
     page_start: int | None = None
     page_end: int | None = None
+    part: str = ""
 
     @property
     def pages(self) -> str:
@@ -83,33 +91,40 @@ class Citation:
         return self.label
 
     @classmethod
-    def for_spec(cls, record: SpecRecord, *, doc: str = "", doc_hash: str = "") -> Citation:
+    def for_spec(
+        cls, record: SpecRecord, *, doc: str = "", doc_hash: str = "", part: str = ""
+    ) -> Citation:
         return cls(
             doc=doc,
             doc_hash=doc_hash,
             section=record.section,
             page_start=record.page,
             page_end=record.page,
+            part=part,
         )
 
     @classmethod
-    def for_plot(cls, record: PlotRecord, *, doc: str = "", doc_hash: str = "") -> Citation:
+    def for_plot(
+        cls, record: PlotRecord, *, doc: str = "", doc_hash: str = "", part: str = ""
+    ) -> Citation:
         return cls(
             doc=doc,
             doc_hash=doc_hash,
             section=record.section,
             page_start=record.page_start,
             page_end=record.page_end,
+            part=part,
         )
 
     @classmethod
-    def for_section(cls, section: SectionFile, *, doc: str = "") -> Citation:
+    def for_section(cls, section: SectionFile, *, doc: str = "", part: str = "") -> Citation:
         return cls(
             doc=doc or _doc_from_file(section.file),
             doc_hash=section.doc_hash,
             section=section.number,
             page_start=section.page_start,
             page_end=section.page_end,
+            part=part,
         )
 
 
@@ -150,6 +165,7 @@ class SpecHit:
             "unit_canonical": rec.unit.canonical,
             "section": self.citation.section,
             "page": self.citation.page_start,
+            "part": self.citation.part,
             "doc": self.citation.doc,
             "citation": self.citation.label,
             "matched_via": self.matched_via,
@@ -186,6 +202,7 @@ class PlotHit:
             "section": self.citation.section,
             "page_start": self.citation.page_start,
             "page_end": self.citation.page_end,
+            "part": self.citation.part,
             "doc": self.citation.doc,
             "citation": self.citation.label,
             "file": rec.file,
@@ -240,6 +257,7 @@ class SearchHit:
             "section": self.section.number,
             "title": self.section.title,
             "file": self.section.file,
+            "part": self.citation.part,
             "doc": self.citation.doc,
             "page_start": self.citation.page_start,
             "page_end": self.citation.page_end,

@@ -37,6 +37,9 @@ class Settings(BaseSettings):
     # Directories (resolved to absolute against cwd in resolve())
     parts_dir: Path = Path("parts")
     cache_dir: Path = Path(".cache")
+    # Projects: the noun above `part`. One directory per project, holding
+    # `project.json` (the explicit part list) and `PROJECT_INDEX.md`.
+    projects_dir: Path = Path("projects")
 
     # LLM enrichment (INDEX.md descriptions). Without a key the pipeline
     # falls back to deterministic extractive descriptions and says so.
@@ -47,6 +50,11 @@ class Settings(BaseSettings):
 
     # INDEX.md must stay small enough to live in an agent's context.
     index_token_budget: int = 3000
+
+    # PROJECT_INDEX.md is the same promise one level up: the single
+    # always-loadable file for a whole design. Bigger than a part's index
+    # because it summarizes several, still hard-bounded.
+    project_index_token_budget: int = Field(default=4000, ge=1)
 
     # `dsa ask` answer packs: the default token budget one pack may spend.
     # `--budget N` overrides per call; the pack announces any truncation and
@@ -69,6 +77,7 @@ class Settings(BaseSettings):
     def resolve(self) -> Settings:
         self.parts_dir = self.parts_dir.resolve()
         self.cache_dir = self.cache_dir.resolve()
+        self.projects_dir = self.projects_dir.resolve()
         return self
 
     @property

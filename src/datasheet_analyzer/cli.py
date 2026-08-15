@@ -8,8 +8,13 @@ Commands:
   search --part NAME "..."  BM25 full-text search, cited by construction (--json)
   ask --part NAME "..."     one cited answer pack inside a token budget (--json)
   plots --part NAME         deterministic plot lookup (--json)
-  status                    configuration + detected parts
+  project new|add|remove|build|status   the noun above `part`: a design
+  status                    configuration + detected parts + projects
   version                   print version
+
+`query`, `search`, `ask` and `plots` each take either `--part NAME` or
+`--project NAME`; a project fans the lookup out across its member parts and
+labels every hit with the part it came from.
 """
 
 from __future__ import annotations
@@ -197,19 +202,54 @@ def _cmd_verify(args: argparse.Namespace) -> int:
     return 0 if not failed else 1
 
 
+def _scope(args: argparse.Namespace):
+    """`(scope, show_part)` for a `--part` / `--project` command, or `(None, …)`.
+
+    Both branches hand back an object from `retrieve/` — a `Retriever` for one
+    part, a `ProjectRetriever` for a design — so a command below only chooses
+    a scope and formats what it returns. Returning `None` means the reason has
+    already been printed and the caller should exit 2.
+    """
+    from datasheet_analyzer.projects import ProjectError, is_built, load_project, part_dirs
+    from datasheet_analyzer.retrieve import ProjectRetriever, Retriever
+
+    settings = get_settings()
+    if getattr(args, "project", ""):
+        try:
+            project = load_project(args.project, settings.projects_dir)
+        except ProjectError as exc:
+            print(f"project error: {exc}", file=sys.stderr)
+            return None, True
+        # A member whose corpus is gone is named, never silently skipped: the
+        # answer would otherwise be quietly missing one device.
+        missing = [p for p in project.part_numbers if not is_built(p, settings.parts_dir)]
+        if missing:
+            print(
+                f"warning: no corpus for {', '.join(missing)} — build them "
+                f"(`dsa build <pdf> --part {missing[0]}`) or remove them from "
+                f"the project; their answers are missing from this result",
+                file=sys.stderr,
+            )
+        return (
+            ProjectRetriever.for_parts(project.name, part_dirs(project, settings.parts_dir)),
+            True,
+        )
+
+    part_dir = settings.parts_dir / args.part
+    if not (part_dir / "manifest.json").exists():
+        print(f"no corpus at {part_dir} — run `dsa build` first", file=sys.stderr)
+        return None, False
+    return Retriever.for_part(part_dir), False
+
+
 def _cmd_query(args: argparse.Namespace) -> int:
     import json
 
     from datasheet_analyzer.query import format_no_match, format_spec_hits
-    from datasheet_analyzer.retrieve import Retriever
 
-    settings = get_settings()
-    part_dir = settings.parts_dir / args.part
-    if not (part_dir / "manifest.json").exists():
-        print(f"no corpus at {part_dir} — run `dsa build` first", file=sys.stderr)
+    retriever, show_part = _scope(args)
+    if retriever is None:
         return 2
-
-    retriever = Retriever.for_part(part_dir)
     hits = retriever.specs(
         symbol=args.symbol or "",
         name=args.name or "",
@@ -221,6 +261,7 @@ def _cmd_query(args: argparse.Namespace) -> int:
         # decides that this invocation wants JSON.
         payload = {
             "part": args.part,
+            "project": args.project,
             "query": {"symbol": args.symbol, "name": args.name, "section": args.section},
             "hits": [h.as_dict() for h in hits],
             "suggestions": [] if hits else retriever.suggest_specs(term),
@@ -231,7 +272,7 @@ def _cmd_query(args: argparse.Namespace) -> int:
     if not hits:
         print(format_no_match(term, retriever.suggest_specs(term)))
         return 1
-    print(format_spec_hits(hits))
+    print(format_spec_hits(hits, show_part=show_part))
     return 0
 
 
@@ -239,50 +280,50 @@ def _cmd_search(args: argparse.Namespace) -> int:
     import json
 
     from datasheet_analyzer.query import format_search_hits
-    from datasheet_analyzer.retrieve import Retriever
 
-    settings = get_settings()
-    part_dir = settings.parts_dir / args.part
-    if not (part_dir / "manifest.json").exists():
-        print(f"no corpus at {part_dir} — run `dsa build` first", file=sys.stderr)
+    retriever, show_part = _scope(args)
+    if retriever is None:
         return 2
-
-    retriever = Retriever.for_part(part_dir)
     # An unsearchable corpus degrades with the core's own message (rebuild to
     # enable search), never as an empty result set that reads like "no match".
     unavailable = retriever.search_unavailable()
     if unavailable:
         print(unavailable, file=sys.stderr)
         return 2
+    # A project where only *some* members lack an index can still be searched;
+    # the gap is reported so the result is never read as the whole design.
+    gap = getattr(retriever, "search_gap", lambda: "")()
+    if gap:
+        print(f"warning: {gap}", file=sys.stderr)
 
     hits = retriever.search(args.query, limit=args.limit)
     if args.json:
         payload = {
             "part": args.part,
+            "project": args.project,
             "query": args.query,
             "hits": [h.as_dict() for h in hits],
         }
         print(json.dumps(payload, ensure_ascii=False, indent=2))
         return 0 if hits else 1
-    print(format_search_hits(hits))
+    print(format_search_hits(hits, show_part=show_part))
     return 0 if hits else 1
 
 
 def _cmd_ask(args: argparse.Namespace) -> int:
     import json
 
-    from datasheet_analyzer.retrieve import ROUTE_NONE, ROUTE_UNAVAILABLE, Retriever
+    from datasheet_analyzer.retrieve import ROUTE_NONE, ROUTE_UNAVAILABLE
 
-    settings = get_settings()
-    part_dir = settings.parts_dir / args.part
-    if not (part_dir / "manifest.json").exists():
-        print(f"no corpus at {part_dir} — run `dsa build` first", file=sys.stderr)
+    scope, _show_part = _scope(args)
+    if scope is None:
         return 2
 
     # Routing, assembly and the budget all live in the retrieval core; this
     # command only chooses a rendering. The pack renders itself because a
-    # budget cannot be enforced on text the core did not produce.
-    pack = Retriever.for_part(part_dir).ask(args.question, budget=args.budget)
+    # budget cannot be enforced on text the core did not produce — and a
+    # project pack labels each answer line with its part for the same reason.
+    pack = scope.ask(args.question, budget=args.budget)
     if args.json:
         print(json.dumps(pack.as_dict(), ensure_ascii=False, indent=2))
     else:
@@ -298,16 +339,13 @@ def _cmd_plots(args: argparse.Namespace) -> int:
     import json
 
     from datasheet_analyzer.query import format_plot_hits
-    from datasheet_analyzer.retrieve import Retriever
 
-    settings = get_settings()
-    part_dir = settings.parts_dir / args.part
-    if not (part_dir / "manifest.json").exists():
-        print(f"no corpus at {part_dir} — run `dsa build` first", file=sys.stderr)
+    scope, show_part = _scope(args)
+    if scope is None:
         return 2
 
     tags = [t.strip() for t in args.tag.split(",") if t.strip()] if args.tag else []
-    hits = Retriever.for_part(part_dir).plots(
+    hits = scope.plots(
         q=args.q or "",
         section=args.section or "",
         tags=tags,
@@ -316,13 +354,136 @@ def _cmd_plots(args: argparse.Namespace) -> int:
         # Shape owned by PlotHit.as_dict(), like every other JSON surface.
         payload = {
             "part": args.part,
+            "project": args.project,
             "query": {"q": args.q, "section": args.section, "tags": tags},
             "hits": [h.as_dict() for h in hits],
         }
         print(json.dumps(payload, ensure_ascii=False, indent=2))
         return 0 if hits else 1
-    print(format_plot_hits(hits))
+    print(format_plot_hits(hits, show_part=show_part))
     return 0 if hits else 1
+
+
+def _cmd_project(args: argparse.Namespace) -> int:
+    """`dsa project new|add|remove|build|status`.
+
+    Every action delegates to `datasheet_analyzer.projects`; this function
+    owns the exit codes and the printing only. A `ProjectError` carries the
+    fix in its message (which corpus is missing, which command builds it), so
+    it is printed as-is rather than re-worded here.
+    """
+    from datasheet_analyzer.projects import ProjectError
+
+    actions = {
+        "new": _project_new,
+        "add": _project_add,
+        "remove": _project_remove,
+        "build": _project_build,
+        "status": _project_status,
+    }
+    settings = get_settings()
+    try:
+        return actions[args.action](args, settings)
+    except ProjectError as exc:
+        print(f"project error: {exc}", file=sys.stderr)
+        return 2
+
+
+def _project_new(args: argparse.Namespace, settings) -> int:
+    from datasheet_analyzer.projects import new_project, project_dir
+
+    project = new_project(
+        args.name, settings.projects_dir, interfaces=args.interfaces, notes=args.notes
+    )
+    print(f"project: {project_dir(project.name, settings.projects_dir)}")
+    print(f"  0 parts — add one with `dsa project add {project.name} <PART>`")
+    return 0
+
+
+def _project_add(args: argparse.Namespace, settings) -> int:
+    from datasheet_analyzer.projects import add_parts, load_project, save_project
+
+    project = load_project(args.name, settings.projects_dir)
+    added = add_parts(project, args.parts, parts_dir=settings.parts_dir, role=args.role)
+    save_project(project, settings.projects_dir)
+    print(f"project {project.name}: {_members_label(project)}")
+    print(f"  added {', '.join(added)}" if added else "  nothing added (already members)")
+    print(f"  rebuild the index: `dsa project build {project.name}`")
+    return 0
+
+
+def _project_remove(args: argparse.Namespace, settings) -> int:
+    from datasheet_analyzer.projects import load_project, remove_parts, save_project
+
+    project = load_project(args.name, settings.projects_dir)
+    removed = remove_parts(project, args.parts)
+    save_project(project, settings.projects_dir)
+    print(f"project {project.name}: {_members_label(project)}")
+    print(f"  removed {', '.join(removed)}" if removed else "  nothing removed (not members)")
+    print(f"  rebuild the index: `dsa project build {project.name}`")
+    return 0
+
+
+def _project_build(args: argparse.Namespace, settings) -> int:
+    from datasheet_analyzer.projects import load_project, write_project_index
+    from datasheet_analyzer.tokens import count_tokens
+
+    project = load_project(args.name, settings.projects_dir)
+    path, text = write_project_index(
+        project,
+        parts_dir=settings.parts_dir,
+        projects_dir=settings.projects_dir,
+        token_budget=settings.project_index_token_budget,
+    )
+    print(f"project index: {path}")
+    print(
+        f"  {len(project.parts)} parts — {count_tokens(text)} tokens "
+        f"(budget {settings.project_index_token_budget})"
+    )
+    return 0
+
+
+def _project_status(args: argparse.Namespace, settings) -> int:
+    from datasheet_analyzer.projects import list_projects
+
+    names = [args.name] if args.name else list_projects(settings.projects_dir)
+    if not names:
+        print(f"no projects under {settings.projects_dir}")
+        return 0
+    for name in names:
+        for line in _project_lines(name, settings):
+            print(line)
+    return 0
+
+
+def _members_label(project) -> str:
+    if not project.parts:
+        return "0 parts"
+    return f"{len(project.parts)} parts ({', '.join(project.part_numbers)})"
+
+
+def _project_lines(name: str, settings) -> list[str]:
+    """`  project: rf-frontend [built] parts: …` plus any honest warning."""
+    from datasheet_analyzer.projects import (
+        INDEX_FILENAME,
+        ProjectError,
+        is_built,
+        load_project,
+        project_dir,
+    )
+
+    try:
+        project = load_project(name, settings.projects_dir)
+    except ProjectError as exc:
+        return [f"  project: {name} [unreadable] {exc}"]
+    built = (project_dir(name, settings.projects_dir) / INDEX_FILENAME).exists()
+    label = f"  project: {name} {'[built]' if built else '[no index]'}"
+    label += f" parts: {', '.join(project.part_numbers) or '(none)'}"
+    lines = [label]
+    missing = [p for p in project.part_numbers if not is_built(p, settings.parts_dir)]
+    if missing:
+        lines.append(f"    no corpus for: {', '.join(missing)} — run `dsa build`")
+    return lines
 
 
 def _confidence_line(stats) -> str:
@@ -389,9 +550,12 @@ def _part_vendor_info(part: Path) -> tuple[str, str, list[str], list[str]]:
 
 
 def _cmd_status(_args: argparse.Namespace) -> int:
+    from datasheet_analyzer.projects import list_projects
+
     settings = get_settings()
     print(f"datasheet-analyzer {PIPELINE_VERSION}")
     print(f"parts_dir: {settings.parts_dir}")
+    print(f"projects_dir: {settings.projects_dir}")
     print(f"cache_dir: {settings.cache_dir}")
     print(f"llm: {'available (' + settings.model + ')' if settings.llm_available else 'NO KEY (deterministic mode)'}")
     if settings.parts_dir.exists():
@@ -410,7 +574,27 @@ def _cmd_status(_args: argparse.Namespace) -> int:
             print(label)
             for line in stat_lines:
                 print(line)
+    # Projects are listed alongside parts: a design is the unit a reader
+    # orients on, and it is invisible unless `status` says it exists.
+    for name in list_projects(settings.projects_dir):
+        for line in _project_lines(name, settings):
+            print(line)
     return 0
+
+
+def _add_scope(parser: argparse.ArgumentParser) -> None:
+    """`--part NAME` or `--project NAME`, exactly one of them.
+
+    Mutually exclusive and required: a lookup has to know what it is asking,
+    and defaulting to "all parts" would make the scope of an answer implicit.
+    """
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument("--part", default="", help="one built part, e.g. AFE7950")
+    group.add_argument(
+        "--project",
+        default="",
+        help="every part of a project; each hit is labelled with its part",
+    )
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -482,7 +666,7 @@ def main(argv: list[str] | None = None) -> int:
     p_verify.set_defaults(func=_cmd_verify)
 
     p_query = sub.add_parser("query", help="deterministic spec lookup")
-    p_query.add_argument("--part", required=True)
+    _add_scope(p_query)
     p_query.add_argument("--symbol", default="")
     p_query.add_argument("--name", default="")
     p_query.add_argument("--section", default="")
@@ -494,7 +678,7 @@ def main(argv: list[str] | None = None) -> int:
     p_query.set_defaults(func=_cmd_query)
 
     p_search = sub.add_parser("search", help="full-text search with page citations")
-    p_search.add_argument("--part", required=True)
+    _add_scope(p_search)
     p_search.add_argument("query", help="free text, e.g. \"sysref setup\"")
     p_search.add_argument("--limit", type=int, default=5, help="max hits (default 5)")
     p_search.add_argument(
@@ -505,7 +689,7 @@ def main(argv: list[str] | None = None) -> int:
     p_ask = sub.add_parser(
         "ask", help="one cited, budget-bounded answer pack (spec / plot / search)"
     )
-    p_ask.add_argument("--part", required=True)
+    _add_scope(p_ask)
     p_ask.add_argument("question", help="a designer's question, in plain words")
     p_ask.add_argument(
         "--budget",
@@ -519,7 +703,7 @@ def main(argv: list[str] | None = None) -> int:
     p_ask.set_defaults(func=_cmd_ask)
 
     p_plots = sub.add_parser("plots", help="deterministic plot lookup")
-    p_plots.add_argument("--part", required=True)
+    _add_scope(p_plots)
     p_plots.add_argument("--q", default="", help="caption/conditions substring")
     p_plots.add_argument("--section", default="", help="exact section number")
     p_plots.add_argument(
@@ -532,7 +716,38 @@ def main(argv: list[str] | None = None) -> int:
     )
     p_plots.set_defaults(func=_cmd_plots)
 
-    p_status = sub.add_parser("status", help="show configuration and built parts")
+    p_project = sub.add_parser(
+        "project", help="group parts into a design (the noun above `part`)"
+    )
+    psub = p_project.add_subparsers(dest="action", required=True)
+
+    pp_new = psub.add_parser("new", help="create an empty project")
+    pp_new.add_argument("name", help="project name, e.g. rf-frontend")
+    pp_new.add_argument(
+        "--interfaces", default="", help="free-text note on how the parts connect"
+    )
+    pp_new.add_argument("--notes", default="", help="free-text project notes")
+
+    pp_add = psub.add_parser("add", help="add built parts to a project")
+    pp_add.add_argument("name")
+    pp_add.add_argument("parts", nargs="+", help="part numbers, e.g. AFE7950 HMC520A")
+    pp_add.add_argument(
+        "--role", default="", help="one-line role in this design (applies to each part named)"
+    )
+
+    pp_remove = psub.add_parser("remove", help="remove parts from a project")
+    pp_remove.add_argument("name")
+    pp_remove.add_argument("parts", nargs="+")
+
+    pp_build = psub.add_parser("build", help="write PROJECT_INDEX.md under its budget")
+    pp_build.add_argument("name")
+
+    pp_status = psub.add_parser("status", help="list projects and their parts")
+    pp_status.add_argument("name", nargs="?", default="", help="one project (default: all)")
+
+    p_project.set_defaults(func=_cmd_project)
+
+    p_status = sub.add_parser("status", help="show configuration, parts and projects")
     p_status.set_defaults(func=_cmd_status)
 
     p_version = sub.add_parser("version", help="print version")

@@ -75,7 +75,18 @@ def format_answer(records: list[SpecRecord], limit: int = 5) -> str:
     return "\n".join(lines)
 
 
-def format_spec_hits(hits: list[SpecHit], limit: int = 5) -> str:
+def _part_prefix(citation: Citation, show_part: bool) -> str:
+    """`[AFE7950] ` when the caller asked for part labels, else `""`.
+
+    Every hit carries `citation.part` (the retrieval core fills it), but a
+    single-part query already said which part it asked; printing it on every
+    line there would be noise. Project-scoped output turns it on, because
+    across a design the part is the first thing the reader needs.
+    """
+    return f"[{citation.part}] " if (show_part and citation.part) else ""
+
+
+def format_spec_hits(hits: list[SpecHit], limit: int = 5, *, show_part: bool = False) -> str:
     """Render typed spec hits, each naming the ladder rung that found it.
 
     Same line shape as `format_answer` plus a `[via <rung> · <confidence>]`
@@ -91,6 +102,7 @@ def format_spec_hits(hits: list[SpecHit], limit: int = 5) -> str:
         value_str = f"{val} {rec.unit.verbatim}".strip()
         cond = f", {rec.conditions}" if rec.conditions else ""
         lines.append(
+            f"{_part_prefix(hit.citation, show_part)}"
             f"{rec.name} ({rec.symbol}): {value_str}{cond} — "
             f"{hit.citation.label} "
             f"[table {rec.table_index} row {rec.row_index}] "
@@ -119,7 +131,7 @@ def format_no_match(term: str, suggestions: list[str]) -> str:
     return f"{head} Nearest candidates:\n{listed}"
 
 
-def format_search_hits(hits: list[SearchHit]) -> str:
+def format_search_hits(hits: list[SearchHit], *, show_part: bool = False) -> str:
     """Render BM25 hits: rank, heading, citation, score, then the snippet.
 
     The section header is printed here rather than baked into `hit.snippet` —
@@ -131,7 +143,8 @@ def format_search_hits(hits: list[SearchHit]) -> str:
     lines: list[str] = []
     for rank, hit in enumerate(hits, 1):
         lines.append(
-            f"{rank}. {hit.heading} — {hit.citation.label} "
+            f"{rank}. {_part_prefix(hit.citation, show_part)}{hit.heading} — "
+            f"{hit.citation.label} "
             f"[score {hit.score:.2f} · via {hit.matched_via}]"
         )
         if hit.snippet:
@@ -159,7 +172,7 @@ def find_plots(
     return [h.record for h in hits]
 
 
-def format_plot_hits(hits: list[PlotHit], limit: int = 8) -> str:
+def format_plot_hits(hits: list[PlotHit], limit: int = 8, *, show_part: bool = False) -> str:
     """Render typed plot hits — same line as `format_plot_answer` plus the
     `[via <rung> · <confidence>]` tail every graded answer path carries."""
     if not hits:
@@ -170,6 +183,7 @@ def format_plot_hits(hits: list[PlotHit], limit: int = 8) -> str:
         cond = f" — {rec.conditions}" if rec.conditions else ""
         file_str = f" — file: {rec.file}" if rec.file else ""
         lines.append(
+            f"{_part_prefix(hit.citation, show_part)}"
             f"{rec.caption} — §{rec.section} ({hit.citation.pages})"
             f"{cond}{file_str} [via {hit.matched_via} · {hit.confidence}]"
         )

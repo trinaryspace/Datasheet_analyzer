@@ -385,6 +385,41 @@ class SearchIndex(BaseModel):
     avgdl: float = 0.0
 
 
+class ProjectMember(BaseModel):
+    """One part inside a project, with the role the designer gave it.
+
+    `role` is free text a human maintains (`dsa project add --role`, or by
+    editing `project.json`): the corpus cannot know that AFE7950 is "the
+    transceiver" of *this* board. It is never derived and never guessed —
+    an unset role simply prints nothing.
+    """
+
+    part_number: str
+    role: str = ""
+
+
+class Project(BaseModel):
+    """A design: an explicit list of parts plus the notes that join them.
+
+    The noun above `part`. Membership is explicit by decision (no BOM or
+    netlist parsing — see the Phase 5 plan's Out of Scope): a project is a
+    list a human or an agent curates, so it can never silently acquire a part
+    nobody chose. `interfaces` and `notes` are the free text the designer
+    maintains; the pipeline reads them and never rewrites them.
+    """
+
+    name: str
+    parts: list[ProjectMember] = Field(default_factory=list)
+    interfaces: str = ""
+    notes: str = ""
+    created_at: datetime = Field(default_factory=_utcnow)
+    updated_at: datetime = Field(default_factory=_utcnow)
+
+    @property
+    def part_numbers(self) -> list[str]:
+        return [m.part_number for m in self.parts]
+
+
 class GoldenQuestion(BaseModel):
     """One eval question with a verifiable expected answer."""
 

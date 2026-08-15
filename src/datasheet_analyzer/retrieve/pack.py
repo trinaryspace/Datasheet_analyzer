@@ -40,6 +40,15 @@ that carry `§N, p.N` are reserved before anything discretionary is added, and
 what gets dropped is extra rows and excerpt prose. Any drop emits an explicit
 notice naming `--budget`; truncation is never silent.
 
+`build_project_pack` (ticket 06) is the same pack over a whole design. Each
+member part is routed independently — its own records, its own figures, its
+own index — and every answer line carries the part it came from, because
+"1.8 V min" is not an answer until you know which device printed it. The rows
+are interleaved one per part before any part's second row, so a question two
+parts answer returns both even under a tight budget. A member with no
+full-text index is a *gap*, not an absence: the project reports which part
+could not be searched rather than claiming the design is silent.
+
 `ANSWER_PACK_SCHEMA` is the declared JSON shape of `as_dict()`. It lives here
 rather than in a front end for the same reason `SpecHit.as_dict()` does — the
 CLI's `--json` and (ticket 07) the MCP tool must emit one shape and cannot be
@@ -53,6 +62,7 @@ from dataclasses import dataclass, replace
 
 from datasheet_analyzer.config import get_settings
 from datasheet_analyzer.models import PlotRecord, SectionFile, SpecRecord
+from datasheet_analyzer.retrieve.project import ProjectRetriever
 from datasheet_analyzer.retrieve.results import (
     CONFIDENCE_UNKNOWN,
     Citation,
@@ -82,6 +92,14 @@ MAX_SPEC_ANSWERS = 6
 MAX_PLOT_ANSWERS = 5
 MAX_SEARCH_ANSWERS = 3
 MAX_SUGGESTIONS = 5
+# A project pack answers from several parts at once; the cap is on the union,
+# and the rows are interleaved so it can never spend itself on one member.
+MAX_PROJECT_ANSWERS = 8
+# How many member names the project header spells out before it counts them.
+_HEADER_PARTS = 6
+# Which route leads a project pack when two parts answer by different paths:
+# a parametric row is a stronger answer than a quoted paragraph.
+_ROUTE_STRENGTH = {ROUTE_SPEC: 0, ROUTE_PLOT: 1, ROUTE_SEARCH: 2}
 
 _TRUNCATION_NOTICE = (
     "_Truncated to fit a {budget}-token budget — raise it with `--budget N` "
@@ -109,6 +127,11 @@ class PackLine:
     citation: str
     confidence: str = CONFIDENCE_UNKNOWN
     matched_via: str = ""
+    # Which part answered. Empty for a single-part pack, where the header
+    # already says it; filled for a project pack, where it is the thing that
+    # makes the answer usable — "1.8 V min" is not an answer until you know
+    # which device on the board printed it.
+    part: str = ""
     doc: str = ""
     section: str = ""
     page_start: int | None = None
@@ -117,8 +140,9 @@ class PackLine:
 
     @property
     def rendered(self) -> str:
+        head = f"[{self.part}] " if self.part else ""
         tail = f"  file: {self.file}" if self.file else ""
-        return f"{self.text} — {self.citation}  [{self.confidence}]{tail}"
+        return f"{head}{self.text} — {self.citation}  [{self.confidence}]{tail}"
 
     def as_dict(self) -> dict:
         return {
@@ -126,6 +150,7 @@ class PackLine:
             "citation": self.citation,
             "confidence": self.confidence,
             "matched_via": self.matched_via,
+            "part": self.part,
             "doc": self.doc,
             "section": self.section,
             "page_start": self.page_start,
@@ -141,6 +166,8 @@ class PackExcerpt:
     heading: str
     citation: str
     text: str
+    #: Which part the quote came from — empty unless the pack spans a project.
+    part: str = ""
 
     @property
     def label(self) -> str:
@@ -148,15 +175,23 @@ class PackExcerpt:
 
         The heading already opens with the section number when there is one,
         so the citation contributes only its pages there; a section-less
-        corpus (ADI's unnumbered outlines) keeps the citation whole.
+        corpus (ADI's unnumbered outlines) keeps the citation whole. A project
+        pack prefixes the part, because across a design "§4.3" alone names
+        nothing.
         """
         tail = self.citation
         if self.heading.startswith("§") and tail.startswith("§"):
             tail = tail.split(", ", 1)[-1]
-        return f"{self.heading}, {tail}" if tail else self.heading
+        base = f"{self.heading}, {tail}" if tail else self.heading
+        return f"{self.part} — {base}" if self.part else base
 
     def as_dict(self) -> dict:
-        return {"heading": self.heading, "citation": self.citation, "text": self.text}
+        return {
+            "heading": self.heading,
+            "citation": self.citation,
+            "text": self.text,
+            "part": self.part,
+        }
 
 
 @dataclass(frozen=True)
@@ -169,6 +204,11 @@ class AnswerPack:
     budget: int
     revision: str = ""
     doc: str = ""
+    # Project scope (ticket 06): `project` names the design and `parts` its
+    # members. Both empty for a single-part pack — `project` being set is what
+    # tells a caller that every answer line names its own part.
+    project: str = ""
+    parts: tuple[str, ...] = ()
     answers: tuple[PackLine, ...] = ()
     excerpt: PackExcerpt | None = None
     verify: str = ""
@@ -178,7 +218,23 @@ class AnswerPack:
 
     @property
     def header(self) -> str:
-        """`## AFE7950 — SBASA41E (datasheet-c1b4663b)`, parts optional."""
+        """`## AFE7950 — SBASA41E (datasheet-c1b4663b)`, parts optional.
+
+        A project pack names the design and its members instead:
+        `## rf-frontend — project (AFE7950, HMC520A, AD9081)`. The member list
+        is capped, because the header is reserved tail and a fifty-part design
+        must not spend the budget introducing itself.
+        """
+        if self.project:
+            head = self.project
+            if self.parts:
+                shown = ", ".join(self.parts[:_HEADER_PARTS])
+                if len(self.parts) > _HEADER_PARTS:
+                    shown += f", … ({len(self.parts)} parts)"
+                head += f" — project ({shown})"
+            else:
+                head += " — project (no parts)"
+            return f"## {head}"
         bits = self.part or "(unknown part)"
         if self.revision:
             bits += f" — {self.revision}"
@@ -244,6 +300,8 @@ class AnswerPack:
             "notice": self.notice,
             "revision": self.revision,
             "doc": self.doc,
+            "project": self.project,
+            "parts": list(self.parts),
             "answers": [line.as_dict() for line in self.answers],
             "excerpt": None if self.excerpt is None else self.excerpt.as_dict(),
             "verify": self.verify,
@@ -265,6 +323,81 @@ def build_pack(retriever: Retriever, question: str, *, budget: int = 0) -> Answe
 
     route, lines, excerpt, verify, suggestions, more = _route(retriever, question)
     frame = _draft(retriever, question, route, budget)
+    return _assemble(frame, lines, excerpt, verify, suggestions, more)
+
+
+def build_project_pack(
+    scope: ProjectRetriever, question: str, *, budget: int = 0
+) -> AnswerPack:
+    """One pack for a whole design: every answering part, each labelled.
+
+    Every member is routed **independently** — a part answers from its own
+    records, its own figures and its own index — and the answering members are
+    then ordered by route strength (a spec row beats a quoted paragraph), with
+    membership order underneath. The rows are interleaved one per part before
+    any part's second row, so a question two parts answer returns both even
+    under a tight budget: dropping the second device's only answer to make
+    room for the first device's fifth would defeat the point of asking a
+    project.
+
+    Ordering is the only liberty taken. Nothing is dropped, re-graded or
+    re-cited here, and the budget arithmetic is the single-part one.
+    """
+    question = question.strip()
+    if budget <= 0:
+        budget = get_settings().ask_budget
+
+    answering: list[_MemberAnswer] = []
+    suggestions: list[str] = []
+    for order, member in enumerate(scope.members):
+        route, lines, excerpt, verify, hints, more = _route(member, question)
+        if route in _ROUTE_STRENGTH:
+            answering.append(
+                _MemberAnswer(
+                    part=member.part,
+                    order=order,
+                    route=route,
+                    lines=[replace(line, part=member.part) for line in lines],
+                    excerpt=(
+                        None if excerpt is None else replace(excerpt, part=member.part)
+                    ),
+                    verify=verify,
+                    more=more,
+                )
+            )
+        else:
+            for hint in hints:
+                if hint not in suggestions:
+                    suggestions.append(hint)
+
+    if not answering:
+        return _project_no_match(scope, question, budget, suggestions)
+
+    answering.sort(key=lambda m: (_ROUTE_STRENGTH[m.route], m.order))
+    lead = answering[0]
+    lines = _interleave([m.lines for m in answering])
+    more = any(m.more for m in answering) or len(lines) > MAX_PROJECT_ANSWERS
+    frame = _project_draft(scope, question, lead.route, budget)
+    return _assemble(
+        frame,
+        lines[:MAX_PROJECT_ANSWERS],
+        lead.excerpt,
+        f"{lead.part} — {lead.verify}",
+        [],
+        more,
+    )
+
+
+def _assemble(
+    frame: AnswerPack,
+    lines: list[PackLine],
+    excerpt: PackExcerpt | None,
+    verify: str,
+    suggestions: list[str],
+    more: bool,
+) -> AnswerPack:
+    """Fit the gathered evidence into the frame's budget and say what it cost."""
+    budget = frame.budget
     kept, kept_excerpt, truncated = _fit(frame, lines, excerpt, verify, suggestions, "")
     truncated = truncated or more
     notice = ""
@@ -293,17 +426,77 @@ def build_pack(retriever: Retriever, question: str, *, budget: int = 0) -> Answe
     return pack
 
 
+@dataclass(frozen=True)
+class _MemberAnswer:
+    """What one member part contributed to a project pack."""
+
+    part: str
+    order: int
+    route: str
+    lines: list[PackLine]
+    excerpt: PackExcerpt | None
+    verify: str
+    more: bool
+
+
+def _interleave(groups: list[list[PackLine]]) -> list[PackLine]:
+    """Round-robin: every group's first row before any group's second."""
+    out: list[PackLine] = []
+    for rank in range(max((len(g) for g in groups), default=0)):
+        for group in groups:
+            if rank < len(group):
+                out.append(group[rank])
+    return out
+
+
+def _project_no_match(
+    scope: ProjectRetriever, question: str, budget: int, suggestions: list[str]
+) -> AnswerPack:
+    """No member answered — an explicit no-match, or an admitted gap.
+
+    A member with no full-text index never ran that path, so the project
+    cannot say the design is silent on the question; it says which part could
+    not be searched instead. Same rule as the single-part `unavailable` route,
+    applied to a set of corpora.
+    """
+    gap = scope.search_gap()
+    if gap:
+        route, line, verify = (
+            ROUTE_UNAVAILABLE,
+            _unavailable_line(question, gap),
+            _verify_unavailable(),
+        )
+    else:
+        route, line, verify = ROUTE_NONE, _no_match_line(question), _verify_none()
+    frame = _project_draft(scope, question, route, budget)
+    return _assemble(frame, [line], None, verify, suggestions[:MAX_SUGGESTIONS], False)
+
+
 def _draft(retriever: Retriever, question: str, route: str, budget: int) -> AnswerPack:
     """An empty pack carrying only the part's identity — the render frame."""
     manifest = retriever.index.manifest
     doc = manifest.documents[0] if (manifest and manifest.documents) else None
     return AnswerPack(
-        part=retriever.index.part_number or retriever.part_dir.name,
+        part=retriever.part,
         question=question,
         route=route,
         budget=budget,
         revision=doc.revision if doc else "",
         doc=retriever.index.docs[0].name if retriever.index.docs else "",
+    )
+
+
+def _project_draft(
+    scope: ProjectRetriever, question: str, route: str, budget: int
+) -> AnswerPack:
+    """The render frame for a project pack: the design and its members."""
+    return AnswerPack(
+        part="",
+        question=question,
+        route=route,
+        budget=budget,
+        project=scope.name,
+        parts=tuple(scope.parts),
     )
 
 
@@ -723,7 +916,7 @@ _LINE_SCHEMA = {
     "type": "object",
     "additionalProperties": False,
     "required": [
-        "text", "citation", "confidence", "matched_via", "doc", "section",
+        "text", "citation", "confidence", "matched_via", "part", "doc", "section",
         "page_start", "page_end", "file",
     ],
     "properties": {
@@ -731,6 +924,7 @@ _LINE_SCHEMA = {
         "citation": {"type": "string"},
         "confidence": {"enum": ["high", "medium", "low", CONFIDENCE_UNKNOWN]},
         "matched_via": {"type": "string"},
+        "part": {"type": "string"},
         "doc": {"type": "string"},
         "section": {"type": "string"},
         "page_start": {"type": ["integer", "null"]},
@@ -742,11 +936,12 @@ _LINE_SCHEMA = {
 _EXCERPT_SCHEMA = {
     "type": "object",
     "additionalProperties": False,
-    "required": ["heading", "citation", "text"],
+    "required": ["heading", "citation", "text", "part"],
     "properties": {
         "heading": {"type": "string"},
         "citation": {"type": "string"},
         "text": {"type": "string"},
+        "part": {"type": "string"},
     },
 }
 
@@ -759,11 +954,13 @@ ANSWER_PACK_SCHEMA: dict = {
     "additionalProperties": False,
     "required": [
         "part", "question", "route", "budget", "tokens", "over_budget",
-        "truncated", "notice", "revision", "doc", "answers", "excerpt",
-        "verify", "suggestions", "citations", "markdown",
+        "truncated", "notice", "revision", "doc", "project", "parts",
+        "answers", "excerpt", "verify", "suggestions", "citations", "markdown",
     ],
     "properties": {
         "part": {"type": "string"},
+        "project": {"type": "string"},
+        "parts": {"type": "array", "items": {"type": "string"}},
         "question": {"type": "string"},
         "route": {"enum": list(ROUTES)},
         "budget": {"type": "integer"},

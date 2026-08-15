@@ -750,6 +750,141 @@ class TestAnswerPacks:
                 assert validate_pack(payload) == [], f"{name}/{q.id}"
 
 
+PROJECT_MEMBERS = ["AD9081", "LM741", "HMC520A"]
+# A phrase each part prints that the others do not (GATE[...]["content"]).
+PROJECT_PROBES = {
+    "AD9081": "full-scale output current range",
+    "LM741": "overload protection",
+    "HMC520A": "conversion loss",
+}
+
+
+@pytest.fixture(scope="module")
+def board(gate, tmp_path_factory):
+    """Three gate corpora under one parts dir, plus the project over them."""
+    import shutil
+
+    from datasheet_analyzer.config import Settings
+    from datasheet_analyzer.projects import add_parts, new_project, save_project
+
+    root = tmp_path_factory.mktemp("project-gate")
+    settings = Settings(
+        parts_dir=root / "parts",
+        projects_dir=root / "projects",
+        cache_dir=root / ".cache",
+    ).resolve()
+    for name in PROJECT_MEMBERS:
+        shutil.copytree(
+            gate[name].part_dir,
+            settings.parts_dir / name,
+            ignore=shutil.ignore_patterns("figures"),
+        )
+    project = new_project(
+        "rf-frontend",
+        settings.projects_dir,
+        interfaces="AD9081 DAC out -> HMC520A DSA -> board edge; LM741 bias buffer.",
+    )
+    for name in PROJECT_MEMBERS:
+        add_parts(project, [name], parts_dir=settings.parts_dir, role=f"{name} role")
+    save_project(project, settings.projects_dir)
+    return settings, project
+
+
+class TestProjectIndexEconomics:
+    """Phase 5, ticket 06: a real 3-part project, measured.
+
+    The gate builds each part into its own `parts/` directory; a project is a
+    list of parts under *one* directory, so the three corpora are copied into
+    a shared one. `figures/` is deliberately left behind: a project index and
+    a project-scoped ask read manifests, records and section text, never
+    pixels, and copying a hundred PNGs per part would buy the test nothing.
+
+    The index token count is printed rather than pinned: it is a measured
+    property of three real datasheets, and the phase report quotes it. What is
+    *asserted* is the promise — inside the budget, every member named, every
+    member pointing at its own `INDEX.md` — and that a project-scoped question
+    lands on the part that actually prints the answer.
+    """
+
+    MEMBERS: ClassVar[list[str]] = PROJECT_MEMBERS
+    PROBES: ClassVar[dict[str, str]] = PROJECT_PROBES
+
+    def test_a_three_part_project_index_fits_its_budget(self, board, capsys):
+        from datasheet_analyzer.projects import write_project_index
+        from datasheet_analyzer.tokens import count_tokens
+
+        settings, project = board
+        path, text = write_project_index(
+            project,
+            parts_dir=settings.parts_dir,
+            projects_dir=settings.projects_dir,
+            token_budget=settings.project_index_token_budget,
+        )
+        tokens = count_tokens(text)
+        assert tokens <= settings.project_index_token_budget
+        assert "Truncated to fit" not in text, "3 real parts must fit comfortably"
+        for name in self.MEMBERS:
+            assert f"**{name}**" in text
+            target = (path.parent / f"../../parts/{name}/INDEX.md").resolve()
+            assert target.exists()
+        assert text.count("INDEX.md") >= len(self.MEMBERS)
+
+        with capsys.disabled():
+            print(
+                f"\nPROJECT_INDEX.md, 3 gate parts ({', '.join(self.MEMBERS)}): "
+                f"{tokens} tokens (budget {settings.project_index_token_budget}); "
+                f"{path.stat().st_size:,} B\n"
+            )
+
+    def test_a_project_scoped_ask_returns_the_right_part(self, board, capsys):
+        from datasheet_analyzer.projects import part_dirs
+        from datasheet_analyzer.retrieve import ROUTE_NONE, ProjectRetriever
+
+        settings, project = board
+        scope = ProjectRetriever.for_parts(
+            project.name, part_dirs(project, settings.parts_dir)
+        )
+        rows: list[str] = []
+        for name, probe in self.PROBES.items():
+            pack = scope.ask(probe, budget=3000)
+            assert pack.route != ROUTE_NONE, probe
+            assert pack.tokens <= 3000, probe
+            parts = [line.part for line in pack.answers]
+            assert name in parts, f"{probe!r} -> {parts}, expected {name}"
+            assert all(line.citation for line in pack.answers), probe
+            rows.append(f"  {probe:<32} -> {pack.route:<7} {', '.join(dict.fromkeys(parts))}")
+
+        with capsys.disabled():
+            print("\nproject-scoped ask, 3 gate parts\n" + "\n".join(rows) + "\n")
+
+    def test_every_hit_of_a_project_search_names_its_part(self, board):
+        from datasheet_analyzer.projects import part_dirs
+        from datasheet_analyzer.retrieve import ProjectRetriever
+
+        settings, project = board
+        scope = ProjectRetriever.for_parts(
+            project.name, part_dirs(project, settings.parts_dir)
+        )
+        assert scope.search_unavailable() == "" and scope.search_gap() == ""
+        hits = scope.search("output current", limit=8)
+        assert hits
+        assert all(hit.citation.part in self.MEMBERS for hit in hits)
+        assert all(hit.citation.page_start is not None for hit in hits)
+
+    def test_dsa_status_lists_the_project_alongside_the_parts(
+        self, board, monkeypatch, capsys
+    ):
+        from datasheet_analyzer import cli
+
+        settings, _project = board
+        monkeypatch.setattr("datasheet_analyzer.cli.get_settings", lambda: settings)
+        assert cli.main(["status"]) == 0
+        out = capsys.readouterr().out
+        for name in self.MEMBERS:
+            assert f"part: {name}" in out
+        assert "project: rf-frontend" in out
+
+
 class TestGateGoldens:
     """Ticket 07: per-part golden benchmarks, 100% on text + --specs +
     plot lookups for every gate part in a plain offline pytest run.

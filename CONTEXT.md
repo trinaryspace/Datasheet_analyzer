@@ -107,6 +107,24 @@ holding an index, inventory, manifest, and one document directory per source
 document.
 _Avoid_: device, chip, family
 
+**Project**:
+A design: an explicit, human-curated list of parts plus the free text that
+joins them (each part's one-line role, an `interfaces` note, project notes),
+stored as `projects/<name>/project.json`. It is the noun above `part` — the
+unit a designer actually works in. Membership is chosen, never inferred: no
+BOM or netlist is parsed, and a part with no built corpus is refused rather
+than pointed at. Asking a project a question fans the lookup out across its
+members and labels every hit with the part it came from.
+_Avoid_: board, design file, group, BOM, assembly
+
+**Project index**:
+`PROJECT_INDEX.md`: the single always-loadable file for a whole project —
+each member with its revision, its one-line role, and a pointer to its own
+`INDEX.md` — written under a hard token budget. Under budget pressure it
+drops its least-important block first and says that it did; the part list and
+the index pointers are the product and are never what a budget removes.
+_Avoid_: summary, dashboard, manifest, catalog
+
 **SourceDocument**:
 A registered input file of a part (datasheet, register map, errata, app
 note). Identity is the sha256 of its bytes.
