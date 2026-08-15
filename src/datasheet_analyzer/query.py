@@ -11,6 +11,9 @@ hits carrying citation, confidence and `matched_via`. `SpecQuery` and
 existing callers; new code should use `Retriever` directly and gets no new
 features here. The renderers below stay — formatting is a front-end job — but
 they take their citation strings from `Citation`, never build their own.
+`format_spec_hits` / `format_no_match` render typed `SpecHit`s (rung and
+confidence included); `format_answer` keeps the record-list shape for callers
+that predate them.
 """
 
 from __future__ import annotations
@@ -19,7 +22,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from datasheet_analyzer.models import PlotRecord, SpecRecord
-from datasheet_analyzer.retrieve import Citation, Retriever
+from datasheet_analyzer.retrieve import Citation, Retriever, SpecHit
 
 
 @dataclass
@@ -69,6 +72,50 @@ def format_answer(records: list[SpecRecord], limit: int = 5) -> str:
     if len(records) > limit:
         lines.append(f"... and {len(records) - limit} more matches")
     return "\n".join(lines)
+
+
+def format_spec_hits(hits: list[SpecHit], limit: int = 5) -> str:
+    """Render typed spec hits, each naming the ladder rung that found it.
+
+    Same line shape as `format_answer` plus a `[via <rung> · <confidence>]`
+    tail, so an agent can tell an exact symbol hit from an alias or a fuzzy
+    one without a second call.
+    """
+    if not hits:
+        return "No matching spec records."
+    lines: list[str] = []
+    for hit in hits[:limit]:
+        rec = hit.record
+        val = _value_field(rec)
+        value_str = f"{val} {rec.unit.verbatim}".strip()
+        cond = f", {rec.conditions}" if rec.conditions else ""
+        lines.append(
+            f"{rec.name} ({rec.symbol}): {value_str}{cond} — "
+            f"{hit.citation.label} "
+            f"[table {rec.table_index} row {rec.row_index}] "
+            f"[via {hit.matched_via} · {hit.confidence}]"
+        )
+        if rec.cited_markers:
+            for fn in rec.footnotes:
+                if fn.marker in rec.cited_markers:
+                    lines.append(f"  {fn.marker} {fn.text}")
+    if len(hits) > limit:
+        lines.append(f"... and {len(hits) - limit} more matches")
+    return "\n".join(lines)
+
+
+def format_no_match(term: str, suggestions: list[str]) -> str:
+    """Explicit no-match plus the nearest candidates — never a guess.
+
+    A query that resolves to nothing has to say so: the ladder stops at the
+    fuzzy rung, and what it offers instead is a list of terms the caller can
+    re-ask with, clearly labelled as suggestions rather than an answer.
+    """
+    head = f"No spec record matches {term!r}." if term else "No matching spec records."
+    if not suggestions:
+        return f"{head} No near candidates in this corpus either."
+    listed = "\n".join(f"  - {s}" for s in suggestions)
+    return f"{head} Nearest candidates:\n{listed}"
 
 
 def find_plots(

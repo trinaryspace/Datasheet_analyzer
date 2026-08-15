@@ -4,7 +4,7 @@ Commands:
   build <pdf> --part NAME   full pipeline: acquire -> extract -> corpus
   batch <dir>               build every PDF in a directory as its own part (unchanged parts skipped; --force rebuilds; --workers N parallel, default 4)
   verify --part NAME        golden Q&A citation verification (deterministic)
-  query --part NAME         deterministic spec lookup
+  query --part NAME         deterministic spec lookup (alias ladder; --json)
   plots --part NAME         deterministic plot lookup
   status                    configuration + detected parts
   version                   print version
@@ -196,7 +196,9 @@ def _cmd_verify(args: argparse.Namespace) -> int:
 
 
 def _cmd_query(args: argparse.Namespace) -> int:
-    from datasheet_analyzer.query import format_answer
+    import json
+
+    from datasheet_analyzer.query import format_no_match, format_spec_hits
     from datasheet_analyzer.retrieve import Retriever
 
     settings = get_settings()
@@ -205,13 +207,30 @@ def _cmd_query(args: argparse.Namespace) -> int:
         print(f"no corpus at {part_dir} — run `dsa build` first", file=sys.stderr)
         return 2
 
-    hits = Retriever.for_part(part_dir).specs(
+    retriever = Retriever.for_part(part_dir)
+    hits = retriever.specs(
         symbol=args.symbol or "",
         name=args.name or "",
         section=args.section or "",
     )
-    print(format_answer([h.record for h in hits]))
-    return 0 if hits else 1
+    term = (args.symbol or args.name or "").strip()
+    if args.json:
+        # The retrieval core owns the shape (SpecHit.as_dict); the CLI only
+        # decides that this invocation wants JSON.
+        payload = {
+            "part": args.part,
+            "query": {"symbol": args.symbol, "name": args.name, "section": args.section},
+            "hits": [h.as_dict() for h in hits],
+            "suggestions": [] if hits else retriever.suggest_specs(term),
+        }
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+        return 0 if hits else 1
+
+    if not hits:
+        print(format_no_match(term, retriever.suggest_specs(term)))
+        return 1
+    print(format_spec_hits(hits))
+    return 0
 
 
 def _cmd_plots(args: argparse.Namespace) -> int:
@@ -376,6 +395,11 @@ def main(argv: list[str] | None = None) -> int:
     p_query.add_argument("--symbol", default="")
     p_query.add_argument("--name", default="")
     p_query.add_argument("--section", default="")
+    p_query.add_argument(
+        "--json",
+        action="store_true",
+        help="emit hits (with matched_via + confidence) as JSON",
+    )
     p_query.set_defaults(func=_cmd_query)
 
     p_plots = sub.add_parser("plots", help="deterministic plot lookup")

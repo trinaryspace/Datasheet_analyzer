@@ -401,6 +401,36 @@ class TestGateFootnotesAndFigures:
             assert rec["file"] and (result.part_dir / rec["file"]).stat().st_size > 1024
 
 
+class TestAliasSeedInventory:
+    """Phase 5, ticket 02: the alias lexicon is seeded from what these
+    corpora actually print, and `tests/fixtures/alias_seed_symbols.json` is
+    the recorded harvest the fast alias tests measure against. Freshly built
+    here, the gate parts must still harvest to exactly that — otherwise the
+    seed is stale and the measured coverage is fiction."""
+
+    def test_recorded_seed_matches_a_fresh_build(self, gate):
+        from datasheet_analyzer.retrieve import CorpusIndex
+
+        recorded = json.loads(
+            (FIXTURES / "alias_seed_symbols.json").read_text(encoding="utf-8")
+        )["parts"]
+        for name in GATE:
+            fresh = {
+                (rec.symbol, rec.name, rec.unit.canonical)
+                for doc in CorpusIndex.load(gate[name].part_dir).docs
+                for rec in doc.specs
+            }
+            assert name in recorded, f"{name} missing from the alias seed inventory"
+            seeded = {
+                (row["symbol"], row["name"], row["unit_canonical"])
+                for row in recorded[name]
+            }
+            assert seeded == fresh, (
+                f"{name}: alias seed inventory is stale — regenerate with "
+                "scripts/seed_aliases.py (procedure in its docstring)"
+            )
+
+
 class TestGateGoldens:
     """Ticket 07: per-part golden benchmarks, 100% on text + --specs +
     plot lookups for every gate part in a plain offline pytest run.

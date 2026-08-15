@@ -39,6 +39,23 @@ only outside the body region. PDFs with no consistent slots get no
 stripping.
 _Avoid_: header, footer, chrome, noise
 
+**Alias**:
+A phrase a designer types for a quantity a datasheet prints under a symbol
+("junction temperature" for `TJ`). Aliases live as data in the alias
+lexicon (`registry/aliases.yaml`), grouped under a canonical symbol with an
+optional expected unit and an optional prefix family; adding one is a YAML
+edit, never a code change.
+_Avoid_: synonym table, keyword, mapping, tag
+
+**Resolution ladder**:
+The ordered rungs a spec query walks — exact symbol, alias phrase, alias
+prefix family, substring, token-overlap fuzzy — where the first rung that
+returns anything wins and names itself back to the caller as `matched_via`.
+An expected unit only *ranks* candidates inside a rung; it never removes one.
+Nothing on any rung means an explicit no-match with nearest candidates, never
+a guess.
+_Avoid_: search, ranking, scoring, matcher chain
+
 **Part**:
 A named device (e.g. AFE7950) and its corpus: a folder under `parts/`
 holding an index, inventory, manifest, and one document directory per source

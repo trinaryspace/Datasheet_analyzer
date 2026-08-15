@@ -1,22 +1,36 @@
 """`Retriever` — every corpus lookup, returning typed hits.
 
 One instance wraps one `CorpusIndex`, so a session that asks a part twenty
-questions parses its JSON once. Matching semantics are exactly the ones
-`query.py` shipped (case-insensitive substrings, ANDed across fields); what is
-new is that each hit says *how* it matched (`matched_via`) and carries a
-`Citation` instead of leaving the caller to build one.
+questions parses its JSON once. Each hit says *how* it matched
+(`matched_via`) and carries a `Citation` instead of leaving the caller to
+build one.
 
-Ticket 02 extends `specs()` with the alias ladder, ticket 03 adds the
-BM25 `search()` path, ticket 04 fills in `confidence`.
+Spec lookups run the **alias ladder** (ticket 02), first non-empty rung wins:
+
+| # | Rung | `matched_via` |
+|---|---|---|
+| 1 | exact symbol (plus its materialized child rows) | `symbol` |
+| 2 | alias phrase from `registry/aliases.yaml` | `alias:<phrase>` |
+| 3 | alias prefix family (`IDD` → `IVDD1P8`, …) | `alias-prefix:<prefix>` |
+| 4 | symbol / name substring (the pre-ticket-02 behaviour) | `symbol-substring`, `name-substring` |
+| 5 | token-overlap fuzzy over the record name | `fuzzy` |
+
+`expect_unit` never removes a candidate — it only sorts the ones a rung
+already returned, so a record whose unit is missing still answers. Nothing
+matches at all → an empty list plus `suggest_specs()` for the nearest
+candidates, never a rung-6 guess.
+
+Ticket 03 adds the BM25 `search()` path, ticket 04 fills in `confidence`.
 """
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
 
 from datasheet_analyzer.models import PlotRecord, SectionFile, SpecRecord
-from datasheet_analyzer.retrieve.index import CorpusIndex
+from datasheet_analyzer.retrieve.index import CorpusIndex, IndexedDoc
 from datasheet_analyzer.retrieve.results import (
     Citation,
     PlotHit,
@@ -24,6 +38,24 @@ from datasheet_analyzer.retrieve.results import (
     SpecHit,
     record_confidence,
 )
+from datasheet_analyzer.structure.aliases import (
+    FUZZY_MIN_TOKENS,
+    FUZZY_THRESHOLD,
+    AliasEntry,
+    AliasLexicon,
+    load_lexicon,
+    similarity,
+    token_overlap,
+    tokens,
+)
+
+# One candidate record on its way to becoming a hit: the document it came
+# from, the record, the alias entry (if any) that vouched for it — the entry
+# is what carries `expect_unit` into the tie-break — and the rung label this
+# candidate earned. The label is per candidate, not per rung, because two
+# alias entries can tie on one rung and each hit should still name the phrase
+# that found it.
+_Candidate = tuple[IndexedDoc, SpecRecord, AliasEntry | None, str]
 
 
 @dataclass(frozen=True)
@@ -41,6 +73,10 @@ class Retriever:
     def part_dir(self) -> Path:
         return self.index.part_dir
 
+    @property
+    def lexicon(self) -> AliasLexicon:
+        return load_lexicon()
+
     def specs(
         self,
         *,
@@ -48,25 +84,143 @@ class Retriever:
         name: str = "",
         section: str = "",
     ) -> list[SpecHit]:
-        """Case-insensitive substring match on symbol/name/section (ANDed)."""
-        hits: list[SpecHit] = []
+        """Resolve a spec query through the alias ladder (see module docs).
+
+        `symbol` and `name` are both just a designer's term; whichever is given
+        drives the ladder. When both are given they still AND, as they always
+        did — the unused one stays a filter on every rung.
+        """
+        pool = [
+            (doc, rec)
+            for doc in self.index.docs
+            for rec in doc.specs
+            if _passes(rec, section=section, also_name=name if (symbol and name) else "")
+        ]
+        term = (symbol or name).strip()
+        if not term:
+            label = "section" if section else "all"
+            return _build_hits([(d, r, None, label) for d, r in pool])
+
+        for candidates in self._spec_ladder(term, from_symbol=bool(symbol), pool=pool):
+            if candidates:
+                return _build_hits(candidates)
+        return []
+
+    def suggest_specs(self, term: str, limit: int = 5) -> list[str]:
+        """Nearest candidate terms for a query that matched nothing.
+
+        Drawn from the part's own symbols and names first — advice a caller can
+        act on in this corpus — then topped up from the alias lexicon. An
+        honest "no match, did you mean…" beats a fuzzy guess presented as an
+        answer.
+        """
+        if not term.strip():
+            return []
+        pool: dict[str, str] = {}
         for doc in self.index.docs:
             for rec in doc.specs:
-                if symbol and symbol.lower() not in rec.symbol.lower():
-                    continue
-                if name and name.lower() not in rec.name.lower():
-                    continue
-                if section and section.lower() not in rec.section.lower():
-                    continue
-                hits.append(
-                    SpecHit(
-                        record=rec,
-                        citation=Citation.for_spec(rec, doc=doc.name, doc_hash=doc.doc_hash),
-                        matched_via=_spec_matched_via(rec, symbol, name, section),
-                        confidence=record_confidence(rec),
-                    )
-                )
-        return hits
+                for text in (rec.symbol, rec.name):
+                    if text:
+                        pool.setdefault(text.lower(), text)
+        scored = [(similarity(term, label), label) for label in pool.values()]
+        scored = [s for s in scored if s[0] > 0.0]
+        scored.sort(key=lambda s: (-s[0], s[1]))
+        out = [label for _score, label in scored[:limit]]
+        for label in self.lexicon.nearest_names(term, limit):
+            if len(out) >= limit:
+                break
+            if label not in out:
+                out.append(label)
+        return out[:limit]
+
+    def _spec_ladder(
+        self, term: str, *, from_symbol: bool, pool: list[tuple[IndexedDoc, SpecRecord]]
+    ) -> Iterator[list[_Candidate]]:
+        """Yield one candidate list per rung, strongest rung first."""
+        lex = self.lexicon
+        own = lex.by_symbol(term)
+
+        # 1 — exact symbol, plus its materialized children. A rowspan child
+        # (ticket 09) carries its parent's symbol with its own label appended,
+        # so `Full-Scale Output Current Range` must still reach `… AC
+        # Coupling`. The children only come along when the parent row itself
+        # matched exactly; without that guard this rung would quietly become a
+        # prefix search and shadow the alias rungs below it.
+        low = term.lower()
+        exact = [(doc, rec) for doc, rec in pool if rec.symbol.lower() == low]
+        if exact:
+            children = [
+                (doc, rec) for doc, rec in pool if rec.symbol.lower().startswith(low + " ")
+            ]
+            # pool order, not exact-then-children order: the parent row still
+            # prints before its children as the table printed them.
+            keep = {id(rec) for _doc, rec in exact} | {id(rec) for _doc, rec in children}
+            yield [(doc, rec, own, "symbol") for doc, rec in pool if id(rec) in keep]
+        else:
+            yield []
+
+        # 2 — alias phrase. Candidates are the entry's canonical symbol *and*
+        # any record whose own symbol/name uses one of its phrases, because the
+        # layout floor records `Junction temperature` as the symbol where TI
+        # records `TJ`. Entries whose matched phrase is the same length tie on
+        # this rung and are offered together, for `expect_unit` to separate.
+        for group in _by_phrase_length(lex.phrase_hits(term)):
+            candidates: list[_Candidate] = []
+            claimed: set[tuple[int, int]] = set()
+            for entry, phrase in group:
+                entry_low = entry.symbol.lower()
+                for doc, rec in pool:
+                    if not (
+                        rec.symbol.lower() == entry_low
+                        or _in_family(rec, entry)
+                        or entry.describes(rec.symbol)
+                        or entry.describes(rec.name)
+                    ):
+                        continue
+                    key = (id(doc), id(rec))
+                    if key in claimed:
+                        continue
+                    claimed.add(key)
+                    candidates.append((doc, rec, entry, f"alias:{phrase}"))
+            yield candidates
+
+        # 3 — alias prefix family. Naming any one prefix (`IDD`) opens the
+        # whole family (`IVDD1P8`, `IVDD1P2`, …); every family the term names
+        # ties on this rung.
+        prefix_hits = lex.prefix_hits(term)
+        if prefix_hits:
+            candidates = []
+            claimed = set()
+            for entry, prefix in prefix_hits:
+                for doc, rec in pool:
+                    if not _in_family(rec, entry):
+                        continue
+                    key = (id(doc), id(rec))
+                    if key in claimed:
+                        continue
+                    claimed.add(key)
+                    candidates.append((doc, rec, entry, f"alias-prefix:{prefix}"))
+            yield candidates
+
+        # 4 — substring, exactly as it behaved before the ladder existed.
+        if from_symbol:
+            yield [
+                (doc, rec, own, "symbol-substring")
+                for doc, rec in pool
+                if low in rec.symbol.lower()
+            ]
+        else:
+            yield [
+                (doc, rec, own, "name-substring") for doc, rec in pool if low in rec.name.lower()
+            ]
+
+        # 5 — fuzzy, and only then. A single-token term never gets here.
+        if len(tokens(term)) >= FUZZY_MIN_TOKENS:
+            yield [
+                (doc, rec, own, "fuzzy")
+                for doc, rec in pool
+                if token_overlap(term, rec.name) >= FUZZY_THRESHOLD
+            ]
 
     def plots(
         self,
@@ -141,21 +295,63 @@ class Retriever:
         return self.index.section_text(section)
 
 
+def _passes(rec: SpecRecord, *, section: str, also_name: str) -> bool:
+    """Filters that apply on every rung, not just the one that matched."""
+    if section and section.lower() not in rec.section.lower():
+        return False
+    return not (also_name and also_name.lower() not in rec.name.lower())
+
+
+def _in_family(rec: SpecRecord, entry: AliasEntry) -> bool:
+    """True when the record's symbol starts with one of the family prefixes."""
+    symbol = rec.symbol.lower()
+    return any(symbol.startswith(p.lower()) for p in entry.match_prefixes)
+
+
+def _by_phrase_length(
+    hits: list[tuple[AliasEntry, str]],
+) -> Iterator[list[tuple[AliasEntry, str]]]:
+    """Group `(entry, phrase)` hits into ties — same phrase length, one rung."""
+    group: list[tuple[AliasEntry, str]] = []
+    for entry, phrase in hits:  # already sorted longest phrase first
+        if group and len(phrase) != len(group[0][1]):
+            yield group
+            group = []
+        group.append((entry, phrase))
+    if group:
+        yield group
+
+
+def _build_hits(candidates: list[_Candidate]) -> list[SpecHit]:
+    """Order by the `expect_unit` tie-break, then wrap in typed hits.
+
+    The sort is stable and the key is binary, so document order survives and a
+    record whose unit is missing keeps its place in the list — `expect_unit`
+    promotes, it never suppresses.
+    """
+    ordered = sorted(candidates, key=lambda c: _unit_rank(c[1], c[2]))
+    return [
+        SpecHit(
+            record=rec,
+            citation=Citation.for_spec(rec, doc=doc.name, doc_hash=doc.doc_hash),
+            matched_via=matched_via,
+            confidence=record_confidence(rec),
+        )
+        for doc, rec, _entry, matched_via in ordered
+    ]
+
+
+def _unit_rank(rec: SpecRecord, entry: AliasEntry | None) -> int:
+    """0 for a record whose canonical unit is the one the alias expected."""
+    if entry is None or not entry.expect_unit:
+        return 0
+    return 0 if rec.unit.canonical == entry.expect_unit else 1
+
+
 def _covers_page(sec: SectionFile, page: int) -> bool:
     if sec.page_start is None:
         return False
     return sec.page_start <= page <= (sec.page_end or sec.page_start)
-
-
-def _spec_matched_via(rec: SpecRecord, symbol: str, name: str, section: str) -> str:
-    """Strongest rung that produced this hit — see `results` for the ladder."""
-    if symbol:
-        return "symbol" if symbol.lower() == rec.symbol.lower() else "symbol-substring"
-    if name:
-        return "name-substring"
-    if section:
-        return "section"
-    return "all"
 
 
 def _plot_matched_via(

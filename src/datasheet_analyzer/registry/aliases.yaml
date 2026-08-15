@@ -1,0 +1,671 @@
+# Alias lexicon — designers' words -> datasheets' symbols.
+#
+# Data, not code: adding a synonym is an edit here, never a Python change
+# (same philosophy as the vendor brand lexicon in vendor.py).
+#
+# Shape, one entry per canonical symbol family:
+#
+#   SYMBOL:
+#     names: [phrase, phrase, ...]   # what a designer types; matched as whole
+#                                    # phrases inside the query, and against a
+#                                    # record's own symbol/name text
+#     expect_unit: "<canonical>"     # RANKS tie-ing candidates; never filters,
+#                                    # never hides a record with no unit
+#     kind: <free text>              # rough quantity class, for readers
+#     prefix_match: true             # this entry is a family...
+#     prefixes: [IDD, IVDD]          # ...covering these symbol prefixes
+#                                    # (defaults to the canonical symbol)
+#
+# Keep `names` phrases at two characters or more and specific enough to be
+# unambiguous on their own: a bare "gain" or "supply" would hijack half the
+# corpus. The resolution ladder tries exact symbols first, so short symbols
+# (TJ, TA, IDD) need no alias of their own.
+#
+# Seeded from the symbols present across the six built corpora (AFE7950,
+# AFE7953, AD9081, LM741, QPA1003P, HMC520A); regenerate the coverage
+# measurement with `scripts/seed_aliases.py`.
+
+# --- thermal -----------------------------------------------------------------
+TJ:
+  names:
+    - junction temperature
+    - operating junction temperature
+    - maximum junction temperature
+    - max junction temperature
+    - channel temperature
+  expect_unit: "°C"
+  kind: temperature
+
+TA:
+  names:
+    - ambient temperature
+    - operating ambient temperature
+    - operating temperature
+    - operating temperature range
+  expect_unit: "°C"
+  kind: temperature
+
+Tstg:
+  names:
+    - storage temperature
+    - storage temperature range
+  expect_unit: "°C"
+  kind: temperature
+
+RthJA:
+  names:
+    - junction to ambient thermal resistance
+    - thermal resistance
+    - theta ja
+  expect_unit: "°C/W"
+  kind: thermal resistance
+
+RthJC:
+  names:
+    - junction to case thermal resistance
+    - junction to case top thermal resistance
+    - theta jc
+  expect_unit: "°C/W"
+  kind: thermal resistance
+
+# --- supplies ----------------------------------------------------------------
+VDD:
+  names:
+    - supply voltage
+    - supply voltage range
+    - operating supply voltage
+    - analog supply voltage
+    - digital supply voltage
+    - rail voltage
+  expect_unit: V
+  kind: voltage
+  prefix_match: true
+  prefixes: [VDD, AVDD, DVDD, VCC, VDDA]
+
+IDD:
+  names:
+    - supply current
+    - quiescent current
+    - operating current
+    - total supply current
+    - current consumption
+  expect_unit: mA
+  kind: current
+  prefix_match: true
+  prefixes: [IDD, IVDD, ICC, IQ]
+
+Pdiss:
+  names:
+    - power dissipation
+    - total power dissipation
+    - power consumption
+    - dissipated power
+  expect_unit: mW
+  kind: power
+
+# --- ratings / protection ----------------------------------------------------
+V(ESD):
+  names:
+    - electrostatic discharge
+    - esd rating
+    - human body model
+    - hbm
+    - esd
+  expect_unit: V
+  kind: voltage
+
+ISC:
+  names:
+    - output short circuit current
+    - short circuit current
+    - output short
+  expect_unit: mA
+  kind: current
+
+Tsolder:
+  names:
+    - mounting temperature
+    - peak reflow temperature
+    - reflow temperature
+    - soldering temperature
+    - soldering information
+  expect_unit: "°C"
+  kind: temperature
+
+MSL:
+  names:
+    - moisture sensitivity level
+  kind: rating
+
+# --- converters --------------------------------------------------------------
+DACRES:
+  names:
+    - dac resolution
+    - dac bits
+  expect_unit: bits
+  kind: resolution
+
+ADCRES:
+  names:
+    - adc resolution
+    - adc bits
+  expect_unit: bits
+  kind: resolution
+
+DNL:
+  names:
+    - differential nonlinearity
+    - differential non-linearity
+  expect_unit: LSB
+  kind: linearity
+
+INL:
+  names:
+    - integral nonlinearity
+    - integral non-linearity
+  expect_unit: LSB
+  kind: linearity
+
+FS:
+  names:
+    - sample rate
+    - sampling rate
+    - adc sample rate
+    - dac sample rate
+  expect_unit: GSPS
+  kind: data rate
+
+DIV:
+  names:
+    - sample rate divider
+    - clock divider
+  kind: divider
+  prefix_match: true
+  prefixes: [DIV]
+
+IOUTFS:
+  names:
+    - full-scale output current
+    - full-scale output current range
+    - output current range
+  expect_unit: mA
+  kind: current
+
+Gain Error:
+  names:
+    - gain error
+    - gain matching
+  expect_unit: "% FSR"
+  kind: gain
+
+Offset Error:
+  names:
+    - offset error
+    - offset matching
+  expect_unit: "% FSR"
+  kind: offset
+
+# --- clocking / PLL ----------------------------------------------------------
+fPFD:
+  names:
+    - pfd frequency
+    - pfd frequency range
+    - phase frequency detector frequency
+    - phase detector frequency
+  expect_unit: MHz
+  kind: frequency
+
+fVCO:
+  names:
+    - vco frequency
+    - vco frequency range
+    - vco coverage
+  expect_unit: GHz
+  kind: frequency
+  prefix_match: true
+  prefixes: [fVCO, FVCO]
+
+FREF:
+  names:
+    - reference clock frequency
+    - input clock frequency
+    - refclk frequency
+    - clock input frequency range
+  expect_unit: GHz
+  kind: frequency
+
+PN:
+  names:
+    - phase noise
+    - closed loop phase noise
+    - additive phase noise
+    - single sideband phase noise
+  expect_unit: dBc/Hz
+  kind: noise
+  prefix_match: true
+  prefixes: [PN]
+
+fRF:
+  names:
+    - rf output frequency range
+    - rf input frequency range
+    - rf frequency
+  expect_unit: MHz
+  kind: frequency
+  prefix_match: true
+  prefixes: [fRF, FRF]
+
+# --- serial interfaces -------------------------------------------------------
+FSerDes:
+  names:
+    - serdes bit rate
+    - serdes rate
+    - lane rate
+    - serial interface rate
+    - serial lane rate
+  expect_unit: Gbps
+  kind: data rate
+
+t(SCLK):
+  names:
+    - sclk period
+    - serial clock period
+    - spi clock period
+    - register write clock
+  expect_unit: ns
+  kind: time
+  prefix_match: true
+  prefixes: ["t(SCLK)"]
+
+tsu:
+  names:
+    - setup time
+  expect_unit: ns
+  kind: time
+  prefix_match: true
+  prefixes: ["tsu(", "tsetup"]
+
+th:
+  names:
+    - hold time
+  expect_unit: ns
+  kind: time
+  prefix_match: true
+  prefixes: ["th("]
+
+td:
+  names:
+    - data output delay
+    - output delay
+  expect_unit: ns
+  kind: time
+  prefix_match: true
+  prefixes: ["td("]
+
+tJESD:
+  names:
+    - channel latency
+    - jesd latency
+    - interface latency
+  kind: time
+  prefix_match: true
+  prefixes: [tJESD]
+
+TRF:
+  names:
+    - rise and fall time
+    - output rise and fall time
+    - rise time
+    - fall time
+  expect_unit: ps
+  kind: time
+
+TTJ:
+  names:
+    - output total jitter
+    - total jitter
+  expect_unit: UI
+  kind: jitter
+
+VSR:
+  names:
+    - serdes input amplitude
+    - serdes output amplitude
+    - serdes common mode
+    - serdes input swing
+  expect_unit: mVpp
+  kind: voltage
+  prefix_match: true
+  prefixes: [VSR, VST, VSWING, VCOMSR]
+
+# --- RF / signal quality -----------------------------------------------------
+SFDR:
+  names:
+    - spurious free dynamic range
+    - spurious-free dynamic range
+  expect_unit: dBc
+  kind: distortion
+  prefix_match: true
+  prefixes: [SFDR]
+
+NSD:
+  names:
+    - noise spectral density
+    - noise density
+  expect_unit: dBFS/Hz
+  kind: noise
+  prefix_match: true
+  prefixes: [NSD]
+
+NF:
+  names:
+    - noise figure
+  expect_unit: dB
+  kind: noise
+  prefix_match: true
+  prefixes: [NF]
+
+HD2:
+  names:
+    - second harmonic distortion
+    - 2nd harmonic distortion
+  expect_unit: dBc
+  kind: distortion
+  prefix_match: true
+  prefixes: [HD2]
+
+HD3:
+  names:
+    - third harmonic distortion
+    - 3rd harmonic distortion
+  expect_unit: dBc
+  kind: distortion
+  prefix_match: true
+  prefixes: [HD3]
+
+HDn:
+  names:
+    - harmonic distortion
+  expect_unit: dBc
+  kind: distortion
+  prefix_match: true
+  prefixes: [HDn]
+
+ACPR:
+  names:
+    - adjacent channel power ratio
+    - adjacent channel leakage ratio
+    - acpr
+  expect_unit: dBc
+  kind: distortion
+  prefix_match: true
+  prefixes: [ACPR]
+
+EVM:
+  names:
+    - error vector magnitude
+  expect_unit: "%"
+  kind: modulation
+
+Gflat:
+  names:
+    - gain flatness
+  expect_unit: dB
+  kind: gain
+
+Isolation:
+  names:
+    - isolation
+    - channel isolation
+  expect_unit: dB
+  kind: isolation
+
+ATT:
+  names:
+    - attenuation range
+    - attenuation step
+    - dsa attenuation range
+    - dsa attenuation step
+  expect_unit: dB
+  kind: attenuation
+  prefix_match: true
+  prefixes: [ATT]
+
+PMAX:
+  names:
+    - peak differential rf input power
+    - peak input power
+    - maximum input power
+  expect_unit: dBm
+  kind: power
+  prefix_match: true
+  prefixes: [PMAX]
+
+PIN:
+  names:
+    - input power
+    - full scale input power
+    - full-scale input power
+  expect_unit: dBm
+  kind: power
+
+IMD3:
+  names:
+    - third order intermodulation distortion
+    - 3rd order intermodulation
+    - intermodulation distortion
+  expect_unit: dBc
+  kind: distortion
+
+POUT:
+  names:
+    - output power
+    - saturated output power
+    - output power at p1db
+    - full scale output power
+  expect_unit: dBm
+  kind: power
+  prefix_match: true
+  prefixes: [POUT, Pmax, PFS]
+
+PAE:
+  names:
+    - power added efficiency
+  expect_unit: "%"
+  kind: efficiency
+
+S11:
+  names:
+    - input return loss
+  expect_unit: dB
+  kind: return loss
+
+S22:
+  names:
+    - output return loss
+  expect_unit: dB
+  kind: return loss
+
+CMRR:
+  names:
+    - common mode rejection ratio
+    - common mode rejection
+    - common mode
+  expect_unit: dB
+  kind: rejection
+
+SR:
+  names:
+    - slew rate
+  expect_unit: V/µs
+  kind: slew
+
+GBW:
+  names:
+    - gain bandwidth product
+    - unity gain bandwidth
+  expect_unit: MHz
+  kind: bandwidth
+
+# --- logic levels ------------------------------------------------------------
+VIH:
+  names:
+    - high level input voltage
+    - logic 1 voltage
+    - input high voltage
+  expect_unit: V
+  kind: voltage
+
+VIL:
+  names:
+    - low level input voltage
+    - logic 0 voltage
+    - input low voltage
+  expect_unit: V
+  kind: voltage
+
+VOH:
+  names:
+    - high level output voltage
+    - output high voltage
+  expect_unit: V
+  kind: voltage
+
+VOL:
+  names:
+    - low level output voltage
+    - output low voltage
+  expect_unit: V
+  kind: voltage
+
+# --- impedance / termination -------------------------------------------------
+ZT:
+  names:
+    - input termination
+    - internal termination
+    - termination impedance
+    - differential termination impedance
+    - input impedance
+    - input resistance
+    - differential input resistance
+    - differential resistance
+    - differential impedance
+  expect_unit: ohm
+  kind: impedance
+  prefix_match: true
+  prefixes: [ZT, ZIN, ZSR, ZST]
+
+RTERM:
+  names:
+    - output termination resistor
+    - output impedance
+    - output resistance
+    - differential output resistance
+  expect_unit: ohm
+  kind: impedance
+
+CIN:
+  names:
+    - input capacitance
+    - differential input capacitance
+    - load capacitance
+  expect_unit: pF
+  kind: capacitance
+
+VID:
+  names:
+    - differential input voltage
+    - differential input swing
+  expect_unit: Vppdiff
+  kind: voltage
+
+VOD:
+  names:
+    - differential output voltage
+    - differential output swing
+    - output voltage swing
+  expect_unit: Vppdiff
+  kind: voltage
+
+II:
+  names:
+    - input current
+    - high level input current
+    - low level input current
+  expect_unit: µA
+  kind: current
+  prefix_match: true
+  prefixes: [IIH, IIL]
+
+# --- mixer / converter blocks (Hittite-era ADI naming) -----------------------
+RF RANGE:
+  names:
+    - rf frequency range
+    - rf range
+  expect_unit: GHz
+  kind: frequency
+
+IF FREQUENCY RANGE:
+  names:
+    - if frequency range
+    - if range
+  expect_unit: GHz
+  kind: frequency
+
+LO AMPLITUDE:
+  names:
+    - lo amplitude
+    - lo drive level
+    - lo input power
+  expect_unit: dBm
+  kind: power
+
+LO INPUT FREQUENCY RANGE:
+  names:
+    - lo frequency range
+    - lo input frequency range
+  expect_unit: GHz
+  kind: frequency
+
+Conversion Loss:
+  names:
+    - conversion loss
+    - conversion gain
+  expect_unit: dB
+  kind: gain
+
+# --- amplifier blocks (Qorvo naming) -----------------------------------------
+Operational Frequency Range:
+  names:
+    - operational frequency range
+    - operating frequency range
+  expect_unit: GHz
+  kind: frequency
+
+Small Signal Gain:
+  names:
+    - small signal gain
+  expect_unit: dB
+  kind: gain
+
+IDQ:
+  names:
+    - drain current
+    - quiescent drain current
+  expect_unit: mA
+  kind: current
+
+VD:
+  names:
+    - drain voltage
+    - drain bias voltage
+  expect_unit: V
+  kind: voltage
+
+VG:
+  names:
+    - gate voltage
+    - gate voltage range
+    - forward gate current
+  expect_unit: V
+  kind: voltage

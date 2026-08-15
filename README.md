@@ -101,15 +101,30 @@ descriptions even with a key set); `batch` accepts the same `--no-cache` /
 
 ```bash
 dsa query --part AFE7950 --symbol DACRES
-# DAC resolution (DACRES): 14 bits — §4.5, p.7 [table 0 row 0]
+# DAC resolution (DACRES): 14 bits — §4.5, p.7 [table 0 row 0] [via symbol · unknown]
 
 dsa query --part AFE7953 --symbol DACRES
 dsa query --part AFE7950 --section 4.10 --name SYSREF
 ```
 
-Filters (`--symbol`, `--name`, `--section`) are AND-ed, case-insensitive
-substrings. Answers carry verbatim values, units, conditions, footnote
-markers, and page cites.
+You do not have to know the datasheet's symbol. `--symbol` / `--name` take a
+designer's words and run a resolution ladder — exact symbol, then alias phrase,
+then alias prefix family, then substring, then a token-overlap fuzzy match —
+and every answer reports the rung that found it:
+
+```bash
+dsa query --part AFE7950 --name "junction temperature"
+# Junction temperature (TJ): 150 °C — §4.1, p.4 … [via alias:junction temperature · unknown]
+
+dsa query --part AFE7950 --symbol IDD        # the whole IVDD* supply-current family
+dsa query --part AFE7950 --name "junction temperature" --json
+```
+
+The synonyms live in `src/datasheet_analyzer/registry/aliases.yaml`; adding one
+is a YAML edit, never a code change. `--section` still AND-s with the term.
+A query that matches nothing says so and lists the nearest candidates in the
+corpus — it never guesses. Answers carry verbatim values, units, conditions,
+footnote markers, and page cites.
 
 ### Find a plot
 

@@ -16,11 +16,12 @@ exact symbol hit from a loose substring one:
 
 | Lookup | Values (strongest first) |
 |---|---|
-| specs | `symbol`, `symbol-substring`, `name-substring`, `section`, `all` |
+| specs | `symbol`, `alias:<phrase>`, `alias-prefix:<prefix>`, `symbol-substring`, `name-substring`, `fuzzy`, `section`, `all` |
 | plots | `caption`, `conditions`, `section`, `tag`, `all` |
 | sections | `number`, `title`, `page`, `all` |
 
-Ticket 02 adds the `alias:<term>` rung to the spec ladder.
+The spec ladder itself lives in `retrieve.retriever`; the alias data behind
+its `alias:` rungs lives in `registry/aliases.yaml`.
 """
 
 from __future__ import annotations
@@ -124,6 +125,32 @@ class SpecHit:
     citation: Citation
     matched_via: str = ""
     confidence: str = CONFIDENCE_UNKNOWN
+
+    def as_dict(self) -> dict:
+        """JSON-ready view: values, citation, rung, grade.
+
+        Lives here rather than in a front end so the CLI's `--json` and (ticket
+        07) the MCP server emit the *same* shape — the drift the retrieval seam
+        exists to prevent applies to serialization too.
+        """
+        rec = self.record
+        return {
+            "symbol": rec.symbol,
+            "name": rec.name,
+            "conditions": rec.conditions,
+            "min": rec.min,
+            "typ": rec.typ,
+            "max": rec.max,
+            "value": rec.value,
+            "unit": rec.unit.verbatim,
+            "unit_canonical": rec.unit.canonical,
+            "section": self.citation.section,
+            "page": self.citation.page_start,
+            "doc": self.citation.doc,
+            "citation": self.citation.label,
+            "matched_via": self.matched_via,
+            "confidence": self.confidence,
+        }
 
 
 @dataclass(frozen=True)
