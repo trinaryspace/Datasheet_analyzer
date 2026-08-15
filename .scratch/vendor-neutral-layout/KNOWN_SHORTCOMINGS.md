@@ -353,6 +353,16 @@ here).
   (defensible under the cache-invalidation invariant; `extractor_version`
   is the real staleness guard). Keep both in lockstep when output schema
   changes.
-- **Batch hash-gated skip**: verify `.scratch/batch-build/issues/02`'s
-  skip gate compares `extractor_version`/`PIPELINE_VERSION`, not just
-  hashes, before batch work resumes.
+- **Batch hash-gated skip**: FIXED at the lane merge. The gate compared
+  `PIPELINE_VERSION` + content hash only, so a corpus built by a superseded
+  extractor (`output_version` tables-05 → 06 → 07 moved without
+  `PIPELINE_VERSION` doing so every time) was reported "already built" and
+  served stale — `build_part`'s cached-raw invalidation never runs on a job
+  the batch skips. `ExtractionStats` now records `extractor_version`
+  (additive, "" on older corpora, which reads stale and rebuilds once), the
+  writer stamps it on every document, and `skip_reason` rejects any manifest
+  whose recorded version no longer matches what that document's routed
+  backend emits. Unverifiable cases (missing stats entry, unknown backend)
+  count as stale, per the gate's existing contract. Pinned by
+  `test_extractor_version_bump_forces_rebuild`, which also asserts that
+  freshly built corpora still skip.
