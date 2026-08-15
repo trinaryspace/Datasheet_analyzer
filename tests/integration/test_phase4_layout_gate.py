@@ -24,6 +24,7 @@ from __future__ import annotations
 import json
 import re
 from pathlib import Path
+from typing import ClassVar
 
 import pytest
 
@@ -578,6 +579,175 @@ class TestConfidenceMix:
                 key = (row["symbol"], row["name"], row["unit_canonical"])
                 assert key in fresh, f"{name}: {key} disappeared"
                 assert fresh[key] == {f: row[f] for f in fields}, f"{name}: {key}"
+
+
+class TestAnswerPacks:
+    """Phase 5, ticket 05: `dsa ask` measured on four real corpora.
+
+    Three claims are proven here rather than asserted in prose:
+
+    1. **Budget compliance is numeric over the whole golden set**, not
+       spot-checked — every question of every gate part, at a generous budget
+       and again at a tight one.
+    2. **Citations are never what a budget removes**: at the tight budget
+       every pack that answers at all still carries a citation, and the
+       citation it carries is the one the generous pack carried.
+    3. **Twin agreement**: a golden question carrying a `spec_query` /
+       `plot_query` is the *symbol-path* question; asked in the designer's own
+       natural-language wording, the pack must land on a cited golden page and
+       carry the same verbatim expected substrings — the exact pass rule
+       `evalh.citations.verify_spec_queries` applies to the symbol path.
+
+    The misses are recorded per question rather than hidden behind a rate:
+    `KNOWN_ASK_MISSES` is an exact set, so a regression fails *and* so does a
+    fix that lands without updating the record.
+    """
+
+    BUDGET = 3000
+    TIGHT_BUDGET = 400
+
+    # Measured, not aspirational, and recorded per question so a regression
+    # fails *and* so does a fix that lands without updating the record.
+    #
+    # The one residual is not alias coverage and cannot be closed by a YAML
+    # edit. LM741 prints its absolute-maximum supply row as a parent row
+    # (`Supply` / `voltage`, max ±22) followed by nameless device-variant
+    # sub-rows carrying the per-variant maxima (`Supply` / `` , ±10 ±15 ±22
+    # and ±10 ±15 ±18). The ask path reaches the *named* rows through
+    # `supply voltages` and cites p.4 correctly, but the ±18 the question also
+    # expects lives on a sub-row whose only text is the symbol `Supply` —
+    # nothing distinguishes it from §6.5's `Supply` rows (PSRR 86 dB, supply
+    # current 1.7 mA) except the parameter its parent printed. The symbol path
+    # reaches it because `spec_query: {symbol: "Supply"}` takes every row with
+    # that symbol wholesale. Closing this means materializing an inherited
+    # *parameter name* into continuation rows at extraction time (ticket 09
+    # materializes the symbol only) — a corpus change, not a retrieval one.
+    KNOWN_ASK_MISSES: ClassVar[dict[str, set[str]]] = {
+        "AD9081": set(),
+        "LM741": {"s1-spec-supply-absmax"},
+        "QPA1003P": set(),
+        "HMC520A": set(),
+    }
+
+    def _twin_ok(self, question, pack) -> bool:
+        """The symbol path's own pass rule, applied to the pack's answers."""
+        from datasheet_analyzer.evalh.citations import contains
+
+        paged = [
+            line for line in pack.answers
+            if line.page_start is not None and line.page_start in question.pages
+        ]
+        return bool(paged) and all(
+            any(contains(line.text, sub) for line in paged)
+            for sub in question.expected_substrings
+        )
+
+    def test_every_golden_question_answers_inside_its_budget(self, gate, capsys):
+        from datasheet_analyzer.evalh.golden import load_golden
+        from datasheet_analyzer.retrieve import ROUTE_NONE, Retriever
+
+        rows: list[str] = []
+        routes: dict[str, int] = {}
+        total = answered = 0
+        largest = 0
+        for name in GATE:
+            retriever = Retriever.for_part(gate[name].part_dir)
+            questions = load_golden(GATE[name]["golden"])
+            costs = []
+            for q in questions:
+                pack = retriever.ask(q.question, budget=self.BUDGET)
+                assert pack.tokens <= self.BUDGET, f"{name}/{q.id} blew its budget"
+                assert not pack.over_budget, f"{name}/{q.id}"
+                assert pack.route in ("spec", "plot", "search", ROUTE_NONE)
+                if pack.route != ROUTE_NONE:
+                    assert pack.citations, f"{name}/{q.id}: an answer with no citation"
+                    assert all(line.citation for line in pack.answers), f"{name}/{q.id}"
+                    answered += 1
+                routes[pack.route] = routes.get(pack.route, 0) + 1
+                costs.append(pack.tokens)
+                total += 1
+                largest = max(largest, pack.tokens)
+            rows.append(
+                f"  {name:<9} {len(questions):>2} questions   "
+                f"mean {sum(costs) / len(costs):>6.0f} tok   max {max(costs):>5} tok"
+            )
+        with capsys.disabled():
+            print(
+                f"\nanswer packs, four gate corpora (budget {self.BUDGET})\n"
+                + "\n".join(rows)
+                + f"\n  {'TOTAL':<9} {total:>2} questions   {answered} answered   "
+                + "  ".join(f"{r}: {n}" for r, n in sorted(routes.items()))
+                + f"\n  largest pack {largest} tokens\n"
+            )
+        assert total >= 40
+        assert routes.get("spec", 0) and routes.get("plot", 0) and routes.get("search", 0), (
+            "all three routes must fire somewhere across four real datasheets"
+        )
+
+    def test_a_tight_budget_costs_prose_and_never_the_citation(self, gate):
+        from datasheet_analyzer.evalh.golden import load_golden
+        from datasheet_analyzer.retrieve import ROUTE_NONE, Retriever
+
+        for name in GATE:
+            retriever = Retriever.for_part(gate[name].part_dir)
+            for q in load_golden(GATE[name]["golden"]):
+                wide = retriever.ask(q.question, budget=self.BUDGET)
+                tight = retriever.ask(q.question, budget=self.TIGHT_BUDGET)
+                assert tight.tokens <= self.TIGHT_BUDGET, f"{name}/{q.id}"
+                assert tight.route == wide.route, f"{name}/{q.id}: routing moved"
+                if wide.route == ROUTE_NONE:
+                    continue
+                assert tight.citations, f"{name}/{q.id}: budget ate the citation"
+                assert tight.citations[0] == wide.citations[0], f"{name}/{q.id}"
+                assert tight.answers[0] == wide.answers[0], f"{name}/{q.id}"
+                if tight.truncated:
+                    assert "--budget" in tight.notice, f"{name}/{q.id}"
+
+    def test_natural_language_lands_on_the_symbol_paths_answer(self, gate, capsys):
+        from datasheet_analyzer.evalh.golden import load_golden
+        from datasheet_analyzer.retrieve import Retriever
+
+        rows: list[str] = []
+        hits = twins = 0
+        for name in GATE:
+            retriever = Retriever.for_part(gate[name].part_dir)
+            questions = [
+                q for q in load_golden(GATE[name]["golden"]) if q.spec_query or q.plot_query
+            ]
+            misses = set()
+            for q in questions:
+                pack = retriever.ask(q.question, budget=self.BUDGET)
+                if self._twin_ok(q, pack):
+                    hits += 1
+                else:
+                    misses.add(q.id)
+            twins += len(questions)
+            rows.append(
+                f"  {name:<9} {len(questions) - len(misses):>2}/{len(questions):<2} twins"
+                + (f"   missed: {', '.join(sorted(misses))}" if misses else "")
+            )
+            assert misses == self.KNOWN_ASK_MISSES[name], (
+                f"{name}: ask-path twin agreement moved — expected misses "
+                f"{sorted(self.KNOWN_ASK_MISSES[name])}, got {sorted(misses)}"
+            )
+        with capsys.disabled():
+            print(
+                "\nask-path twin agreement (natural language vs the symbol path)\n"
+                + "\n".join(rows)
+                + f"\n  {'TOTAL':<9} {hits:>2}/{twins:<2} "
+                f"({hits / twins:.0%})\n"
+            )
+        assert twins >= 15
+
+    def test_the_json_pack_validates_against_its_declared_schema(self, gate):
+        from datasheet_analyzer.evalh.golden import load_golden
+        from datasheet_analyzer.retrieve import Retriever, validate_pack
+
+        for name in GATE:
+            retriever = Retriever.for_part(gate[name].part_dir)
+            for q in load_golden(GATE[name]["golden"]):
+                payload = retriever.ask(q.question, budget=self.BUDGET).as_dict()
+                assert validate_pack(payload) == [], f"{name}/{q.id}"
 
 
 class TestGateGoldens:

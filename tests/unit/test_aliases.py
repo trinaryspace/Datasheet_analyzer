@@ -225,6 +225,38 @@ class TestResolutionLadder:
         afe = Retriever.for_part(seeded_corpora["AFE7950"]).specs(name=term)
         assert afe and afe[0].record.symbol == "TJ"
 
+    def test_a_phrase_split_across_symbol_and_name_still_resolves(self, tmp_path):
+        """A datasheet does not promise to keep a phrase inside one cell.
+
+        LM741's absolute-maximum grid prints `Supply` in the symbol column and
+        `voltage` in the parameter column, so `supply voltage` exists only
+        across the boundary. Matched per cell, that row is unreachable by the
+        very words that describe it; the ladder matches the record's printed
+        identity instead (`retriever._printed_as`).
+        """
+        part = _write_part(
+            tmp_path / "P",
+            [
+                {"symbol": "Supply", "name": "voltage", "max": "±22", "unit": "V",
+                 "page": 4},
+                {"symbol": "XYZ", "name": "wibble frobnicator", "page": 9},
+            ],
+        )
+        hits = Retriever.for_part(part).specs(name="absolute maximum supply voltages")
+        assert [h.record.symbol for h in hits] == ["Supply"]
+        assert hits[0].matched_via == "alias:supply voltages"
+
+    def test_the_split_cell_row_is_reachable_in_the_real_lm741_vocabulary(
+        self, seeded_corpora
+    ):
+        """The same, over LM741's recorded symbols rather than a stand-in."""
+        hits = Retriever.for_part(seeded_corpora["LM741"]).specs(
+            name="What are the absolute maximum supply voltages of the LM741 variants?"
+        )
+        assert hits, "the phrase spans the symbol/parameter boundary in this corpus"
+        assert hits[0].record.symbol == "Supply"
+        assert hits[0].matched_via.startswith("alias:")
+
     def test_fuzzy_needs_more_than_one_token(self, tmp_path):
         part = _write_part(
             tmp_path / "P",

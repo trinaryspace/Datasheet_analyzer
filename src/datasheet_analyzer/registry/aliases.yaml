@@ -72,8 +72,10 @@ RthJC:
 VDD:
   names:
     - supply voltage
+    - supply voltages
     - supply voltage range
     - operating supply voltage
+    - operating voltage
     - analog supply voltage
     - digital supply voltage
     - rail voltage
@@ -615,6 +617,7 @@ IF FREQUENCY RANGE:
 LO AMPLITUDE:
   names:
     - lo amplitude
+    - lo drive amplitude
     - lo drive level
     - lo input power
   expect_unit: dBm
@@ -669,3 +672,16 @@ VG:
     - forward gate current
   expect_unit: V
   kind: voltage
+
+# --- generic quantity classes ------------------------------------------------
+# Last on purpose, and deliberately unit-less. These are the phrases a designer
+# types when the datasheet's own symbol *is* the phrase ("Operational Frequency
+# Range", "IF FREQUENCY RANGE") and no vendor-specific entry above claimed the
+# wording. Two consequences of the position and the missing `expect_unit`:
+# `entry_for` reaches them only for records nothing above already claims, and
+# with no expected unit they can never lower a record's confidence grade — a
+# generic bucket must not regrade a corpus.
+Frequency Range:
+  names:
+    - frequency range
+  kind: frequency

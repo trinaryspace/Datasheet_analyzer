@@ -48,6 +48,11 @@ class Settings(BaseSettings):
     # INDEX.md must stay small enough to live in an agent's context.
     index_token_budget: int = 3000
 
+    # `dsa ask` answer packs: the default token budget one pack may spend.
+    # `--budget N` overrides per call; the pack announces any truncation and
+    # names both this setting and the flag.
+    ask_budget: int = Field(default=4000, ge=1)
+
     # TI document viewer fetching
     ti_base_url: str = "https://www.ti.com"
     http_timeout_s: int = 60

@@ -81,6 +81,26 @@ than stored. It is evidence for the hit, never the answer — the answer is on
 the cited page.
 _Avoid_: summary, preview, abstract, description
 
+**Answer pack**:
+What one `dsa ask` call returns: a single payload holding the answer rows,
+one supporting excerpt, and a verify footer — every part of it cited, the
+whole of it inside a stated token budget. It is assembled deterministically
+(routed by feature hits, filled greedily over a reserved tail) and never
+generated: every line in it is a record or verbatim text the corpus already
+held. A pack that had to drop something says so; a pack with no answer says
+that instead of guessing.
+_Avoid_: response, result, summary, report, completion
+
+**Route**:
+Which retrieval path an answer pack took — `spec`, `plot`, `search`,
+`unavailable`, or `none`. Chosen by feature hits in a fixed order, with no
+model in the decision, and reported back in the pack so a caller can tell a
+parametric answer from a quoted paragraph. `none` is a finding about the
+datasheet (nothing in this corpus answers it); `unavailable` is a finding
+about the *corpus* (the full-text path could not run because there is no
+current search index) — an answer pack must never spend one for the other.
+_Avoid_: intent, classification, dispatch, mode
+
 **Part**:
 A named device (e.g. AFE7950) and its corpus: a folder under `parts/`
 holding an index, inventory, manifest, and one document directory per source

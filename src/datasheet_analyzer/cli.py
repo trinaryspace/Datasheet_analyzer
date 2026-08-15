@@ -6,6 +6,7 @@ Commands:
   verify --part NAME        golden Q&A citation verification (deterministic)
   query --part NAME         deterministic spec lookup (alias ladder; --json)
   search --part NAME "..."  BM25 full-text search, cited by construction (--json)
+  ask --part NAME "..."     one cited answer pack inside a token budget (--json)
   plots --part NAME         deterministic plot lookup (--json)
   status                    configuration + detected parts
   version                   print version
@@ -267,6 +268,32 @@ def _cmd_search(args: argparse.Namespace) -> int:
     return 0 if hits else 1
 
 
+def _cmd_ask(args: argparse.Namespace) -> int:
+    import json
+
+    from datasheet_analyzer.retrieve import ROUTE_NONE, ROUTE_UNAVAILABLE, Retriever
+
+    settings = get_settings()
+    part_dir = settings.parts_dir / args.part
+    if not (part_dir / "manifest.json").exists():
+        print(f"no corpus at {part_dir} — run `dsa build` first", file=sys.stderr)
+        return 2
+
+    # Routing, assembly and the budget all live in the retrieval core; this
+    # command only chooses a rendering. The pack renders itself because a
+    # budget cannot be enforced on text the core did not produce.
+    pack = Retriever.for_part(part_dir).ask(args.question, budget=args.budget)
+    if args.json:
+        print(json.dumps(pack.as_dict(), ensure_ascii=False, indent=2))
+    else:
+        print(pack.markdown)
+    if pack.route == ROUTE_UNAVAILABLE:
+        # Same exit code `dsa search` uses for the same cause: the corpus is
+        # degraded, not the question unanswerable.
+        return 2
+    return 1 if pack.route == ROUTE_NONE else 0
+
+
 def _cmd_plots(args: argparse.Namespace) -> int:
     import json
 
@@ -474,6 +501,22 @@ def main(argv: list[str] | None = None) -> int:
         "--json", action="store_true", help="emit hits (score, citation, snippet) as JSON"
     )
     p_search.set_defaults(func=_cmd_search)
+
+    p_ask = sub.add_parser(
+        "ask", help="one cited, budget-bounded answer pack (spec / plot / search)"
+    )
+    p_ask.add_argument("--part", required=True)
+    p_ask.add_argument("question", help="a designer's question, in plain words")
+    p_ask.add_argument(
+        "--budget",
+        type=int,
+        default=0,
+        help="token budget for the pack (default: DSA_ASK_BUDGET, then 4000)",
+    )
+    p_ask.add_argument(
+        "--json", action="store_true", help="emit the pack as JSON (declared schema)"
+    )
+    p_ask.set_defaults(func=_cmd_ask)
 
     p_plots = sub.add_parser("plots", help="deterministic plot lookup")
     p_plots.add_argument("--part", required=True)

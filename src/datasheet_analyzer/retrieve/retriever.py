@@ -25,6 +25,10 @@ candidates, never a rung-6 guess.
 manifest. A corpus built before the index existed does not crash and does not
 silently answer nothing — `search_unavailable()` says to rebuild.
 
+`ask()` (ticket 05) composes all of it: one question in, one cited,
+budget-bounded `AnswerPack` out. The routing and the budget arithmetic live in
+`retrieve/pack.py`; this class stays the place lookups happen.
+
 Every spec and plot hit also carries the record's own `confidence` (ticket 04),
 read off the record — never recomputed here, and never used to drop, hide or
 reorder a hit. Grading is metadata; retrieval order stays the ladder's.
@@ -32,9 +36,11 @@ reorder a hit. Grading is metadata; retrieval order stays the ladder's.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Iterator
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from datasheet_analyzer.config import SEARCH_SCHEMA_VERSION
 from datasheet_analyzer.models import PlotRecord, SearchIndex, SectionFile, SpecRecord
@@ -54,9 +60,31 @@ from datasheet_analyzer.structure.aliases import (
     AliasEntry,
     AliasLexicon,
     load_lexicon,
+    padded,
     similarity,
     token_overlap,
     tokens,
+)
+
+if TYPE_CHECKING:  # pragma: no cover - import cycle guard, typing only
+    from datasheet_analyzer.retrieve.pack import AnswerPack
+
+# The words a designer uses to say "I want a picture". `retrieve.pack` routes
+# on this constant and `plots_for_terms` ranks with it, so the router and the
+# ranker cannot disagree about what plot vocabulary is. `diagram` is the
+# plan's list plus one measured addition: "where is the functional block
+# diagram?" is a figure question by any reading, and QPA1003P's golden asks it
+# in exactly those words.
+PLOT_VOCABULARY = re.compile(
+    r"\b(plots?|curves?|vs\.?|versus|graphs?|figures?|diagrams?)\b", re.IGNORECASE
+)
+# The subset that is *dead weight when ranking*: every caption in a plot
+# gallery says "vs." and every AFE7950 caption starts "Figure N", so scoring
+# on them ranks nothing and would let every figure match. `diagram` is
+# deliberately not here — it names a figure rather than describing all of them.
+_PLOT_WORDS = frozenset(
+    {"plot", "plots", "curve", "curves", "vs", "versus", "graph", "graphs",
+     "figure", "figures", "show", "shows", "showing"}
 )
 
 # One candidate record on its way to becoming a hit: the document it came
@@ -170,10 +198,11 @@ class Retriever:
             yield []
 
         # 2 — alias phrase. Candidates are the entry's canonical symbol *and*
-        # any record whose own symbol/name uses one of its phrases, because the
-        # layout floor records `Junction temperature` as the symbol where TI
-        # records `TJ`. Entries whose matched phrase is the same length tie on
-        # this rung and are offered together, for `expect_unit` to separate.
+        # any record whose own printed identity uses one of its phrases (see
+        # `_printed_as`), because the layout floor records `Junction
+        # temperature` as the symbol where TI records `TJ`. Entries whose
+        # matched phrase is the same length tie on this rung and are offered
+        # together, for `expect_unit` to separate.
         for group in _by_phrase_length(lex.phrase_hits(term)):
             candidates: list[_Candidate] = []
             claimed: set[tuple[int, int]] = set()
@@ -183,8 +212,7 @@ class Retriever:
                     if not (
                         rec.symbol.lower() == entry_low
                         or _in_family(rec, entry)
-                        or entry.describes(rec.symbol)
-                        or entry.describes(rec.name)
+                        or entry.describes(_printed_as(rec))
                     ):
                         continue
                     key = (id(doc), id(rec))
@@ -270,6 +298,46 @@ class Retriever:
                     )
                 )
         return hits
+
+    def plots_for_terms(self, text: str, *, limit: int = 5) -> list[PlotHit]:
+        """Rank the plot catalog by how much of `text`'s vocabulary it uses.
+
+        `plots()` is exact — a caller must already know a caption substring.
+        A designer asking "which figure shows TX output fullscale vs
+        frequency?" knows no such thing, so the terms are matched
+        individually against caption + conditions and the figures using most
+        of them lead. Plot vocabulary itself is dropped first: every caption
+        in a gallery says "vs.", so scoring on it ranks nothing and would let
+        every figure match.
+
+        Deterministic throughout — score, then the record's own id — so the
+        same catalog answers the same question identically on any machine.
+        """
+        terms = [t for t in tokens(text) if t not in _PLOT_WORDS]
+        if not terms:
+            return []
+        scored: list[tuple[int, str, PlotHit]] = []
+        for hit in self.plots():
+            rec = hit.record
+            haystack = padded(f"{rec.caption} {rec.conditions} {' '.join(rec.tags or [])}")
+            matched = sum(1 for t in terms if f" {t} " in haystack)
+            if matched:
+                scored.append((matched, rec.id, hit))
+        scored.sort(key=lambda s: (-s[0], s[1]))
+        return [
+            replace(hit, matched_via="caption-terms")
+            for _matched, _id, hit in (scored[:limit] if limit > 0 else scored)
+        ]
+
+    def ask(self, question: str, *, budget: int = 0) -> AnswerPack:
+        """One cited, budget-bounded answer pack (ticket 05; see `pack.py`).
+
+        Imported at call time only: `retrieve.pack` composes this class, so a
+        module-level import here would be a cycle.
+        """
+        from datasheet_analyzer.retrieve.pack import build_pack
+
+        return build_pack(self, question, budget=budget)
 
     def sections(
         self,
@@ -380,6 +448,26 @@ def _passes(rec: SpecRecord, *, section: str, also_name: str) -> bool:
     if section and section.lower() not in rec.section.lower():
         return False
     return not (also_name and also_name.lower() not in rec.name.lower())
+
+
+def _printed_as(rec: SpecRecord) -> str:
+    """The record's identity as the table printed it — symbol *then* name.
+
+    An alias phrase is a designer's phrase, and a datasheet does not promise
+    to keep one inside a single cell: LM741 prints `Supply` in the symbol
+    column and `voltage` in the parameter column, so `supply voltage` exists
+    only across the boundary. Matching each cell alone would make that record
+    unreachable by the words that describe it, which is why the ladder asks
+    the joined text — the same join `pack._head` renders back to the caller.
+
+    `AliasLexicon.entry_for` deliberately keeps its per-cell test: it answers
+    a different question ("does the lexicon know this record at all?"), and it
+    is what `structure/confidence.py` grades by — a grade already frozen into
+    every published corpus. Retrieval may widen; the rule a corpus was graded
+    under may not, not without a rebuild. Keeping the widening on this side of
+    the seam is what makes it provably grade-neutral.
+    """
+    return f"{rec.symbol} {rec.name}"
 
 
 def _in_family(rec: SpecRecord, entry: AliasEntry) -> bool:

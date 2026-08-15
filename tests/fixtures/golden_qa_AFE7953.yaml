@@ -1,0 +1,99 @@
+# Golden Q&A set for the AFE7953 (SBASAN1A) datasheet — the second reference
+# part, and until now the only built corpus with no benchmark of its own.
+#
+# Ground truth: every `expected_substrings` entry was read off the printed PDF
+# page text of `afe7953.pdf` (via `extract.pdf_structure.page_texts`) and
+# cross-checked against the corpus committed under `parts/AFE7953`, exactly
+# the two checks `evalh.citations.verify_questions` makes. `pages` are the
+# printed PDF page numbers an answer must cite.
+#
+# AFE7953 is a TI part with no recorded document-viewer pages in this repo, so
+# its corpus cannot be rebuilt inside a hermetic test (see AGENTS.md). The set
+# is therefore verified against the committed corpus + the skip-guarded PDF,
+# which is the same substrate `TestCommittedReferenceCorpora` already uses.
+questions:
+  - id: q01-serdes-standard-rate
+    question: Which SerDes standards are supported and what is the maximum lane rate?
+    expected_substrings: ["JESD204B", "JESD204C", "29.5"]
+    pages: [1]
+    section: "1"
+    kind: direct
+
+  - id: q02-package
+    question: What package does the AFE7953 come in?
+    expected_substrings: ["FCBGA", "17mm", "0.8mm"]
+    pages: [1]
+    section: "1"
+    kind: direct
+
+  - id: q03-rf-frequency-range
+    question: What RF frequency range does the AFE7953 cover?
+    expected_substrings: ["600MHz", "12GHz"]
+    pages: [1]
+    section: "1"
+    kind: direct
+
+  - id: q04-abs-max-junction-temperature
+    question: What is the absolute maximum junction temperature?
+    expected_substrings: ["150"]
+    pages: [4]
+    section: "4.1"
+    kind: direct
+    spec_query: {section: "4.1", name: "Junction temperature"}
+
+  - id: q05-thermal-resistance
+    question: What is the junction-to-ambient thermal resistance?
+    expected_substrings: ["16.2"]
+    pages: [6]
+    section: "4.4"
+    kind: direct
+    spec_query: {name: "Junction-to-ambient", section: "4.4"}
+
+  - id: q06-min-1p2v-supply
+    question: What is the minimum operating voltage of the 1.2V rails?
+    expected_substrings: ["1.15"]
+    pages: [6]
+    section: "4.3"
+    kind: direct
+    spec_query: {section: "4.3", name: "1.2V"}
+
+  - id: q07-dac-resolution
+    question: What is the DAC resolution of the AFE7953?
+    expected_substrings: ["14", "bits"]
+    pages: [7]
+    section: "4.5"
+    kind: direct
+    spec_query: {symbol: "DACRES"}
+
+  - id: q08-adc-resolution
+    question: What is the ADC resolution of the AFE7953?
+    expected_substrings: ["14", "bits"]
+    pages: [13]
+    section: "4.6"
+    kind: direct
+    spec_query: {symbol: "ADCRES"}
+
+  - id: q09-tx-dsa-range-step
+    question: What is the TX DSA attenuation range and analog step size?
+    expected_substrings: ["DSA Attenuation range", "40", "1.0", "dB"]
+    pages: [7]
+    section: "4.5"
+    kind: direct
+    spec_query: {section: "4.5", name: "Attenuation"}
+
+  - id: q10-spi-write-clock
+    question: What is the minimum SCLK period for register writes?
+    expected_substrings: ["25", "ns"]
+    pages: [25]
+    section: "4.10"
+    kind: direct
+    spec_query: {name: "SCLK period", section: "4.10"}
+    notes: 25 ns period => 40 MHz max write clock (derived answer allowed)
+
+  - id: p01-tx-output-fullscale
+    question: Which figure shows TX output fullscale vs output frequency?
+    expected_substrings: ["TX Output Fullscale"]
+    pages: [27]
+    section: "4.12.1"
+    kind: plot
+    plot_query: {caption_contains: "TX Output Fullscale vs Output Frequency"}

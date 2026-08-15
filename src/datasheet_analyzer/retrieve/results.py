@@ -18,7 +18,7 @@ exact symbol hit from a loose substring one:
 | Lookup | Values (strongest first) |
 |---|---|
 | specs | `symbol`, `alias:<phrase>`, `alias-prefix:<prefix>`, `symbol-substring`, `name-substring`, `fuzzy`, `section`, `all` |
-| plots | `caption`, `conditions`, `section`, `tag`, `all` |
+| plots | `caption`, `conditions`, `section`, `tag`, `caption-terms`, `all` |
 | sections | `number`, `title`, `page`, `all` |
 | search | `fulltext` |
 

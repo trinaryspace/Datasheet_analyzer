@@ -75,9 +75,10 @@ dsa verify --part AFE7950 --pdf afe7950.pdf --specs
 
 # Second reference part, same build path
 dsa build afe7953.pdf --part AFE7953
-# (no golden_qa_AFE7953.yaml exists — `dsa verify --part AFE7953` fails
-# loudly instead of running another part's benchmark; per-part goldens
-# live in tests/fixtures/golden_qa_<PART>.yaml)
+dsa verify --part AFE7953 --pdf afe7953.pdf --specs
+# (per-part goldens live in tests/fixtures/golden_qa_<PART>.yaml; `dsa verify`
+# resolves a part's own benchmark and fails loudly when it is missing, rather
+# than running another part's)
 
 # Non-TI part: vendor detected and pinned from page-1 brand text, built
 # and verified fully offline through the pdf_layout floor
@@ -97,6 +98,58 @@ descriptions even with a key set); `batch` accepts the same `--no-cache` /
 `--workers N` (parallel jobs; `DSA_BATCH_WORKERS` env default, 1 = serial).
 
 ## Using the corpus
+
+### Ask one question, get one cited answer (`dsa ask`)
+
+```bash
+dsa ask --part AFE7950 "max junction temperature" --budget 3000
+## AFE7950 — SBASA41E (datasheet-c1b4663b)
+### Answer
+TJ  Junction temperature: 150 °C (max) — §4.1, p.4  [high]
+TJ  Operating Junction Temperature: 110(1) °C (max) — §4.3, p.6  [high]
+TJ  Maximum Operating Junction Temperature: 125 °C (min) — §4.3, p.6  [high]
+TJ  Total Jitter Tolerance: 0.42 UI (max) — §4.8, p.20  [high]
+### Supporting excerpt  (§4.1 Absolute Maximum Ratings, p.4)
+## Unnumbered table > **Test conditions:** over operating free-air temperature
+range (unless otherwise noted)(1) | | | MIN | MAX | UNIT | … | Supply Voltage
+Range | DVDD0P9, VDDT0P9 | –0.3 | 1.2 | V | …
+### Verify
+Printed page 4 of afe7950.pdf.  Confidence: high.
+
+dsa ask --part QPA1003P "where is the functional block diagram?" --json
+```
+
+That transcript is the command's own output on a freshly built AFE7950 corpus
+(190 tokens), wrapped for this page with the middle of the excerpt row elided
+at `…`. It is worth reading against the plan, which illustrated this question
+with `105 °C — §4.3, p.6`: the AFE7950 prints its junction-temperature limit
+in §4.1 Absolute Maximum Ratings on page 4, and the pack cites what the
+datasheet prints, never what the example said. (A corpus built before
+per-record grading landed answers the same rows graded `unknown` until it is
+rebuilt.)
+
+One call instead of three or four. Routing is **deterministic — no LLM is in
+the path** — classified by feature hits in order:
+
+| Feature in the question | Route |
+|---|---|
+| the alias ladder resolves it to spec records | `spec` |
+| plot vocabulary (`plot`, `curve`, `vs`, `versus`, `graph`, `figure`, `diagram`) **and** a figure whose caption uses the question's words | `plot` |
+| anything the full-text index ranks | `search` |
+| nothing, and this corpus has no current full-text index | `unavailable` — rebuild to enable search (exit 2, as `dsa search` does) |
+| nothing | `none` — an explicit no-match plus nearest candidates, never a guess |
+
+The `unavailable` route is why an empty full-text result is never reported as
+an answer: `search()` returns nothing both when nothing matched and when there
+was no index to match against, and only the first of those is a statement
+about the datasheet.
+
+The pack is filled greedily against `--budget` (default `DSA_ASK_BUDGET`,
+4000 tokens) over a **reserved tail** — the header, the first answer line and
+the verify footer — so a budget can only ever cost extra rows and excerpt
+prose. **Citations are never the truncated part**, and any truncation prints a
+notice naming `--budget`. `--json` emits a shape with a declared schema
+(`retrieve.pack.ANSWER_PACK_SCHEMA`).
 
 ### Ask a parametric question (cheapest: ~2.5k tokens)
 
@@ -227,6 +280,7 @@ Environment variables (prefix `DSA_`, or `.env` file):
 | `DSA_PARTS_DIR` | `parts` | where corpora are written |
 | `DSA_CACHE_DIR` | `.cache` | HTTP + extraction caches |
 | `DSA_INDEX_TOKEN_BUDGET` | `3000` | hard INDEX.md budget |
+| `DSA_ASK_BUDGET` | `4000` | default `dsa ask` pack budget (`--budget` overrides) |
 | `DSA_LLM_DESCRIPTIONS` | `true` | use LLM for INDEX descriptions |
 | `DSA_MODEL` | `claude-haiku-4-5` | Anthropic model for descriptions |
 | `ANTHROPIC_API_KEY` | — | enables LLM enrichment |
@@ -237,7 +291,7 @@ Token counts everywhere are `chars/4` (see `tokens.py`).
 ## Development
 
 ```bash
-python -m pytest tests/ -q    # 508 tests, ~65 s, fully offline (the
+python -m pytest tests/ -q    # 600 tests, ~90 s, fully offline (the
                               # phase-4 gate builds four real PDFs)
 python -m ruff check src tests
 ```
@@ -251,7 +305,9 @@ Per-part goldens in `tests/fixtures/golden_qa_<PART>.yaml` are the
 objective function: hand-verified answers and page cites covering direct
 corpus reads, spec queries, and plot queries (AFE7950 carries the 19-Q
 historical benchmark; the four gate parts AD9081/LM741/QPA1003P/HMC520A
-each have their own, all verified 100% offline). `dsa verify --part X`
+each have their own, all verified 100% offline; AFE7953 has an 11-Q set
+verified against the committed corpus + the skip-guarded PDF, because that
+part has no offline build path). `dsa verify --part X`
 discovers the part's golden by name and fails loudly when it is missing —
 extend a set when new answer paths ship; `dsa verify` must stay at 100%
 for supported paths.

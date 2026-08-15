@@ -18,6 +18,7 @@ import csv
 import io
 import json
 from pathlib import Path
+from typing import ClassVar
 
 import pytest
 
@@ -292,6 +293,281 @@ def regrade_committed_corpus(part_dir: Path, pdf: Path) -> dict:
         "n_plots": len(plots),
         "unmatched": unmatched,
     }
+
+
+@pytest.mark.integration
+class TestAnswerPacksOnTheRealCorpus:
+    """Phase 5, ticket 05: `dsa ask` over the AFE7950 golden set.
+
+    The reference part is where the ask path has the most to prove: 39
+    sections, 619 spec rows and 514 figures, and a golden set whose questions
+    are written the way a designer speaks. Same three claims as the gate
+    corpora (`tests/integration/test_phase4_layout_gate.py::TestAnswerPacks`):
+    every pack inside its budget, citations un-truncatable at a tight one, and
+    natural-language twin agreement with the symbol path — with the residuals
+    recorded per question so neither a regression nor an unrecorded fix can
+    pass silently.
+    """
+
+    BUDGET = 3000
+    TIGHT_BUDGET = 400
+
+    # Recorded, not tolerated: the residual is never the pack inventing or
+    # dropping an answer. It was probed against the corpus.
+    #
+    #   q07 "how many integrated VCOs are there and what frequency range do
+    #       they cover?" — the only VCO-specific token in it is `VCOs`, and
+    #       `VCO` is a *symbol prefix* here (`fVCO1`…`fVCO4`), not a phrase a
+    #       whole-phrase lexicon can match; the longest alias phrase the
+    #       question does contain is `frequency range`, which §4.5's RF output
+    #       rows print verbatim, so the pack answers those and says so
+    #       (`matched_via: alias:frequency range`). Nor would a VCO rung
+    #       satisfy the twin rule: the answer spans eight sibling rows
+    #       (`fVCO1 min frequency` … `fVCO4 max frequency`) and the expected
+    #       extremes 7.2 and 12.08 are the first and the last of them, so the
+    #       per-route cap of `MAX_SPEC_ANSWERS` rows would drop 12.08. The
+    #       symbol path only reaches it because its twin filters to §4.7 —
+    #       a scope the natural-language question never states.
+    KNOWN_ASK_MISSES: ClassVar[set[str]] = {"q07-vco-coverage"}
+
+    def _questions(self):
+        return load_golden_yaml(GOLDEN)
+
+    def test_the_tickets_own_question_on_the_real_reference_corpus(self, built):
+        """`dsa ask --part AFE7950 "max junction temperature" --budget 3000`.
+
+        The plan illustrates this with `§4.3, p.6`; the AFE7950 actually
+        prints its junction-temperature limit in §4.1 Absolute Maximum
+        Ratings on page 4, and that is what the pack cites — the corpus
+        answers from the datasheet, never from the example.
+        """
+        from datasheet_analyzer.retrieve import ROUTE_SPEC, Retriever
+
+        result, _ = built
+        pack = Retriever.for_part(result.part_dir).ask(
+            "max junction temperature", budget=3000
+        )
+        assert pack.route == ROUTE_SPEC
+        top = pack.answers[0]
+        assert top.text.startswith("TJ")
+        assert "150 °C" in top.text
+        assert top.citation == "§4.1, p.4"
+        assert top.matched_via == "alias:max junction temperature"
+        assert top.confidence in ("high", "medium", "low")
+        assert f"Confidence: {top.confidence}." in pack.verify
+        assert "of afe7950.pdf" in pack.verify
+        assert pack.tokens <= 3000
+
+    def test_every_golden_question_answers_inside_its_budget(self, built, capsys):
+        from datasheet_analyzer.retrieve import ROUTE_NONE, Retriever
+
+        result, _ = built
+        retriever = Retriever.for_part(result.part_dir)
+        routes: dict[str, int] = {}
+        costs = []
+        for q in self._questions():
+            pack = retriever.ask(q.question, budget=self.BUDGET)
+            assert pack.tokens <= self.BUDGET, q.id
+            assert not pack.over_budget, q.id
+            if pack.route != ROUTE_NONE:
+                assert pack.citations, f"{q.id}: an answer with no citation"
+                assert all(line.citation for line in pack.answers), q.id
+            routes[pack.route] = routes.get(pack.route, 0) + 1
+            costs.append(pack.tokens)
+        with capsys.disabled():
+            print(
+                f"\nanswer packs, AFE7950 (budget {self.BUDGET}): "
+                f"{len(costs)} questions, mean {sum(costs) / len(costs):.0f} tok, "
+                f"max {max(costs)} tok — "
+                + "  ".join(f"{r}: {n}" for r, n in sorted(routes.items()))
+                + "\n"
+            )
+        assert costs
+
+    def test_a_tight_budget_costs_prose_and_never_the_citation(self, built):
+        from datasheet_analyzer.retrieve import ROUTE_NONE, Retriever
+
+        result, _ = built
+        retriever = Retriever.for_part(result.part_dir)
+        for q in self._questions():
+            wide = retriever.ask(q.question, budget=self.BUDGET)
+            tight = retriever.ask(q.question, budget=self.TIGHT_BUDGET)
+            assert tight.tokens <= self.TIGHT_BUDGET, q.id
+            assert tight.route == wide.route, q.id
+            if wide.route == ROUTE_NONE:
+                continue
+            assert tight.citations and tight.citations[0] == wide.citations[0], q.id
+            assert tight.answers[0] == wide.answers[0], q.id
+
+    def test_natural_language_lands_on_the_symbol_paths_answer(self, built, capsys):
+        from datasheet_analyzer.evalh.citations import contains
+        from datasheet_analyzer.retrieve import Retriever
+
+        result, _ = built
+        retriever = Retriever.for_part(result.part_dir)
+        twins = [q for q in self._questions() if q.spec_query or q.plot_query]
+        misses = set()
+        for q in twins:
+            pack = retriever.ask(q.question, budget=self.BUDGET)
+            paged = [
+                line for line in pack.answers
+                if line.page_start is not None and line.page_start in q.pages
+            ]
+            ok = bool(paged) and all(
+                any(contains(line.text, sub) for line in paged)
+                for sub in q.expected_substrings
+            )
+            if not ok:
+                misses.add(q.id)
+        with capsys.disabled():
+            print(
+                f"\nask-path twin agreement, AFE7950: "
+                f"{len(twins) - len(misses)}/{len(twins)}"
+                + (f"   missed: {', '.join(sorted(misses))}" if misses else "")
+                + "\n"
+            )
+        assert misses == self.KNOWN_ASK_MISSES, (
+            f"AFE7950 ask-path twin agreement moved — expected misses "
+            f"{sorted(self.KNOWN_ASK_MISSES)}, got {sorted(misses)}"
+        )
+
+    def test_the_json_pack_validates_against_its_declared_schema(self, built):
+        from datasheet_analyzer.retrieve import Retriever, validate_pack
+
+        result, _ = built
+        retriever = Retriever.for_part(result.part_dir)
+        for q in self._questions():
+            payload = retriever.ask(q.question, budget=self.BUDGET).as_dict()
+            assert validate_pack(payload) == [], q.id
+
+
+@pytest.mark.integration
+class TestAnswerPacksOnAfe7953:
+    """Phase 5, ticket 05: the *sixth* built part answers too.
+
+    Until this ticket's repair, AFE7953 was the one built corpus with no
+    golden set at all — so "every golden question across all six parts"
+    was measured over five. `tests/fixtures/golden_qa_AFE7953.yaml` closes
+    that: 11 questions whose expected substrings were read off the printed
+    pages of `afe7953.pdf` and cross-checked against the committed corpus,
+    the same substrate `TestCommittedReferenceCorpora` measures on (this part
+    has no offline build path — no recorded TI document-viewer pages exist
+    for it).
+
+    It is also the only place the ask path is exercised against a corpus
+    published *before* `search_index.json` existed, which is the honest-
+    degradation case the answer pack must not read as absence.
+    """
+
+    BUDGET = 3000
+    TIGHT_BUDGET = 400
+    GOLDEN: ClassVar[Path] = Path(__file__).parent.parent / "fixtures" / "golden_qa_AFE7953.yaml"
+
+    @pytest.fixture
+    def part_dir(self) -> Path:
+        if not (PARTS / "AFE7953" / "manifest.json").exists():
+            pytest.skip("committed parts/AFE7953 corpus not present")
+        return PARTS / "AFE7953"
+
+    def _questions(self):
+        assert self.GOLDEN.exists(), (
+            "AFE7953 is a built part and every built part carries a benchmark "
+            "(AGENTS.md invariant 5)"
+        )
+        return load_golden_yaml(self.GOLDEN)
+
+    def test_the_benchmark_verifies_100_percent(self, part_dir, afe7953_pdf):
+        """The set is ground truth before it is used to judge the ask path."""
+        from datasheet_analyzer.evalh.citations import (
+            verify_plot_queries,
+            verify_spec_queries,
+        )
+
+        questions = self._questions()
+        assert len(questions) >= 10
+        pages = page_texts(afe7953_pdf)
+        for res in verify_questions(questions, part_dir, pages):
+            assert res.corpus_contains, f"{res.question.id}: not in the cited section"
+            assert res.page_truth, f"{res.question.id}: not on the printed page"
+        for res in verify_spec_queries(questions, part_dir):
+            assert res.ok, f"{res.question.id}: symbol path missed"
+        for res in verify_plot_queries(questions, part_dir):
+            assert res.ok, f"{res.question.id}: plot path missed"
+
+    def test_natural_language_lands_on_the_symbol_paths_answer(self, part_dir, capsys):
+        from datasheet_analyzer.evalh.citations import contains
+        from datasheet_analyzer.retrieve import Retriever
+
+        retriever = Retriever.for_part(part_dir)
+        twins = [q for q in self._questions() if q.spec_query or q.plot_query]
+        misses = set()
+        for q in twins:
+            pack = retriever.ask(q.question, budget=self.BUDGET)
+            paged = [
+                line for line in pack.answers
+                if line.page_start is not None and line.page_start in q.pages
+            ]
+            if not (
+                paged
+                and all(
+                    any(contains(line.text, sub) for line in paged)
+                    for sub in q.expected_substrings
+                )
+            ):
+                misses.add(q.id)
+        with capsys.disabled():
+            print(
+                f"\nask-path twin agreement, AFE7953: "
+                f"{len(twins) - len(misses)}/{len(twins)}\n"
+            )
+        assert len(twins) >= 8
+        assert misses == set(), f"AFE7953 twins regressed: {sorted(misses)}"
+
+    def test_every_golden_question_answers_inside_its_budget(self, part_dir):
+        from datasheet_analyzer.retrieve import ROUTE_NONE, Retriever
+
+        retriever = Retriever.for_part(part_dir)
+        for q in self._questions():
+            wide = retriever.ask(q.question, budget=self.BUDGET)
+            tight = retriever.ask(q.question, budget=self.TIGHT_BUDGET)
+            assert wide.tokens <= self.BUDGET and not wide.over_budget, q.id
+            assert tight.tokens <= self.TIGHT_BUDGET, q.id
+            assert tight.route == wide.route, f"{q.id}: routing moved"
+            assert wide.route != ROUTE_NONE, (
+                f"{q.id}: this corpus provably answers it — a no-match is wrong"
+            )
+            if wide.citations:
+                assert tight.citations[0] == wide.citations[0], q.id
+                assert tight.answers[0] == wide.answers[0], q.id
+
+    def test_a_corpus_published_before_search_says_rebuild_not_no_match(self, part_dir):
+        """The committed AFE7953 corpus predates `search_index.json`.
+
+        A question that reaches neither a record nor a figure therefore has
+        no path left to run — and the pack must say the path could not run,
+        not that nothing in the datasheet answers it.
+        """
+        from datasheet_analyzer.retrieve import ROUTE_UNAVAILABLE, Retriever
+
+        retriever = Retriever.for_part(part_dir)
+        assert retriever.search_unavailable(), (
+            "recorded state: this corpus has no current search index. If it "
+            "has been republished, assert the search route here instead."
+        )
+        pack = retriever.ask("What package does the AFE7953 come in?", budget=self.BUDGET)
+        assert pack.route == ROUTE_UNAVAILABLE
+        assert "No spec record, figure or section in this corpus answers" not in (
+            pack.markdown
+        )
+        assert "Rebuild to enable search" in pack.markdown
+
+    def test_the_json_pack_validates_against_its_declared_schema(self, part_dir):
+        from datasheet_analyzer.retrieve import Retriever, validate_pack
+
+        retriever = Retriever.for_part(part_dir)
+        for q in self._questions():
+            payload = retriever.ask(q.question, budget=self.BUDGET).as_dict()
+            assert validate_pack(payload) == [], q.id
 
 
 @pytest.mark.integration
