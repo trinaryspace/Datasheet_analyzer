@@ -1,0 +1,1032 @@
+<title>Datasheet Analyzer Phases 5–7</title>
+<style>
+  :root {
+    --ground:   #F6F7F7;
+    --surface:  #FFFFFF;
+    --sunken:   #EDF0F0;
+    --text:     #171E22;
+    --muted:    #5B6B71;
+    --faint:    #8A9AA0;
+    --rule:     #DCE2E3;
+    --rule-firm:#C3CDCF;
+    --accent:   #17646E;
+    --accent-sf:#E2EFF0;
+    --ok:       #3A7550;
+    --ok-sf:    #E3F0E7;
+    --warn:     #9C6510;
+    --warn-sf:  #F7EDDB;
+    --risk:     #9C4436;
+    --risk-sf:  #F7E5E1;
+
+    --display: "Sitka Text", Charter, "Bitstream Charter", Cambria, Georgia, serif;
+    --body: "Segoe UI Variable Text", "Segoe UI", -apple-system, system-ui, sans-serif;
+    --mono: "Cascadia Mono", "Cascadia Code", ui-monospace, Consolas, "SF Mono", monospace;
+
+    --measure: 68ch;
+    --pad: clamp(1.1rem, 4vw, 2.5rem);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground:   #0F1417;
+      --surface:  #161D21;
+      --sunken:   #1C2529;
+      --text:     #E3EAEB;
+      --muted:    #97A8AE;
+      --faint:    #6E8087;
+      --rule:     #273338;
+      --rule-firm:#3A4A50;
+      --accent:   #4FB3BF;
+      --accent-sf:#123238;
+      --ok:       #6FB98A;
+      --ok-sf:    #162C1F;
+      --warn:     #D6A44B;
+      --warn-sf:  #2E2413;
+      --risk:     #D9887A;
+      --risk-sf:  #2E1A16;
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --ground:   #0F1417;
+    --surface:  #161D21;
+    --sunken:   #1C2529;
+    --text:     #E3EAEB;
+    --muted:    #97A8AE;
+    --faint:    #6E8087;
+    --rule:     #273338;
+    --rule-firm:#3A4A50;
+    --accent:   #4FB3BF;
+    --accent-sf:#123238;
+    --ok:       #6FB98A;
+    --ok-sf:    #162C1F;
+    --warn:     #D6A44B;
+    --warn-sf:  #2E2413;
+    --risk:     #D9887A;
+    --risk-sf:  #2E1A16;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    background: var(--ground);
+    color: var(--text);
+    font-family: var(--body);
+    font-size: 17px;
+    line-height: 1.62;
+    margin: 0;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap {
+    max-width: 1080px;
+    margin: 0 auto;
+    padding: 0 var(--pad) 6rem;
+  }
+
+  .prose { max-width: var(--measure); }
+
+  /* ---------- masthead ---------- */
+
+  .masthead {
+    border-bottom: 1px solid var(--rule-firm);
+    padding: clamp(2.5rem, 7vw, 4.5rem) 0 2rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1.15rem;
+  }
+
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: .72rem;
+    letter-spacing: .13em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin: 0;
+  }
+
+  h1 {
+    font-family: var(--display);
+    font-weight: 600;
+    font-size: clamp(2.1rem, 5.6vw, 3.4rem);
+    line-height: 1.08;
+    letter-spacing: -.012em;
+    text-wrap: balance;
+    margin: 0;
+    max-width: 20ch;
+  }
+
+  .standfirst {
+    font-size: clamp(1.02rem, 2.2vw, 1.2rem);
+    color: var(--muted);
+    margin: 0;
+    max-width: 60ch;
+    text-wrap: pretty;
+  }
+
+  /* ---------- nav ---------- */
+
+  nav.phasenav {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    background: color-mix(in srgb, var(--ground) 92%, transparent);
+    backdrop-filter: blur(10px);
+    border-bottom: 1px solid var(--rule);
+    margin-bottom: 3rem;
+  }
+
+  .phasenav ul {
+    max-width: 1080px;
+    margin: 0 auto;
+    padding: 0 var(--pad);
+    list-style: none;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0;
+  }
+
+  .phasenav a {
+    display: block;
+    padding: .7rem 1rem .7rem 0;
+    margin-right: 1.4rem;
+    font-family: var(--mono);
+    font-size: .78rem;
+    letter-spacing: .04em;
+    color: var(--muted);
+    text-decoration: none;
+    border-bottom: 2px solid transparent;
+    transition: color .15s ease, border-color .15s ease;
+  }
+
+  .phasenav a:hover,
+  .phasenav a:focus-visible { color: var(--accent); border-bottom-color: var(--accent); }
+
+  /* ---------- generic sections ---------- */
+
+  section { margin-top: 4.25rem; }
+
+  h2 {
+    font-family: var(--display);
+    font-weight: 600;
+    font-size: clamp(1.5rem, 3.4vw, 2rem);
+    line-height: 1.18;
+    letter-spacing: -.01em;
+    text-wrap: balance;
+    margin: 0 0 .9rem;
+  }
+
+  h3 {
+    font-family: var(--body);
+    font-weight: 650;
+    font-size: 1.02rem;
+    letter-spacing: .005em;
+    margin: 2.2rem 0 .6rem;
+  }
+
+  h4 {
+    font-family: var(--mono);
+    font-size: .74rem;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    color: var(--faint);
+    margin: 0 0 .8rem;
+    font-weight: 600;
+  }
+
+  p { margin: 0 0 1.05rem; text-wrap: pretty; }
+  p:last-child { margin-bottom: 0; }
+
+  a { color: var(--accent); }
+
+  code, .m {
+    font-family: var(--mono);
+    font-size: .875em;
+    font-variant-ligatures: none;
+  }
+
+  code {
+    background: var(--sunken);
+    padding: .1em .38em;
+    border-radius: 3px;
+  }
+
+  strong { font-weight: 650; }
+
+  /* ---------- state of play ---------- */
+
+  .stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 1px;
+    background: var(--rule);
+    border: 1px solid var(--rule);
+    margin: 1.75rem 0 0;
+  }
+
+  .stat {
+    background: var(--surface);
+    padding: 1.1rem 1.15rem;
+    display: flex;
+    flex-direction: column;
+    gap: .18rem;
+  }
+
+  .stat .n {
+    font-family: var(--mono);
+    font-size: 1.5rem;
+    font-weight: 600;
+    line-height: 1.1;
+    letter-spacing: -.02em;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .stat .l {
+    font-size: .78rem;
+    color: var(--muted);
+    line-height: 1.35;
+  }
+
+  /* ---------- phase cards ---------- */
+
+  .phasegrid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(255px, 1fr));
+    gap: 1.15rem;
+    margin-top: 1.9rem;
+  }
+
+  .pcard {
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    border-top: 3px solid var(--accent);
+    padding: 1.35rem 1.3rem 1.45rem;
+    display: flex;
+    flex-direction: column;
+    gap: .55rem;
+  }
+
+  .pcard .pnum {
+    font-family: var(--mono);
+    font-size: .72rem;
+    letter-spacing: .11em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+
+  .pcard h3 {
+    margin: 0;
+    font-family: var(--display);
+    font-size: 1.28rem;
+    font-weight: 600;
+    letter-spacing: -.005em;
+  }
+
+  .pcard .gap {
+    font-size: .9rem;
+    color: var(--muted);
+    margin: 0;
+  }
+
+  .pcard .claim {
+    font-family: var(--display);
+    font-style: italic;
+    font-size: .96rem;
+    line-height: 1.45;
+    color: var(--text);
+    border-top: 1px solid var(--rule);
+    padding-top: .75rem;
+    margin: .3rem 0 0;
+  }
+
+  /* ---------- phase headers ---------- */
+
+  .phasehead {
+    border-top: 3px solid var(--accent);
+    padding-top: 1.4rem;
+    margin-bottom: 1.6rem;
+  }
+
+  .phasehead .kicker {
+    font-family: var(--mono);
+    font-size: .74rem;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    color: var(--accent);
+    display: block;
+    margin-bottom: .5rem;
+  }
+
+  .claimbar {
+    background: var(--accent-sf);
+    border-left: 3px solid var(--accent);
+    padding: .85rem 1.1rem;
+    margin: 1.2rem 0 1.6rem;
+    font-family: var(--display);
+    font-size: 1.05rem;
+    font-style: italic;
+    line-height: 1.45;
+    max-width: var(--measure);
+  }
+
+  /* ---------- dependency spine ---------- */
+
+  .spine {
+    list-style: none;
+    margin: 1.5rem 0 0;
+    padding: 0 0 0 1.9rem;
+    position: relative;
+  }
+
+  .spine::before {
+    content: "";
+    position: absolute;
+    left: .42rem;
+    top: .55rem;
+    bottom: .55rem;
+    width: 1px;
+    background: var(--rule-firm);
+  }
+
+  .spine > li {
+    position: relative;
+    padding: 0 0 1.45rem;
+  }
+
+  .spine > li::before {
+    content: "";
+    position: absolute;
+    left: -1.9rem;
+    top: .5rem;
+    width: .55rem;
+    height: .55rem;
+    border-radius: 50%;
+    background: var(--ground);
+    border: 1.5px solid var(--accent);
+  }
+
+  .spine > li.blocked::before { border-color: var(--warn); background: var(--warn); }
+
+  .t-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: .55rem;
+    margin-bottom: .18rem;
+  }
+
+  .t-id {
+    font-family: var(--mono);
+    font-size: .82rem;
+    font-weight: 600;
+    color: var(--accent);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .t-name { font-weight: 650; font-size: 1rem; }
+
+  .t-what {
+    margin: 0;
+    font-size: .93rem;
+    color: var(--muted);
+    max-width: var(--measure);
+  }
+
+  .t-meta {
+    margin: .4rem 0 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: .4rem;
+  }
+
+  .chip {
+    font-family: var(--mono);
+    font-size: .68rem;
+    letter-spacing: .05em;
+    padding: .16rem .5rem;
+    border-radius: 2px;
+    border: 1px solid transparent;
+    white-space: nowrap;
+  }
+
+  .chip.dep { background: var(--sunken); color: var(--muted); border-color: var(--rule); }
+  .chip.blk { background: var(--warn-sf); color: var(--warn); border-color: color-mix(in srgb, var(--warn) 35%, transparent); }
+  .chip.par { background: var(--ok-sf); color: var(--ok); border-color: color-mix(in srgb, var(--ok) 32%, transparent); }
+
+  /* ---------- gate ---------- */
+
+  .gate {
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    padding: 1.3rem 1.4rem 1.4rem;
+    margin-top: 2rem;
+  }
+
+  .gate ul { margin: 0; padding-left: 1.15rem; }
+  .gate li { margin-bottom: .45rem; font-size: .95rem; }
+  .gate li:last-child { margin-bottom: 0; }
+  .gate li::marker { color: var(--accent); }
+
+  /* ---------- tables ---------- */
+
+  .tablewrap {
+    overflow-x: auto;
+    margin: 1.6rem 0 0;
+    border: 1px solid var(--rule);
+  }
+
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    min-width: 540px;
+    background: var(--surface);
+    font-size: .91rem;
+  }
+
+  th, td {
+    text-align: left;
+    padding: .7rem .9rem;
+    border-bottom: 1px solid var(--rule);
+    vertical-align: top;
+  }
+
+  thead th {
+    font-family: var(--mono);
+    font-size: .7rem;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: var(--faint);
+    font-weight: 600;
+    background: var(--sunken);
+    border-bottom: 1px solid var(--rule-firm);
+    white-space: nowrap;
+  }
+
+  tbody tr:last-child td { border-bottom: none; }
+
+  td.chose { color: var(--text); font-weight: 600; }
+  td.rejected { color: var(--muted); }
+  td.mono, th.mono { font-family: var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+  /* ---------- callout ---------- */
+
+  .callout {
+    border: 1px solid color-mix(in srgb, var(--warn) 38%, transparent);
+    background: var(--warn-sf);
+    padding: 1.1rem 1.25rem;
+    margin-top: 1.8rem;
+    max-width: var(--measure);
+  }
+
+  .callout.risk {
+    border-color: color-mix(in srgb, var(--risk) 38%, transparent);
+    background: var(--risk-sf);
+  }
+
+  .callout h4 { color: var(--warn); margin-bottom: .5rem; }
+  .callout.risk h4 { color: var(--risk); }
+  .callout p { font-size: .93rem; margin-bottom: .6rem; }
+
+  /* ---------- critical path ---------- */
+
+  .pathwrap {
+    overflow-x: auto;
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    padding: 1.3rem 1.4rem;
+    margin-top: 1.6rem;
+  }
+
+  pre.path {
+    margin: 0;
+    font-family: var(--mono);
+    font-size: .8rem;
+    line-height: 1.75;
+    color: var(--text);
+    white-space: pre;
+  }
+
+  /* ---------- footer ---------- */
+
+  footer {
+    margin-top: 5rem;
+    border-top: 1px solid var(--rule-firm);
+    padding-top: 1.5rem;
+    font-size: .87rem;
+    color: var(--muted);
+  }
+
+  footer .paths {
+    font-family: var(--mono);
+    font-size: .78rem;
+    line-height: 1.9;
+    color: var(--faint);
+    margin-top: .8rem;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; animation: none !important; }
+  }
+</style>
+
+<nav class="phasenav">
+  <ul>
+    <li><a href="#now">Where we are</a></li>
+    <li><a href="#p5">5 · Access</a></li>
+    <li><a href="#p6">6 · Content</a></li>
+    <li><a href="#p7">7 · Reach</a></li>
+    <li><a href="#decisions">Decisions</a></li>
+    <li><a href="#path">Critical path</a></li>
+  </ul>
+</nav>
+
+<div class="wrap">
+
+  <header class="masthead">
+    <p class="eyebrow">Roadmap · Phases 5–7 · 27 tickets</p>
+    <h1>From a corpus you can read to a corpus you can design with</h1>
+    <p class="standfirst">
+      Phases 1–4 made datasheet extraction trustworthy. These three phases make it
+      reachable by an agent, shaped like a schematic instead of a table of contents,
+      and honest at twenty parts instead of six.
+    </p>
+  </header>
+
+  <section id="now">
+    <h2>Where we are</h2>
+    <div class="prose">
+      <p>
+        The hard problem is solved. Six parts across four vendors build fully offline,
+        every value is verbatim, every answer carries a printed page number, and a
+        hand-verified golden set gates the whole thing. Nothing below asks you to
+        revisit that foundation.
+      </p>
+    </div>
+
+    <div class="stats">
+      <div class="stat"><span class="n">6</span><span class="l">parts built, 4 vendors</span></div>
+      <div class="stat"><span class="n">39</span><span class="l">sections, AFE7950</span></div>
+      <div class="stat"><span class="n">619</span><span class="l">spec records</span></div>
+      <div class="stat"><span class="n">514</span><span class="l">figure files</span></div>
+      <div class="stat"><span class="n">46k</span><span class="l">corpus tokens vs. raw PDF</span></div>
+      <div class="stat"><span class="n">342</span><span class="l">tests, fully offline</span></div>
+    </div>
+
+    <div class="prose" style="margin-top:1.9rem">
+      <p>
+        What is missing is not fidelity. It is that the corpus only answers a caller who
+        already speaks the datasheet's vocabulary, from a shell, about one part at a time.
+        Three gaps, three phases.
+      </p>
+    </div>
+
+    <div class="phasegrid">
+      <article class="pcard">
+        <span class="pnum">Phase 5 · 9 tickets</span>
+        <h3>Agent-Native Access</h3>
+        <p class="gap">The corpus is a filesystem a human drives with a CLI.</p>
+        <p class="claim">A designer's question, in a designer's words, returns a cited answer inside a budget.</p>
+      </article>
+      <article class="pcard">
+        <span class="pnum">Phase 6 · 10 tickets</span>
+        <h3>Design-Time Content</h3>
+        <p class="gap">The corpus is shaped like a datasheet, not like a schematic.</p>
+        <p class="claim">It answers schematic-capture and bring-up questions, and every derived number traces to a printed page.</p>
+      </article>
+      <article class="pcard">
+        <span class="pnum">Phase 7 · 8 tickets</span>
+        <h3>Reach &amp; Trust</h3>
+        <p class="gap">Onboarding is manual; quality is invisible at scale.</p>
+        <p class="claim">Twenty parts onboard cheaply, stay honest, and a series answers as one.</p>
+      </article>
+    </div>
+  </section>
+
+  <!-- ===================== PHASE 5 ===================== -->
+
+  <section id="p5">
+    <div class="phasehead">
+      <span class="kicker">Phase 5</span>
+      <h2>Agent-Native Access</h2>
+    </div>
+
+    <div class="prose">
+      <p>
+        <code>dsa query --symbol TJ</code> works. <em>"What is the max junction
+        temperature?"</em> returns nothing. There is no full-text path, so an agent greps
+        section files and attributes pages itself — defeating the provenance guarantee the
+        corpus exists for. A <code>--section 4.9</code> read costs 9,607 tokens with no
+        warning. And there is no noun above <strong>part</strong>, though the goal is
+        compiling datasheets <em>for a project</em>.
+      </p>
+      <p>
+        This phase adds <strong>no new extraction</strong>. It is surface over data that
+        already exists — which is why it comes first.
+      </p>
+    </div>
+
+    <p class="claimbar">A designer's question, in a designer's words, returns a cited answer inside a budget.</p>
+
+    <h4>The one structural change</h4>
+    <div class="prose">
+      <p>
+        Today <code>query.py</code> re-scans and re-parses every <code>specs.json</code>
+        on every call — fine for one CLI invocation, wrong for an MCP session making
+        dozens. A new <code>retrieve/</code> module becomes the single implementation of
+        every lookup, and both the CLI and the MCP server become thin adapters over it.
+        After this phase, no retrieval logic lives in a front end. That seam is what keeps
+        the two surfaces from ever drifting apart.
+      </p>
+    </div>
+
+    <h4>Tickets, in dependency order</h4>
+    <ol class="spine">
+      <li>
+        <div class="t-head"><span class="t-id">01</span><span class="t-name">Retrieval core seam</span></div>
+        <p class="t-what">Cached <span class="m">CorpusIndex</span> + typed results carrying citation, confidence, and which match rung fired. Everything else is an adapter over it.</p>
+      </li>
+      <li>
+        <div class="t-head"><span class="t-id">02</span><span class="t-name">Alias lexicon</span></div>
+        <p class="t-what">A YAML file mapping designers' words to datasheets' symbols, resolved by a five-rung ladder. Cheapest hit-rate win in the roadmap; adding a synonym is a data change.</p>
+        <div class="t-meta"><span class="chip dep">after 01</span></div>
+      </li>
+      <li>
+        <div class="t-head"><span class="t-id">03</span><span class="t-name">Full-text search</span></div>
+        <p class="t-what">A precomputed BM25 index built at publish. Every hit carries its section's page range, so search results are cited by construction — no caller ever attributes a page.</p>
+        <div class="t-meta"><span class="chip dep">after 01</span></div>
+      </li>
+      <li>
+        <div class="t-head"><span class="t-id">04</span><span class="t-name">Per-record confidence</span></div>
+        <p class="t-what">A high/medium/low grade per record from page pinning, the reconstruction gate, and cell completeness. This is what lets an agent say "open p.47" instead of asserting a shaky number.</p>
+        <div class="t-meta"><span class="chip dep">after 02</span></div>
+      </li>
+      <li>
+        <div class="t-head"><span class="t-id">05</span><span class="t-name">Answer packs — <span class="m">dsa ask</span></span></div>
+        <p class="t-what">One call, one cited payload, a hard budget with a reserved tail so citations can never be the truncated part. Routing is deterministic — no model inside <span class="m">ask</span>.</p>
+        <div class="t-meta"><span class="chip dep">after 02 · 03 · 04</span></div>
+      </li>
+      <li>
+        <div class="t-head"><span class="t-id">06</span><span class="t-name">Projects</span></div>
+        <p class="t-what">An explicit part list plus one always-loadable <span class="m">PROJECT_INDEX.md</span> for a whole design. Project-scoped questions label every answer with the part it came from.</p>
+        <div class="t-meta"><span class="chip dep">after 01</span><span class="chip par">parallel to 02–05</span></div>
+      </li>
+      <li>
+        <div class="t-head"><span class="t-id">07</span><span class="t-name">MCP server (local stdio)</span></div>
+        <p class="t-what">Nine tools including <span class="m">get_figure</span>, which returns the PNG as an image block — narrow 514 figures with a filter, receive the one that matters, show it to the designer.</p>
+        <div class="t-meta"><span class="chip dep">after 05 · 06</span></div>
+      </li>
+      <li>
+        <div class="t-head"><span class="t-id">08</span><span class="t-name">Agent protocol files</span></div>
+        <p class="t-what"><span class="m">AGENT.md</span> shipped inside every corpus, plus an in-repo skill, so the retrieval discipline travels with the data instead of living in a prompt.</p>
+        <div class="t-meta"><span class="chip dep">after 07</span></div>
+      </li>
+      <li>
+        <div class="t-head"><span class="t-id">09</span><span class="t-name">Golden extension + gate</span></div>
+        <p class="t-what">Natural-language and search-path questions added per part, which must land on the same verbatim answer and page as their symbol-path twins.</p>
+        <div class="t-meta"><span class="chip dep">after 07 · 08</span></div>
+      </li>
+    </ol>
+
+    <div class="gate">
+      <h4>Acceptance gate</h4>
+      <ul>
+        <li>All existing goldens for six parts still at 100%.</li>
+        <li>Every golden question asked in plain language resolves to the <strong>same verbatim answer and page</strong> as its symbol-path twin.</li>
+        <li>Every search-path question's top-1 hit is the section holding the verified answer.</li>
+        <li>Pack size at or under budget for every golden question — asserted numerically, not spot-checked.</li>
+        <li>Citations survive a deliberately tiny budget; truncation always announces itself.</li>
+        <li>Every MCP tool exercised in-process over the memory transport — no subprocess, no port.</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- ===================== PHASE 6 ===================== -->
+
+  <section id="p6">
+    <div class="phasehead">
+      <span class="kicker">Phase 6</span>
+      <h2>Design-Time Content</h2>
+    </div>
+
+    <div class="prose">
+      <p>
+        After Phase 5 the corpus answers datasheet questions well — but it is still
+        organised the way a datasheet is organised, and it is missing the two tables a
+        designer and a firmware engineer actually live inside. The pin table, which
+        <em>is</em> the datasheet during schematic capture, exists in no queryable form.
+        Register maps route to the degraded paragraphs-only backend, so bring-up questions
+        are unanswerable by construction.
+      </p>
+      <p>
+        This is where the tool stops helping someone <em>read</em> a datasheet and starts
+        helping someone <em>design</em> with it.
+      </p>
+    </div>
+
+    <p class="claimbar">The corpus answers schematic-capture and bring-up questions, and every derived number traces to a printed page.</p>
+
+    <h4>The contract that makes this safe</h4>
+    <div class="prose">
+      <p>
+        These are the first artifacts that are not verbatim-extracted, which puts pressure
+        on the invariant that keeps this repo trustworthy. <strong>ADR 0005</strong>
+        resolves it: a derived artifact may contain only verbatim values, values computed
+        from them by a documented pure function, or labels from a checked-in lexicon.
+        Every field carries its source record, its page, and the named rule that produced
+        it. <strong>No model call appears anywhere in the derivation path.</strong> A field
+        that cannot be filled stays null and says so.
+      </p>
+      <p>
+        The test that enforces it walks every value on every card and resolves it back to a
+        real record and a printed page. That test is the most important thing in this phase.
+      </p>
+    </div>
+
+    <h4>Tickets, in dependency order</h4>
+    <ol class="spine">
+      <li>
+        <div class="t-head"><span class="t-id">01</span><span class="t-name">Derived-artifact contract</span></div>
+        <p class="t-what">ADR 0005, invariant 8, the provenance envelope, and stable record ids that a <span class="m">source</span> field can point at. Contract first — everything conforms to it.</p>
+      </li>
+      <li>
+        <div class="t-head"><span class="t-id">02</span><span class="t-name">Numeric layer</span></div>
+        <p class="t-what">Parse ranges, bounds, tolerances, and SI prefixes into a parallel field set — and return nothing for <span class="m">See Figure 7</span>. Verbatim stays authoritative; failing is a first-class outcome.</p>
+        <div class="t-meta"><span class="chip dep">after 01</span></div>
+      </li>
+      <li>
+        <div class="t-head"><span class="t-id">03</span><span class="t-name">Device-table abstraction</span></div>
+        <p class="t-what">Pin tables and register tables are the same animal — wide, repetitive, keyed by a first column. One identify → map → validate → emit pipeline, two consumers.</p>
+        <div class="t-meta"><span class="chip dep">after 01</span></div>
+      </li>
+      <li>
+        <div class="t-head"><span class="t-id">04</span><span class="t-name">Pins</span></div>
+        <p class="t-what">The most-needed missing artifact. Multi-pin rows expand, types come from a lexicon with <span class="m">unknown</span> as a legitimate answer, and the extracted count is cross-checked against the package's stated count.</p>
+        <div class="t-meta"><span class="chip dep">after 03</span></div>
+      </li>
+      <li class="blocked">
+        <div class="t-head"><span class="t-id">05</span><span class="t-name">Register summary tables</span></div>
+        <p class="t-what">Re-routes register maps from the paragraphs-only backend to the layout engine so tables exist at all. Address, name, reset, access — queryable by parsed value.</p>
+        <div class="t-meta"><span class="chip dep">after 04</span><span class="chip blk">blocked · reference PDF</span></div>
+      </li>
+      <li class="blocked">
+        <div class="t-head"><span class="t-id">06</span><span class="t-name">Register bit fields</span></div>
+        <p class="t-what">The hard shape. Explicitly permitted to fail closed: if it cannot pass a 100% accuracy gate, it parks with a recorded shortcoming and ships nothing.</p>
+        <div class="t-meta"><span class="chip dep">after 05</span><span class="chip blk">blocked · reference PDF</span></div>
+      </li>
+      <li>
+        <div class="t-head"><span class="t-id">07</span><span class="t-name">Design cards</span></div>
+        <p class="t-what">Power, thermal, interface, and limits — the datasheet reorganised around what you need open while drawing. A card with no data is honestly empty, never invented.</p>
+        <div class="t-meta"><span class="chip dep">after 02 · 04</span></div>
+      </li>
+      <li>
+        <div class="t-head"><span class="t-id">08</span><span class="t-name">Plot axis catalog</span></div>
+        <p class="t-what">Axis labels, units, and ranges read geometrically, so 514 figures narrow to one before a vision token is spent. Uncertain stays null.</p>
+        <div class="t-meta"><span class="chip par">independent — pick up while blocked</span></div>
+      </li>
+      <li>
+        <div class="t-head"><span class="t-id">09</span><span class="t-name">Cross-part compare</span></div>
+        <p class="t-what">Part selection in one call: both verbatim values, both page cites, a delta only where both sides parsed, and an explicit list of what could not be compared.</p>
+        <div class="t-meta"><span class="chip dep">after 02 · 07</span></div>
+      </li>
+      <li>
+        <div class="t-head"><span class="t-id">10</span><span class="t-name">MCP surface + gate</span></div>
+        <p class="t-what">New artifacts exposed through the Phase 5 seam; <span class="m">ask</span> learns to route pin and register questions; goldens extended; report written.</p>
+        <div class="t-meta"><span class="chip dep">after 04 · 07 · 08 · 09</span></div>
+      </li>
+    </ol>
+
+    <div class="gate">
+      <h4>Acceptance gate</h4>
+      <ul>
+        <li>Pin tables extract for all six parts <strong>or are honestly rejected with a recorded reason</strong> — no partial <span class="m">pins.json</span>.</li>
+        <li>Every value on every card resolves to a real record and a printed page, checked programmatically.</li>
+        <li>A part lacking a card's data emits an empty card with a stated reason, never a fabricated one.</li>
+        <li>The limits card flags zero-margin parameters — a hazard invisible when abs-max and recommended-operating are read pages apart.</li>
+        <li>Every unparseable-input case returns nothing, asserted individually.</li>
+        <li>Axis metadata on ≥60% of AFE7950's figures at high confidence; the rest honestly null.</li>
+      </ul>
+    </div>
+
+    <div class="callout">
+      <h4>Known blocker</h4>
+      <p>
+        Tickets 05 and 06 are <span class="m">needs-info</span> until the reference
+        register-map PDF lands in the repo. A register parser written without a real
+        document to gate against would be fiction.
+      </p>
+      <p style="margin-bottom:0">
+        Ticket 08 is independent of everything else in the phase and is the right work to
+        pick up in the meantime.
+      </p>
+    </div>
+  </section>
+
+  <!-- ===================== PHASE 7 ===================== -->
+
+  <section id="p7">
+    <div class="phasehead">
+      <span class="kicker">Phase 7</span>
+      <h2>Reach &amp; Trust</h2>
+    </div>
+
+    <div class="prose">
+      <p>
+        Three things break as the part count grows from six to sixty. Onboarding is manual,
+        so the BOM-to-corpora path stops at step one. Nothing knows whether a datasheet is
+        current — revisions are parsed and then never questioned. And quality is invisible
+        to the consumer: extraction stats tell the <em>builder</em> how a build went, while
+        nothing tells the <em>agent</em> whether to trust a corpus before answering.
+      </p>
+    </div>
+
+    <p class="claimbar">Twenty parts onboard cheaply, stay honest, and a series answers as one.</p>
+
+    <h4>Tickets, in dependency order</h4>
+    <ol class="spine">
+      <li>
+        <div class="t-head"><span class="t-id">01</span><span class="t-name">Document registry + <span class="m">dsa fetch</span></span></div>
+        <p class="t-what">A checked-in URL registry that grows by use, with sha256 verification. A mismatch warns loudly and stops; a miss names the flag that fixes it. No scraping, no search API, no guessing.</p>
+      </li>
+      <li>
+        <div class="t-head"><span class="t-id">02</span><span class="t-name">Revision awareness</span></div>
+        <p class="t-what">An opt-in network check — never part of <span class="m">build</span> — surfacing staleness in four places, including a footer on every answer. The phase's safety feature.</p>
+        <div class="t-meta"><span class="chip dep">after 01</span></div>
+      </li>
+      <li>
+        <div class="t-head"><span class="t-id">03</span><span class="t-name">Revision diff</span></div>
+        <p class="t-what">What changed between two revisions: specs, sections, pins, and register reset values. Turns a datasheet update from a re-read into a review.</p>
+        <div class="t-meta"><span class="chip dep">after 02 · P6-02</span></div>
+      </li>
+      <li>
+        <div class="t-head"><span class="t-id">04</span><span class="t-name">Errata cross-linking</span></div>
+        <p class="t-what">Errata linked to the section or spec they invalidate, with a warning that reaches the answer pack. An item the matcher can't place is still published, never dropped.</p>
+        <div class="t-meta"><span class="chip par">independent</span></div>
+      </li>
+      <li>
+        <div class="t-head"><span class="t-id">05</span><span class="t-name">Audit scorecard</span></div>
+        <p class="t-what">Builder statistics promoted into a consumer-readable A–F grade against a checked-in rubric, so an agent can downgrade its own language on a weak corpus.</p>
+        <div class="t-meta"><span class="chip dep">after 02</span></div>
+      </li>
+      <li>
+        <div class="t-head"><span class="t-id">06</span><span class="t-name">Golden generation assist</span></div>
+        <p class="t-what">Stratified candidates templated from records that already carry verbatim answers and pages. Unconfirmed candidates never count toward verify — the invariant survives intact.</p>
+        <div class="t-meta"><span class="chip par">independent · critical path</span></div>
+      </li>
+      <li>
+        <div class="t-head"><span class="t-id">07</span><span class="t-name">Part families</span></div>
+        <p class="t-what">Shared sections listed once, differences tabulated. The direct answer to "become an expert on a series" — and a large token win.</p>
+        <div class="t-meta"><span class="chip par">independent</span></div>
+      </li>
+      <li>
+        <div class="t-head"><span class="t-id">08</span><span class="t-name">Scale gate + report</span></div>
+        <p class="t-what">≥20 parts across ≥3 vendors, an ≥8-part project, a family, every part graded ≥ B or carrying a recorded reason why not.</p>
+        <div class="t-meta"><span class="chip dep">after 01–07</span></div>
+      </li>
+    </ol>
+
+    <div class="callout risk">
+      <h4>The one that matters most</h4>
+      <p style="margin-bottom:0">
+        Ticket 02. Right now the tool would answer from a superseded datasheet with full
+        confidence and a valid page cite — an agent that does that without saying so is the
+        most dangerous behaviour this system can have. If the phase gets cut short, keep
+        the staleness warning.
+      </p>
+    </div>
+  </section>
+
+  <!-- ===================== DECISIONS ===================== -->
+
+  <section id="decisions">
+    <h2>Decisions taken up front</h2>
+    <div class="prose">
+      <p>
+        Each of these closed off work a reasonable plan might otherwise have included.
+        Recorded so the reasoning survives the decision.
+      </p>
+    </div>
+
+    <div class="tablewrap">
+      <table>
+        <thead>
+          <tr><th>Question</th><th>Chosen</th><th>Rejected, and why</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Derived data</td>
+            <td class="chose">Deterministic only</td>
+            <td class="rejected">LLM-assisted-verified (non-deterministic builds, needs a verification harness); LLM free-form (breaks the traceability guarantee)</td>
+          </tr>
+          <tr>
+            <td>Project input</td>
+            <td class="chose">Explicit part list</td>
+            <td class="rejected">BOM CSV and EDA netlist parsing — an agent that reads a BOM can call <span class="m">project add</span>, which is the cheap 90%</td>
+          </tr>
+          <tr>
+            <td>Document fetch</td>
+            <td class="chose">Curated URL registry</td>
+            <td class="rejected">URL pattern probing (brittle); web-search resolution (non-deterministic, risks a mirrored or wrong document)</td>
+          </tr>
+          <tr>
+            <td>MCP</td>
+            <td class="chose">Local stdio only</td>
+            <td class="rejected">HTTP/remote — no team-sharing requirement yet, and auth plus multi-tenancy is real cost</td>
+          </tr>
+          <tr>
+            <td>Pins</td>
+            <td class="chose">Printed tables only</td>
+            <td class="rejected">Ball-map reconstruction (vendor-variable); vision fallback (puts a model in the content path)</td>
+          </tr>
+          <tr>
+            <td>Registers</td>
+            <td class="chose">First-class, gated</td>
+            <td class="rejected">Indefinite deferral — bring-up matters; but bit fields may still park rather than ship approximate</td>
+          </tr>
+          <tr>
+            <td>Plots</td>
+            <td class="chose">Axis catalog + hand over the PNG</td>
+            <td class="rejected">Curve digitization now — a confidently wrong interpolated value is the worst failure this tool could produce</td>
+          </tr>
+          <tr>
+            <td>Priority</td>
+            <td class="chose">Depth, then breadth</td>
+            <td class="rejected">Breadth first — would scale a corpus shape still being changed</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ===================== PATH ===================== -->
+
+  <section id="path">
+    <h2>Critical path</h2>
+    <div class="prose">
+      <p>
+        Within each phase, one chain determines the wall clock and everything else fills in
+        around it. Phase 5 is a chain with projects running alongside. Phase 6 splits after
+        the contract lands. Phase 7 is mostly parallel, with fetch and golden generation
+        gating the scale run.
+      </p>
+    </div>
+
+    <div class="pathwrap">
+<pre class="path">Phase 5   01 ─→ 02 ─→ 03 ─→ 04 ─→ 05 ─┐
+                                       ├─→ 07 ─→ 08 ─→ 09
+          06 ───────────────────────────┘
+
+Phase 6   01 ─→ 02 ────────────┐
+          01 ─→ 03 ─→ 04 ─→ 05 ─→ 06        ← blocked on reference PDF
+                          └─→ 07 ─→ 09 ─→ 10
+          08 ─────────────────────────┘     ← independent throughout
+
+Phase 7   01 ─→ 02 ─→ 03 ─┐
+          04 ─────────────┤
+          05 ─────────────┼─→ 08
+          06 ─────────────┤
+          07 ─────────────┘
+          real critical path: 01 → 06 → 08</pre>
+    </div>
+
+    <div class="tablewrap">
+      <table>
+        <thead>
+          <tr><th>Phase</th><th class="mono">Pipeline version</th><th>Invariant change</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>5</td><td class="mono">0.2.0 → 0.3.0</td><td>None — publish artifacts change; the existing cache gate handles it</td></tr>
+          <tr><td>6</td><td class="mono">0.3.0 → 0.4.0</td><td><strong>New invariant 8</strong> — deterministic derived artifacts. Register-map re-routing invalidates those extractions</td></tr>
+          <tr><td>7</td><td class="mono">0.4.0 → 0.5.0</td><td>Invariant 5 gains "generated candidates never count until confirmed"</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="callout risk">
+      <h4>Unrelated hygiene</h4>
+      <p style="margin-bottom:0">
+        <span class="m">.env</span> is tracked in git and contains an API key line. It has
+        never been committed, so <span class="m">git rm --cached .env</span> plus a
+        <span class="m">.gitignore</span> entry clears it — but it lands in history on the
+        next commit as things stand.
+      </p>
+    </div>
+  </section>
+
+  <footer>
+    <p>
+      Every claim above is specified in full in the execution contracts and tracked as
+      ticket files with acceptance criteria, following the repo's existing spec-and-issues
+      convention.
+    </p>
+    <div class="paths">
+      Reports/ROADMAP_5_7.md · PHASE_5_PLAN.md · PHASE_6_PLAN.md · PHASE_7_PLAN.md<br>
+      .scratch/agent-native-access/ · .scratch/design-time-content/ · .scratch/reach-and-trust/
+    </div>
+  </footer>
+
+</div>
