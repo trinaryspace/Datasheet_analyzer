@@ -190,9 +190,17 @@ class ExtractionStats(BaseModel):
     The detected/accepted/rejected table counts, rejection reasons and
     mean fidelity are filled by the layout engine (``pdf_layout``); other
     backends record just the backend name.
+
+    ``extractor_version`` is the backend's ``output_version`` at build time.
+    It is what lets a later run tell a current corpus from one produced by an
+    older extractor output schema: the batch skip gate rebuilds when it no
+    longer matches (`PIPELINE_VERSION` is the coarser guard and does not move
+    on every extractor bump). Empty on corpora built before this field
+    existed, which reads as stale and rebuilds once.
     """
 
     backend: str = ""
+    extractor_version: str = ""
     tables_detected: int = 0
     tables_accepted: int = 0
     tables_rejected: int = 0

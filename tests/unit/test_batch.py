@@ -330,6 +330,42 @@ def test_pipeline_version_bump_forces_rebuild(batch_env, monkeypatch):
     assert report.counts == {STATUS_DONE: 3, STATUS_FAILED: 0, STATUS_SKIPPED: 0}
 
 
+def test_extractor_version_bump_forces_rebuild(batch_env, monkeypatch):
+    """A bumped extractor output_version must rebuild, not skip.
+
+    PIPELINE_VERSION does not move on every extractor bump (the layout engine
+    went tables-05 -> 06 -> 07 without one), so a gate that only checked it
+    would serve corpora built by a superseded extractor.
+    """
+    import datasheet_analyzer.batch as batch_mod
+
+    pdfs, settings = batch_env
+    assert run_batch(pdfs, settings=settings, use_llm=False).ok
+    # baseline: freshly built corpora still skip (the new field must not
+    # break skipping outright)
+    steady = run_batch(pdfs, settings=settings, use_llm=False)
+    assert steady.counts == {STATUS_DONE: 0, STATUS_FAILED: 0, STATUS_SKIPPED: 3}
+
+    real_get_backend = batch_mod.get_backend
+
+    class _Bumped:
+        """The real backend, reporting a newer output_version."""
+
+        output_version = "bumped-99"
+
+        def __init__(self, inner):
+            self._inner = inner
+
+        def __getattr__(self, name):
+            return getattr(self._inner, name)
+
+    monkeypatch.setattr(
+        batch_mod, "get_backend", lambda name: _Bumped(real_get_backend(name))
+    )
+    report = run_batch(pdfs, settings=settings, use_llm=False)
+    assert report.counts == {STATUS_DONE: 3, STATUS_FAILED: 0, STATUS_SKIPPED: 0}
+
+
 def test_skip_uses_hash_not_mtime(batch_env):
     pdfs, settings = batch_env
     assert run_batch(pdfs, settings=settings, use_llm=False).ok

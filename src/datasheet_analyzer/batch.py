@@ -11,8 +11,10 @@ when any job failed (the CLI maps that to exit code 1).
 
 Re-running a batch over the same directory skips parts that are already
 built and unchanged: a job is skipped when the part's manifest exists with
-the current ``PIPELINE_VERSION`` and the PDF's sha256 matches the hash
-recorded for it in the part's inventory (never mtime or size). ``--force``
+the current ``PIPELINE_VERSION``, every published document's recorded
+``extractor_version`` still matches what its backend emits today, and the
+PDF's sha256 matches the hash recorded for it in the part's inventory
+(never mtime or size). ``--force``
 disables the check; ``--no-cache`` (``use_cache=False``) also rebuilds,
 matching ``dsa build --no-cache``'s full-redo semantics. A changed PDF is
 re-registered under its new identity before building, so the rebuilt part is
@@ -55,9 +57,11 @@ from pathlib import Path
 
 from datasheet_analyzer.acquire.inventory import load_inventory, register_source, save_inventory
 from datasheet_analyzer.config import PIPELINE_VERSION, Settings
+from datasheet_analyzer.extract.base import get_backend
 from datasheet_analyzer.extract.pdf_structure import compute_content_hash
 from datasheet_analyzer.models import CorpusManifest, CorpusStats
 from datasheet_analyzer.pipeline import build_part
+from datasheet_analyzer.vendor import select_backend
 
 STATUS_DONE = "done"
 STATUS_FAILED = "failed"
@@ -242,19 +246,49 @@ def _refresh_pdf_source(job: BatchJob, settings: Settings) -> None:
     save_inventory(kept, part_dir)
 
 
+def _extractor_stale(manifest: CorpusManifest) -> bool:
+    """True when any published document was built by a superseded extractor.
+
+    Compares each document's recorded ``extractor_version`` against the
+    ``output_version`` the backend its vendor routes to emits today. A missing
+    stats entry or an unknown backend counts as stale: the gate's contract is
+    that whatever it cannot verify must rebuild.
+    """
+    for doc in manifest.documents:
+        recorded = manifest.extraction_stats.get(doc.content_hash)
+        if recorded is None:
+            return True
+        try:
+            backend = get_backend(select_backend(doc.vendor, doc.doc_type))
+        except KeyError:
+            return True
+        if recorded.extractor_version != getattr(backend, "output_version", ""):
+            return True
+    return False
+
+
 def skip_reason(job: BatchJob, *, settings: Settings, force: bool = False) -> str:
     """Nonempty reason to skip ``job``, or "" when it must build.
 
     A job is skipped only when the part's corpus manifest exists, records the
-    current ``PIPELINE_VERSION``, and the PDF's sha256 matches the hash of the
-    document recorded for this file in the part's inventory AND the manifest's
-    published documents (`content_hash` is the source document's identity —
-    never mtime or size). Requiring the hash among the published documents
-    means a failed rebuild can never arm the skip on a stale corpus. ``force``
-    bypasses the whole check. Missing, corrupt or version-stale manifests and
-    unknown hashes all mean build (a changed PDF is re-registered by the build
-    path, restoring the skip condition for later runs). Never raises: any
-    failure to verify means "not safe to skip".
+    current ``PIPELINE_VERSION``, every published document's recorded
+    ``extractor_version`` still matches what its backend produces today, and
+    the PDF's sha256 matches the hash of the document recorded for this file
+    in the part's inventory AND the manifest's published documents
+    (`content_hash` is the source document's identity — never mtime or size).
+    Requiring the hash among the published documents means a failed rebuild
+    can never arm the skip on a stale corpus. ``force`` bypasses the whole
+    check. Missing, corrupt or version-stale manifests and unknown hashes all
+    mean build (a changed PDF is re-registered by the build path, restoring
+    the skip condition for later runs). Never raises: any failure to verify
+    means "not safe to skip".
+
+    The extractor check is separate from ``PIPELINE_VERSION`` on purpose. The
+    layout engine bumps its own ``output_version`` (tables-05 -> 06 -> 07)
+    without necessarily moving ``PIPELINE_VERSION``; ``build_part`` already
+    invalidates a stale *extraction cache* that way, but a batch run that
+    skips the job never reaches that code, so without this the gate would
+    serve corpora built by a superseded extractor.
     """
     if force:
         return ""
@@ -268,14 +302,16 @@ def skip_reason(job: BatchJob, *, settings: Settings, force: bool = False) -> st
         )
         if manifest.pipeline_version != PIPELINE_VERSION:
             return ""
+        if _extractor_stale(manifest):
+            return ""
         pdf_hash = compute_content_hash(job.pdf_path)
         published = {s.content_hash for s in manifest.documents}
         entries = [
             s for s in load_inventory(part_dir) if _same_path(s.path, job.pdf_path)
         ]
         if any(s.content_hash == pdf_hash for s in entries) and pdf_hash in published:
-            return (f"already built: PDF sha256 and pipeline version "
-                    f"{PIPELINE_VERSION} match")
+            return (f"already built: PDF sha256, pipeline version "
+                    f"{PIPELINE_VERSION} and extractor versions match")
         return ""
     except (OSError, ValueError):  # JSONDecodeError etc. — never raise
         return ""

@@ -88,6 +88,15 @@ def write_corpus(
         extraction = raw.extraction_stats
         if extraction is None:
             extraction = ExtractionStats(backend=raw.extractor)
+        # Stamp the extractor identity on every document, whatever produced
+        # the stats: the batch skip gate reads it to detect a corpus built by
+        # an older extractor output schema.
+        extraction = extraction.model_copy(
+            update={
+                "backend": extraction.backend or raw.extractor,
+                "extractor_version": raw.extractor_version,
+            }
+        )
         manifest.extraction_stats[raw.source.content_hash] = extraction
         stats.n_sections += len(plans)
 
