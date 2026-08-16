@@ -630,17 +630,16 @@ class TestAnswerPacks:
     }
 
     def _twin_ok(self, question, pack) -> bool:
-        """The symbol path's own pass rule, applied to the pack's answers."""
-        from datasheet_analyzer.evalh.citations import contains
+        """The symbol path's own pass rule, applied to the pack's answers.
 
-        paged = [
-            line for line in pack.answers
-            if line.page_start is not None and line.page_start in question.pages
-        ]
-        return bool(paged) and all(
-            any(contains(line.text, sub) for line in paged)
-            for sub in question.expected_substrings
-        )
+        Ticket 09 moved that rule into `evalh.citations` as
+        `pack_answers_question`, because `dsa verify` now applies it to every
+        `ask_query` golden — one rule, one place, so this measurement and the
+        shipped command can never disagree about what "the pack answered it"
+        means."""
+        from datasheet_analyzer.evalh.citations import pack_answers_question
+
+        return pack_answers_question(question, pack)
 
     def test_every_golden_question_answers_inside_its_budget(self, gate, capsys):
         from datasheet_analyzer.evalh.golden import load_golden
@@ -857,6 +856,48 @@ class TestProjectIndexEconomics:
         with capsys.disabled():
             print("\nproject-scoped ask, 3 gate parts\n" + "\n".join(rows) + "\n")
 
+    def test_a_project_ask_answers_from_the_part_whose_golden_it_is(self, board, capsys):
+        """Ticket 09: the project box, tied to the benchmarks rather than to
+        hand-picked probes. Each member's own ask-path golden, asked of the
+        *design*, must be answered by that member — on the page its benchmark
+        cites — and every row must still name the part it came from, because
+        across a board a value with no device is not an answer."""
+        from datasheet_analyzer.evalh.citations import contains
+        from datasheet_analyzer.evalh.golden import load_golden
+        from datasheet_analyzer.projects import part_dirs
+        from datasheet_analyzer.retrieve import ProjectRetriever
+
+        settings, project = board
+        scope = ProjectRetriever.for_parts(
+            project.name, part_dirs(project, settings.parts_dir)
+        )
+        rows: list[str] = []
+        for name in self.MEMBERS:
+            golden = next(
+                q for q in load_golden(GATE[name]["golden"]) if q.ask_query is not None
+            )
+            pack = scope.ask(golden.question, budget=3000)
+            assert pack.tokens <= 3000, name
+            assert all(line.part for line in pack.answers), name
+            cited = [
+                line for line in pack.answers
+                if line.part == name and line.page_start in golden.pages
+            ]
+            assert cited, f"{name}: {golden.question!r} -> {[l.part for l in pack.answers]}"
+            assert all(
+                any(contains(line.text, sub) for line in cited)
+                for sub in golden.expected_substrings
+            ), name
+            rows.append(
+                f"  {golden.question[:52]:<54} -> "
+                f"{', '.join(dict.fromkeys(line.part for line in pack.answers))}"
+            )
+        with capsys.disabled():
+            print(
+                "\nproject-scoped ask over each member's own golden\n"
+                + "\n".join(rows) + "\n"
+            )
+
     def test_every_hit_of_a_project_search_names_its_part(self, board):
         from datasheet_analyzer.projects import part_dirs
         from datasheet_analyzer.retrieve import ProjectRetriever
@@ -939,3 +980,257 @@ class TestGateGoldens:
         assert f"**{n_spec}/{n_spec} passed" in out, name
         if n_plot:
             assert f"**{n_plot}/{n_plot} passed" in out, name
+        # ticket 09: the two new paths are part of the same command and the
+        # same exit code, and their tables must be in the same output
+        assert "## Ask-path verification" in out, name
+        assert "## Search-path verification" in out, name
+
+
+class TestGoldenPathsOnTheGateCorpora:
+    """Phase 5, ticket 09 — the phase's claim, measured on four real PDFs.
+
+    *"A designer's question, in a designer's words, returns a cited answer
+    inside a budget."* Each gate part's benchmark gained an **ask-path**
+    question (natural language, no symbols) and a **search-path** question
+    (top-1 must be the section holding the answer), both judged against the
+    ground truth the set already carried: the printed page it cites and the
+    verbatim substrings read off that page.
+
+    The verifiers are the shipped ones — `evalh.citations.verify_ask_queries`
+    / `verify_search_queries`, the very code `dsa verify` runs — so this gate
+    cannot pass by a rule written only for the test.
+    """
+
+    BUDGET = 3000
+
+    def test_every_gate_part_carries_both_new_paths(self):
+        from datasheet_analyzer.evalh.golden import load_golden
+
+        for name in GATE:
+            questions = load_golden(GATE[name]["golden"])
+            assert any(q.ask_query is not None for q in questions), name
+            assert any(q.search_query is not None for q in questions), name
+
+    def test_the_ask_path_answers_every_golden_it_carries(self, gate, capsys):
+        from datasheet_analyzer.evalh.citations import verify_ask_queries
+        from datasheet_analyzer.evalh.golden import load_golden
+
+        rows: list[str] = []
+        for name in GATE:
+            questions = load_golden(GATE[name]["golden"])
+            results = verify_ask_queries(
+                questions, gate[name].part_dir, budget=self.BUDGET
+            )
+            assert results, f"{name}: no ask-path question"
+            failed = [r.question.id for r in results if not r.ok]
+            assert failed == [], f"{name}: ask path missed {failed}"
+            for r in results:
+                assert r.tokens <= self.BUDGET, f"{name}/{r.question.id}"
+                rows.append(
+                    f"  {name:<9} {r.question.id:<28} {r.route:<7} "
+                    f"{r.tokens:>4}/{r.budget} tok   {r.detail}"
+                )
+        with capsys.disabled():
+            print("\nask-path goldens, four gate corpora\n" + "\n".join(rows) + "\n")
+
+    def test_the_search_path_ranks_the_answering_section_first(self, gate, capsys):
+        from datasheet_analyzer.evalh.citations import verify_search_queries
+        from datasheet_analyzer.evalh.golden import load_golden
+
+        rows: list[str] = []
+        for name in GATE:
+            questions = load_golden(GATE[name]["golden"])
+            results = verify_search_queries(questions, gate[name].part_dir)
+            assert results, f"{name}: no search-path question"
+            failed = [(r.question.id, r.detail) for r in results if not r.ok]
+            assert failed == [], f"{name}: search path missed {failed}"
+            for r in results:
+                rows.append(f"  {name:<9} {r.question.id:<30} {r.detail}")
+        with capsys.disabled():
+            print("\nsearch-path goldens, four gate corpora\n" + "\n".join(rows) + "\n")
+
+    def test_budget_compliance_is_numeric_over_the_whole_golden_set(
+        self, gate, capsys
+    ):
+        """Every question of every gate part — not only the ask-path ones —
+        asked at a generous budget and again at a tight one, with the cost
+        measured rather than sampled. The tight budget is the interesting
+        one: it must cost prose, never a citation."""
+        from datasheet_analyzer.evalh.golden import load_golden
+        from datasheet_analyzer.retrieve import ROUTE_NONE, Retriever
+
+        tight, rows, worst = 400, [], 0
+        total = 0
+        for name in GATE:
+            retriever = Retriever.for_part(gate[name].part_dir)
+            costs: list[int] = []
+            for q in load_golden(GATE[name]["golden"]):
+                wide = retriever.ask(q.question, budget=self.BUDGET)
+                lean = retriever.ask(q.question, budget=tight)
+                assert wide.tokens <= self.BUDGET and not wide.over_budget, q.id
+                assert lean.tokens <= tight, q.id
+                if wide.route != ROUTE_NONE:
+                    assert lean.citations[0] == wide.citations[0], q.id
+                costs.append(wide.tokens)
+                total += 1
+                worst = max(worst, wide.tokens)
+            rows.append(
+                f"  {name:<9} {len(costs):>2} questions   "
+                f"mean {sum(costs) / len(costs):>5.0f} tok   max {max(costs):>4} tok"
+            )
+        with capsys.disabled():
+            print(
+                f"\nbudget compliance, four gate corpora (budget {self.BUDGET}, "
+                f"tight {tight})\n" + "\n".join(rows)
+                + f"\n  {'TOTAL':<9} {total:>2} questions   largest {worst} tok\n"
+            )
+        assert total >= 45
+
+
+class TestMcpOverTheGateCorpora:
+    """Phase 5, ticket 09: the MCP tools exercised **in the gate**, in-process.
+
+    `tests/unit/test_mcp_server.py` proves the surface against a synthetic
+    corpus — every tool, every declared schema, the response cap. What it
+    cannot prove is that the tools answer *real* datasheets: a 45-page ADI
+    part with unnumbered sections, an old-TI part with numbered ones, a Qorvo
+    part with no outline at all. That is what this does, over the same memory
+    transport (a real `ClientSession`, no subprocess, no port), driving the
+    corpora the gate just built and the golden questions ticket 09 added.
+
+    The SDK is an optional extra, so it is imported inside the fixture rather
+    than at module scope: a lean install skips this class instead of failing
+    collection and taking the whole phase-4 gate down with it.
+    """
+
+    @pytest.fixture
+    def servers(self, gate, tmp_path_factory):
+        pytest.importorskip("mcp", reason="the MCP gate needs the [mcp] extra")
+        from datasheet_analyzer.mcp_server import server as S
+
+        out = {}
+        for name in GATE:
+            part_dir = gate[name].part_dir
+            settings = Settings(
+                parts_dir=part_dir.parent,
+                cache_dir=part_dir.parent / ".cache",
+                projects_dir=tmp_path_factory.mktemp(f"mcp-projects-{name}"),
+            ).resolve()
+            out[name] = S.build_server(settings)
+        return out
+
+    def _golden(self, name, attr):
+        from datasheet_analyzer.evalh.golden import load_golden
+
+        return next(
+            q for q in load_golden(GATE[name]["golden"])
+            if getattr(q, attr) is not None
+        )
+
+    def test_every_tool_answers_every_gate_corpus_over_a_real_session(
+        self, servers, gate, capsys
+    ):
+        from mcp_session import call, payload_of
+
+        from datasheet_analyzer.mcp_server import responses as R
+
+        rows: list[str] = []
+        for name, server in servers.items():
+            ask_q = self._golden(name, "ask_query")
+            search_q = self._golden(name, "search_query")
+            calls = {
+                "list_parts": {},
+                "list_projects": {},
+                "get_index": {"part": name},
+                "search": {"part": name, "query": search_q.search_query["query"]},
+                "find_spec": {"part": name, "name": ask_q.question},
+                "find_plots": {"part": name},
+                "ask": {"part": name, "question": ask_q.question, "budget": 3000},
+            }
+            payloads = {}
+            for tool, arguments in calls.items():
+                payloads[tool] = payload_of(call(server, tool, **arguments))
+                assert R.validate_response(payloads[tool], tool) == [], f"{name}/{tool}"
+                assert payloads[tool]["error"] == "", f"{name}/{tool}"
+
+            # the index is this corpus's own, not another part's
+            assert name in payloads["get_index"]["text"], name
+            assert payloads["list_parts"]["parts"][0]["part"] == name
+
+            # a search hit is cited by construction, and its section reads back
+            top = payloads["search"]["hits"][0]
+            assert "p." in top["citation"], name
+            section = payload_of(call(server, "read_section", part=name, ref=top["file"]))
+            assert R.validate_response(section, "read_section") == [], name
+            assert section["text"], name
+            assert section["text"] == (
+                gate[name].part_dir / top["file"]
+            ).read_text(encoding="utf-8")
+
+            # the ask tool lands the golden's cited page, inside its budget
+            pack = payloads["ask"]["pack"]
+            assert pack["route"] == ask_q.ask_query["route"], name
+            assert pack["tokens"] <= pack["budget"], name
+            assert any(
+                line["page_start"] in ask_q.pages for line in pack["answers"]
+            ), f"{name}: the MCP pack missed the cited page"
+
+            # narrow the catalog, then receive the one figure as an image
+            figure = self._first_figure(gate[name].part_dir, payloads["find_plots"])
+            image = call(server, "get_figure", part=name, file=figure)
+            blocks = [c for c in image.content if c.type == "image"]
+            assert blocks and blocks[0].data, f"{name}: no image content block"
+            assert payload_of(image)["figure"]["citation"], name
+
+            rows.append(
+                f"  {name:<9} {len(payloads['search']['hits']):>2} search hits   "
+                f"{len(payloads['find_spec']['hits']):>3} spec hits   "
+                f"ask {pack['route']:<6} {pack['tokens']:>4} tok   "
+                f"figure {figure.rsplit('/', 1)[-1]}"
+            )
+        with capsys.disabled():
+            print(
+                "\nMCP tools over four gate corpora (in-process memory transport)\n"
+                + "\n".join(rows) + "\n"
+            )
+
+    def _first_figure(self, part_dir, find_plots_payload) -> str:
+        for hit in find_plots_payload["hits"]:
+            if hit["file"] and (part_dir / hit["file"]).exists():
+                return hit["file"]
+        raise AssertionError(f"{part_dir.name}: no cataloged figure has pixels on disk")
+
+    def test_a_traversal_attempt_is_refused_for_that_reason(self, servers):
+        """The one refusal that must hold on a real corpus too: a caller's
+        string becomes a path in exactly one place, and it refuses rather
+        than normalizes."""
+        from mcp_session import call, payload_of
+
+        payload = payload_of(
+            call(servers["AD9081"], "get_figure", part="AD9081",
+                 file="../../../etc/passwd")
+        )
+        assert "refused" in payload["error"]
+        assert "inside the part directory" in payload["error"]
+
+    def test_the_response_cap_announces_itself_on_a_real_index(self, servers, gate):
+        """A real `INDEX.md` is thousands of tokens; under a tiny cap the
+        response must come back trimmed *and* say so, naming the setting."""
+        from mcp_session import call, payload_of
+
+        from datasheet_analyzer.mcp_server import responses as R
+        from datasheet_analyzer.mcp_server import server as S
+
+        part_dir = gate["AD9081"].part_dir
+        settings = Settings(
+            parts_dir=part_dir.parent,
+            cache_dir=part_dir.parent / ".cache",
+            mcp_max_tokens=120,
+        ).resolve()
+        payload = payload_of(
+            call(S.build_server(settings), "get_index", part="AD9081")
+        )
+        assert R.validate_response(payload, "get_index") == []
+        assert payload["truncated"]
+        assert R.CAP_SETTING in payload["notice"]
+        assert payload["tokens"] <= 120

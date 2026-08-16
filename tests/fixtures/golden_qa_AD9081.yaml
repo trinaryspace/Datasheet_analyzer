@@ -40,6 +40,25 @@ questions:
     spec_query: {symbol: "Gain Matching"}
     notes: Table 3 row with complete min/typ/max on the parent record
 
+  - id: a1-ask-gain-matching
+    question: What gain matching do the DAC channels achieve?
+    expected_substrings: ["Gain Matching", "0.7", "% FSR"]
+    pages: [5]
+    kind: ask
+    ask_query: {route: spec}
+    notes: ticket-09 ask path — the twin of q3-spec. One `dsa ask` call must
+      land the same Table 3 row on the same printed page, inside its budget.
+
+  - id: k1-search-dac-dc-specifications
+    question: Where is the full-scale output current of the DACs specified?
+    expected_substrings: ["dc-coupled applications", "maximum VCMOUT specification"]
+    pages: [5]
+    kind: search
+    search_query: {query: "full-scale output current dc-coupled applications"}
+    notes: ticket-09 search path — the twin of q1. Top-1 must be the
+      unnumbered "DAC DC Specifications" section, whose text holds the
+      answer only because ticket 05 attaches footnote bodies to their table.
+
   - id: p1-hd2-6gsps
     question: Which figure shows HD2 vs fOUT over digital scale at a 6 GSPS DAC sample rate?
     expected_substrings: ["HD2 vs. fOUT over Digital Scale, 6 GSPS"]

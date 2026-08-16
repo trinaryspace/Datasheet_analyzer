@@ -96,6 +96,26 @@ questions:
     kind: direct
     spec_query: {symbol: "Power dissipation"}
 
+  - id: a1-ask-common-mode-rejection
+    question: How well does the LM741 reject common-mode signals?
+    expected_substrings: ["80", "95", "dB"]
+    pages: [5]
+    kind: ask
+    ask_query: {route: spec}
+    notes: ticket-09 ask path — the twin of s2, asked without the printed
+      parameter name; the alias lexicon carries "common mode" to the §6.5
+      rejection-ratio row on page 5.
+
+  - id: k1-search-common-mode-rejection
+    question: Where is the common-mode rejection ratio specified?
+    expected_substrings: ["Common-mode rejection ratio", "80", "95", "dB"]
+    pages: [6]
+    kind: search
+    search_query: {query: "common-mode rejection ratio"}
+    notes: ticket-09 search path — the twin of q09. Top-1 is §6.7
+      (LM741C electrical characteristics), the page-6 section that prints
+      the row.
+
   - id: p1-noninverting-amplifier-circuit
     question: Which figure shows the LM741 noninverting amplifier circuit?
     expected_substrings: ["LM741 Noninverting Amplifier Circuit"]

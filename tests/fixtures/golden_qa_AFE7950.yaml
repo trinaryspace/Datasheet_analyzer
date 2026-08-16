@@ -1,6 +1,18 @@
 # Golden Q&A set for the AFE7950 (SBASA41E) datasheet.
 # Every expected_substring was verified against the printed PDF page text.
 # `pages` are the printed PDF page numbers an answer must cite.
+#
+# Phase 5, ticket 09 adds the two paths the phase introduced: `a01` asks in a
+# designer's words and must reach the same printed page a symbol lookup would
+# (`dsa ask`), and `k01` must put the section holding the answer at rank 1
+# (`dsa search`). Both are judged by this file's existing ground truth — the
+# cited page and the verbatim substrings — never by a rule of their own.
+#
+# `k01` needs `search_index.json`, which publish has written since ticket 03.
+# The corpus committed under `parts/AFE7950` predates it, so `dsa verify`
+# reports that question as `search unavailable` there until the part is
+# rebuilt — the honest answer, since the path never ran. The gate verifies it
+# against the freshly built corpus (`tests/integration/test_afe7950_build.py`).
 questions:
   - id: q01-dac-resolution
     question: What is the DAC resolution of the AFE7950?
@@ -129,6 +141,29 @@ questions:
     section: "4.2"
     kind: direct
     spec_query: {section: "4.2", name: "Electrostatic"}
+
+  - id: a01-ask-max-junction-temperature
+    question: What is the maximum junction temperature?
+    expected_substrings: ["Junction temperature", "150"]
+    pages: [4]
+    section: "4.1"
+    kind: ask
+    ask_query: {route: spec}
+    notes: the phase plan's own showcase question, asked without a symbol.
+      The plan illustrates it as §4.3 p.6; the AFE7950 actually prints its
+      junction-temperature limit in §4.1 Absolute Maximum Ratings on page 4,
+      and page 4 is what the pack must cite — the corpus answers from the
+      datasheet, never from the example.
+
+  - id: k01-search-sysref-timing
+    question: Where are the SYSREF setup and hold requirements specified?
+    expected_substrings: ["50", "ps"]
+    pages: [27]
+    section: "4.10"
+    kind: search
+    search_query: {query: "sysref setup and hold"}
+    notes: twin of q09 (symbol path §4.10). The top-1 hit must be §4.10
+      Timing Requirements, the section that prints the 50 ps requirement.
 
   - id: p01-tx-fullscale-800m
     question: Which figure shows TX output fullscale vs frequency at 800 MHz?

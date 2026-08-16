@@ -1,8 +1,10 @@
 # PHASE 5 PLAN — Agent-Native Access
 
-**Status: planned.** Execution contract for `.scratch/agent-native-access/`.
-Superseded on landing by `Reports/PHASE_5_REPORT.md` (measured numbers), per
-the convention that a shipped plan closes with a report, never by assertion.
+**Status: shipped — superseded by `Reports/PHASE_5_REPORT.md`.** This file is
+the completed execution contract for `.scratch/agent-native-access/`; the
+report carries the measured numbers, the acceptance-gate results and the one
+box that is still outstanding (the MCP hand-verification). Read the report
+first; keep this for the reasoning behind the design.
 
 **Scope decisions taken before writing** (see `Reports/ROADMAP_5_7.md` for the
 full decision record): local-stdio MCP only, projects are explicit part lists,
@@ -236,7 +238,8 @@ the gate above requires those tests to actually run on the documented dev
 install; the SDK-free half of the surface is tested separately so a lean
 install still checks the seam, the schemas and the path-safety refusal.
 
-**Outstanding at ticket-07 close — one box no test can tick.** The ticket
+**Still outstanding at phase close.** The record and the empty row for it live
+in `Reports/PHASE_5_REPORT.md`. The ticket
 requires the README `mcp.json` snippet to be *"verified by hand once against a
 real client (recorded in the phase report)"*. The snippet shipped and the
 server is proven over the memory transport, but a memory transport is not a

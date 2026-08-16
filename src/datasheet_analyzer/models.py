@@ -427,14 +427,37 @@ class Project(BaseModel):
 
 
 class GoldenQuestion(BaseModel):
-    """One eval question with a verifiable expected answer."""
+    """One eval question with a verifiable expected answer.
+
+    A question may carry a *path marker* saying which retrieval path must
+    answer it. They are additive and independent — a set written before a path
+    existed still loads, and a question may be verified by more than one path:
+
+    | Marker | Path | Pass rule (in `evalh.citations`) |
+    |---|---|---|
+    | `spec_query` | `dsa query` | a record on a cited page carries every expected substring |
+    | `plot_query` | `dsa plots` | a cataloged figure on a cited page has real pixels |
+    | `ask_query` | `dsa ask` | the pack's rows on a cited page carry them, inside its budget |
+    | `search_query` | `dsa search` | the **top-1** hit is a section covering a cited page, and that section holds them |
+
+    `ask_query` / `search_query` (phase 5, ticket 09) both take the question's
+    own `pages` and `expected_substrings` as ground truth — the point of them
+    is that a designer's words reach *the same verbatim answer on the same
+    printed page* as the symbol path already reaches, so they are twins of an
+    existing question rather than a second objective function. `ask_query` may
+    name the route it must take (`{route: spec}`); `search_query` may carry the
+    words a designer would type (`{query: sysref setup}`), defaulting to the
+    question itself.
+    """
 
     id: str
     question: str
     expected_substrings: list[str]  # all must appear in a correct answer
     pages: list[int] = Field(default_factory=list)  # citation ground truth
     section: str = ""  # expected section number, when known
-    kind: str = "direct"  # direct | derived
+    kind: str = "direct"  # direct | derived | plot | ask | search
     spec_query: dict[str, str] | None = None  # Phase 2 deterministic lookup
     plot_query: dict[str, str] | None = None  # Phase 3 deterministic plot lookup
+    ask_query: dict[str, str] | None = None  # Phase 5 answer pack ({route})
+    search_query: dict[str, str] | None = None  # Phase 5 full text ({query, rank})
     notes: str = ""

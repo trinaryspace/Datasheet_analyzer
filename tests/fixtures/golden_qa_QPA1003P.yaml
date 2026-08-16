@@ -96,6 +96,26 @@ questions:
     kind: direct
     spec_query: {symbol: "Operational Frequency Range"}
 
+  - id: a1-ask-output-power
+    question: How much output power does this amplifier deliver?
+    expected_substrings: ["39.7", "40.7", "39.9", "dBm"]
+    pages: [2]
+    kind: ask
+    ask_query: {route: spec}
+    notes: ticket-09 ask path — the twin of s1, asked without naming the
+      part or the printed parameter; the pack returns the per-frequency
+      materialized child rows, all on page 2.
+
+  - id: k1-search-thermal-resistance
+    question: Where is the thermal resistance of the QPA1003P specified?
+    expected_substrings: ["Thermal Resistance", "3.62", "°C/W"]
+    pages: [15]
+    kind: search
+    search_query: {query: "thermal resistance channel temperature"}
+    notes: ticket-09 search path — the twin of q07. This part has no PDF
+      outline at all, so its sections are per-page; top-1 must be page 15,
+      the page that prints the thermal table.
+
   - id: p1-functional-block-diagram
     question: Where is the functional block diagram of the QPA1003P?
     expected_substrings: ["Functional Block Diagram"]

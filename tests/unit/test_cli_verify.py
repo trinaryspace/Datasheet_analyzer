@@ -1,10 +1,17 @@
 """Regression: `dsa verify` spec/plot summary lines must count only passing
 questions. A generator missing `if ok` made every run claim N/N passed even
-when the per-row table showed ❌ (exit code was still correct)."""
+when the per-row table showed ❌ (exit code was still correct).
+
+Also (phase 5, ticket 09) the wiring of the two paths the phase added: `dsa
+verify` must *run* a golden set's ask- and search-path questions and fail on
+them, exactly as it does for spec and plot queries — a benchmark the command
+silently skips is not a benchmark.
+"""
 
 from __future__ import annotations
 
 import yaml
+from mcp_corpus import build_part as build_mcp_part
 
 from datasheet_analyzer import cli
 from datasheet_analyzer.config import Settings
@@ -192,3 +199,102 @@ class TestPerPartGoldenDiscovery:
         assert exit_code == 2
         assert "no golden benchmark" in captured.err
         assert "FileNotFoundError" not in captured.err
+
+
+PATH_GOLDEN = {
+    "questions": [
+        {
+            "id": "ask-pass",
+            "question": "What is the maximum junction temperature?",
+            "expected_substrings": ["Operating junction temperature", "105"],
+            "pages": [6],
+            "kind": "ask",
+            "ask_query": {"route": "spec"},
+        },
+        {
+            "id": "ask-fail",
+            "question": "What is the maximum junction temperature?",
+            "expected_substrings": ["105"],
+            "pages": [99],
+            "kind": "ask",
+            "ask_query": {"route": "spec"},
+        },
+        {
+            "id": "search-pass",
+            "question": "Where is the SYSREF setup requirement?",
+            "expected_substrings": ["SYSREF setup time"],
+            "pages": [7],
+            "kind": "search",
+            "search_query": {"query": "sysref setup"},
+        },
+        {
+            "id": "search-fail",
+            "question": "Where is the SYSREF setup requirement?",
+            "expected_substrings": ["SYSREF setup time"],
+            "pages": [6],
+            "kind": "search",
+            "search_query": {"query": "sysref setup"},
+        },
+    ]
+}
+
+
+class TestVerifyRunsTheNewPaths:
+    """Phase 5, ticket 09: `dsa verify` runs a golden set's ask- and
+    search-path questions, renders each as its own table, counts only the
+    passing ones, and fails the command when one fails. Both tables run
+    without `--pdf`: their ground truth is the page the question already
+    cites, and both paths read only the corpus."""
+
+    def _settings(self, tmp_path):
+        settings = Settings(
+            parts_dir=tmp_path / "parts", cache_dir=tmp_path / ".cache"
+        ).resolve()
+        build_mcp_part(settings.parts_dir / "T")
+        return settings
+
+    def _run(self, tmp_path, monkeypatch, golden: dict) -> int:
+        settings = self._settings(tmp_path)
+        path = tmp_path / "golden.yaml"
+        path.write_text(yaml.safe_dump(golden), encoding="utf-8")
+        monkeypatch.setattr("datasheet_analyzer.cli.get_settings", lambda: settings)
+        return cli.main(["verify", "--part", "T", "--golden", str(path)])
+
+    def test_both_tables_render_and_count_only_passing(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        exit_code = self._run(tmp_path, monkeypatch, PATH_GOLDEN)
+        out = capsys.readouterr().out
+        assert "## Ask-path verification (deterministic)" in out
+        assert "## Search-path verification (deterministic)" in out
+        # one of two passes in each table — and a failing path fails the run
+        assert out.count("**1/2 passed**") == 2
+        assert exit_code == 1
+
+    def test_a_set_without_the_markers_prints_neither_table(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        """Additive, like the plot table before it: a benchmark written before
+        these paths existed still verifies, and says nothing about them."""
+        golden = {"questions": [dict(PATH_GOLDEN["questions"][0], ask_query=None,
+                                     search_query=None, kind="direct")]}
+        self._run(tmp_path, monkeypatch, golden)
+        out = capsys.readouterr().out
+        assert "Ask-path verification" not in out
+        assert "Search-path verification" not in out
+
+    def test_a_passing_set_passes_both_paths(self, tmp_path, monkeypatch, capsys):
+        """Both paths green on their own terms. The command still reports the
+        page-truth table as unproven here, because it was run without `--pdf`
+        — which is exactly the honest degradation the text check already had,
+        and the reason the new tables do not depend on it."""
+        golden = {"questions": [
+            q for q in PATH_GOLDEN["questions"] if q["id"].endswith("pass")
+        ]}
+        self._run(tmp_path, monkeypatch, golden)
+        out = capsys.readouterr().out
+        assert out.count("**1/1 passed**") == 2
+        tail = out.split("Ask-path verification")[1]
+        assert "❌" not in tail
+        # the measured cost of the pack, against the budget it was given
+        assert "tok" in tail

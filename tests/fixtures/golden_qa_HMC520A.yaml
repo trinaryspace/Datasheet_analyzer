@@ -69,6 +69,26 @@ questions:
     pages: [25]
     kind: direct
 
+  - id: a1-ask-rf-frequency-range
+    question: Over what RF frequency range does this mixer work?
+    expected_substrings: ["RF RANGE", "6", "10", "GHz"]
+    pages: [3]
+    kind: ask
+    ask_query: {route: spec}
+    notes: ticket-09 ask path — the twin of q03, asked in a designer's
+      words; the alias lexicon carries "rf frequency range" to the printed
+      all-caps "RF RANGE" row on page 3.
+
+  - id: k1-search-theory-of-operation
+    question: How is this mixer used as an image reject mixer or an upconverter?
+    expected_substrings: ["image reject mixer", "single sideband upconverter", "passive"]
+    pages: [25]
+    kind: search
+    search_query: {query: "single sideband upconverter theory"}
+    notes: ticket-09 search path — the twin of q10. This part's outline is
+      unnumbered, so the hit cites a page range with no §; top-1 must be
+      "Theory of Operation" on page 25.
+
   - id: p1-conversion-gain-vs-temp
     question: Which figure shows conversion gain vs RF frequency at various temperatures?
     expected_substrings: ["Conversion Gain vs. RF Frequency at Various Temperatures"]

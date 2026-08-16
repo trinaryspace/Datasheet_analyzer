@@ -14,6 +14,14 @@ Golden questions carrying a `spec_query` / `plot_query` are verified here too
 (`verify_spec_queries` / `verify_plot_queries`), against the retrieval core.
 That work used to sit inline in `cli.py`; retrieval and its pass/fail rules
 belong behind the seam, and the CLI now only renders the results.
+
+Phase 5, ticket 09 adds the two paths the phase itself introduced —
+`verify_ask_queries` (a designer's words through `dsa ask`) and
+`verify_search_queries` (the same words through `dsa search`). Both are
+deliberately judged against the *existing* ground truth: the question's own
+cited pages and expected substrings, which were read off the printed page. A
+new surface that agrees with the old objective function is proven; one judged
+by a new objective function is only asserted.
 """
 
 from __future__ import annotations
@@ -25,7 +33,7 @@ from pathlib import Path
 import yaml
 
 from datasheet_analyzer.models import GoldenQuestion, SpecRecord
-from datasheet_analyzer.retrieve import PlotHit, Retriever, SpecHit
+from datasheet_analyzer.retrieve import AnswerPack, PlotHit, Retriever, SpecHit
 
 _NONALNUM = re.compile(r"[^a-z0-9]+")
 
@@ -123,18 +131,28 @@ def verify_questions(
 
 @dataclass
 class QueryResult:
-    """Outcome of one golden `spec_query` / `plot_query`.
+    """Outcome of one golden `spec_query` / `plot_query` / `ask_query` /
+    `search_query`.
 
     `n_records` is how many records the query matched at all; `n_verified` is
     how many survived the page + value check (for plots, how many also have an
     on-disk image file). The gap between them is what the report shows when a
     question fails.
+
+    The rest is measurement the ticket-09 paths report rather than assert:
+    which `route` an answer pack took, what it `tokens` cost against its
+    `budget`, and a `detail` line the renderer prints verbatim — the reason
+    belongs next to the rule that produced it, not in the front end.
     """
 
     question: GoldenQuestion
     ok: bool = False
     n_records: int = 0
     n_verified: int = 0
+    route: str = ""
+    tokens: int = 0
+    budget: int = 0
+    detail: str = ""
 
 
 def _spec_fields(rec: SpecRecord) -> str:
@@ -205,6 +223,134 @@ def verify_plot_queries(
         results.append(
             QueryResult(
                 question=q, ok=ok, n_records=len(hits), n_verified=len(with_files)
+            )
+        )
+    return results
+
+
+def pack_answers_question(question: GoldenQuestion, pack: AnswerPack) -> bool:
+    """The symbol path's own pass rule, applied to an answer pack's rows.
+
+    Deliberately identical to `verify_spec_queries`: at least one answer row
+    must sit on a page the question cites, and every expected substring must
+    appear on one of those rows. Only *cited* rows may satisfy it — a pack that
+    prints the right number beside the wrong page has not answered the
+    question, and the whole claim of the phase is that the designer's wording
+    reaches the same verbatim answer on the same printed page.
+    """
+    paged = [
+        line for line in pack.answers
+        if line.page_start is not None and line.page_start in question.pages
+    ]
+    return bool(paged) and all(
+        any(contains(line.text, sub) for line in paged)
+        for sub in question.expected_substrings
+    )
+
+
+def verify_ask_queries(
+    questions: list[GoldenQuestion], part_dir: Path, *, budget: int = 0
+) -> list[QueryResult]:
+    """Ask-path verification for every `ask_query` golden (ticket 09).
+
+    One `dsa ask` call must do what the symbol path does — land the same
+    verbatim answer on the same cited page — **and stay inside its budget**.
+    Budget compliance is part of the pass rule rather than a separate check,
+    because an answer that only fits by going over is not the product this
+    phase claims. When the golden names a route (`{route: spec}`), routing
+    must match too: a question that used to be answered by a record and is now
+    answered by a paragraph has regressed even if the text still matches.
+    """
+    retriever = Retriever.for_part(part_dir)
+    results: list[QueryResult] = []
+    for q in questions:
+        if q.ask_query is None:
+            continue
+        pack = retriever.ask(q.question, budget=budget)
+        expected_route = (q.ask_query.get("route") or "").strip()
+        paged = [
+            line for line in pack.answers
+            if line.page_start is not None and line.page_start in q.pages
+        ]
+        route_ok = not expected_route or pack.route == expected_route
+        answered = pack_answers_question(q, pack)
+        ok = answered and route_ok and not pack.over_budget
+        if ok:
+            detail = f"{len(paged)} cited row(s), {pack.tokens}/{pack.budget} tok"
+        elif not route_ok:
+            detail = f"routed {pack.route}, expected {expected_route}"
+        elif pack.over_budget:
+            detail = f"over budget: {pack.tokens}/{pack.budget} tok"
+        else:
+            detail = f"{len(paged)}/{len(pack.answers)} row(s) on a cited page"
+        results.append(
+            QueryResult(
+                question=q,
+                ok=ok,
+                n_records=len(pack.answers),
+                n_verified=len(paged),
+                route=pack.route,
+                tokens=pack.tokens,
+                budget=pack.budget,
+                detail=detail,
+            )
+        )
+    return results
+
+
+def verify_search_queries(
+    questions: list[GoldenQuestion], part_dir: Path
+) -> list[QueryResult]:
+    """Search-path verification for every `search_query` golden (ticket 09).
+
+    The rule is the ticket's: the **top-1** hit must be the section that holds
+    the hand-verified answer — it must cover a page the question cites, and its
+    own text must contain every expected substring. Rank matters because a
+    designer reads the first hit; a corpus that buries the answer at rank 4 has
+    not made it findable. `{rank: N}` widens that to "inside the top N" for a
+    question whose answer legitimately lives in one of several sections.
+
+    A corpus with no current search index is a *failure with a reason*, never a
+    silent pass: the path could not run, so nothing was established.
+    """
+    retriever = Retriever.for_part(part_dir)
+    results: list[QueryResult] = []
+    for q in questions:
+        if q.search_query is None:
+            continue
+        query = q.search_query.get("query") or q.question
+        rank = max(1, int(q.search_query.get("rank") or 1))
+        hits = retriever.search(query, limit=max(rank, 5))
+        covering = {
+            hit.section.file
+            for page in q.pages
+            for hit in retriever.sections(page=page)
+        }
+        matched = 0
+        detail = ""
+        for position, hit in enumerate(hits[:rank], 1):
+            if hit.section.file not in covering:
+                continue
+            body = retriever.section_text(hit.section)
+            if all(contains(body, sub) for sub in q.expected_substrings):
+                matched += 1
+                detail = f"rank {position} of {rank} allowed: {hit.citation.label}"
+                break
+        if not matched:
+            unavailable = retriever.search_unavailable()
+            if unavailable:
+                detail = f"search unavailable: {unavailable}"
+            elif hits:
+                detail = f"top hit {hits[0].citation.label} is not the cited section"
+            else:
+                detail = "no hit"
+        results.append(
+            QueryResult(
+                question=q,
+                ok=bool(matched),
+                n_records=len(hits),
+                n_verified=matched,
+                detail=detail,
             )
         )
     return results

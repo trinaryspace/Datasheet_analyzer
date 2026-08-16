@@ -137,14 +137,18 @@ def _default_golden_path(part: str) -> Path:
 def _cmd_verify(args: argparse.Namespace) -> int:
     from datasheet_analyzer.evalh.citations import (
         summarize,
+        verify_ask_queries,
         verify_plot_queries,
         verify_questions,
+        verify_search_queries,
         verify_spec_queries,
     )
     from datasheet_analyzer.evalh.golden import (
         estimate_lookup_tokens,
         load_golden,
+        render_ask_query_report,
         render_plot_query_report,
+        render_search_query_report,
         render_spec_query_report,
         render_token_economics,
         render_verification_report,
@@ -199,6 +203,24 @@ def _cmd_verify(args: argparse.Namespace) -> int:
         print()
         print(render_plot_query_report(plot_results))
         if any(not r.ok for r in plot_results):
+            failed = True
+
+    # Ask- and search-path verification (Phase 5, ticket 09) run on the same
+    # terms as the plot table: whenever the golden set carries those questions.
+    # They need no `--pdf` — both paths read the corpus the phase built, and
+    # their ground truth is the page the question already cites.
+    ask_results = verify_ask_queries(questions, part_dir)
+    if ask_results:
+        print()
+        print(render_ask_query_report(ask_results))
+        if any(not r.ok for r in ask_results):
+            failed = True
+
+    search_results = verify_search_queries(questions, part_dir)
+    if search_results:
+        print()
+        print(render_search_query_report(search_results))
+        if any(not r.ok for r in search_results):
             failed = True
 
     return 0 if not failed else 1

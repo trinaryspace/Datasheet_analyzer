@@ -90,6 +90,31 @@ questions:
     spec_query: {name: "SCLK period", section: "4.10"}
     notes: 25 ns period => 40 MHz max write clock (derived answer allowed)
 
+  - id: a01-ask-tx-dsa-attenuation
+    question: How much attenuation range does the transmit step attenuator have?
+    expected_substrings: ["DSA Attenuation range", "40", "1.0", "dB"]
+    pages: [7]
+    section: "4.5"
+    kind: ask
+    ask_query: {route: spec}
+    notes: ticket-09 ask path — the twin of q09, asked the way a designer
+      speaks (no symbol, no section). The pack must reach §4.5 page 7 and
+      carry both the range and the analog step.
+
+  - id: k01-search-thermal-information
+    question: Where is the thermal resistance of the package specified?
+    expected_substrings: ["16.2"]
+    pages: [6]
+    section: "4.4"
+    kind: search
+    search_query: {query: "junction to ambient thermal resistance"}
+    notes: ticket-09 search path — the twin of q05. This corpus was
+      published before `search_index.json` existed, so `dsa verify` reports
+      this question as unavailable until the part is rebuilt; the phase gate
+      verifies it against a search-indexed copy of the committed corpus
+      (`tests/integration/test_afe7950_build.py`), the same substrate the
+      ticket-04 regrade uses.
+
   - id: p01-tx-output-fullscale
     question: Which figure shows TX output fullscale vs output frequency?
     expected_substrings: ["TX Output Fullscale"]

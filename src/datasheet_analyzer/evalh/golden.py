@@ -106,6 +106,24 @@ def render_plot_query_report(results: list[QueryResult]) -> str:
     return _query_report("Plot query verification", results, "plot_query", detail)
 
 
+def render_ask_query_report(results: list[QueryResult]) -> str:
+    """Ask-path verification table (ticket 09; runs whenever a golden set
+    carries `ask_query` questions). The detail column is the verifier's own
+    sentence — route, cited rows, and the measured tokens against the budget —
+    because the reason a rule passed or failed belongs with the rule."""
+    return _query_report(
+        "Ask-path verification", results, "ask_query", lambda r: r.detail
+    )
+
+
+def render_search_query_report(results: list[QueryResult]) -> str:
+    """Search-path verification table (ticket 09): top-1 must be the section
+    that holds the hand-verified answer."""
+    return _query_report(
+        "Search-path verification", results, "search_query", lambda r: r.detail
+    )
+
+
 def render_token_economics(tokens: dict) -> str:
     """Measured per-question token cost of the corpus lookup path."""
     return "\n".join(

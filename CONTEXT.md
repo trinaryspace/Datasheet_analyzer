@@ -123,6 +123,24 @@ there is one protocol rather than three copies; the index files point at it
 instead of restating it.
 _Avoid_: README, docs, instructions, prompt, guidelines
 
+**Golden question**:
+One benchmark question with a verifiable answer: the words a designer would
+use, the verbatim substrings a correct answer must contain, and the printed
+page it must cite — all read off the PDF by hand, per part, in
+`tests/fixtures/golden_qa_<PART>.yaml`. It is the project's objective
+function: `dsa verify` fails the corpus, not the question.
+_Avoid_: test case, sample, example, prompt
+
+**Path marker**:
+The field on a golden question that says which retrieval path must answer it
+— `spec_query`, `plot_query`, `ask_query`, `search_query`. A marker adds a
+path, never a standard: each one is judged against that question's existing
+cited page and verbatim substrings, so an ask-path question is the
+designer's-words *twin* of a symbol-path question rather than a second
+objective function. A path that cannot run (no search index) fails and says
+why; it never passes quietly.
+_Avoid_: tag, mode, category, test type
+
 **Part**:
 A named device (e.g. AFE7950) and its corpus: a folder under `parts/`
 holding an index, inventory, manifest, and one document directory per source

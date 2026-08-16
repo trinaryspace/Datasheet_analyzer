@@ -28,19 +28,15 @@ both halves run against is built once in `mcp_corpus.py`.
 
 from __future__ import annotations
 
-import asyncio
-import json
-from contextlib import asynccontextmanager
 from pathlib import Path
 
 import pytest
 from mcp_corpus import DOC, FIGURE, PNG_BYTES, build_part, built_settings, empty_settings
+from mcp_session import call, over_session, payload_of
 
 pytest.importorskip("mcp", reason="the MCP server tests need the optional [mcp] extra")
 
-import anyio
-from mcp import ClientSession
-from mcp.types import ImageContent, TextContent
+from mcp.types import ImageContent
 
 from datasheet_analyzer import cli
 from datasheet_analyzer.config import Settings
@@ -97,67 +93,11 @@ def server(settings: Settings):
 
 
 # --- in-process memory transport ---------------------------------------------
-
-
-@asynccontextmanager
-async def _connected(server):
-    """A real `ClientSession` wired to `server` over the SDK's memory streams.
-
-    This is the ticket's hermetic requirement made literal: the tools are
-    exercised through an actual MCP session — initialize, list, call — with
-    both ends in this process and nothing on a socket or a pipe.
-    """
-    from mcp.shared.memory import create_client_server_memory_streams
-
-    async with create_client_server_memory_streams() as (client_streams, server_streams):
-        client_read, client_write = client_streams
-        server_read, server_write = server_streams
-        low = server._lowlevel_server
-        async with anyio.create_task_group() as tg:
-            tg.start_soon(
-                lambda: low.run(
-                    server_read,
-                    server_write,
-                    low.create_initialization_options(),
-                    raise_exceptions=True,
-                )
-            )
-            async with ClientSession(client_read, client_write) as session:
-                await session.initialize()
-                yield session
-            tg.cancel_scope.cancel()
-
-
-def over_session(server, work):
-    """Run `work(session)` against `server` over the memory transport."""
-
-    async def _run():
-        async with _connected(server) as session:
-            return await work(session)
-
-    return asyncio.run(_run())
-
-
-def call(server, tool: str, **arguments):
-    """One tool call, over the memory transport, returning the raw result."""
-
-    async def _work(session):
-        return await session.call_tool(tool, arguments)
-
-    return over_session(server, _work)
-
-
-def payload_of(result) -> dict:
-    """The declared JSON payload of a tool result.
-
-    Read from the structured content when the SDK carried it, and otherwise
-    parsed out of the text block — `get_figure` returns content blocks by hand
-    because one of them is an image.
-    """
-    if result.structured_content is not None:
-        return result.structured_content
-    text = next(c for c in result.content if isinstance(c, TextContent))
-    return json.loads(text.text)
+#
+# The harness itself lives in `tests/mcp_session.py`, because the phase-5 gate
+# drives the same server against four real datasheets and "in-process" must
+# mean the same thing in both places: a real session — initialize, list, call —
+# with both ends in this process and nothing on a socket or a pipe.
 
 
 # --- the tool surface --------------------------------------------------------

@@ -400,7 +400,8 @@ class TestAnswerPacksOnTheRealCorpus:
             assert tight.answers[0] == wide.answers[0], q.id
 
     def test_natural_language_lands_on_the_symbol_paths_answer(self, built, capsys):
-        from datasheet_analyzer.evalh.citations import contains
+        # the shipped rule (`dsa verify`'s own, ticket 09), not a copy of it
+        from datasheet_analyzer.evalh.citations import pack_answers_question
         from datasheet_analyzer.retrieve import Retriever
 
         result, _ = built
@@ -409,15 +410,7 @@ class TestAnswerPacksOnTheRealCorpus:
         misses = set()
         for q in twins:
             pack = retriever.ask(q.question, budget=self.BUDGET)
-            paged = [
-                line for line in pack.answers
-                if line.page_start is not None and line.page_start in q.pages
-            ]
-            ok = bool(paged) and all(
-                any(contains(line.text, sub) for line in paged)
-                for sub in q.expected_substrings
-            )
-            if not ok:
+            if not pack_answers_question(q, pack):
                 misses.add(q.id)
         with capsys.disabled():
             print(
@@ -495,7 +488,7 @@ class TestAnswerPacksOnAfe7953:
             assert res.ok, f"{res.question.id}: plot path missed"
 
     def test_natural_language_lands_on_the_symbol_paths_answer(self, part_dir, capsys):
-        from datasheet_analyzer.evalh.citations import contains
+        from datasheet_analyzer.evalh.citations import pack_answers_question
         from datasheet_analyzer.retrieve import Retriever
 
         retriever = Retriever.for_part(part_dir)
@@ -503,17 +496,7 @@ class TestAnswerPacksOnAfe7953:
         misses = set()
         for q in twins:
             pack = retriever.ask(q.question, budget=self.BUDGET)
-            paged = [
-                line for line in pack.answers
-                if line.page_start is not None and line.page_start in q.pages
-            ]
-            if not (
-                paged
-                and all(
-                    any(contains(line.text, sub) for line in paged)
-                    for sub in q.expected_substrings
-                )
-            ):
+            if not pack_answers_question(q, pack):
                 misses.add(q.id)
         with capsys.disabled():
             print(
@@ -568,6 +551,147 @@ class TestAnswerPacksOnAfe7953:
         for q in self._questions():
             payload = retriever.ask(q.question, budget=self.BUDGET).as_dict()
             assert validate_pack(payload) == [], q.id
+
+
+def search_index_committed_corpus(src: Path, dst: Path) -> Path:
+    """Copy a committed corpus and give it the search index publish now writes.
+
+    The two reference corpora under `parts/` were published before
+    `search_index.json` existed, and AFE7953 cannot be rebuilt in a hermetic
+    test (no recorded TI pages). The index is *derived data*: it is built from
+    exactly the section markdown that is on disk, by the same
+    `build_search_index` the writer calls, so indexing a copy adds nothing to
+    the corpus and changes nothing in it — it only performs the publish step
+    the corpus predates. The committed corpus itself is left untouched, which
+    is what keeps `TestAnswerPacksOnAfe7953`'s "predates search" case honest.
+
+    `figures/` is deliberately not copied: the search path reads markdown.
+    """
+    import shutil
+
+    from datasheet_analyzer.publish.search_index import (
+        build_search_index,
+        write_search_index,
+    )
+    from datasheet_analyzer.structure.corpus import SectionPlan
+
+    shutil.copytree(src, dst, ignore=shutil.ignore_patterns("figures"))
+    manifest = CorpusManifest.model_validate_json(
+        (dst / "manifest.json").read_text(encoding="utf-8")
+    )
+    plans: dict[str, list[SectionPlan]] = {}
+    for sec in manifest.sections:
+        doc_dir, _, rel = sec.file.partition("/sections/")
+        plans.setdefault(doc_dir, []).append(
+            SectionPlan(
+                section=SectionNode(number=sec.number, title=sec.title),
+                file=f"sections/{rel}",
+                markdown=(dst / sec.file).read_text(encoding="utf-8"),
+                token_count=sec.token_count,
+            )
+        )
+    for doc_dir, doc_plans in plans.items():
+        write_search_index(
+            dst / doc_dir,
+            build_search_index(
+                doc_plans,
+                part_number=manifest.part_number,
+                doc_hash=doc_dir.rsplit("-", 1)[-1],
+            ),
+        )
+    return dst
+
+
+@pytest.mark.integration
+class TestGoldenPathsOnTheReferenceCorpora:
+    """Phase 5, ticket 09 — the two new golden paths on the TI reference parts.
+
+    The gate proves them on the four layout-floor corpora; these are the
+    other two of the six built parts, and the ones with the most to lose: 39
+    sections and 619 spec rows on AFE7950, and on AFE7953 a corpus published
+    before half of this phase existed.
+
+    Both are judged by the shipped verifiers — the code `dsa verify` runs —
+    against the ground truth the sets already carried.
+    """
+
+    BUDGET = 3000
+
+    def test_afe7950_answers_its_ask_path_golden(self, built, capsys):
+        from datasheet_analyzer.evalh.citations import verify_ask_queries
+
+        result, _ = built
+        results = verify_ask_queries(
+            load_golden_yaml(GOLDEN), result.part_dir, budget=self.BUDGET
+        )
+        assert results, "AFE7950 carries no ask-path question"
+        assert [r.question.id for r in results if not r.ok] == []
+        with capsys.disabled():
+            for r in results:
+                print(f"\nask-path golden, AFE7950: {r.question.id} -> "
+                      f"{r.route}, {r.detail}\n")
+
+    def test_afe7950_ranks_the_answering_section_first(self, built, capsys):
+        from datasheet_analyzer.evalh.citations import verify_search_queries
+
+        result, _ = built
+        results = verify_search_queries(load_golden_yaml(GOLDEN), result.part_dir)
+        assert results, "AFE7950 carries no search-path question"
+        assert [(r.question.id, r.detail) for r in results if not r.ok] == []
+        with capsys.disabled():
+            for r in results:
+                print(f"\nsearch-path golden, AFE7950: {r.question.id} -> "
+                      f"{r.detail}\n")
+
+    def test_afe7953_answers_its_ask_path_golden(self, capsys):
+        """The ask path needs no search index when a record answers, so this
+        runs against the committed corpus exactly as a user's would."""
+        from datasheet_analyzer.evalh.citations import verify_ask_queries
+
+        if not (PARTS / "AFE7953" / "manifest.json").exists():
+            pytest.skip("committed parts/AFE7953 corpus not present")
+        golden = TestAnswerPacksOnAfe7953.GOLDEN
+        results = verify_ask_queries(
+            load_golden_yaml(golden), PARTS / "AFE7953", budget=self.BUDGET
+        )
+        assert results
+        assert [r.question.id for r in results if not r.ok] == []
+        with capsys.disabled():
+            for r in results:
+                print(f"\nask-path golden, AFE7953: {r.question.id} -> "
+                      f"{r.route}, {r.detail}\n")
+
+    def test_afe7953_search_path_needs_the_index_the_corpus_predates(
+        self, tmp_path, capsys
+    ):
+        """Two facts, in one test, because they are the same fact.
+
+        Against the committed corpus the search-path golden **fails, loudly**:
+        that corpus has no index, so the path never ran and nothing was
+        established — which is exactly what the verifier must say rather than
+        pass or shrug. Given the index that publish now writes, the same
+        question puts the answering section at rank 1.
+        """
+        from datasheet_analyzer.evalh.citations import verify_search_queries
+        from datasheet_analyzer.retrieve import clear_index_cache
+
+        if not (PARTS / "AFE7953" / "manifest.json").exists():
+            pytest.skip("committed parts/AFE7953 corpus not present")
+        questions = load_golden_yaml(TestAnswerPacksOnAfe7953.GOLDEN)
+
+        (stale,) = verify_search_queries(questions, PARTS / "AFE7953")
+        assert not stale.ok
+        assert "search unavailable" in stale.detail
+
+        indexed = search_index_committed_corpus(
+            PARTS / "AFE7953", tmp_path / "AFE7953"
+        )
+        clear_index_cache()
+        (fresh,) = verify_search_queries(questions, indexed)
+        assert fresh.ok, fresh.detail
+        with capsys.disabled():
+            print(f"\nsearch-path golden, AFE7953 (index rebuilt from the "
+                  f"published markdown): {fresh.detail}\n")
 
 
 @pytest.mark.integration

@@ -420,7 +420,7 @@ Token counts everywhere are `chars/4` (see `tokens.py`).
 ## Development
 
 ```bash
-python -m pytest tests/ -q    # 786 tests, ~90 s, fully offline (the
+python -m pytest tests/ -q    # 868 tests, ~90 s, fully offline (the
                               # phase-4 gate builds four real PDFs)
 python -m ruff check src tests
 ```
@@ -434,14 +434,41 @@ subprocess and no port.
 
 Per-part goldens in `tests/fixtures/golden_qa_<PART>.yaml` are the
 objective function: hand-verified answers and page cites covering direct
-corpus reads, spec queries, and plot queries (AFE7950 carries the 19-Q
-historical benchmark; the four gate parts AD9081/LM741/QPA1003P/HMC520A
-each have their own, all verified 100% offline; AFE7953 has an 11-Q set
-verified against the committed corpus + the skip-guarded PDF, because that
-part has no offline build path). `dsa verify --part X`
-discovers the part's golden by name and fails loudly when it is missing —
-extend a set when new answer paths ship; `dsa verify` must stay at 100%
-for supported paths.
+corpus reads, spec queries, plot queries and — since phase 5 — the **ask**
+and **search** paths (AFE7950 carries the 21-Q benchmark; the four gate parts
+AD9081/LM741/QPA1003P/HMC520A each have their own, all verified 100% offline;
+AFE7953 has a 13-Q set verified against the committed corpus + the
+skip-guarded PDF, because that part has no offline build path).
+`dsa verify --part X` discovers the part's golden by name and fails loudly
+when it is missing — extend a set when new answer paths ship; `dsa verify`
+must stay at 100% for supported paths.
+
+Every part's set carries one **ask-path** question (a designer's words, no
+symbols) and one **search-path** question (top-1 must be the section holding
+the answer). Both reuse an existing question's cited page and verbatim
+substrings, so the new surface is proven against the old objective function:
+
+```yaml
+- id: a01-ask-max-junction-temperature
+  question: What is the maximum junction temperature?
+  expected_substrings: ["Junction temperature", "150"]
+  pages: [4]
+  kind: ask
+  ask_query: {route: spec}        # `dsa ask` must route to a record and cite p.4
+
+- id: k01-search-sysref-timing
+  question: Where are the SYSREF setup and hold requirements specified?
+  expected_substrings: ["50", "ps"]
+  pages: [27]
+  kind: search
+  search_query: {query: "sysref setup and hold"}   # top-1 must be §4.10
+```
+
+`dsa verify` runs both tables whenever a set carries them, needs no `--pdf`
+for either, and fails the command when one fails. An ask-path question also
+fails when its pack goes over budget, and a search-path question fails with
+`search unavailable` on a corpus with no current index — a path that never
+ran establishes nothing.
 
 ## Caveats
 
@@ -462,7 +489,10 @@ for supported paths.
 
 - `AGENTS.md` — architecture contract, invariants, module map
 - `PHASE_1_REPORT.md` / `PHASE_2_REPORT.md` / `PHASE_3_REPORT.md` /
-  `PHASE_4_REPORT.md` — measured results per phase (all four phases are
-  shipped; PHASE 4 covers the vendor-neutral layout core + four-part gate)
-- `PHASE_2_PLAN.md` / `PHASE_3_PLAN.md` / `PHASE_4_PLAN.md` — completed
-  execution contracts, superseded by their reports
+  `PHASE_4_REPORT.md` / `PHASE_5_REPORT.md` — measured results per phase (all
+  five phases are shipped; PHASE 4 covers the vendor-neutral layout core +
+  four-part gate, PHASE 5 the agent-native access surface: retrieval core,
+  aliases, search, confidence, `ask`, projects, MCP, `AGENT.md`)
+- `PHASE_2_PLAN.md` / `PHASE_3_PLAN.md` / `PHASE_4_PLAN.md` /
+  `PHASE_5_PLAN.md` — completed execution contracts, superseded by their
+  reports
