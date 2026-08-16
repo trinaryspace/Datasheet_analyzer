@@ -61,6 +61,12 @@ class Settings(BaseSettings):
     # names both this setting and the flag.
     ask_budget: int = Field(default=4000, ge=1)
 
+    # `dsa serve --mcp`: the hard cap on every MCP tool response and every MCP
+    # resource read. A client cannot bound a payload it did not build, so the
+    # server bounds it and *says so* — truncation always carries a notice
+    # naming this setting, never silent loss.
+    mcp_max_tokens: int = Field(default=6000, ge=1)
+
     # TI document viewer fetching
     ti_base_url: str = "https://www.ti.com"
     http_timeout_s: int = 60

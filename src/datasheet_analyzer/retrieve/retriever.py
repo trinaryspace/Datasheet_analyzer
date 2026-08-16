@@ -438,6 +438,67 @@ class Retriever:
         """Markdown body of a section file (lazily read, then cached)."""
         return self.index.section_text(section)
 
+    def index_markdown(self) -> str:
+        """The part's `INDEX.md`; `""` when the corpus has none yet."""
+        return self.index.index_markdown()
+
+    def corpus_path(self, rel: str) -> Path | None:
+        """A corpus-relative file as an absolute path, or None when it escapes.
+
+        Path safety belongs to the core for the same reason citations do: the
+        CLI and the MCP server must not each invent a rule for what counts as
+        a file of this part. See `CorpusIndex.corpus_path`.
+        """
+        return self.index.corpus_path(rel)
+
+    def resolve_section(self, ref: str) -> SectionHit | None:
+        """One section from a caller's reference; None when nothing matches.
+
+        `sections()` is a filter and may return twenty entries; a caller that
+        says "read §4.3" means exactly one. The rungs are ordered so the most
+        literal reading wins — exact section number, then the corpus-relative
+        file (or its basename), then a number prefix, then a title substring —
+        with manifest order underneath, so one reference always resolves to
+        the same section on any machine.
+        """
+        ref = (ref or "").strip()
+        if not ref:
+            return None
+        low = ref.lower()
+        norm = low.replace("\\", "/")
+        rungs = (
+            (lambda s: s.number.lower() == low, "number"),
+            (lambda s: _file_matches(s, norm), "file"),
+            (lambda s: bool(s.number) and s.number.lower().startswith(low), "number"),
+            (lambda s: low in s.title.lower(), "title"),
+        )
+        for matches, via in rungs:
+            for sec in self.index.sections:
+                if matches(sec):
+                    return SectionHit(
+                        section=sec,
+                        citation=Citation.for_section(sec, part=self.part),
+                        matched_via=via,
+                    )
+        return None
+
+    def plot_for_file(self, file: str) -> PlotHit | None:
+        """The cataloged figure whose image is `file`, or None.
+
+        The reverse of a plot hit's `file`: an agent narrows the catalog with
+        `plots()` and then asks for one image, and it is the *record* that
+        carries the citation and the grade that image must be presented with.
+        A loose image in `figures/` that no record claims therefore resolves
+        to nothing here — an uncited picture is not an answer.
+        """
+        norm = (file or "").strip().replace("\\", "/").lower()
+        if not norm:
+            return None
+        for hit in self.plots():
+            if hit.record.file.replace("\\", "/").lower() == norm:
+                return hit
+        return None
+
 
 def _orphan_section(scored: ScoredSection, index: CorpusIndex) -> SectionFile:
     """A stand-in entry for an indexed section the manifest does not list.
@@ -453,6 +514,12 @@ def _orphan_section(scored: ScoredSection, index: CorpusIndex) -> SectionFile:
         file=scored.section_file,
         doc_hash=doc.doc_hash if doc else "",
     )
+
+
+def _file_matches(sec: SectionFile, norm: str) -> bool:
+    """Whole corpus-relative path or bare filename, slash-normalized."""
+    path = sec.file.replace("\\", "/").lower()
+    return path == norm or path.rsplit("/", 1)[-1] == norm
 
 
 def _passes(rec: SpecRecord, *, section: str, also_name: str) -> bool:

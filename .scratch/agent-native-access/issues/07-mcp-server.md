@@ -37,6 +37,15 @@ Dependency: the official `mcp` Python SDK as an optional extra
 - [ ] Core install without the `[mcp]` extra still works; `dsa serve --mcp`
       without it errors with an install hint
 
+**Carried forward, not closed:** the second half of the `mcp.json` box — *"and
+is verified by hand once against a real client (recorded in the phase
+report)"* — is a human action, not a test. The in-process memory transport
+proves the *server*; it cannot prove a *client registration*. No such
+verification has been performed, and none is claimed anywhere in the repo. It
+is now owned by ticket 09's `Reports/PHASE_5_REPORT.md` checklist (record the
+client, the date, and the tools called), and `Reports/PHASE_5_PLAN.md`'s MCP
+section lists it as outstanding, so the phase cannot close on it silently.
+
 ---
 
 Source: `.scratch/agent-native-access/SPEC.md`

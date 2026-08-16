@@ -9,6 +9,7 @@ Commands:
   ask --part NAME "..."     one cited answer pack inside a token budget (--json)
   plots --part NAME         deterministic plot lookup (--json)
   project new|add|remove|build|status   the noun above `part`: a design
+  serve --mcp               the corpus as MCP tools over local stdio
   status                    configuration + detected parts + projects
   version                   print version
 
@@ -362,6 +363,39 @@ def _cmd_plots(args: argparse.Namespace) -> int:
         return 0 if hits else 1
     print(format_plot_hits(hits, show_part=show_part))
     return 0 if hits else 1
+
+
+#: What to print when the optional MCP extra is not installed. Named here so
+#: the message a user sees and the message a test asserts are the same string.
+MCP_INSTALL_HINT = (
+    "serve error: the MCP server needs the optional `mcp` SDK, which is not "
+    'installed. Install the extra: `pip install -e ".[mcp]"` (or '
+    "`uv pip install --python .venv/Scripts/python.exe -e \".[mcp]\"`). "
+    "Everything else in `dsa` works without it."
+)
+
+
+def _cmd_serve(args: argparse.Namespace) -> int:
+    """`dsa serve --mcp` — the corpus as MCP tools over local stdio.
+
+    Local stdio is the only transport (Phase 5 plan, Out of Scope: HTTP,
+    auth, multi-tenancy), so `--mcp` is stated explicitly rather than assumed:
+    a later transport must be a new flag, not a silent change of meaning.
+    """
+    if not args.mcp:
+        print(
+            "serve: pass --mcp — local stdio is the only transport this "
+            "server speaks (no HTTP, no auth, no multi-tenancy)",
+            file=sys.stderr,
+        )
+        return 2
+    try:
+        from datasheet_analyzer.mcp_server import serve_stdio
+    except ImportError as exc:
+        print(f"{MCP_INSTALL_HINT} ({exc})", file=sys.stderr)
+        return 2
+    serve_stdio(get_settings())
+    return 0
 
 
 def _cmd_project(args: argparse.Namespace) -> int:
@@ -746,6 +780,16 @@ def main(argv: list[str] | None = None) -> int:
     pp_status.add_argument("name", nargs="?", default="", help="one project (default: all)")
 
     p_project.set_defaults(func=_cmd_project)
+
+    p_serve = sub.add_parser(
+        "serve", help="expose the corpus as MCP tools over local stdio"
+    )
+    p_serve.add_argument(
+        "--mcp",
+        action="store_true",
+        help="speak MCP on stdin/stdout (the only supported transport)",
+    )
+    p_serve.set_defaults(func=_cmd_serve)
 
     p_status = sub.add_parser("status", help="show configuration, parts and projects")
     p_status.set_defaults(func=_cmd_status)

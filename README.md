@@ -61,6 +61,10 @@ If you skip the activation line, call `.venv/Scripts/dsa.exe` and
 Optional: put `ANTHROPIC_API_KEY=...` in a `.env` file to enable LLM-written
 INDEX descriptions (one batched call per build; falls back safely without it).
 
+Optional: `uv pip install --python .venv/Scripts/python.exe -e ".[mcp]"` adds
+the MCP SDK for `dsa serve --mcp` (see [Use it from an agent](#use-it-from-an-agent-mcp)).
+Everything else works without it.
+
 ## Quickstart
 
 ```bash
@@ -299,6 +303,60 @@ AFE7950 — Printed page 6 of afe7950.pdf.  Confidence: high.
 
 `--part` and `--project` are mutually exclusive, and one of them is required.
 
+### Use it from an agent (MCP)
+
+`dsa serve --mcp` exposes the same retrieval core as MCP tools over **local
+stdio** — no HTTP, no auth, no ports. The SDK is an optional extra, so install
+it once:
+
+```bash
+uv pip install --python .venv/Scripts/python.exe -e ".[mcp]"
+# or: pip install -e ".[mcp]"
+dsa serve --mcp        # speaks MCP on stdin/stdout; a client launches this
+```
+
+Register it with any MCP client (`mcp.json` / `claude_desktop_config.json` /
+Cursor's MCP settings). `cwd` is what makes `parts/` and `projects/`
+resolvable, or set `DSA_PARTS_DIR` / `DSA_PROJECTS_DIR` to absolute paths:
+
+```json
+{
+  "mcpServers": {
+    "datasheets": {
+      "command": "C:/path/to/repo/.venv/Scripts/dsa.exe",
+      "args": ["serve", "--mcp"],
+      "cwd": "C:/path/to/repo",
+      "env": { "DSA_MCP_MAX_TOKENS": "6000" }
+    }
+  }
+}
+```
+
+On macOS/Linux the command is `/path/to/repo/.venv/bin/dsa`.
+
+| Tool | Scope | Returns |
+|---|---|---|
+| `list_parts` | — | built parts: revision, vendor, counts, confidence mix |
+| `list_projects` | — | projects, their members, whether each is built |
+| `get_index` | part | the part's `INDEX.md` |
+| `search` | part or project | BM25 hits, each cited by construction |
+| `find_spec` | part or project | spec records through the alias ladder |
+| `read_section` | part | one section verbatim, bounded by `max_tokens` |
+| `find_plots` | part or project | the plot catalog, filtered |
+| `get_figure` | part | one figure **as an image content block** |
+| `ask` | part or project | one cited, budget-bounded answer pack |
+
+Resources `dsa://part/<PART>/INDEX.md` and
+`dsa://project/<NAME>/PROJECT_INDEX.md` let a client pin an index into context
+without spending a tool call.
+
+Every response carries citations and confidence, declares its own JSON schema
+(shipped in each tool's `_meta.response_schema`), and is capped at
+`DSA_MCP_MAX_TOKENS` (default 6000) — a truncated response **says so** and
+names the setting. `get_figure`'s image block is atomic and is not trimmed:
+truncating base64 makes a corrupt PNG, not a shorter one, so the cap governs
+the JSON that cites it and the payload reports the image's byte size.
+
 ### Add companion documents
 
 ```bash
@@ -330,6 +388,7 @@ Environment variables (prefix `DSA_`, or `.env` file):
 | `DSA_INDEX_TOKEN_BUDGET` | `3000` | hard INDEX.md budget |
 | `DSA_ASK_BUDGET` | `4000` | default `dsa ask` pack budget (`--budget` overrides) |
 | `DSA_PROJECT_INDEX_TOKEN_BUDGET` | `4000` | hard PROJECT_INDEX.md budget |
+| `DSA_MCP_MAX_TOKENS` | `6000` | hard cap on every `dsa serve --mcp` response |
 | `DSA_LLM_DESCRIPTIONS` | `true` | use LLM for INDEX descriptions |
 | `DSA_MODEL` | `claude-haiku-4-5` | Anthropic model for descriptions |
 | `ANTHROPIC_API_KEY` | — | enables LLM enrichment |
@@ -340,7 +399,7 @@ Token counts everywhere are `chars/4` (see `tokens.py`).
 ## Development
 
 ```bash
-python -m pytest tests/ -q    # 600 tests, ~90 s, fully offline (the
+python -m pytest tests/ -q    # 786 tests, ~90 s, fully offline (the
                               # phase-4 gate builds four real PDFs)
 python -m ruff check src tests
 ```
@@ -348,7 +407,9 @@ python -m ruff check src tests
 Tests are hermetic: TI pages replay from `tests/fixtures/recorded_http/`
 (unrecorded URL = hard error), synthetic PDFs are built in-test with PyMuPDF,
 and the LLM is a fake client. Integration tests use the real `afe7950.pdf` /
-`afe7953.pdf` (skip-guarded) plus recorded fixtures.
+`afe7953.pdf` (skip-guarded) plus recorded fixtures. The MCP server is driven
+in-process over the SDK's memory transport — a real client session, no
+subprocess and no port.
 
 Per-part goldens in `tests/fixtures/golden_qa_<PART>.yaml` are the
 objective function: hand-verified answers and page cites covering direct

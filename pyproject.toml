@@ -21,6 +21,20 @@ dependencies = [
 dev = [
     "pytest>=8.0",
     "ruff>=0.5",
+    # The MCP SDK is optional for *running* the tool and mandatory for
+    # *testing* it: the phase-5 gate requires every MCP tool exercised
+    # in-process over the SDK's memory transport, so a dev install that
+    # skipped those tests would not be running the gate. The SDK-free half of
+    # the surface (`mcp_server/responses.py`, the path-safety guard, the
+    # install-hint path) is tested in `tests/unit/test_mcp_responses.py`,
+    # which needs no extra at all.
+    "mcp>=2.0",
+]
+# `dsa serve --mcp` only. Kept out of the core dependencies so a plain install
+# stays lean: everything except the MCP server works without it, and
+# `dsa serve --mcp` without it prints an install hint rather than a traceback.
+mcp = [
+    "mcp>=2.0",
 ]
 
 [project.scripts]

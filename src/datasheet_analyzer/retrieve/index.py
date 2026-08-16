@@ -36,12 +36,30 @@ from datasheet_analyzer.models import (
 
 log = logging.getLogger(__name__)
 
+#: The part's always-loadable index, at the root of its corpus directory.
+INDEX_FILENAME = "INDEX.md"
+
 _CACHE: dict[tuple, CorpusIndex] = {}
 
 
 def clear_index_cache() -> None:
     """Test hook: drop every cached index so a rewritten corpus is re-read."""
     _CACHE.clear()
+
+
+def discover_parts(parts_dir: Path | str) -> list[Path]:
+    """Every part directory under `parts_dir`, sorted by name; `[]` when none.
+
+    A *directory* counts as a part here, built or not: a front end listing
+    parts must be able to show one that was only half-built, and
+    `CorpusIndex.load` reads it honestly (no manifest, no facts) rather than
+    hiding it. Sorted, because directory order must not decide what a caller
+    sees first.
+    """
+    root = Path(parts_dir)
+    if not root.is_dir():
+        return []
+    return sorted((d for d in root.iterdir() if d.is_dir()), key=lambda d: d.name)
 
 
 @dataclass(frozen=True)
@@ -133,17 +151,59 @@ class CorpusIndex:
 
     def section_text(self, section: SectionFile) -> str:
         """Markdown body of one section file; `""` when it cannot be read."""
-        cached = self._section_text.get(section.file)
+        return self._text(section.file, "section file")
+
+    def index_markdown(self) -> str:
+        """`INDEX.md` — the part's always-loadable index; `""` when absent.
+
+        Read through the same lazy cache as section bodies, so a session that
+        pins a part's index into context repeatedly reads it once.
+        """
+        return self._text(INDEX_FILENAME, "index file")
+
+    def _text(self, rel: str, kind: str) -> str:
+        """One corpus-relative text file, lazily read then cached."""
+        cached = self._section_text.get(rel)
         if cached is not None:
             return cached
-        path = self.part_dir / section.file
+        path = self.part_dir / rel
         try:
             text = path.read_text(encoding="utf-8")
         except OSError as exc:
-            log.warning("skipping unreadable section file %s: %s", path, exc)
+            log.warning("skipping unreadable %s %s: %s", kind, path, exc)
             text = ""
-        self._section_text[section.file] = text
+        self._section_text[rel] = text
         return text
+
+    def corpus_path(self, rel: str) -> Path | None:
+        """Absolute path of a corpus-relative file, or None when it escapes.
+
+        The one place a caller-supplied path becomes a filesystem path. A
+        corpus file reference (`docs/<doc>/figures/4.12.1-f001.png`) is data
+        the corpus itself produced; anything absolute, drive-qualified, null-
+        byte-bearing or containing `..` is refused outright rather than
+        normalized, and the resolved target is checked back against the part
+        directory so a symlink cannot escape either. Refusing beats rewriting:
+        silently resolving `../../secrets` to *something* would hand a caller
+        bytes from outside the part it asked about.
+
+        Existence is deliberately not checked here — "outside this part" and
+        "not in this corpus" are different findings and a caller should be
+        able to report them differently.
+        """
+        rel = (rel or "").strip().replace("\\", "/")
+        if not rel or "\0" in rel:
+            return None
+        candidate = Path(rel)
+        if rel.startswith("/") or candidate.is_absolute() or candidate.drive:
+            return None
+        if any(part == ".." for part in candidate.parts):
+            return None
+        root = self.part_dir.resolve()
+        target = (root / candidate).resolve()
+        if target != root and root not in target.parents:
+            return None
+        return target
 
 
 def _cache_key(part_dir: Path) -> tuple | None:

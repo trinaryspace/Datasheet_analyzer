@@ -101,6 +101,17 @@ about the *corpus* (the full-text path could not run because there is no
 current search index) — an answer pack must never spend one for the other.
 _Avoid_: intent, classification, dispatch, mode
 
+**Response cap**:
+The hard token limit on everything one MCP call hands back
+(`DSA_MCP_MAX_TOKENS`, default 6000). It is the answer pack's budget applied
+to a transport: a client cannot bound a payload it did not build, so the
+server bounds it, and what a cap removes is extra rows or excerpt prose —
+never a citation. A capped response always *says* it was capped and names the
+setting; silent loss is the one failure a caller cannot detect. An image
+block is exempt because it is atomic: trimming base64 yields a corrupt PNG,
+not a shorter one.
+_Avoid_: limit, quota, page size, throttle
+
 **Part**:
 A named device (e.g. AFE7950) and its corpus: a folder under `parts/`
 holding an index, inventory, manifest, and one document directory per source

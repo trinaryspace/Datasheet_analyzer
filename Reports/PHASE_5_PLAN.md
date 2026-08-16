@@ -231,7 +231,21 @@ so a client can pin the index into context without a tool call.
 Dependency: the official `mcp` Python SDK, added as an optional extra
 (`pip install -e ".[mcp]"`) so the core install stays lean. Tests drive the
 server **in-process over the SDK's memory transport** — no subprocess, no
-port, hermetic per invariant #4.
+port, hermetic per invariant #4. The SDK is also in the `dev` extra, because
+the gate above requires those tests to actually run on the documented dev
+install; the SDK-free half of the surface is tested separately so a lean
+install still checks the seam, the schemas and the path-safety refusal.
+
+**Outstanding at ticket-07 close — one box no test can tick.** The ticket
+requires the README `mcp.json` snippet to be *"verified by hand once against a
+real client (recorded in the phase report)"*. The snippet shipped and the
+server is proven over the memory transport, but a memory transport is not a
+client registration: nobody has yet launched Claude Code / Claude Desktop /
+Cursor against `dsa serve --mcp` and confirmed the tools appear. That check is
+a human action, so it is carried forward explicitly into ticket 09's
+`PHASE_5_REPORT.md` checklist (client, date, calls made) rather than asserted
+here. **The phase does not close on that box until a human has run it**; if it
+is still outstanding when the report is written, the report says so.
 
 ### 8. Corpus agent protocol
 
@@ -302,7 +316,10 @@ Tickets 01→05 are a chain; 06 is parallelisable; 07 is the join.
   **Confidence**.
 - `README.md`: MCP setup snippet, `ask`/`search`/`project` usage.
 - `Reports/PHASE_5_REPORT.md`: measured alias hit rate, mean answer-pack
-  tokens vs today's multi-call cost, search top-1 accuracy on the goldens.
+  tokens vs today's multi-call cost, search top-1 accuracy on the goldens,
+  **and the ticket-07 MCP hand-verification record** (which client, which
+  date, which tools called) — the one acceptance box that is a human action
+  rather than a test.
 
 ## Out of scope (kept out, recorded)
 

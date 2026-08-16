@@ -31,6 +31,15 @@ one.
 - [ ] `Reports/PHASE_5_REPORT.md` written with measured numbers: alias hit
       rate, search top-1 accuracy, mean answer-pack tokens vs. today's
       multi-call cost, per-part confidence mix, search-index size ratio
+- [ ] `Reports/PHASE_5_REPORT.md` **records the MCP hand-verification**
+      carried over from ticket 07: a human registered the server per the
+      README `mcp.json` snippet in a real client (Claude Code / Claude
+      Desktop / Cursor) once and wrote down the client, the date, and what was
+      called. This is the one ticket-07 acceptance box no test can close — the
+      in-process memory transport proves the server, not the registration — so
+      it is carried here rather than left unowned. **Do not fabricate it**: if
+      no human has run it when the report is written, the report says
+      "outstanding" and the phase does not close on that box.
 - [ ] `PHASE_5_PLAN.md` marked superseded by the report
 
 ---

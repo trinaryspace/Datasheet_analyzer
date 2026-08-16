@@ -10,7 +10,13 @@ budget cannot be enforced on text the core did not produce, so the pack renders
 itself and reports what it cost.
 """
 
-from datasheet_analyzer.retrieve.index import CorpusIndex, IndexedDoc, clear_index_cache
+from datasheet_analyzer.retrieve.index import (
+    INDEX_FILENAME,
+    CorpusIndex,
+    IndexedDoc,
+    clear_index_cache,
+    discover_parts,
+)
 from datasheet_analyzer.retrieve.project import ProjectRetriever
 from datasheet_analyzer.retrieve.results import (
     CONFIDENCE_UNKNOWN,
@@ -44,6 +50,7 @@ from datasheet_analyzer.retrieve.pack import (  # isort: skip
 __all__ = [
     "ANSWER_PACK_SCHEMA",
     "CONFIDENCE_UNKNOWN",
+    "INDEX_FILENAME",
     "PLOT_VOCABULARY",
     "ROUTES",
     "ROUTE_NONE",
@@ -67,6 +74,7 @@ __all__ = [
     "build_pack",
     "build_project_pack",
     "clear_index_cache",
+    "discover_parts",
     "score_sections",
     "validate_pack",
 ]
