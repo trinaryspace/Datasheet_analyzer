@@ -36,6 +36,11 @@ from pathlib import Path
 
 from datasheet_analyzer.models import Project
 from datasheet_analyzer.projects.store import INDEX_FILENAME, part_dir, project_dir
+from datasheet_analyzer.protocol import (
+    AGENT_FILENAME,
+    build_project_agent_markdown,
+    write_agent_doc,
+)
 from datasheet_analyzer.retrieve import CorpusIndex
 from datasheet_analyzer.tokens import count_tokens
 
@@ -179,14 +184,18 @@ def build_project_index_markdown(
     def free_text(heading: str, body: str) -> list[str]:
         return [f"## {heading}", "", body.strip(), ""] if body.strip() else []
 
+    # A pointer, not a copy: the retrieval protocol lives in `AGENT.md` beside
+    # this file (ticket 08). Duplicating it here would make two texts that can
+    # disagree, and the budget this index degrades under is better spent on
+    # parts than on prose that already exists one file over.
     conventions = [
         "## How to use this project",
         "",
-        "- Start here, then open the `INDEX.md` of the part a question points at.",
-        f'- One question across the whole design: `dsa ask --project {project.name} "..."`;',
-        "  every hit is labelled with the part it came from.",
-        "- `dsa search --project` / `--query` / `--plots` fan out the same way.",
-        "- Answers must quote values WITH units and cite the page.",
+        (
+            f"- `{AGENT_FILENAME}` beside this file is the retrieval protocol "
+            "(both access paths, the confidence rule). Read it first."
+        ),
+        "- Then open the `INDEX.md` of the part a question points at.",
         "",
     ]
 
@@ -229,9 +238,11 @@ def write_project_index(
 ) -> tuple[Path, str]:
     """Build and write `projects/<name>/PROJECT_INDEX.md`; return path + text.
 
-    The file is rewritten whole every time, which is what makes "remove a
-    part, rebuild" leave no stale entry: there is no merge step that could
-    keep one.
+    `AGENT.md` is written beside it, because this *is* a project's publish
+    step and the protocol must ship with the data rather than with the
+    command that happened to trigger the build — the same rule that puts a
+    part's `AGENT.md` inside `write_corpus`. It is fixed text, so it is not
+    budget-degraded and is not what the returned tuple describes.
     """
     dest = project_dir(project.name, projects_dir)
     dest.mkdir(parents=True, exist_ok=True)
@@ -239,4 +250,5 @@ def write_project_index(
     text = build_project_index_markdown(project, members, token_budget=token_budget)
     path = dest / INDEX_FILENAME
     path.write_text(text, encoding="utf-8")
+    write_agent_doc(dest, build_project_agent_markdown(project.name, project.part_numbers))
     return path, text

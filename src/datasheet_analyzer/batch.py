@@ -64,6 +64,7 @@ from datasheet_analyzer.extract.base import get_backend
 from datasheet_analyzer.extract.pdf_structure import compute_content_hash
 from datasheet_analyzer.models import CorpusManifest, CorpusStats
 from datasheet_analyzer.pipeline import build_part
+from datasheet_analyzer.protocol import agent_doc_current
 from datasheet_analyzer.publish import (
     doc_dir_name_for_source,
     plots_current,
@@ -294,7 +295,13 @@ def _publish_artifacts_stale(part_dir: Path, manifest: CorpusManifest) -> bool:
     query ungraded. Nothing here re-derives a grade: the gate only decides
     whether to republish, and grading stays where it belongs, at structure
     time.
+
+    `AGENT.md` (ticket 08) is gated the same way, on its own embedded
+    protocol marker: a corpus published before the protocol existed would
+    otherwise skip forever and ship no protocol beside its index.
     """
+    if not agent_doc_current(part_dir):
+        return True
     for doc in manifest.documents:
         doc_dir = part_dir / "docs" / doc_dir_name_for_source(doc)
         if not search_index_current(doc_dir):
@@ -311,8 +318,9 @@ def skip_reason(job: BatchJob, *, settings: Settings, force: bool = False) -> st
     current ``PIPELINE_VERSION``, every published document's recorded
     ``extractor_version`` still matches what its backend produces today,
     every published document carries current-schema publish artifacts —
-    ``search_index.json``, and a ``specs.json`` / ``plots.json`` of the
-    current schema wherever one was written (``_publish_artifacts_stale``) —
+    ``search_index.json``, a ``specs.json`` / ``plots.json`` of the
+    current schema wherever one was written, and the part's ``AGENT.md`` at
+    the current protocol version (``_publish_artifacts_stale``) —
     and
     the PDF's sha256 matches the hash of the document recorded for this file
     in the part's inventory AND the manifest's published documents

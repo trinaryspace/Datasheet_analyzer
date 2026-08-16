@@ -242,6 +242,7 @@ page range within its token budget. Then grep/read the section files:
 ```
 parts/AFE7950/
 ├── INDEX.md               # always-loadable index (hard budget, 3000 tok)
+├── AGENT.md               # the retrieval protocol, shipped with the corpus (~1.4k tok)
 ├── sources.json           # doc inventory: sha256, type, revision, nda flag
 ├── manifest.json          # machine-readable section map + stats
 └── docs/datasheet-<hash8>/
@@ -255,6 +256,25 @@ parts/AFE7950/
 
 Every answer should quote values **with units** and cite `p.N` from the
 section header.
+
+### The protocol ships with the corpus (`AGENT.md`)
+
+`INDEX.md` is the map; `AGENT.md` beside it is how to read it. It is written
+at publish for every part and every project, and it is short enough
+(~1.4k tokens, ceiling 1,700) to load next to the index every time:
+
+- the rules — index first, never bulk-read, prefer `ask`, quote units, cite
+  `p.N`, check the confidence grade, and on `low` send the designer to the
+  printed page;
+- both access paths, the `dsa` CLI and the MCP tools, each with a worked
+  example scoped to that part or project;
+- the confidence table: what each grade means and what to do about it.
+
+The same text is checked into this repo as the Claude Code skill
+`.claude/skills/datasheet-corpus/SKILL.md`, so an agent working in this
+workspace adopts the protocol before it opens anything. Both are rendered
+from `src/datasheet_analyzer/protocol.py` — edit that, then run
+`python scripts/write_skill.py`; a test fails if the two ever disagree.
 
 ### Group parts into a design (`dsa project`)
 
@@ -273,7 +293,8 @@ dsa project status                   # every project and its parts
 ```
 projects/rf-frontend/
 ├── project.json        # name, parts[] (+ role), interfaces, notes, timestamps
-└── PROJECT_INDEX.md    # always-loadable, hard budget (4000 tok)
+├── PROJECT_INDEX.md    # always-loadable, hard budget (4000 tok)
+└── AGENT.md            # the same retrieval protocol, scoped to the design
 ```
 
 Membership is explicit — no BOM or netlist parsing. A part with no built

@@ -534,6 +534,10 @@ class TestProjectCli:
         out = capsys.readouterr().out
         assert "PROJECT_INDEX.md" in out
         assert f"budget {wired.project_index_token_budget}" in out
+        # ticket 08: the protocol is published with the index, and its size is
+        # reported against its budget rather than claimed anywhere.
+        assert "agent protocol: AGENT.md" in out
+        assert (wired.projects_dir / "board1" / "AGENT.md").exists()
         assert list_projects(wired.projects_dir) == ["board1"]
 
         assert cli.main(["project", "status"]) == 0

@@ -21,6 +21,7 @@ from typing import Protocol
 
 from datasheet_analyzer.enrich.llm import LLMClient
 from datasheet_analyzer.models import RawDocument
+from datasheet_analyzer.protocol import AGENT_FILENAME
 from datasheet_analyzer.structure.corpus import SectionPlan
 from datasheet_analyzer.tokens import count_tokens, truncate_to_tokens
 
@@ -175,14 +176,18 @@ def build_index_markdown(
         doc_lines.append(f"- `{dtype}` {rev or ''} — {pages} pages — `docs/{dtype}-{h8}/`")
     doc_lines.append("")
 
+    # A pointer, not a copy. The retrieval discipline used to live here as
+    # prose; ticket 08 promoted it to `AGENT.md`, published beside this file.
+    # Restating it here would create a second protocol that can disagree with
+    # the first — and would spend the budget of the map on text that is one
+    # file away.
     conventions = [
         "## How to use this corpus",
         "",
-        "- Every section file starts with `<!-- source: <doc> p.N[-M] -->` — cite those pages.",
-        "- Tables are atomic: conditions and footnotes are inline with each table;",
-        "  a machine-readable CSV twin lives next to it under `tables/`.",
-        "- Plot lookup: `dsa plots / docs/<doc>/plots.json` -> open the image file (vision).",
-        "- Answers must quote values WITH units and cite the page.",
+        (
+            f"- Read `{AGENT_FILENAME}` beside this file first: the retrieval "
+            "protocol (both access paths, citations, the confidence rule)."
+        ),
         "",
     ]
 

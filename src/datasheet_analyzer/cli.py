@@ -92,7 +92,8 @@ def _cmd_build(args: argparse.Namespace) -> int:
     )
     print(
         f"  corpus {stats.total_tokens} tokens; INDEX.md {stats.index_tokens} tokens "
-        f"(budget {settings.index_token_budget})"
+        f"(budget {settings.index_token_budget}); AGENT.md "
+        f"{stats.agent_doc_tokens} tokens"
     )
     print(
         f"  page coverage: {stats.sections_with_pages}/{stats.n_sections} sections; "
@@ -460,6 +461,7 @@ def _project_remove(args: argparse.Namespace, settings) -> int:
 
 def _project_build(args: argparse.Namespace, settings) -> int:
     from datasheet_analyzer.projects import load_project, write_project_index
+    from datasheet_analyzer.protocol import AGENT_DOC_TOKEN_BUDGET, AGENT_FILENAME
     from datasheet_analyzer.tokens import count_tokens
 
     project = load_project(args.name, settings.projects_dir)
@@ -473,6 +475,12 @@ def _project_build(args: argparse.Namespace, settings) -> int:
     print(
         f"  {len(project.parts)} parts — {count_tokens(text)} tokens "
         f"(budget {settings.project_index_token_budget})"
+    )
+    agent = path.parent / AGENT_FILENAME
+    print(
+        f"  agent protocol: {agent.name} — "
+        f"{count_tokens(agent.read_text(encoding='utf-8'))} tokens "
+        f"(budget {AGENT_DOC_TOKEN_BUDGET})"
     )
     return 0
 

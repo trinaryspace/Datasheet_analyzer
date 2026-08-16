@@ -30,6 +30,7 @@ from datasheet_analyzer.models import (
     SpecRecord,
     SpecSet,
 )
+from datasheet_analyzer.protocol import build_part_agent_markdown, write_agent_doc
 from datasheet_analyzer.publish.search_index import build_search_index, write_search_index
 from datasheet_analyzer.structure.confidence import mix as confidence_mix
 from datasheet_analyzer.structure.corpus import SectionPlan
@@ -125,7 +126,10 @@ def write_corpus(
     graded_specs: list[SpecRecord] = []
     graded_plots: list[PlotRecord] = []
 
+    doc_dirs: list[str] = []
+
     for raw, plans, descriptions in docs:
+        doc_dirs.append(doc_dir_name(raw))
         doc_rel = f"docs/{doc_dir_name(raw)}"
         doc_abs = part_dir / doc_rel
         (doc_abs / "sections").mkdir(parents=True, exist_ok=True)
@@ -208,6 +212,22 @@ def write_corpus(
 
     (part_dir / "INDEX.md").write_text(index_md, encoding="utf-8")
     stats.index_tokens = count_tokens(index_md)
+
+    # The retrieval protocol ships *with* the corpus (ticket 08): INDEX.md is
+    # the map, AGENT.md is how to read it. Written here rather than by the
+    # enrich stage because it is not enriched — it is fixed text plus the
+    # facts this function already has.
+    agent_md = build_part_agent_markdown(
+        part_dir.name,
+        revision=manifest.documents[0].revision if manifest.documents else "",
+        doc_dirs=doc_dirs,
+        n_sections=stats.n_sections,
+        n_specs=stats.n_specs,
+        n_plot_files=stats.n_plot_files,
+    )
+    write_agent_doc(part_dir, agent_md)
+    stats.agent_doc_tokens = count_tokens(agent_md)
+
     if graded_specs:
         stats.spec_confidence = confidence_mix(graded_specs)
     if graded_plots:
@@ -218,9 +238,10 @@ def write_corpus(
         json.dumps(manifest.model_dump(mode="json"), indent=2), encoding="utf-8"
     )
     log.info(
-        "corpus written: %s (%d sections, %d tables, %d spec records, %d tokens, index %d tokens)",
+        "corpus written: %s (%d sections, %d tables, %d spec records, %d tokens, "
+        "index %d tokens, agent protocol %d tokens)",
         part_dir, stats.n_sections, stats.n_tables, stats.n_specs,
-        stats.total_tokens, stats.index_tokens,
+        stats.total_tokens, stats.index_tokens, stats.agent_doc_tokens,
     )
     log.info(
         "confidence mix: specs %s; plots %s",

@@ -112,6 +112,17 @@ block is exempt because it is atomic: trimming base64 yields a corrupt PNG,
 not a shorter one.
 _Avoid_: limit, quota, page size, throttle
 
+**Agent protocol**:
+The retrieval discipline itself, as an artifact: `AGENT.md`, emitted beside
+every part's `INDEX.md` and every project's `PROJECT_INDEX.md`, and checked
+into this repo as the `datasheet-corpus` skill. Index first, never bulk-read,
+prefer `ask`, quote units, cite `p.N`, check the grade, and on `low` open the
+printed page — plus a worked example of each access path, CLI and MCP. It is
+written once in `protocol.py` and rendered into all three destinations, so
+there is one protocol rather than three copies; the index files point at it
+instead of restating it.
+_Avoid_: README, docs, instructions, prompt, guidelines
+
 **Part**:
 A named device (e.g. AFE7950) and its corpus: a folder under `parts/`
 holding an index, inventory, manifest, and one document directory per source

@@ -232,6 +232,12 @@ class CorpusStats(BaseModel):
     # it — rather than a claim in a report. Additive: `{}` on older corpora.
     spec_confidence: dict[str, int] = Field(default_factory=dict)
     plot_confidence: dict[str, int] = Field(default_factory=dict)
+    # Phase 5 ticket 08: the measured size of the `AGENT.md` published beside
+    # `INDEX.md`. Recorded for the same reason `index_tokens` is — a file an
+    # agent loads every time has a cost, and the cost belongs in the manifest
+    # as a number rather than in a report as a claim. Additive: 0 on corpora
+    # published before the protocol existed.
+    agent_doc_tokens: int = 0
 
 
 class ExtractionStats(BaseModel):

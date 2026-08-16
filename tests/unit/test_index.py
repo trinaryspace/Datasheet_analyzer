@@ -113,7 +113,12 @@ class TestBuildIndexMarkdown:
         assert "docs/datasheet-deadbeef/" in md  # doc dir pointer
         assert "p.7-13" in md  # page ranges
         assert "DSA range/step/accuracy" in md  # descriptions
-        assert "cite those pages" in md  # conventions
+        # Conventions are a *pointer* since ticket 08: the retrieval protocol
+        # lives in AGENT.md, published beside this file. Restating it here
+        # would be a second protocol that can disagree with the first.
+        assert "## How to use this corpus" in md
+        assert "`AGENT.md`" in md
+        assert "Tables are atomic" not in md, "pointer, not duplicated prose"
 
     def test_budget_enforcement_shrinks_descriptions(self):
         big = build_index_markdown("P", "brief", ["fact"], [("datasheet", "R", 10, "deadbeef")],

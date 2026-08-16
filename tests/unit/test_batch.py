@@ -301,6 +301,32 @@ def test_missing_manifest_rebuilds_part(batch_env):
     assert by_part["TEST9000"].status == STATUS_SKIPPED
 
 
+def test_missing_agent_protocol_rebuilds_part(batch_env):
+    """`AGENT.md` is a publish artifact too (Phase 5, ticket 08).
+
+    A corpus published before the protocol existed — or under an older
+    protocol version — would otherwise skip forever and ship no protocol
+    beside its index. It republishes once, then skips again.
+    """
+    from datasheet_analyzer.protocol import AGENT_FILENAME
+
+    pdfs, settings = batch_env
+    assert run_batch(pdfs, settings=settings, use_llm=False).ok
+    (settings.parts_dir / "PLAIN" / AGENT_FILENAME).unlink()
+    (settings.parts_dir / "TEST9001" / AGENT_FILENAME).write_text(
+        "# stale\n\n<!-- dsa-agent-protocol: v0 -->\n", encoding="utf-8"
+    )
+
+    by_part = {j.part: j for j in run_batch(pdfs, settings=settings, use_llm=False).jobs}
+    assert by_part["PLAIN"].status == STATUS_DONE  # missing: rebuilt
+    assert by_part["TEST9001"].status == STATUS_DONE  # older version: rebuilt
+    assert by_part["TEST9000"].status == STATUS_SKIPPED
+
+    again = {j.part: j for j in run_batch(pdfs, settings=settings, use_llm=False).jobs}
+    assert again["PLAIN"].status == STATUS_SKIPPED
+    assert again["TEST9001"].status == STATUS_SKIPPED
+
+
 def test_missing_search_index_rebuilds_part(batch_env):
     """Publish artifacts are part of the skip gate too (Phase 5, ticket 03).
 
