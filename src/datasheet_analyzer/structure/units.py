@@ -15,21 +15,31 @@ CANONICAL_UNITS: dict[str, str] = {
     "Ω": "ohm",
     "Ω": "ohm",
     "ohm": "ohm",
-    # logarithmic / angle
+    # No prefixed ohm entries (kohm, Mohm): giving them a canonical form would
+    # rename a unit string this corpus already publishes, for three rows of
+    # numeric coverage. Left as honest lexicon growth.
+    # logarithmic / angle / ratio
     "dB": "dB",
     "dBm": "dBm",
+    "dBc": "dBc",
     "dBc/Hz": "dBc/Hz",
     "dBFS": "dBFS",
+    "dBFS/Hz": "dBFS/Hz",
     "deg": "deg",
+    "%": "%",
     # voltage
     "V": "V",
+    "kV": "kV",
     "mV": "mV",
+    "µV": "µV",
     "mVpp": "mVpp",
     "Vppdiff": "Vppdiff",
     # current
     "A": "A",
     "mA": "mA",
     "µA": "µA",
+    "nA": "nA",
+    "pA": "pA",
     # temperature
     "°C": "°C",
     "°C/W": "°C/W",
@@ -47,14 +57,18 @@ CANONICAL_UNITS: dict[str, str] = {
     # time
     "s": "s",
     "ms": "ms",
+    "µs": "µs",
     "ns": "ns",
     "ps": "ps",
     "UI": "UI",
     # misc
     "F": "F",
+    "µF": "µF",
+    "nF": "nF",
     "pF": "pF",
     "W": "W",
     "mW": "mW",
+    "µW": "µW",
     "bits": "bits",
 }
 

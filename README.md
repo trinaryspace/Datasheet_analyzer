@@ -479,7 +479,10 @@ ran establishes nothing.
   PDFs (register maps / errata / app notes) use `pdf_text` for any vendor.
 - Table page pinning is exact where the table is locatable in PDF page text;
   otherwise the table honestly keeps its section-level page range.
-- Spec values are verbatim strings — no float parsing or numeric comparison.
+- Spec values are verbatim strings, and they stay authoritative: a parallel
+  parsed layer (`value_si` / `unit_si` / `value_kind` in `specs.json`) is
+  additive, may be absent for any row, and never rewrites what was printed.
+  Where the two disagree, the printed string is correct by definition.
 - **PyMuPDF is AGPL-3.0** — it is the engine behind the offline
   `pdf_layout` extraction floor, and TI's HTML path uses it for
   TOC/identity/verification. Fine for local research; review before

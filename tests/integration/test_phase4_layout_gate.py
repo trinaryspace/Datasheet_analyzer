@@ -581,6 +581,99 @@ class TestConfidenceMix:
                 assert fresh[key] == {f: row[f] for f in fields}, f"{name}: {key}"
 
 
+class TestNumericLayerParseRate:
+    """Phase 6, ticket 02: the numeric layer measured on the four gate corpora.
+
+    It lives in this module because the four corpora are already built here —
+    the six-part parse-rate number the phase report carries costs no second
+    build. (The two TI reference corpora are measured in
+    `test_phase6_quantities.py`, off the ones committed under `parts/`.)
+
+    The rate is a **measurement, not a target**. The layout-floor parts score
+    far below the TI ones, and the reason is not the grammar: measured, the
+    overwhelming majority of their unparsed rows print *no value cell at all*,
+    because a rescued grid put the numbers somewhere a value role never saw
+    them. That is an extraction finding, and tuning the grammar to hide it
+    would be exactly the wrong repair. What is asserted is the floor (so a
+    grammar regression fails), that nothing is dropped, and that no printed
+    cell of any published record was mutated by the layer.
+    """
+
+    # Measured; floors sit a little under, so an honest improvement raises
+    # them and a regression fails.
+    FLOORS: ClassVar[dict[str, float]] = {
+        "AD9081": 0.30, "LM741": 0.62, "QPA1003P": 0.80, "HMC520A": 0.10,
+    }
+
+    VERBATIM_FIELDS: ClassVar[tuple[str, ...]] = (
+        "symbol", "name", "conditions", "table_conditions",
+        "min", "typ", "max", "value",
+    )
+
+    def _records(self, result):
+        from datasheet_analyzer.retrieve import CorpusIndex
+
+        return [rec for doc in CorpusIndex.load(result.part_dir).docs for rec in doc.specs]
+
+    def _snapshot(self, record) -> tuple:
+        return (
+            tuple(getattr(record, f) for f in self.VERBATIM_FIELDS),
+            record.unit.verbatim,
+            record.unit.canonical,
+            tuple(record.row_verbatim),
+        )
+
+    def test_parse_rate_holds_its_floor_and_breaks_down_by_section(self, gate, capsys):
+        from datasheet_analyzer.structure.quantities import parse_rate
+
+        tables: list[str] = []
+        for name in GATE:
+            records = self._records(gate[name])
+            rate = parse_rate(records)
+            assert rate.n_records == len(records), name
+            assert sum(t for _, t in rate.by_section.values()) == len(records), name
+            assert rate.rate >= self.FLOORS[name], f"{name} fell to {rate.rate:.0%}"
+            tables.append(rate.as_table(title=name))
+        with capsys.disabled():
+            print("\nnumeric layer parse rate, four gate corpora\n")
+            print("\n\n".join(tables) + "\n")
+
+    def test_the_published_records_carry_the_layer(self, gate):
+        from datasheet_analyzer.models import ParseConfidence
+
+        for name in GATE:
+            records = self._records(gate[name])
+            parsed = [r for r in records if r.parse_confidence is ParseConfidence.EXACT]
+            assert parsed, f"{name} parsed nothing at all"
+            assert all(r.value_kind is not None for r in parsed), name
+            # ...and an unparsed row is honestly null rather than zero
+            for record in records:
+                if record.parse_confidence is ParseConfidence.NONE:
+                    assert record.value_si is None and record.unit_si == "", name
+
+    def test_no_printed_cell_was_mutated_by_the_layer(self, gate):
+        """The additive promise on four real corpora: re-running the layer over
+        the published records changes no verbatim string."""
+        from datasheet_analyzer.structure.quantities import annotate_record
+
+        for name in GATE:
+            records = self._records(gate[name])
+            before = [self._snapshot(r) for r in records]
+            for record in records:
+                annotate_record(record)
+            assert [self._snapshot(r) for r in records] == before, name
+
+    def test_a_comparison_over_these_records_reports_what_it_could_not_read(self, gate):
+        """Invariant 8: an unparseable row is listed, never quietly excluded."""
+        from datasheet_analyzer.structure.quantities import parse_population
+
+        for name in GATE:
+            records = self._records(gate[name])
+            population = parse_population(records, role="max")
+            assert population.total == len(records), name
+            assert len(population.listing()) == population.n_unparsed, name
+
+
 class TestAnswerPacks:
     """Phase 5, ticket 05: `dsa ask` measured on four real corpora.
 

@@ -26,7 +26,12 @@ PIPELINE_VERSION = "0.4.0"
 # point at (ADR 0005). A corpus published without ids answers every provenance
 # lookup with nothing, so it republishes once rather than serving unaddressable
 # records forever.
-SPECS_SCHEMA_VERSION = "3"
+# "4": phase 6, ticket 02 added the numeric layer's additive fields (`value_si`,
+# `value_low_si`, `value_high_si`, `unit_si`, `value_kind`, `parse_confidence`)
+# to every published record. A corpus published without them answers every
+# comparison and margin question unparsed, so it republishes once instead of
+# looking like a part whose values simply do not parse.
+SPECS_SCHEMA_VERSION = "4"
 PLOTS_SCHEMA_VERSION = "2"
 SEARCH_SCHEMA_VERSION = "1"
 

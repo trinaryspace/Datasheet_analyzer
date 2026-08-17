@@ -90,7 +90,7 @@ codes, not colors.
 
 | Module | Role | Key exports |
 |---|---|---|
-| `models.py` | **The contract.** Pydantic v2 models shared by all stages. Change deliberately. | `SourceDocument`, `TOCEntry`, `Footnote`, `TableBlock`, `FigureRef`, `SectionNode`, `RawDocument`, `SectionFile`, `CorpusManifest`, `CorpusStats`, `ExtractionStats`, `GoldenQuestion`, `Project`, `ProjectMember`, `DocType`, `Confidence`, `RECONSTRUCTION_HEADER`/`RECONSTRUCTION_RESCUED`, `SpecUnit`, `SpecRecord`, `SpecTableInfo`, `SpecSet`, `PlotRecord`, `PlotSet`, `DerivedValue` |
+| `models.py` | **The contract.** Pydantic v2 models shared by all stages. Change deliberately. | `SourceDocument`, `TOCEntry`, `Footnote`, `TableBlock`, `FigureRef`, `SectionNode`, `RawDocument`, `SectionFile`, `CorpusManifest`, `CorpusStats`, `ExtractionStats`, `GoldenQuestion`, `Project`, `ProjectMember`, `DocType`, `Confidence`, `RECONSTRUCTION_HEADER`/`RECONSTRUCTION_RESCUED`, `SpecUnit`, `SpecRecord`, `SpecTableInfo`, `SpecSet`, `PlotRecord`, `PlotSet`, `DerivedValue`, `ValueKind`, `ParseConfidence` |
 | `provenance.py` | **The invariant-8 round trip** (phase 6, ticket 01): the id format a derived value's `source` points at, and the resolver that walks it back. `spec_record_id` mints the stable, document-scoped ids (`rec_1`, `rec_2`, …) that `structure/specs.py` stamps on every published spec record — the ordinal is the id because emission order is fully determined by the document, so a rebuild of identical input reproduces every id exactly. `source_ref` spells the reference (`docs/<doc>/specs.json#rec_412`), `parse_source` refuses rather than repairs a malformed one, and `resolve_source` reads the record + its printed page through `CorpusIndex` (imported at call time, so the structure stage does not drag the retrieval core in). The ADR's unqualified `specs.json#rec_412` shorthand resolves only when exactly one document of the part carries that record: an ambiguous reference warns and resolves to nothing, because a coin flip here puts an unverified number on a card. | `DerivedValue` (in `models.py`), `spec_record_id`, `source_ref`, `parse_source`, `resolve_source`, `SourceRef`, `ResolvedSource`, `SPECS_ARTIFACT`, `PLOTS_ARTIFACT` |
 | `config.py` | pydantic-settings, `DSA_` prefix; `ANTHROPIC_API_KEY` plain. No filesystem side effects at import. `PIPELINE_VERSION`, `SPECS_SCHEMA_VERSION`, `PLOTS_SCHEMA_VERSION`, `SEARCH_SCHEMA_VERSION` and `CARD_VERSION` (the derivation-rule version of ADR 0005, overridable as `DSA_CARD_VERSION`, stamped into every manifest and read back by the batch skip gate) live here, as does `ask_budget` (`DSA_ASK_BUDGET`, default 4000 — the `dsa ask` pack budget when `--budget` is not given), `projects_dir` (`DSA_PROJECTS_DIR`, default `projects`), `project_index_token_budget` (`DSA_PROJECT_INDEX_TOKEN_BUDGET`, default 4000 — the hard `PROJECT_INDEX.md` budget) and `mcp_max_tokens` (`DSA_MCP_MAX_TOKENS`, default 6000 — the hard cap on every MCP response). | `Settings`, `get_settings()` (lru_cached; `reset_settings_cache()` for tests) |
 | `tokens.py` | THE token counter (chars/4). Every reported token number flows through it. | `count_tokens`, `truncate_to_tokens` (budget ≤ 0 → `""`) |
@@ -107,11 +107,12 @@ codes, not colors.
 | `structure/boilerplate.py` | Ordered regex rules. **No bare-number rule** (digits-only lines are data). | `strip_boilerplate`, `is_boilerplate` |
 | `structure/pagemap.py` | Sections → PDF pages (exact number → fuzzy title → inherit, with provenance report); exact table-page pinning via PDF page text. | `assign_pages`, `pin_table_pages` |
 | `structure/roles.py` | Header → semantic role (symbol/name/conditions/min/typ/max/value/unit). Deterministic regex + positional inference for empty TI headers. | `assign_roles`, `classify_table` |
-| `structure/units.py` | Unit canonicalization (U+2126 → ohm, etc.) for `specs.json` only. | `canonical_unit`, `normalize_text`, `CANONICAL_UNITS` |
+| `structure/units.py` | Unit canonicalization (U+2126 → ohm, etc.) for `specs.json` only — and the lexicon the numeric layer scales from. | `canonical_unit`, `normalize_text`, `CANONICAL_UNITS` |
+| `structure/quantities.py` | **The numeric layer** (phase 6, ticket 02): printed value text → a comparable SI number, pure and always allowed to fail. `parse_quantity` is an **anchored** grammar — a cell parses only when the whole of it is a quantity, so `Note 2` holds a digit and still returns `None` — over the four shapes a datasheet prints (`point` \| `range` \| `bound` \| `tolerance`), scaling through `SI_UNITS`, which covers every canonical unit of `units.py` (a unit with no scale is **refused**, because silently dropping a factor of 1000 is the confident-and-wrong failure ADR 0005 exists to prevent). Trailing footnote markers (`1350(2)`, a `Vppdiff(3)` unit column) are stripped as provenance the record already carries. `record_quantities` parses each value cell independently and is what a consumer comparing one *specific* limit must use; `record_quantity` picks the record's representative by the documented selector (`value` → `typ` → `max` → `min`, never joining two cells into a range the datasheet never printed); `annotate_records` writes it into the record's additive fields in `structure/specs.py`. `parse_population` is invariant 8's honesty half — the report a sorting or comparing consumer must print instead of dropping rows — and `parse_rate` its measurement twin, by section. | `Quantity`, `parse_quantity`, `record_quantities`, `record_quantity`, `annotate_record`, `annotate_records`, `parse_population`, `ParsePopulation`, `parse_rate`, `ParseRate`, `SI_UNITS`, `DERIVATION` |
 | `structure/aliases.py` + `registry/aliases.yaml` | **Alias lexicon — data, not code** (same philosophy as the vendor brand lexicon): a designer's phrases per canonical symbol family. YAML entry = `names` (whole-phrase matched inside the query *and* against a record's own symbol/name text, so `Junction temperature`-as-symbol layout-floor parts resolve through the same entry as TI's `TJ`), `expect_unit` (a **ranker, never a filter** — it promotes the candidate whose canonical unit matches and never suppresses a unitless record), `kind`, and `prefix_match` + `prefixes` for families (`IDD` → `IVDD1P8`, `IVDD1P2`, …). The module only answers word questions (`by_symbol`, `phrase_hits`, `prefix_hits`, `nearest_names`); the ladder over records lives in `retrieve/`. Seeded from the six built corpora by `scripts/seed_aliases.py` (procedure in its docstring; harvest recorded at `tests/fixtures/alias_seed_symbols.json`). | `AliasLexicon`, `AliasEntry`, `load_lexicon`, `normalize`, `token_overlap` |
 | `structure/search.py` | **Search vocabulary — one tokenizer, index time and query time** (same "words, not records" split as `aliases.py`). Lowercase **ASCII-only** (Unicode lowercasing folds U+2126 and U+03A9 onto one ω; this corpus keeps the glyph the vendor printed), **no stemming**, stopwords are grammatical scaffolding only (no single letters, no `a`/`in` — those are units). Compound unit strings index whole *and* split (`dBc/Hz` → `dbc/hz`, `dbc`, `hz`). A token with no letter is **not** indexed: numerals rank nothing in BM25, they are what would make an index rival the size of the text, and values have an exact path through `specs.json`. | `tokenize`, `body_text`, `fold`, `STOPWORDS` |
 | `structure/confidence.py` | **Per-record confidence — one rule, one place.** `ExtractionStats` grades a document; this grades a *row*, at structure time, where the evidence still exists (how the grid was reconstructed, whether the page is pinned, what the row printed). Spec rule, worst-first: `low` = grid rescued by the retry ladder **or** a value whose unit the alias lexicon expected is missing; `medium` = the page is section-range only **or** the row printed no value; `high` = pinned exact page + header-declared reconstruction + a printed value. Plots have no grid, so theirs is citation precision: exact page + caption = `high`, section range or captionless = `medium`, no page = `low`. `mix()` counts a part by grade for the manifest. | `grade_spec_record`, `grade_plot_record`, `grade_of`, `mix`, `page_is_exact`, `has_value`, `unit_expected_but_missing` |
-| `structure/specs.py` | `RawDocument` → `SpecSet` / `specs.json`. Pure transform over `TableBlock` grids. Skips `pdf_text` docs. A merged multi-page grid's per-row pages (`row_pages`) beat the table's caption page, so continuation rows cite their own printed page. Every record is graded here via `structure/confidence.py`. | `table_to_records`, `build_specset` |
+| `structure/specs.py` | `RawDocument` → `SpecSet` / `specs.json`. Pure transform over `TableBlock` grids. Skips `pdf_text` docs. A merged multi-page grid's per-row pages (`row_pages`) beat the table's caption page, so continuation rows cite their own printed page. Every record is graded here via `structure/confidence.py`, given its stable id via `provenance.spec_record_id`, and annotated with the numeric layer via `structure/quantities.py` — which writes only the SI fields and never a verbatim cell. | `table_to_records`, `build_specset` |
 | `structure/plots.py` | `RawDocument` → `PlotSet` / `plots.json`. Stable IDs + section/caption tags; every record graded via `structure/confidence.py` (the pixel `file` is deliberately not part of the grade). | `build_plotset`, `figure_number`, `section_tags`, `caption_tags` |
 | `structure/corpus.py` | `RawDocument` → per-section render plans (markdown + CSV twins). | `build_section_plans`, `section_stem`, `slugify` |
 | `enrich/llm.py` | LLM interface + `AnthropicClient` + `FakeClient`. All LLM use goes through `LLMClient`. | — |
@@ -345,6 +346,27 @@ The protocol also ships in-repo as the Claude Code skill
   `tests/unit/test_golden_paths.py` fails if any of the six built parts ships
   without both new paths, or if a marker carries a key the verifier does not
   know.
+- **The numeric layer is additive and allowed to fail.** `structure/quantities.py`
+  parses a printed value into an SI number; it never rewrites one. No verbatim
+  cell is mutated by it (asserted per field, on every record of six real
+  corpora), and where the printed string and the parsed number disagree the
+  printed string is correct by definition. `None` / `parse_confidence: none` is
+  a **first-class outcome**, not a gap to fill: `See Figure 7` has no number,
+  and the grammar is anchored so that `Note 2` does not become one either. Two
+  rules follow and are load-bearing. A unit the lexicon cannot scale makes the
+  whole cell unparsed rather than an unscaled number — a dropped factor of 1000
+  is precisely the confident-and-wrong answer invariant 8 exists to prevent, so
+  widening coverage means **adding a unit to `units.CANONICAL_UNITS` and a
+  scale to `SI_UNITS`** (a test fails if one gains an entry without the other),
+  never loosening the grammar. And any consumer that sorts, compares or
+  computes a margin must run `parse_population` and report what it could not
+  read; dropping those rows from a decision is a defect, not a tidy-up.
+  Measured parse rate, six built corpora: AFE7950 95%, AFE7953 94%, QPA1003P
+  83%, LM741 68%, AD9081 33%, HMC520A 13% (`Reports/PHASE_6_REPORT.md`;
+  reproduce with `scripts/measure_parse_rate.py`). The layout-floor spread is
+  an *extraction* finding, not a grammar one — measured, almost all of those
+  unparsed rows print no value cell at all, because a rescued grid never put
+  the numbers in a value role. Improve it there, not here.
 - **A confidence grade is metadata, never a filter.** The rule lives in
   `structure/confidence.py` (its docstring is the normative version) and runs
   once, at structure time. Nothing downstream may re-derive it, and nothing may
@@ -400,8 +422,10 @@ The protocol also ships in-repo as the Claude Code skill
   and answering nothing. Bump `SEARCH_SCHEMA_VERSION` /
   `SPECS_SCHEMA_VERSION` / `PLOTS_SCHEMA_VERSION` in `config.py` whenever the
   corresponding format changes; that is the invalidation, not
-  `PIPELINE_VERSION`. `SPECS_` is at **"3"** (phase 5, ticket 04 added
-  `confidence`; phase 6, ticket 01 added the stable record `id`) and `PLOTS_`
+  `PIPELINE_VERSION`. `SPECS_` is at **"4"** (phase 5, ticket 04 added
+  `confidence`; phase 6, ticket 01 added the stable record `id`, ticket 02 the
+  numeric layer's `value_si` / `value_low_si` / `value_high_si` / `unit_si` /
+  `value_kind` / `parse_confidence`) and `PLOTS_`
   at **"2"** — the extractor-version gate cannot cover this, because
   a `ti_html` part's `output_version` never moves when the layout engine's
   does. `CARD_VERSION` joins them for *derived* artifacts and is the only gate

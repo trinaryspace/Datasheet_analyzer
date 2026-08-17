@@ -66,6 +66,17 @@ metadata about the extraction, never a filter and never a claim about the
 datasheet: a `low` record is still returned, still verbatim, still cited.
 _Avoid_: score, quality, accuracy, probability, trust level
 
+**Quantity**:
+A printed value read as a number: its shape (`point`, `range`, `bound`,
+`tolerance`), its magnitude in an SI base unit, and the unit it was scaled to.
+It is *additive* — the string the datasheet printed remains the answer, and
+where the two disagree the string wins — and it is allowed not to exist:
+`See Figure 7` and `—` parse to nothing, recorded as `parse_confidence: none`,
+which is a legitimate outcome rather than a gap. A quantity exists so rows can
+be sorted, compared and given margins; any consumer that does so must report
+the rows it could not read instead of dropping them.
+_Avoid_: value, number, measurement, float, magnitude
+
 **Search index**:
 The precomputed inverted index of one document's section files
 (`search_index.json`, written at publish): per section, how often each token

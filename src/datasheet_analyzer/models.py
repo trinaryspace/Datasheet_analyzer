@@ -53,6 +53,37 @@ class Confidence(str, Enum):
     UNKNOWN = "unknown"
 
 
+class ValueKind(str, Enum):
+    """The shape of a printed value the numeric layer recognised.
+
+    A datasheet cell states one of exactly four things, and which one it states
+    changes what may be computed from it: a `POINT` is a number, a `RANGE` is an
+    interval, a `BOUND` constrains one side only, and a `TOLERANCE` is a spread
+    with no nominal of its own. `structure/quantities.py` owns the grammar; a
+    cell that states none of these has no kind at all (`None` on the record),
+    which is the honest outcome and never a fifth guess.
+    """
+
+    POINT = "point"
+    RANGE = "range"
+    BOUND = "bound"
+    TOLERANCE = "tolerance"
+
+
+class ParseConfidence(str, Enum):
+    """Whether the numeric layer could read a record's printed value.
+
+    Deliberately *not* `Confidence`: that grade is about the extraction (how far
+    a row can be trusted), this one is about the parse (whether a number exists
+    at all). `NONE` is a first-class outcome, not a failure to fix — `See
+    Figure 7` has no number, and inventing one is precisely what invariant 8
+    forbids.
+    """
+
+    EXACT = "exact"
+    NONE = "none"
+
+
 # How the layout engine arrived at a reconstructed grid (`TableBlock.reconstruction`).
 # The header-anchored split is the table's own declaration of its columns; a
 # rescue is a coarser retry-ladder split that only won because that declaration
@@ -326,6 +357,23 @@ class SpecRecord(BaseModel):
     # rule). Additive: a corpus built before it existed has no value on disk
     # and loads as `UNKNOWN` — honestly ungraded, never optimistically high.
     confidence: Confidence = Confidence.UNKNOWN
+    # The additive numeric layer (`structure/quantities.py`, phase 6 ticket 02).
+    # It describes the record's *representative* quantity — the one that module
+    # documents and selects — and is always allowed to fail: nothing here is a
+    # substitute for the verbatim cells above, which stay authoritative and are
+    # never mutated by it.
+    #
+    # `value_si` is the point value of a `point`, and the magnitude of a
+    # `tolerance` (±0.5 has no interval without a nominal); it is `None` for a
+    # `range` and a `bound`, whose interval lives in the two fields below —
+    # a bound fills the side it states and leaves the other `None`. Everything
+    # is expressed in `unit_si`, the SI base unit the layer scaled to.
+    value_si: float | None = None
+    value_low_si: float | None = None
+    value_high_si: float | None = None
+    unit_si: str = ""
+    value_kind: ValueKind | None = None
+    parse_confidence: ParseConfidence = ParseConfidence.NONE
 
 
 class SpecTableInfo(BaseModel):

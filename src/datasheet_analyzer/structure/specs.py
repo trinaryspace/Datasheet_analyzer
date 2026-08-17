@@ -13,6 +13,7 @@ from datasheet_analyzer.models import RawDocument, SectionNode, SpecRecord, Spec
 from datasheet_analyzer.provenance import spec_record_id
 from datasheet_analyzer.structure.aliases import load_lexicon
 from datasheet_analyzer.structure.confidence import grade_spec_record
+from datasheet_analyzer.structure.quantities import annotate_records
 from datasheet_analyzer.structure.roles import assign_roles, classify_table
 from datasheet_analyzer.structure.units import canonical_unit, normalize_text
 
@@ -110,6 +111,13 @@ def build_specset(raw: RawDocument, part_number: str) -> SpecSet | None:
     # document-scoped: a table does not know its own offset in the set.
     for ordinal, record in enumerate(records):
         record.id = spec_record_id(ordinal)
+
+    # The additive numeric layer (ticket 02). It writes only the SI fields —
+    # every verbatim cell above is left exactly as extracted, because where the
+    # printed string and the parsed number disagree the printed string wins.
+    # A row it cannot read keeps `parse_confidence: none`, which is a first-class
+    # outcome rather than a gap to fill in.
+    annotate_records(records)
 
     return SpecSet(
         schema_version=SPECS_SCHEMA_VERSION,
