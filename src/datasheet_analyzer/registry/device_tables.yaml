@@ -1,0 +1,143 @@
+# Device-table lexicon — the words a pin table and a register summary print.
+#
+# Data, not code: teaching the abstraction that a vendor writes "Ball No." or
+# "Reg Addr" is an edit here, never a Python change (same philosophy as the
+# alias lexicon and the vendor brand marks). Nothing in
+# `structure/device_tables.py` hard-codes a header string.
+#
+# Shape, one entry per device-table kind:
+#
+#   <kind>:
+#     key: <field>              # the column that keys the table: unique per
+#                               # row, and what a record is cited by
+#     columns:                  # the target schema, in *printed* order — the
+#       <field>: [header, ...]  # positional fallback maps by this order
+#     captions: [phrase, ...]   # title phrases that name this table when its
+#                               # headers do not (the headerless route)
+#     key_shape: <regex>        # what one key cell looks like, anchored. A
+#                               # column of prose is not a key column, and this
+#                               # is what says so.
+#     expand_key: true|false    # multi-value key cells ("A1, A2", "A1-A4")
+#                               # become one record each
+#     monotonic_key: true|false # keys must strictly increase down the table
+#     key_numeric: hex|dec|""   # how a key reads as a number (order checks)
+#
+# Header phrases are matched **whole**, after lowercasing, collapsing
+# whitespace and dropping footnote markers — never as substrings. "Part
+# Number" is not a pin column just because "number" is one, and buying that
+# guarantee costs one list entry per real variant.
+#
+# Caption phrases are matched as whole phrases *inside* the table's caption or
+# its section title, because a caption reads "Table 5. Pin Functions".
+
+pin:
+  key: pin
+  columns:
+    pin:
+      - pin
+      - pins
+      - pin no.
+      - pin no
+      - pin number
+      - pin numbers
+      - "pin #"
+      - "no."
+      - "no"
+      - number
+      - ball
+      - ball no.
+      - ball no
+      - ball number
+      - pad
+      - pad no.
+      - pin/ball
+      - ball/pin
+      - terminal
+      - terminal no.
+    name:
+      - name
+      - names
+      - pin name
+      - signal
+      - signal name
+    type:
+      - type
+      - pin type
+      - i/o
+      - io
+      - i/o type
+      - dir
+      - direction
+    description:
+      - description
+      - descriptions
+      - function
+      - functions
+      - pin function
+      - pin description
+      - signal description
+  captions:
+    - pin function
+    - pin functions
+    - pin description
+    - pin descriptions
+    - pin configuration
+    - pin assignment
+    - pin assignments
+    - pin list
+    - terminal function
+    - terminal functions
+    - signal description
+    - signal descriptions
+  # "A1", "12", "AB7", "1A" — a designator, not a sentence. Multi-value cells
+  # are expanded before this is applied, so each expanded key is checked.
+  key_shape: "^[A-Za-z]{0,2}[0-9]{1,4}[A-Za-z]?$"
+  expand_key: true
+  monotonic_key: false
+  key_numeric: ""
+
+register:
+  key: address
+  columns:
+    address:
+      - address
+      - addresses
+      - addr
+      - addr.
+      - address (hex)
+      - byte address
+      - offset
+      - reg
+      - reg addr
+      - register address
+    name:
+      - name
+      - register
+      - register name
+      - reg name
+    reset:
+      - reset
+      - reset value
+      - default
+      - default value
+      - por
+      - por value
+    access:
+      - access
+      - access type
+      - r/w
+      - rw
+      - type
+  captions:
+    - register summary
+    - register map
+    - register table
+    - register list
+    - address map
+  # "0x1A04", "1A04h", "00" — a hex address as datasheets print them.
+  key_shape: "^(0[xX])?[0-9A-Fa-f]{1,8}[hH]?$"
+  # An address range ("0x00-0xFF") is a block, not 256 registers with one
+  # name; expanding it would fabricate 255 records the document never printed.
+  expand_key: false
+  monotonic_key: true
+  key_numeric: hex

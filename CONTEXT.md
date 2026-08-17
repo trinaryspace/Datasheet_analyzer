@@ -77,6 +77,18 @@ be sorted, compared and given margins; any consumer that does so must report
 the rows it could not read instead of dropping them.
 _Avoid_: value, number, measurement, float, magnitude
 
+**Device table**:
+A wide, repetitive table keyed by its first column — a pin table or a register
+summary — read through one abstraction rather than one parser each. What makes
+it a device table is a checked-in lexicon of the words its headers and caption
+print, never a vendor rule; what makes it *accepted* is validation it cannot
+half-pass. A key cell holding several keys (`A1, A2, B1`) expands into one
+individually citable record per key, each still quoting the row the datasheet
+printed. A table that fails validation is rejected whole, with a recorded
+reason, because a half-parsed pin table reads as a complete one to whoever
+greps it.
+_Avoid_: pin map, register map, lookup table, matrix
+
 **Search index**:
 The precomputed inverted index of one document's section files
 (`search_index.json`, written at publish): per section, how often each token

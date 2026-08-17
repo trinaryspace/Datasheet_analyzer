@@ -86,3 +86,65 @@ corpora already publish, which is not worth three rows.
 - `parse_population` accounts for every record — `total == parsed + unparsed`,
   one listing line per unparsed row — so ticket 07 and ticket 09 cannot drop a
   row from a comparison without saying so.
+
+## Ticket 03 — the device-table abstraction
+
+`structure/device_tables.py` + `registry/device_tables.yaml` read a pin table
+and a register-summary table through one pipeline — **identify → map columns →
+validate → emit** — because they are the same structural animal: wide,
+repetitive, keyed by a first column of designators rather than prose.
+
+**No consumer ships with it, deliberately.** `pins.json` (ticket 04) and
+`registers.json` (ticket 05) own the published shape and the per-record grade;
+nothing here is a pydantic model, because a schema is a promise to a reader on
+disk and no reader exists yet. Coverage over the six built corpora is therefore
+not measurable in this ticket — it is measured in ticket 04, where the first
+consumer runs the abstraction over real pin tables.
+
+### What is data and what is code
+
+Every word the abstraction matches on lives in the YAML: each column's header
+phrases (matched **whole**, so `Part Number` is not a pin column), the caption
+phrases that name a table its headers do not, the key shape, and the three
+per-kind switches — `expand_key`, `monotonic_key`, `key_numeric`. The module
+holds the rules and none of the words: a lexicon of invented kinds (a "widget
+schedule" keyed on `Slot ID`) drives it end to end in test, which is what "no
+vendor rules" means operationally.
+
+### Contract points asserted by test (`tests/unit/test_device_tables.py`, 50)
+
+Synthetic fitz-built PDFs through the real layout floor, plus hand-built
+`TableBlock`s where the point of a case is a shape a PDF cannot be made to
+produce reliably. The fixtures draw column rules, because a pin table fills
+every cell and the layout floor's occupancy check rejects a fully-packed
+unruled grid — which is the same reason real pin tables print rules.
+
+- Abbreviated headers (`NO.`, `I/O`) map by lexicon; a header the lexicon does
+  not know is **said** to be unmapped (`ColumnMap.missing`) rather than filled
+  in by position, and teaching it is one line of YAML — asserted by editing the
+  shipped file in-test and watching the same code map the column.
+- A table with **no header row at all** maps positionally. `pdf_layout` puts
+  the first row of every region in `headers`, so such a table parks its first
+  *pin* there; reading it as data (`HEADER_ROW_INDEX = -1`) is what keeps that
+  pin in the corpus instead of losing it to a header that never existed.
+- A duplicate-key pin table and an out-of-order register summary are each
+  **rejected whole, with a reason**, and emit zero records — including the
+  collision that only key *expansion* makes visible (`A1-A3` then `A2`).
+- Rejection reasons join `ExtractionStats.rejection_reasons` beside the
+  reconstruction gate's, capped and deduplicated, while the
+  detected/accepted/rejected counts stay exactly as the layout engine left
+  them.
+- `A1, A2, B1`, `A1-A4`, `A1–A4` (en dash), `12 to 14` and `A01-A03` (printed
+  width preserved) expand; `RXA-CLK` and `A1-B4` do not, and a register address
+  never does. Every expanded record carries its row's section, table index, row
+  index and printed page, and quotes the cell it came from.
+- Prose laid out in columns under a pin caption is rejected as prose; a
+  parametric spec table is neither accepted nor recorded as a rejection, since
+  "not a device table" is not a finding and recording it would bury the real
+  ones.
+- A count mismatch **warns and keeps every record** (ADR 0005's decided
+  outcome); a `pdf_text` document yields no device tables at all, the same rule
+  `build_specset` applies to a backend with no trusted tables.
+- Reading is pure and reproducible: the `TableBlock` is byte-identical
+  afterwards, and two reads of one document return the same records in the same
+  order — a derived artifact built on this has to be rebuildable.
