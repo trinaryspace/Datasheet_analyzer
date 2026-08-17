@@ -115,6 +115,15 @@ def render_pin_query_report(results: list[QueryResult]) -> str:
     )
 
 
+def render_reg_query_report(results: list[QueryResult]) -> str:
+    """Register-query verification table (phase 6, ticket 05; runs whenever a
+    golden set carries `reg_query` questions). The detail column is the
+    verifier's own sentence, exactly as the pin table's is."""
+    return _query_report(
+        "Register query verification", results, "reg_query", lambda r: r.detail
+    )
+
+
 def render_ask_query_report(results: list[QueryResult]) -> str:
     """Ask-path verification table (ticket 09; runs whenever a golden set
     carries `ask_query` questions). The detail column is the verifier's own

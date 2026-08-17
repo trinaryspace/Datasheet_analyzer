@@ -1,0 +1,113 @@
+# Golden Q&A set for the LMX1204 **register map** (SNAU269A, the phase-6
+# ticket-05 gate document). Every question cites a page of
+# `tests/fixtures/pdf/LMX1204_registermap.pdf`, so the whole set verifies with
+#
+#   dsa verify --part LMX1204 --pdf tests/fixtures/pdf/LMX1204_registermap.pdf
+#
+# and the part is built as the honest fixture it is: the LMX1204 datasheet
+# (`lmx1204.pdf`) as the part's datasheet, this programmer's guide attached as
+# a `register_map` companion. The datasheet is pinned `--vendor unknown` for
+# the reason LM741 is (recorded as cli-override evidence): LMX1204 is a TI
+# part, detection would prefer the `ti_html` backend, that backend needs the
+# network, and no recorded document-viewer pages exist for this part — so a
+# `ti`-routed build cannot run in a hermetic suite. `unknown` routes it through
+# the offline `pdf_layout` floor. The companion needs no such pin: ticket 05
+# routes every `register_map` to the layout floor whatever its vendor.
+#
+# Every expected_substring was verified against the printed PDF page text AND
+# the built corpus section covering that page.
+#
+# Not present, and deliberately: a **name -> access** register question.
+# Neither this document nor the datasheet prints a register-level access
+# column — TI states access per *bit field*, in the per-register field tables
+# (`Type`: R, R/W), which is ticket 06's shape. `registers.json` therefore
+# publishes `access: ""` for every LMX1204 register, which is the honest
+# reading, and there is nothing to hold a golden question to. `dsa regs` does
+# read and publish an access column when a document prints one; that path is
+# gated on a synthetic register summary in `tests/unit/test_registers.py`.
+questions:
+  - id: q01-what-this-document-is
+    question: What does the LMX1204 register map document define?
+    expected_substrings: ["defines the register set for the LMX1204", "reserved"]
+    pages: [1]
+    kind: direct
+
+  - id: q02-initial-programming-sequence
+    question: How does the recommended initial programming sequence start?
+    expected_substrings:
+      ["writing R0 with RESET = 0x1", "descending order (largest to smallest address)"]
+    pages: [2]
+    kind: direct
+
+  - id: q03-undocumented-addresses
+    question: What happens if you write to an address the register map does not list?
+    expected_substrings:
+      ["undocumented addresses", "prevent the device from working as intended"]
+    pages: [2]
+    kind: direct
+
+  - id: q04-reset-bit-behaviour
+    question: What does the RESET bit of R0 do?
+    expected_substrings: ["Soft Reset", "Self-clearing on next register write"]
+    pages: [4]
+    kind: direct
+
+  - id: q05-access-type-codes
+    question: What access type codes does this document use?
+    expected_substrings: ["Access Type", "Read", "Write"]
+    pages: [3]
+    kind: direct
+
+  # --- register lookups (phase 6, ticket 05) ------------------------------
+  # address -> name: the summary row is on p.2, so the record's own page is
+  # what the citation must be.
+  - id: r1-address-to-name
+    question: Which register lives at address 0x17?
+    expected_substrings: ["R23", "Temperature Sensor"]
+    pages: [2]
+    kind: direct
+    reg_query: {addr: "0x17"}
+
+  # The same register asked for in decimal (0x18 == 24), which is the whole
+  # point of publishing a parsed address beside the printed one.
+  - id: r2-decimal-address-finds-the-same-register
+    question: Which register lives at address 24?
+    expected_substrings: ["0x18", "R24", "Temperature Sensor"]
+    pages: [2]
+    kind: direct
+    reg_query: {addr: "24"}
+
+  # name -> reset. The reset is not printed in the summary table at all: it
+  # comes from R12's own declaration heading on p.11, joined on the parsed
+  # offset. Both pages are cited because both are load-bearing — the row is
+  # printed on p.2 and the reset value on p.11.
+  - id: r3-name-to-reset
+    question: What value does register R12 reset to?
+    expected_substrings: ["R12", "0xFFFF"]
+    pages: [2, 11]
+    kind: direct
+    reg_query: {name: "R12"}
+
+  # --- the two phase-5 paths, on this part's own ground truth --------------
+  - id: a1-ask-where-the-registers-are
+    question: which section lists the memory-mapped registers and the undocumented addresses?
+    expected_substrings: ["LMX1204 Registers"]
+    pages: [2]
+    kind: ask
+    ask_query: {route: search}
+    notes: ticket-09 ask path — the designer's-words twin of q03. This part has
+      no symbol path to this answer (a register map prints no parametric
+      table), so the pack routes to full text and its cited row must still be
+      the section that starts on the printed page the question cites.
+
+  - id: k1-search-undocumented-addresses
+    question: Where does the document warn about undocumented register addresses?
+    expected_substrings:
+      ["undocumented addresses", "prevent the device from working as intended"]
+    pages: [2]
+    kind: search
+    search_query: {query: "undocumented addresses reserved programming sequence"}
+    notes: ticket-09 search path — the twin of q03; top-1 must be the section
+      covering the printed page that holds the answer, and it must beat the
+      datasheet's own copy of the same register map (both documents of this
+      part print one).

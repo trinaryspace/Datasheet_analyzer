@@ -273,6 +273,12 @@ class CorpusStats(BaseModel):
     # `ExtractionStats.rejection_reasons`, where a rejection is recorded and an
     # absence is honestly nothing at all.
     n_pins: int = 0
+    # Phase 6, ticket 05: how many individually citable register records the
+    # part published, across every document. 0 for a part with no register
+    # summary anywhere — the difference between "prints none" and "was
+    # rejected" lives in `ExtractionStats.rejection_reasons`, exactly as it
+    # does for pins.
+    n_registers: int = 0
     n_plot_files: int = 0
     total_tokens: int = 0
     index_tokens: int = 0
@@ -295,6 +301,9 @@ class CorpusStats(BaseModel):
     # Phase 6, ticket 04: the same mix for pin records. `{}` for a part with
     # no pin table.
     pin_confidence: dict[str, int] = Field(default_factory=dict)
+    # Phase 6, ticket 05: the same mix for register records. `{}` for a part
+    # with no register summary.
+    register_confidence: dict[str, int] = Field(default_factory=dict)
     # Phase 5 ticket 08: the measured size of the `AGENT.md` published beside
     # `INDEX.md`. Recorded for the same reason `index_tokens` is — a file an
     # agent loads every time has a cost, and the cost belongs in the manifest
@@ -526,6 +535,94 @@ class PinSet(BaseModel):
     warnings: list[str] = Field(default_factory=list)
 
 
+class RegisterWord(BaseModel):
+    """A register-sized value as printed, plus the integer it parses to.
+
+    Phase 6, ticket 05. The pattern ADR 0005's envelope prescribes, narrowed to
+    what a register map prints: a hex (or decimal) word, an address or a reset
+    value, that a machine has to be able to compare while the printed string
+    stays the answer.
+
+    - `verbatim` is the string the document printed (`0x1A04`, `1A04h`, `00`).
+      It is authoritative and never mutated.
+    - `value` is that string read as an integer, and is **allowed to be
+      `None`**: a cell the grammar cannot read stays verbatim-only rather than
+      being guessed at, which is what makes `dsa regs --addr` safe to trust.
+    - `page` is the printed page the value was read off, `evidence` the printed
+      text it was read from, and `derivation` the named rule that produced it —
+      invariant 8's `source` + `derivation`, per field. A value copied straight
+      out of the register's own row needs no evidence beyond the record, so it
+      carries the rule name alone; one read from somewhere else in the document
+      (a reset printed in the register's declaration heading) carries the line
+      it came from and that line's page.
+    """
+
+    verbatim: str = ""
+    value: int | None = None
+    page: int | None = None
+    evidence: str = ""
+    derivation: str = ""
+
+
+class RegisterRecord(BaseModel):
+    """One register of one device, individually citable (phase 6, ticket 05).
+
+    The unit a firmware engineer works in during bring-up. Everything here is
+    verbatim from the register-summary table except what `RegisterWord` marks
+    as parsed or as read from elsewhere in the document:
+
+    - `address` is the row's key, verbatim and parsed, so `0x1A04`, `0x1a04`
+      and `6660` are one register.
+    - `name` / `access` / `description` are the printed cells; `access` is `""`
+      when the table prints no access column, which is an absence in the
+      document and never a default.
+    - `reset` is `None` unless the document states one — either in the summary
+      table's own reset column or in the register's printed declaration
+      heading (`R0 Register (Offset = 0x0) [Reset = 0x0000]`), which is the
+      form every TI programmer's guide uses and where the value actually lives.
+    """
+
+    # Stable, addressable id within the document's `registers.json`
+    # ("reg_12"), minted by `provenance.register_record_id`.
+    id: str = ""
+    address: RegisterWord = Field(default_factory=RegisterWord)
+    name: str = ""  # the printed acronym / register name
+    access: str = ""  # the printed access column, verbatim ("" when absent)
+    description: str = ""
+    reset: RegisterWord | None = None
+    # identity within the document
+    section: str = ""
+    table_index: int = 0
+    row_index: int = 0
+    page: int | None = None
+    row_verbatim: list[str] = Field(default_factory=list)
+    # Per-record extraction confidence, same contract as `SpecRecord`.
+    confidence: Confidence = Confidence.UNKNOWN
+
+
+class RegisterSet(BaseModel):
+    """A document's register-summary table(s) as records, plus what was odd.
+
+    Same contract as `PinSet`: a set with no `registers` is still a set — the
+    warnings and the recorded rejection reasons are the finding — and the
+    publisher is what declines to write `registers.json` for it, so a document
+    whose register table was rejected serves no half-parsed register map.
+
+    `n_reset_stated` is how many of these registers the document actually
+    states a reset value for. It is recorded rather than inferred because the
+    gap is the honest half of invariant 8: a caller that lists reset values
+    must be able to say "18 of 35 registers state one" instead of quietly
+    showing 18 rows. `warnings` carries that sentence for the manifest.
+    """
+
+    schema_version: str = ""
+    part_number: str = ""
+    doc_hash: str = ""
+    registers: list[RegisterRecord] = Field(default_factory=list)
+    n_reset_stated: int = 0
+    warnings: list[str] = Field(default_factory=list)
+
+
 class DerivedValue(BaseModel):
     """One value on a derived artifact, in its provenance envelope (ADR 0005).
 
@@ -638,6 +735,7 @@ class GoldenQuestion(BaseModel):
     | `spec_query` | `dsa query` | a record on a cited page carries every expected substring |
     | `plot_query` | `dsa plots` | a cataloged figure on a cited page has real pixels |
     | `pin_query` | `dsa pins` | pin records on a cited page carry them; `count` must match exactly |
+    | `reg_query` | `dsa regs` | register records on a cited page carry them; `count` must match exactly |
     | `ask_query` | `dsa ask` | the pack's rows on a cited page carry them, inside its budget |
     | `search_query` | `dsa search` | the **top-1** hit is a section covering a cited page, and that section holds them |
 
@@ -664,6 +762,11 @@ class GoldenQuestion(BaseModel):
     # pin question a designer really asks, and a count that drifts is a pin
     # table that quietly gained or lost rows).
     pin_query: dict[str, str] | None = None
+    # Phase 6, ticket 05 register lookup ({addr} | {name} | {q}, plus an
+    # optional `count` the result set must match exactly). `addr` is the shape
+    # that matters most: it is checked by *parsed* value, so `0x1A04`,
+    # `0x1a04` and `6660` are the same question.
+    reg_query: dict[str, str] | None = None
     ask_query: dict[str, str] | None = None  # Phase 5 answer pack ({route})
     search_query: dict[str, str] | None = None  # Phase 5 full text ({query, rank})
     notes: str = ""

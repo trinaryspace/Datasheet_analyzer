@@ -8,13 +8,14 @@ Commands:
   search --part NAME "..."  BM25 full-text search, cited by construction (--json)
   ask --part NAME "..."     one cited answer pack inside a token budget (--json)
   pins --part NAME          pin lookup by designator, name or type (--json)
+  regs --part NAME          register lookup by address, name or text (--json)
   plots --part NAME         deterministic plot lookup (--json)
   project new|add|remove|build|status   the noun above `part`: a design
   serve --mcp               the corpus as MCP tools over local stdio
   status                    configuration + detected parts + projects
   version                   print version
 
-`query`, `search`, `ask`, `pins` and `plots` each take either `--part NAME` or
+`query`, `search`, `ask`, `pins`, `regs` and `plots` each take either `--part NAME` or
 `--project NAME`; a project fans the lookup out across its member parts and
 labels every hit with the part it came from.
 """
@@ -142,6 +143,7 @@ def _cmd_verify(args: argparse.Namespace) -> int:
         verify_pin_queries,
         verify_plot_queries,
         verify_questions,
+        verify_reg_queries,
         verify_search_queries,
         verify_spec_queries,
     )
@@ -151,6 +153,7 @@ def _cmd_verify(args: argparse.Namespace) -> int:
         render_ask_query_report,
         render_pin_query_report,
         render_plot_query_report,
+        render_reg_query_report,
         render_search_query_report,
         render_spec_query_report,
         render_token_economics,
@@ -216,6 +219,16 @@ def _cmd_verify(args: argparse.Namespace) -> int:
         print()
         print(render_pin_query_report(pin_results))
         if any(not r.ok for r in pin_results):
+            failed = True
+
+    # Register-query verification (Phase 6, ticket 05) on the same terms: only
+    # a part whose corpus holds a register summary can carry register
+    # questions, so the table appears exactly when the benchmark has them.
+    reg_results = verify_reg_queries(questions, part_dir)
+    if reg_results:
+        print()
+        print(render_reg_query_report(reg_results))
+        if any(not r.ok for r in reg_results):
             failed = True
 
     # Ask- and search-path verification (Phase 5, ticket 09) run on the same
@@ -406,6 +419,42 @@ def _cmd_pins(args: argparse.Namespace) -> int:
         print(json.dumps(payload, ensure_ascii=False, indent=2))
         return 0 if hits else 1
     print(format_pin_hits(hits, show_part=show_part))
+    return 0 if hits else 1
+
+
+def _cmd_regs(args: argparse.Namespace) -> int:
+    import json
+
+    from datasheet_analyzer.query import format_register_hits
+
+    scope, show_part = _scope(args)
+    if scope is None:
+        return 2
+
+    # A corpus with no register summary degrades with the core's own sentence,
+    # never as an empty result that reads like "this part has no such
+    # register" — the same distinction `dsa pins` and `dsa search` draw.
+    gap = scope.register_gap()
+    if gap:
+        print(gap, file=sys.stderr)
+        return 2
+
+    hits = scope.registers(
+        addr=args.addr or "",
+        name=args.name or "",
+        q=args.q or "",
+    )
+    if args.json:
+        # Shape owned by RegisterHit.as_dict(), like every other JSON surface.
+        payload = {
+            "part": args.part,
+            "project": args.project,
+            "query": {"addr": args.addr, "name": args.name, "q": args.q},
+            "hits": [h.as_dict() for h in hits],
+        }
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+        return 0 if hits else 1
+    print(format_register_hits(hits, show_part=show_part))
     return 0 if hits else 1
 
 
@@ -613,6 +662,7 @@ def _confidence_line(stats) -> str:
         ("specs", stats.spec_confidence),
         ("plots", stats.plot_confidence),
         ("pins", stats.pin_confidence),
+        ("registers", stats.register_confidence),
     ):
         if mix:
             counts = " / ".join(f"{n} {grade}" for grade, n in mix.items())
@@ -841,6 +891,22 @@ def main(argv: list[str] | None = None) -> int:
         help="emit hits (with type_evidence, matched_via + confidence) as JSON",
     )
     p_pins.set_defaults(func=_cmd_pins)
+
+    p_regs = sub.add_parser("regs", help="register lookup: address, name, or text")
+    _add_scope(p_regs)
+    p_regs.add_argument(
+        "--addr",
+        default="",
+        help="register address; resolved by value, so 0x1A04 / 0x1a04 / 6660 agree",
+    )
+    p_regs.add_argument("--name", default="", help="exact register acronym, e.g. R12")
+    p_regs.add_argument("--q", default="", help="name/description substring")
+    p_regs.add_argument(
+        "--json",
+        action="store_true",
+        help="emit hits (parsed address, reset, matched_via + confidence) as JSON",
+    )
+    p_regs.set_defaults(func=_cmd_regs)
 
     p_plots = sub.add_parser("plots", help="deterministic plot lookup")
     _add_scope(p_plots)

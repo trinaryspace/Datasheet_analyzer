@@ -40,6 +40,7 @@ from datasheet_analyzer.models import (
     PinSet,
     PlotSet,
     RawDocument,
+    RegisterSet,
     SourceDocument,
 )
 from datasheet_analyzer.publish import write_corpus
@@ -53,6 +54,7 @@ from datasheet_analyzer.structure.corpus import SectionPlan, build_section_plans
 from datasheet_analyzer.structure.pagemap import pin_table_pages
 from datasheet_analyzer.structure.pins import build_pinset
 from datasheet_analyzer.structure.plots import build_plotset
+from datasheet_analyzer.structure.registers import build_registerset
 from datasheet_analyzer.structure.specs import build_specset
 from datasheet_analyzer.vendor import select_backend, warn_vendor_drift
 
@@ -179,7 +181,9 @@ def _extract_document(
     """Extract one document, using cache if enabled. Returns (raw, cached).
 
     Backend follows the source's evidence-pinned vendor routing record:
-    datasheet -> the profile's preference chain, companions -> pdf_text.
+    datasheet -> the profile's preference chain, register maps -> the layout
+    floor (phase 6, ticket 05 — their tables are the product), other
+    companions -> pdf_text.
     """
     backend_name = select_backend(source.vendor, source.doc_type)
     cached = False
@@ -273,7 +277,7 @@ def build_part(
     )
 
     # extract each document (datasheet via the vendor's preferred backend,
-    # companions via pdf_text)
+    # register maps via the layout floor, other companions via pdf_text)
     _progress("extracting")
     docs: list[RawDocument] = []
     any_cached = True
@@ -302,6 +306,7 @@ def build_part(
     specsets: list[PlotSet] = []
     plotsets: list[PlotSet] = []
     pinsets: list[PinSet] = []
+    registersets: list[RegisterSet] = []
     doc_summaries: list[tuple[str, str, int, str]] = []
     brief, facts = "", []
     for raw in docs:
@@ -315,6 +320,10 @@ def build_part(
         # carries the package cross-check and the rejection reasons, and the
         # publisher is what declines to write a file for it.
         pinsets.append(build_pinset(raw, part_number))
+        # Same contract as pins: always appended, even when it holds no
+        # registers, because the reset-coverage warning and the recorded
+        # rejection reasons are part of the finding.
+        registersets.append(build_registerset(raw, part_number))
 
         # pixel fetch only for html-derived docs; pdf_layout figures are
         # clip-rendered from their vector regions (never fetched)
@@ -392,6 +401,7 @@ def build_part(
         specsets=specsets,
         plotsets=plotsets,
         pinsets=pinsets,
+        registersets=registersets,
         card_version=settings.card_version,
     )
     return BuildResult(

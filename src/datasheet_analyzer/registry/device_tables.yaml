@@ -109,6 +109,15 @@ pin:
 
 register:
   key: address
+  # Deliberately **no** `identity:`. The wrapped-row reading absorbs a line
+  # that prints no identity into the entry above, *including any key-shaped
+  # key in its key cell* — which for a register summary would give a nameless
+  # address row the acronym of its neighbour and publish a register the
+  # document never named that way. Measured on LMX1204, no row of either
+  # printed summary needs the reading at all (a wrapped "Features" cell prints
+  # no address either, so it is skipped as unkeyed), so the risk buys nothing.
+  # A nameless row therefore stays its own record, graded `low` for having no
+  # name — visible rather than silently attached to the register above.
   columns:
     address:
       - address
@@ -126,6 +135,11 @@ register:
       - register
       - register name
       - reg name
+      # TI's programmer's guides head this column "Acronym" (`R0`, `R12`) —
+      # measured on LMX1204's Table 1-1 / Table 7-1.
+      - acronym
+      - acronyms
+      - mnemonic
     reset:
       - reset
       - reset value
@@ -139,6 +153,15 @@ register:
       - r/w
       - rw
       - type
+    # What the register is *for*, in the document's own words. TI prints
+    # "Features Requiring This Register"; other vendors print "Description".
+    # Verbatim, and the column `dsa regs --q` searches.
+    description:
+      - description
+      - descriptions
+      - function
+      - functions
+      - features requiring this register
   captions:
     - register summary
     - register map

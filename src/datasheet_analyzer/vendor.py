@@ -35,6 +35,12 @@ class VendorProfile:
     brand_marks: tuple[str, ...]  # case-insensitive substrings (page-1 text / filename)
     backend_chain: tuple[str, ...]  # datasheet backends, preference order
     companion_backend: str = "pdf_text"  # non-datasheets for every vendor
+    #: Register maps are the one companion whose **tables are the product**
+    #: (phase 6, ticket 05): a register summary read as paragraphs answers no
+    #: bring-up question at all, so they route to the layout floor instead of
+    #: the degraded paragraph backend. Errata and app notes keep `pdf_text` —
+    #: their value is prose, and nothing downstream trusts a table from them.
+    register_map_backend: str = "pdf_layout"
 
 
 VENDOR_PROFILES: dict[str, VendorProfile] = {
@@ -111,14 +117,31 @@ def detect_vendor(path: Path) -> tuple[str, str]:
 def select_backend(vendor_name: str, doc_type: DocType) -> str:
     """First *registered* backend in the profile's preference chain.
 
-    Companions (register maps, errata, app notes) use the degraded
-    ``pdf_text`` backend for every vendor. A datasheet whose chain names no
-    registered backend raises ``BackendUnavailableError`` — honest failure
-    over silent degradation.
+    Companions (errata, app notes) use the degraded ``pdf_text`` backend for
+    every vendor. **Register maps are the exception** (phase 6, ticket 05):
+    their register-summary and bit-field tables are the whole reason the
+    document exists, and `pdf_text` carries no trusted tables, so they route
+    to the vendor-neutral layout floor. That is a deliberate reversal of the
+    caveat `README.md` and `AGENTS.md` used to carry, and it is what
+    `PIPELINE_VERSION` 0.5.0 invalidates cached register-map extractions for.
+
+    A datasheet whose chain names no registered backend raises
+    ``BackendUnavailableError`` — honest failure over silent degradation. A
+    register map whose backend is not registered falls back to the companion
+    backend rather than failing the build: a paragraph-only register map is a
+    degraded reading of a companion, not a part with no datasheet.
     """
     from datasheet_analyzer.extract import BackendUnavailableError, available_backends
 
     profile = get_profile(vendor_name)
+    if doc_type == DocType.REGISTER_MAP:
+        if profile.register_map_backend in set(available_backends()):
+            return profile.register_map_backend
+        log.warning(
+            "backend %r is not registered — register map falls back to %r",
+            profile.register_map_backend, profile.companion_backend,
+        )
+        return profile.companion_backend
     if doc_type != DocType.DATASHEET:
         return profile.companion_backend
     registered = set(available_backends())

@@ -10,6 +10,7 @@ from datasheet_analyzer.publish.writer import (
     doc_dir_name_for_source,
     pins_current,
     plots_current,
+    registers_current,
     specs_current,
     write_corpus,
 )
@@ -21,6 +22,7 @@ __all__ = [
     "doc_dir_name_for_source",
     "pins_current",
     "plots_current",
+    "registers_current",
     "search_index_current",
     "specs_current",
     "write_corpus",

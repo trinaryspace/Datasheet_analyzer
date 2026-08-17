@@ -35,9 +35,14 @@ from datasheet_analyzer.evalh.golden import (
 from datasheet_analyzer.models import GoldenQuestion
 
 FIXTURES = Path(__file__).parent.parent / "fixtures"
-#: The six built corpora of AGENTS.md invariant 5 — every one carries a
-#: benchmark, and after ticket 09 every benchmark carries both new paths.
-BUILT_PARTS = ["AFE7950", "AFE7953", "AD9081", "LM741", "QPA1003P", "HMC520A"]
+#: The built corpora of AGENTS.md invariant 5 — every one carries a benchmark,
+#: and after ticket 09 every benchmark carries both new paths. LMX1204 joined
+#: them in phase 6, ticket 05 as the register-map gate part, and it carries
+#: both paths for the same reason the other six do: a part with a benchmark
+#: proves every shipped answer path or it proves none of them.
+BUILT_PARTS = [
+    "AFE7950", "AFE7953", "AD9081", "LM741", "QPA1003P", "HMC520A", "LMX1204",
+]
 
 
 @pytest.fixture

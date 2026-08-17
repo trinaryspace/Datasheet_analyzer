@@ -31,7 +31,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from datasheet_analyzer.models import PinRecord, PlotRecord, SpecRecord
+from datasheet_analyzer.models import PinRecord, PlotRecord, RegisterRecord, SpecRecord
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from datasheet_analyzer.retrieve.index import CorpusIndex
@@ -44,7 +44,8 @@ log = logging.getLogger(__name__)
 SPECS_ARTIFACT = "specs.json"
 PLOTS_ARTIFACT = "plots.json"
 PINS_ARTIFACT = "pins.json"
-ARTIFACTS = (SPECS_ARTIFACT, PLOTS_ARTIFACT, PINS_ARTIFACT)
+REGISTERS_ARTIFACT = "registers.json"
+ARTIFACTS = (SPECS_ARTIFACT, PLOTS_ARTIFACT, PINS_ARTIFACT, REGISTERS_ARTIFACT)
 
 #: Spec record ids read `rec_1`, `rec_2`, ... — 1-based, so `rec_412` is the
 #: 412th record of that document, exactly as ADR 0005 writes it.
@@ -54,6 +55,10 @@ RECORD_ID_PREFIX = "rec_"
 #: record's so a reference is legible on sight; the artifact name in the
 #: reference is what actually disambiguates them.
 PIN_ID_PREFIX = "pin_"
+
+#: Register record ids read `reg_1`, `reg_2`, ... — the same legibility choice
+#: `PIN_ID_PREFIX` makes.
+REGISTER_ID_PREFIX = "reg_"
 
 #: Corpus-relative document directories live under `docs/`; a fully qualified
 #: reference is `docs/<doc>/<artifact>#<record id>`.
@@ -68,6 +73,11 @@ def spec_record_id(ordinal: int) -> str:
 def pin_record_id(ordinal: int) -> str:
     """Id of the `ordinal`-th (0-based) pin record of a document."""
     return f"{PIN_ID_PREFIX}{ordinal + 1}"
+
+
+def register_record_id(ordinal: int) -> str:
+    """Id of the `ordinal`-th (0-based) register record of a document."""
+    return f"{REGISTER_ID_PREFIX}{ordinal + 1}"
 
 
 @dataclass(frozen=True)
@@ -101,7 +111,7 @@ class ResolvedSource:
     doc: str
     artifact: str
     record_id: str
-    record: SpecRecord | PlotRecord | PinRecord
+    record: SpecRecord | PlotRecord | PinRecord | RegisterRecord
     page: int | None
 
 
@@ -162,7 +172,7 @@ def resolve_source(part: Path | str | CorpusIndex, source: str) -> ResolvedSourc
 
     index = part if isinstance(part, CorpusIndex) else CorpusIndex.load(Path(part))
 
-    matches: list[tuple[str, SpecRecord | PlotRecord | PinRecord]] = []
+    matches: list[tuple[str, SpecRecord | PlotRecord | PinRecord | RegisterRecord]] = []
     for doc in index.docs:
         if ref.doc and doc.name != ref.doc:
             continue
@@ -170,6 +180,7 @@ def resolve_source(part: Path | str | CorpusIndex, source: str) -> ResolvedSourc
             SPECS_ARTIFACT: doc.specs,
             PLOTS_ARTIFACT: doc.plots,
             PINS_ARTIFACT: doc.pins,
+            REGISTERS_ARTIFACT: doc.registers,
         }[ref.artifact]
         matches.extend(
             (doc.name, record) for record in records if record.id and record.id == ref.record_id

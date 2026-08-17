@@ -29,7 +29,14 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from datasheet_analyzer.retrieve.results import PinHit, PlotHit, SearchHit, SectionHit, SpecHit
+from datasheet_analyzer.retrieve.results import (
+    PinHit,
+    PlotHit,
+    RegisterHit,
+    SearchHit,
+    SectionHit,
+    SpecHit,
+)
 from datasheet_analyzer.retrieve.retriever import Retriever
 
 if TYPE_CHECKING:  # pragma: no cover - import cycle guard, typing only
@@ -106,6 +113,36 @@ class ProjectRetriever:
         return (
             f"no part of project {self.name} ({parts}) published a pin table — "
             "a pin lookup across this design establishes nothing."
+        )
+
+    def registers(
+        self, *, addr: str = "", name: str = "", q: str = ""
+    ) -> list[RegisterHit]:
+        """Every member's register map, filtered the same way, in member order.
+
+        Two parts of a design can print the same address (`0x0` exists on
+        both), so a project-scoped register lookup returns both and each hit
+        names its part — the same rule every other project lookup follows.
+        """
+        return [
+            hit
+            for member in self.members
+            for hit in member.registers(addr=addr, name=name, q=q)
+        ]
+
+    def register_gap(self) -> str:
+        """`""` when some member has a register map, else why none has.
+
+        `pin_gap()`'s twin one level up: a design where no member published a
+        register summary must say so rather than return an empty list that
+        reads as "this design has no such register".
+        """
+        if any(not member.register_gap() for member in self.members):
+            return ""
+        parts = ", ".join(self.parts) or "(none)"
+        return (
+            f"no part of project {self.name} ({parts}) published a register "
+            "summary — a register lookup across this design establishes nothing."
         )
 
     def plots(

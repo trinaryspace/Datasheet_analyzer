@@ -14,7 +14,13 @@ from pathlib import Path
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-PIPELINE_VERSION = "0.4.0"
+# "0.5.0": phase 6, ticket 05 routes `DocType.REGISTER_MAP` to `pdf_layout`
+# instead of `pdf_text`. The extraction cache is keyed on
+# `(content_hash, backend)` and would happily serve the paragraph-only reading
+# of a register map forever, so the pipeline version moves to invalidate it —
+# exactly the bump the phase plan reserved for this routing change (0.4.0 was
+# spent earlier in the phase on the layout engine's own output schema).
+PIPELINE_VERSION = "0.5.0"
 # "2": phase 5, ticket 04 added the per-record `confidence` grade to every
 # spec and plot record. The field is additive (an older file still loads,
 # reading `unknown`), but a corpus published without it answers every query
@@ -39,6 +45,11 @@ SEARCH_SCHEMA_VERSION = "1"
 # same reason its siblings did, and a *missing* file reads as current because a
 # datasheet that prints no pin table legitimately publishes none.
 PINS_SCHEMA_VERSION = "1"
+# "1": phase 6, ticket 05 — `registers.json`, the register summary as
+# individually citable records. New artifact, so version 1; it joins the
+# publish cache key exactly as its siblings do, and a *missing* file reads as
+# current because most documents print no register summary at all.
+REGISTERS_SCHEMA_VERSION = "1"
 
 # The version of the *derivation rules* (ADR 0005 / invariant 8). Derived
 # artifacts — design cards and anything else computed from records by a named
@@ -55,7 +66,14 @@ PINS_SCHEMA_VERSION = "1"
 # file as current, so a part built before this ticket would skip forever and
 # never gain a pin table it does print — after which `pin_gap()` would state
 # something false about the datasheet.
-CARD_VERSION = "2"
+# "3": phase 6, ticket 05 — `registers.json`, a second derived artifact, with
+# two derived fields (`address.value`, the parsed integer a `--addr` lookup
+# resolves by, and `reset`, read from the register's printed declaration
+# heading) and a new derived warning (how many registers state a reset). Same
+# reasoning as "2": nothing in the extraction gate notices a new derived
+# artifact, so without the bump a part built one ticket earlier would skip
+# forever and keep answering register questions with nothing.
+CARD_VERSION = "3"
 
 
 class Settings(BaseSettings):

@@ -29,8 +29,10 @@ Pipeline: `PDF → acquire → extract → structure → enrich → publish → 
   MathML, footnotes — no OCR, no hallucination); every other vendor and
   era routes to a vendor-neutral offline layout engine (`pdf_layout`,
   PyMuPDF-only, zero vendor assumptions — tables, specs, plots, page
-  citations straight from the PDF). A degraded `pdf_text` backend handles
-  register maps / errata / app notes (paragraphs only).
+  citations straight from the PDF). **Register maps route to the same layout
+  engine** — their register-summary and bit-field tables are the whole reason
+  the document exists — while a degraded `pdf_text` backend handles errata and
+  app notes (paragraphs only).
 - **Structure** — HTML tables become atomic, span-expanded blocks with their
   conditions preamble + footnotes attached; sections get page ranges from the
   PDF's printed TOC; tables get exact pinned pages where possible.
@@ -249,6 +251,36 @@ no such pin". Where the package states a pin count and the extracted count
 disagrees, the mismatch is recorded in the manifest and printed by
 `dsa status`; it never suppresses the table.
 
+### Look up a register (`dsa regs`)
+
+```bash
+dsa regs --part LMX1204 --addr 0x19        # one address -> its acronym + reset
+dsa regs --part LMX1204 --addr 25          # ...the same register, in decimal
+dsa regs --part LMX1204 --name R25         # exact acronym
+dsa regs --part LMX1204 --q "SYSREF" --json
+```
+
+Returns `registers.json` records, published for every document whose register
+summary passed validation: the address **as printed and as an integer**, the
+acronym, the description the document gave the register, the printed access
+column where there is one, and the reset value where the document states one —
+with the printed line it was read from and the page it was printed on, because
+a reset usually lives in the register's own declaration heading (`R25 Register
+(Offset = 0x19) [Reset = 0x0211]`) rather than in the summary row.
+
+The integer form is what makes a lookup usable: `0x19`, `0x19` in lower case,
+`19h` and `25` are one question. Hex is recognised only by the marker the
+document printed (`0x…` / `…h`) — a bare number means decimal on both sides,
+because `--addr 6660` has no document to take a base from. A cell the grammar
+cannot read keeps its printed form, publishes no integer, and is still
+reachable by typing exactly what the page shows.
+
+The same two honesty rules as pins apply: a summary table that fails
+validation is rejected whole with a recorded reason and publishes no file, and
+a part with no register summary anywhere makes `dsa regs` say so and exit 2
+rather than return an empty list that would read as "this device has no such
+register". A register the document states no reset for prints `reset=?`.
+
 ### Find a plot
 
 ```bash
@@ -412,9 +444,11 @@ dsa add-doc register_map.pdf --part AFE7950 --type register_map [--nda]
 dsa build afe7950.pdf --part AFE7950   # rebuild picks it up
 ```
 
-Types: `register_map`, `errata`, `app_note`, `datasheet`. Companions extract
-with the honest `pdf_text` backend (paragraphs only; no trusted tables, no
-`specs.json`) and join the same `INDEX.md`.
+Types: `register_map`, `errata`, `app_note`, `datasheet`. A `register_map`
+extracts through the vendor-neutral layout floor and publishes
+`registers.json` (`dsa regs`); errata and app notes extract with the honest
+`pdf_text` backend (paragraphs only; no trusted tables, no `specs.json`).
+All of them join the same `INDEX.md`.
 
 ### Other commands
 
@@ -503,14 +537,29 @@ ran establishes nothing.
 - **Content path is vendor-neutral.** TI keeps its HTML viewer path;
   ADI / Qorvo / older TI / vendor N+1 datasheets route to the offline
   `pdf_layout` floor (PyMuPDF-only, no per-vendor layout rules — adding
-  a vendor is a brand-lexicon data change, not engine code). Non-datasheet
-  PDFs (register maps / errata / app notes) use `pdf_text` for any vendor.
+  a vendor is a brand-lexicon data change, not engine code). **Register maps
+  route to `pdf_layout` for any vendor** (their tables are the product);
+  errata and app notes use `pdf_text` for any vendor.
 - Table page pinning is exact where the table is locatable in PDF page text;
   otherwise the table honestly keeps its section-level page range.
 - Spec values are verbatim strings, and they stay authoritative: a parallel
   parsed layer (`value_si` / `unit_si` / `value_kind` in `specs.json`) is
   additive, may be absent for any row, and never rewrites what was printed.
   Where the two disagree, the printed string is correct by definition.
+- **Register maps are read whole, or not at all.** A `register_map`
+  companion publishes `docs/<doc>/registers.json` — one record per printed
+  address, carrying the address both as printed and as an integer, the
+  acronym, the description, the printed access column where a document has
+  one, and the reset value where the document states one. A summary table that
+  fails validation (a duplicate address, addresses out of order, a key column
+  of prose) is **rejected whole with a recorded reason** and publishes no file,
+  for the reason the pin rule gives. `access` and `reset` are `null` rather
+  than defaulted when the document prints neither: TI's programmer's guides
+  state access per *bit field*, not per register, and `dsa regs` says `reset=?`
+  instead of a plausible zero. Measured on LMX1204 (`dsa build lmx1204.pdf
+  --part LMX1204 --vendor unknown` + `dsa add-doc LMX1204_registermap.pdf`):
+  35 registers from each of its two documents, all graded `high`, with 29 of
+  35 resets citing an exact printed page and 6 honestly citing none.
 - **Pin tables are read from printed tables only.** Package *drawings* stay
   figure images (retrievable with `dsa plots` / the MCP `get_figure`); nothing
   reconstructs a ball map from a drawing, and no model is allowed anywhere in

@@ -24,6 +24,14 @@ from datasheet_analyzer.models import Footnote, TableBlock
 
 _WS = re.compile(r"\s+")
 
+#: C0 control characters (tab excepted) that a broken font ToUnicode map can
+#: leave in extracted text. LMX1204's figures print ligatures whose CMap points
+#: at U+0000 / U+0001 / U+0002 rather than at `fi` / `ft` / `ti`, and a NUL in
+#: particular makes `csv.writer` raise "need to escape, but no escapechar set"
+#: — the whole build dies on one glyph. These are not characters the datasheet
+#: printed; they cannot be rendered, and they cannot be written to CSV at all.
+_CONTROL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f]")
+
 
 def cell_text(cell: Tag) -> str:
     """Flatten a cell's text, keeping sub/sup content joined to its base.
@@ -123,12 +131,27 @@ def _to_markdown(headers: list[str], grid: list[list[str]]) -> str:
     return "\n".join(lines)
 
 
+def _csv_safe(cell: str) -> str:
+    """One cell as CSV can carry it: control characters dropped.
+
+    The *only* mutation this module performs, and deliberately confined to the
+    machine twin — `TableBlock.grid` keeps whatever the extractor read, because
+    verbatim stays authoritative. A C0 control character is not a printed
+    character at all: it is what a PDF's font map yields when it points a
+    ligature glyph at U+0001 instead of at `ft`, and `csv.writer` cannot encode
+    a NUL under any dialect (it reads as an unset escapechar and raises). One
+    such glyph in one figure would otherwise take the whole part's build down,
+    which is the crash-instead-of-degrade failure invariant 7 forbids.
+    """
+    return _CONTROL.sub("", cell)
+
+
 def _to_csv(headers: list[str], grid: list[list[str]]) -> str:
     buf = io.StringIO()
     w = csv.writer(buf, lineterminator="\n")
     if headers:
-        w.writerow(_disambiguate(headers))
-    w.writerows(grid)
+        w.writerow(_csv_safe(h) for h in _disambiguate(headers))
+    w.writerows([_csv_safe(c) for c in row] for row in grid)
     return buf.getvalue()
 
 

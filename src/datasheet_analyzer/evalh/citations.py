@@ -10,9 +10,10 @@ Matching is two-tier: exact containment first, then an alnum-squashed
 comparison that is immune to dash/space/ligature differences between the
 HTML source and PDF text layer.
 
-Golden questions carrying a `spec_query` / `plot_query` / `pin_query` are
-verified here too (`verify_spec_queries` / `verify_plot_queries` /
-`verify_pin_queries`, phase 6 ticket 04), against the retrieval core.
+Golden questions carrying a `spec_query` / `plot_query` / `pin_query` /
+`reg_query` are verified here too (`verify_spec_queries` /
+`verify_plot_queries` / `verify_pin_queries`, phase 6 ticket 04 /
+`verify_reg_queries`, ticket 05), against the retrieval core.
 That work used to sit inline in `cli.py`; retrieval and its pass/fail rules
 belong behind the seam, and the CLI now only renders the results.
 
@@ -33,8 +34,20 @@ from pathlib import Path
 
 import yaml
 
-from datasheet_analyzer.models import GoldenQuestion, PinRecord, SpecRecord
-from datasheet_analyzer.retrieve import AnswerPack, PinHit, PlotHit, Retriever, SpecHit
+from datasheet_analyzer.models import (
+    GoldenQuestion,
+    PinRecord,
+    RegisterRecord,
+    SpecRecord,
+)
+from datasheet_analyzer.retrieve import (
+    AnswerPack,
+    PinHit,
+    PlotHit,
+    RegisterHit,
+    Retriever,
+    SpecHit,
+)
 
 _NONALNUM = re.compile(r"[^a-z0-9]+")
 
@@ -282,6 +295,68 @@ def _pin_fields(record: PinRecord) -> str:
     return (
         f"{record.pin} {record.pin_verbatim} {record.name} "
         f"{record.type.value} {record.direction} {record.description}"
+    )
+
+
+def verify_reg_queries(
+    questions: list[GoldenQuestion], part_dir: Path
+) -> list[QueryResult]:
+    """Deterministic register-lookup verification for every `reg_query` golden.
+
+    `verify_pin_queries`' rule, applied to registers: at least one matching
+    record must sit on a page the question cites, and every expected substring
+    must appear on one of those *cited* records. A register beside the wrong
+    page is not an answer.
+
+    Two register-specific details. The searchable text includes the **reset**
+    value and its parsed integer, because "what does R12 reset to" is the
+    register question a firmware engineer actually asks and the reset is the
+    one field of a register record that is usually read from somewhere other
+    than its row — a benchmark has to be able to hold that join to account.
+    And `{addr: ...}` is checked through the same value-resolving lookup the
+    CLI uses, so a golden written as `0x1a04` proves that `0x1A04` and `6660`
+    reach the same register.
+    """
+    retriever = Retriever.for_part(part_dir)
+    results: list[QueryResult] = []
+    for q in questions:
+        if not q.reg_query:
+            continue
+        query = dict(q.reg_query)
+        expected = query.pop("count", "")
+        hits: list[RegisterHit] = retriever.registers(**query)
+        paged = [h for h in hits if h.record.page is not None and h.record.page in q.pages]
+        ok = bool(paged) and all(
+            any(contains(_register_fields(h.record), sub) for h in paged)
+            for sub in q.expected_substrings
+        )
+        detail = f"{len(paged)} cited register(s) of {len(hits)}"
+        if expected:
+            counted = len(hits) == int(expected)
+            ok = ok and counted
+            if not counted:
+                detail = f"{len(hits)} register(s), expected {expected}"
+        results.append(
+            QueryResult(
+                question=q, ok=ok, n_records=len(hits), n_verified=len(paged), detail=detail
+            )
+        )
+    return results
+
+
+def _register_fields(record: RegisterRecord) -> str:
+    """Every field of a register a golden substring may match against.
+
+    The reset is included in both forms it publishes — the string the document
+    printed and the integer it parses to — because a reset that silently
+    stopped being found would otherwise pass a benchmark that only reads the
+    row. The parsed *address* is included for the same reason.
+    """
+    reset = record.reset
+    return (
+        f"{record.address.verbatim} {record.address.value} {record.name} "
+        f"{record.access} {record.description} "
+        f"{reset.verbatim if reset else ''} {reset.value if reset else ''}"
     )
 
 

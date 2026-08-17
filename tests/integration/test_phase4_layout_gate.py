@@ -550,10 +550,30 @@ class TestConfidenceMix:
     def test_a_rescued_grid_is_why_the_captionless_corpora_are_low(self, gate):
         """LM741, QPA1003P and HMC520A print their tables under section
         headings with no caption and no header-declared column geometry the
-        data obeys: measured, their grids only ever pass the gate on a rescue
-        split, so every row is honestly `low`. AD9081's captioned ADI tables
-        reconstruct from their own headers and produce all three grades."""
+        data obeys: measured, their *parametric* grids only ever pass the gate
+        on a rescue split, so every row carrying a printed value is honestly
+        `low`. AD9081's captioned ADI tables reconstruct from their own headers
+        and produce all three grades.
+
+        HMC520A gained one exception in phase 6, ticket 05, and it is worth
+        naming: fixing the furniture detector's margin rule freed its p.31
+        ordering guide, whose header row *is* declared, so its four rows
+        reconstruct header-anchored. They grade `medium` because they print no
+        value — which is the rule working, not an exception to it. The
+        assertion is therefore sharpened rather than relaxed: a row with a
+        printed value on any of the three is still always `low`.
+        """
+        from datasheet_analyzer.retrieve import CorpusIndex
+        from datasheet_analyzer.structure.confidence import has_value
+
         for name in ("LM741", "QPA1003P", "HMC520A"):
+            index = CorpusIndex.load(gate[name].part_dir)
+            valued = [
+                rec for doc in index.docs for rec in doc.specs if has_value(rec)
+            ]
+            assert valued, name
+            assert {rec.confidence.value for rec in valued} == {"low"}, name
+        for name in ("LM741", "QPA1003P"):
             stats = gate[name].manifest.stats
             assert stats.spec_confidence["low"] == stats.n_specs, name
         ad9081 = gate["AD9081"].manifest.stats.spec_confidence

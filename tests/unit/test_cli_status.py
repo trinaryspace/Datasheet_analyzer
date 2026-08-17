@@ -61,8 +61,14 @@ def _bad_table_page() -> list[tuple[float, float, str]]:
     ]
 
 
-def _register_map_pdf(tmp_path) -> object:
-    path = tmp_path / "register_map.pdf"
+def _errata_pdf(tmp_path) -> object:
+    """A companion that still routes to the paragraph-only backend.
+
+    It used to be a register map; phase 6 ticket 05 routes those to the layout
+    floor, so the honest stand-in for "a document `pdf_text` extracted" is a
+    document type that really is still extracted that way.
+    """
+    path = tmp_path / "errata.pdf"
     doc = fitz.open()
     page = doc.new_page(width=PAGE_W, height=PAGE_H)
     page.insert_text((72.0, 72.0), "Overview content on page one.")
@@ -77,9 +83,9 @@ def _build_status_part(tmp_path, datasheet_pdf, settings, with_map=False) -> obj
     ds = register_source(datasheet_pdf, part_number="P1", doc_type="datasheet")
     sources = [ds]
     if with_map:
-        sources.append(register_source(_register_map_pdf(tmp_path),
+        sources.append(register_source(_errata_pdf(tmp_path),
                                        part_number="P1",
-                                       doc_type="register_map"))
+                                       doc_type="errata"))
     append_to_inventory(sources, settings.parts_dir / "P1")
     return build_part(datasheet_pdf, part_number="P1", settings=settings,
                       vendor="unknown", use_llm=False)
@@ -116,7 +122,7 @@ def test_status_zeros_are_honest_for_non_layout_docs(tmp_path, monkeypatch, caps
                         cache_dir=tmp_path / ".cache").resolve()
     result = _build_status_part(tmp_path, pdf, settings, with_map=True)
     assert result.manifest.stats.n_documents == 2
-    map_doc = next(d for d in result.manifest.documents if d.doc_type.value == "register_map")
+    map_doc = next(d for d in result.manifest.documents if d.doc_type.value == "errata")
 
     # the additive stats contract: pdf_text carries zero table stats
     mstats = result.manifest.extraction_stats[map_doc.content_hash]
@@ -126,7 +132,7 @@ def test_status_zeros_are_honest_for_non_layout_docs(tmp_path, monkeypatch, caps
     monkeypatch.setattr("datasheet_analyzer.cli.get_settings", lambda: settings)
     cli.main(["status"])
     out = capsys.readouterr().out
-    assert f"register_map-{map_doc.content_hash[:8]}" in out
+    assert f"errata-{map_doc.content_hash[:8]}" in out
     assert "backend pdf_text" in out
     assert "tables: 0 detected / 0 accepted / 0 rejected" in out
     assert "rejection reasons" not in out

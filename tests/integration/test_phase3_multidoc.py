@@ -112,12 +112,17 @@ class TestPhase3MultiDoc:
         for d in doc_dirs:
             assert (d / "sections").exists()
 
-    def test_register_map_has_pdf_text_provenance(self, built):
+    def test_register_map_has_layout_floor_provenance(self, built):
+        """Phase 6, ticket 05: a register map routes to `pdf_layout`, not to the
+        paragraph-only backend — its tables are the reason it exists. The
+        section provenance comment is unchanged; what moved is the backend that
+        produced it (and, with it, whether the document can carry tables at
+        all)."""
         result, _settings, reg_source = built
         reg_dir = result.part_dir / f"docs/register_map-{reg_source.content_hash[:8]}"
         assert reg_dir.exists()
-        # No specs.json for pdf_text documents.
-        assert not (reg_dir / "specs.json").exists()
+        stats = result.manifest.extraction_stats[reg_source.content_hash]
+        assert stats.backend == "pdf_layout"
         # Sections were rendered.
         section_files = list((reg_dir / "sections").glob("*.md"))
         assert len(section_files) >= 1

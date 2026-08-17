@@ -181,3 +181,34 @@ Two details the decision did not anticipate, both settled the same way:
 Measured: AD9081 states 324 balls and publishes 321 (three lost to a ball
 range broken across two printed lines), which is the mismatch this section
 exists for; it warns, it is in the manifest, and all 321 pins are served.
+
+### As built (ticket 05)
+
+`registers.json` is the second derived artifact, and it exercised three clauses
+of this ADR that `pins.json` did not:
+
+- **"A field that cannot be filled stays null and says so"**, twice over. TI's
+  programmer's guides print no register-level *access* column at all — access
+  is stated per bit field — so every LMX1204 register publishes `access: ""`
+  rather than the `R/W` that would have been a plausible guess, and `dsa regs`
+  prints `reset=?` for a register the document states no reset for. The absence
+  is the reading, not a gap to close: composing a register's access out of its
+  fields' is a bit-field question, which is ticket 06's shape.
+- **"Any consumer that sorts or compares must report its unparsed population"**,
+  applied to a non-numeric field. `RegisterSet.n_reset_stated` plus a manifest
+  warning is how a caller listing reset values can say "18 of 35 registers
+  state one" instead of quietly showing a shorter list.
+- **`card_version` participates in the publish cache key** — moved to `3` here.
+  A second new derived artifact is invisible to every other gate for the same
+  reason the first was: no source byte changes and a missing `registers.json`
+  reads as current.
+
+One detail the decision did not anticipate. A derived value's `page` must be
+the page the value was *printed* on, and the obvious source for it was wrong:
+`pagemap.pin_table_pages` rewrites `TableBlock.page` by matching cell text, and
+a register field table whose cells are `R`, `R/W`, `0x0` and `RESERVED` matches
+half a register map (LMX1204's Table 1-25 pins to p.17 and is printed on p.19).
+The reset value therefore cites the table *region*'s page, which pinning does
+not rewrite, and cites nothing at all when the declaration was left in a bare
+paragraph — 29 of 35 with an exact page, 6 with `page: null`. Invariant 3
+already decided that trade: a citation is right, or it is absent.

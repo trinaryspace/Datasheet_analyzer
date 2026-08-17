@@ -115,10 +115,16 @@ class TestSelectBackend:
         assert select_backend("unknown", DocType.DATASHEET) == "pdf_layout"
 
     def test_companions_use_pdf_text_for_every_vendor(self):
+        """Errata and app notes are prose, and the degraded backend is what
+        they get. Register maps are the one exception (phase 6, ticket 05):
+        their *tables* are the product, so they route to the layout floor —
+        asserted here so the exception cannot silently widen, and measured on
+        the real document in `tests/integration/test_phase6_registers.py`."""
         for vendor in ("ti", "adi", "qorvo", "unknown"):
-            assert select_backend(vendor, DocType.REGISTER_MAP) == "pdf_text"
             assert select_backend(vendor, DocType.ERRATA) == "pdf_text"
             assert select_backend(vendor, DocType.APP_NOTE) == "pdf_text"
+            assert select_backend(vendor, DocType.UNKNOWN) == "pdf_text"
+            assert select_backend(vendor, DocType.REGISTER_MAP) == "pdf_layout"
 
     def test_unknown_vendor_name_raises(self):
         with pytest.raises(KeyError, match="nvidia"):
@@ -244,7 +250,10 @@ class TestManifestVendor:
         assert result.manifest.vendor == "ti"
         from datasheet_analyzer.config import PIPELINE_VERSION
 
-        assert result.manifest.pipeline_version == PIPELINE_VERSION == "0.4.0"
+        # "0.5.0": phase 6, ticket 05 routed register maps to the layout floor
+        # and bumped the pipeline version to invalidate their cached
+        # paragraph-only extractions.
+        assert result.manifest.pipeline_version == PIPELINE_VERSION == "0.5.0"
         data = json.loads((result.part_dir / "manifest.json").read_text(encoding="utf-8"))
         assert data["vendor"] == "ti"
         doc = result.manifest.documents[0]

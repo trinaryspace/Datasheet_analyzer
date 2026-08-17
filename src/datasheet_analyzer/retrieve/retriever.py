@@ -49,12 +49,19 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from datasheet_analyzer.config import SEARCH_SCHEMA_VERSION
-from datasheet_analyzer.models import PlotRecord, SearchIndex, SectionFile, SpecRecord
+from datasheet_analyzer.models import (
+    PlotRecord,
+    RegisterRecord,
+    SearchIndex,
+    SectionFile,
+    SpecRecord,
+)
 from datasheet_analyzer.retrieve.index import CorpusIndex, IndexedDoc
 from datasheet_analyzer.retrieve.results import (
     Citation,
     PinHit,
     PlotHit,
+    RegisterHit,
     SearchHit,
     SectionHit,
     SpecHit,
@@ -72,6 +79,7 @@ from datasheet_analyzer.structure.aliases import (
     token_overlap,
     tokens,
 )
+from datasheet_analyzer.structure.registers import parse_register_word
 
 if TYPE_CHECKING:  # pragma: no cover - import cycle guard, typing only
     from datasheet_analyzer.retrieve.pack import AnswerPack
@@ -340,6 +348,70 @@ class Retriever:
             f"no pin table in the corpus for part {self.part} — this datasheet "
             f"prints none, or the one it prints was rejected (see `dsa status` "
             f"for the recorded reason). A pin lookup here establishes nothing."
+        )
+
+    def registers(
+        self,
+        *,
+        addr: str = "",
+        name: str = "",
+        q: str = "",
+    ) -> list[RegisterHit]:
+        """Registers of this part, ANDed across the filters given (ticket 05).
+
+        `addr` resolves by **parsed value** wherever both sides parse, so
+        `0x1A04`, `0x1a04` and `6660` are one question — that equivalence is
+        the whole reason a register record carries an integer beside its
+        printed string. An address the grammar cannot read falls back to an
+        exact, case-folded match on the printed text, so a register whose cell
+        never parsed is still reachable by typing what the page shows.
+
+        `name` is an exact, case-folded match on the printed acronym: `R1` is
+        register 1 and not R11 through R19 as well, the same reason
+        `pins(pin=...)` is exact. `q` is the loose one — a substring over the
+        name and the description together.
+
+        No filters at all returns the whole register map, in printed order.
+        """
+        wanted = parse_register_word(addr) if addr else None
+        low_addr = addr.strip().casefold()
+        low_name = name.strip().casefold()
+        hits: list[RegisterHit] = []
+        for doc in self.index.docs:
+            for rec in doc.registers:
+                if addr and not _register_addr_matches(rec, wanted, low_addr):
+                    continue
+                if name and rec.name.casefold() != low_name:
+                    continue
+                if q and q.lower() not in f"{rec.name} {rec.description}".lower():
+                    continue
+                hits.append(
+                    RegisterHit(
+                        record=rec,
+                        citation=Citation.for_register(
+                            rec, doc=doc.name, doc_hash=doc.doc_hash, part=self.part
+                        ),
+                        matched_via=_register_matched_via(addr, name, q),
+                        confidence=record_confidence(rec),
+                    )
+                )
+        return hits
+
+    def register_gap(self) -> str:
+        """`""` when this part has registers, else why a lookup found none.
+
+        `pin_gap()`'s twin, for the same reason: an empty register result means
+        either "no register matches that" or "this corpus holds no register map
+        at all", and reading the second as the first would tell a firmware
+        engineer that a register does not exist when nobody ever looked.
+        """
+        if any(doc.registers for doc in self.index.docs):
+            return ""
+        return (
+            f"no register summary in the corpus for part {self.part} — no "
+            f"document of this part prints one, or the one it prints was "
+            f"rejected (see `dsa status` for the recorded reason). A register "
+            f"lookup here establishes nothing."
         )
 
     def plots(
@@ -673,6 +745,33 @@ def _covers_page(sec: SectionFile, page: int) -> bool:
     if sec.page_start is None:
         return False
     return sec.page_start <= page <= (sec.page_end or sec.page_start)
+
+
+def _register_addr_matches(
+    record: RegisterRecord, wanted: int | None, printed: str
+) -> bool:
+    """Whether one register answers an `--addr` filter.
+
+    By parsed value when both sides parsed — that is what makes `0x1A04`,
+    `0x1a04` and `6660` the same question — and by the printed string
+    otherwise, so a register whose address cell never parsed is still reachable
+    by typing exactly what the page shows. The two are never mixed: a caller's
+    unparseable string is not compared against a record's integer.
+    """
+    if wanted is not None and record.address.value is not None:
+        return record.address.value == wanted
+    return record.address.verbatim.strip().casefold() == printed
+
+
+def _register_matched_via(addr: str, name: str, q: str) -> str:
+    """Which filter produced a register hit, strongest first."""
+    if addr:
+        return "address"
+    if name:
+        return "name"
+    if q:
+        return "text"
+    return "all"
 
 
 def _pin_matched_via(pin: str, name: str, pin_type: str, q: str) -> str:

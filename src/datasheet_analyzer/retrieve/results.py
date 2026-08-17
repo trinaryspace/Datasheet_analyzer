@@ -19,6 +19,7 @@ exact symbol hit from a loose substring one:
 |---|---|
 | specs | `symbol`, `alias:<phrase>`, `alias-prefix:<prefix>`, `symbol-substring`, `name-substring`, `fuzzy`, `section`, `all` |
 | pins | `pin`, `name`, `type`, `text`, `all` |
+| registers | `address`, `name`, `text`, `all` |
 | plots | `caption`, `conditions`, `section`, `tag`, `caption-terms`, `all` |
 | sections | `number`, `title`, `page`, `all` |
 | search | `fulltext` |
@@ -31,7 +32,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from datasheet_analyzer.models import PinRecord, PlotRecord, SectionFile, SpecRecord
+from datasheet_analyzer.models import (
+    PinRecord,
+    PlotRecord,
+    RegisterRecord,
+    SectionFile,
+    SpecRecord,
+)
 
 # An ungraded record is honestly ungraded rather than optimistically "high".
 CONFIDENCE_UNKNOWN = "unknown"
@@ -107,6 +114,19 @@ class Citation:
     @classmethod
     def for_pin(
         cls, record: PinRecord, *, doc: str = "", doc_hash: str = "", part: str = ""
+    ) -> Citation:
+        return cls(
+            doc=doc,
+            doc_hash=doc_hash,
+            section=record.section,
+            page_start=record.page,
+            page_end=record.page,
+            part=part,
+        )
+
+    @classmethod
+    def for_register(
+        cls, record: RegisterRecord, *, doc: str = "", doc_hash: str = "", part: str = ""
     ) -> Citation:
         return cls(
             doc=doc,
@@ -215,6 +235,51 @@ class PinHit:
             "type_evidence": rec.type_evidence,
             "direction": rec.direction,
             "description": rec.description,
+            "section": self.citation.section,
+            "page": self.citation.page_start,
+            "part": self.citation.part,
+            "doc": self.citation.doc,
+            "citation": self.citation.label,
+            "matched_via": self.matched_via,
+            "confidence": self.confidence,
+        }
+
+
+@dataclass(frozen=True)
+class RegisterHit:
+    """One register with its citation and match provenance.
+
+    The JSON view spells the address both ways — `address` as the datasheet
+    printed it and `address_value` as the integer a `--addr` lookup resolved
+    by — because the printed string is the answer and the integer is what made
+    the question findable. `reset` rides along in the same shape, with the
+    page it was read off and the rule that produced it, since (unlike the rest
+    of the record) a reset is often printed somewhere other than the row.
+    """
+
+    record: RegisterRecord
+    citation: Citation
+    matched_via: str = ""
+    confidence: str = CONFIDENCE_UNKNOWN
+
+    def as_dict(self) -> dict:
+        """JSON-ready view — the one shape the CLI and any second front end share."""
+        rec = self.record
+        reset = rec.reset
+        return {
+            "id": rec.id,
+            "address": rec.address.verbatim,
+            "address_value": rec.address.value,
+            "name": rec.name,
+            "access": rec.access,
+            "description": rec.description,
+            "reset": None if reset is None else {
+                "verbatim": reset.verbatim,
+                "value": reset.value,
+                "page": reset.page,
+                "evidence": reset.evidence,
+                "derivation": reset.derivation,
+            },
             "section": self.citation.section,
             "page": self.citation.page_start,
             "part": self.citation.part,

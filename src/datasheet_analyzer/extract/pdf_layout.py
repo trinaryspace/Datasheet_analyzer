@@ -278,9 +278,56 @@ def _matches_pattern(text: str, page_index: int, x: float = 0.0,
     )
 
 
+def _margin_bands(pages: list[_Page], decoration: list[list[bool]],
+                  threshold: int) -> tuple[int, int]:
+    """`(last header band, first footer band)` — the document's margins.
+
+    Furniture is *page decoration*, and page decoration sits in the margins:
+    a running header above the body, a footer below it. Recurrence alone does
+    not say that. In a uniformly laid-out document — a register map is the
+    extreme case, 25 pages of the same table shape — the body's own y-slots
+    recur on every page and its cells repeat verbatim, so `Bit`, `Type`,
+    `R/W` and `0x0` all pass a text-recurrence test and the detector eats the
+    table it was meant to frame. Measured on `LMX1204_registermap.pdf`: 252
+    mid-page lines, among them the header row of every register table and the
+    first data row of the register summary — which ended that table's region
+    one line under its own caption and threw the whole table away.
+
+    The margins are read off the *document*, not off one page: a band is
+    body when at least `threshold` pages print something there that is not
+    decoration, and the header margin is everything above the topmost such
+    band, the footer margin everything below the bottommost. Per page it
+    would be far too brittle — AD9081's last page prints a one-off copyright
+    block below its page-number line, and a per-page rule would read that
+    block as the body and hand the page number back as content.
+
+    A document with no body band at all (every recurring band is decoration)
+    keeps the pre-margin behaviour: both margins swallow the page.
+    """
+    bands = {_band_key(line.y) for page in pages for line in page.lines}
+    if not bands:
+        return 0, 0
+    body_pages: dict[int, set[int]] = {}
+    for page, flags in zip(pages, decoration):
+        for i, line in enumerate(page.lines):
+            if not flags[i]:
+                body_pages.setdefault(_band_key(line.y), set()).add(page.index)
+    body = [key for key, pgs in body_pages.items() if len(pgs) >= threshold]
+    if not body:
+        return max(bands), min(bands)
+    # The outermost body band is included in the margin, not excluded from it.
+    # Only *decoration* lines are ever stripped, so the inclusive edge costs
+    # nothing on a band whose content is a page's own words, and it buys the
+    # appendix pages a vendor staples on: LM741's package-materials pages put
+    # their `www.ti.com` rule 12 pt lower than the datasheet's, inside the
+    # band the datasheet's own body starts in.
+    return min(body), max(body)
+
+
 def _furniture_sets(pages: list[_Page]) -> list[set[int]]:
     """Per-page sets of furniture line indices (recurrence + constants +
-    universal patterns; a line must sit in a recurring y-slot to qualify)."""
+    universal patterns; a line must sit in a recurring y-slot to qualify,
+    and in one of the document's margin bands — see `_margin_bands`)."""
     n = len(pages)
     threshold = _threshold(n)
     band_pages: dict[int, set[int]] = {}
@@ -297,20 +344,32 @@ def _furniture_sets(pages: list[_Page]) -> list[set[int]]:
         if len(window) >= threshold:
             recurring.add(key)
 
-    out: list[set[int]] = [set() for _ in pages]
+    decoration: list[list[bool]] = []
     for page in pages:
-        for i, line in enumerate(page.lines):
+        flags: list[bool] = []
+        for line in page.lines:
             key = _band_key(line.y)
             if key not in recurring:
+                flags.append(False)
                 continue
             if _matches_pattern(line.text, page.index, line.x, line.y):
-                out[page.index - 1].add(i)
+                flags.append(True)
                 continue
-            same_text = set()
+            same_text: set[int] = set()
             for k in (key - 1, key, key + 1):
                 same_text |= text_at_band.get((k, line.text), set())
-            if len(same_text) >= threshold:
-                out[page.index - 1].add(i)
+            flags.append(len(same_text) >= threshold)
+        decoration.append(flags)
+
+    head_end, foot_start = _margin_bands(pages, decoration, threshold)
+    out: list[set[int]] = []
+    for page, flags in zip(pages, decoration):
+        keep: set[int] = set()
+        for i, line in enumerate(page.lines):
+            key = _band_key(line.y)
+            if flags[i] and (key <= head_end or key >= foot_start):
+                keep.add(i)
+        out.append(keep)
     return out
 
 
@@ -545,6 +604,12 @@ def _best_delta(rows: list[tuple[float, str, str, int]], pages: list[_Page]) -> 
 # "Table 3. DAC DC Specifications", "Table 2-1 - Power Consumption", "Table 1."
 _CAPTION_RE = re.compile(r"^\s*table\s+(\d+(?:[.-]\d+)*)\s*[-.:]\s*(.*)$",
                          re.IGNORECASE)
+# A table that runs onto the next page reprints its caption with a
+# "(continued)" tail. It is the *same* table, so the tail is dropped before
+# the caption becomes a continuation key — otherwise the tail rows start a
+# second candidate that the gate then rejects for having too few rows, and
+# LMX1204's register summary loses its last register (R90, on p.33 alone).
+_CONTINUED_RE = re.compile(r"\(\s*cont(?:inued|[.…])?\s*\)\s*$", re.IGNORECASE)
 
 # "Figure 5. Pin Configuration" / "Figure 1." — the dot/colon right after
 # the number is REQUIRED, so prose references ("the waveforms in Figure 2
@@ -560,6 +625,10 @@ _FIGURE_MARGIN = 12.0
 # Comments" lands at 226.2, 235.9, 244.x) while keeping distinct columns
 # apart — AD9081's Min|Typ|Max starts are 27pt apart, lm741's 36pt.
 _HDR_ANCHOR_TAU = 12.0
+# How far left of its cluster's own minimum a band edge is placed, so a cell
+# laid out flush with its header but a float hair to the left of it stays in
+# its own column (see `_cluster_lefts`).
+_BAND_EPSILON = 0.001
 # Retry ladder: only when the header-anchored split fails does the engine
 # retry with coarser all-word clusterings (rescue over drop).
 _COLUMN_TAUS = (12.0, 8.0, 19.0, 28.0, 42.0)
@@ -871,9 +940,14 @@ def _scan_table_footnotes(rows: list[_Row], grid_end_y: float,
 def _cluster_lefts(xs: list[float], tau: float) -> list[float]:
     """Cluster x0 positions (single linkage, gap < tau) -> cluster lefts.
 
-    Lefts stay exact floats: a rounded left (up to 0.05pt right of its own
-    cluster's min) would exclude the cluster's own edge-most spans, which
-    would then fall into the previous band — corrupting cell boundaries.
+    Lefts stay exact floats — never rounded: a rounded left (up to 0.05pt
+    right of its own cluster's min) would exclude the cluster's own edge-most
+    spans, which would then fall into the previous band, corrupting cell
+    boundaries.
+
+    (`_header_bands` widens its own edges by `_BAND_EPSILON` afterwards; the
+    all-word bands here already cluster the data spans themselves, so their
+    minima cannot sit right of the column they open.)
     """
     xs = sorted(set(xs))
     clusters: list[list[float]] = []
@@ -886,10 +960,25 @@ def _cluster_lefts(xs: list[float], tau: float) -> list[float]:
 
 
 def _header_bands(rows: list[_Row]) -> list[float]:
-    """Column lefts anchored on the first row's word starts."""
+    """Column lefts anchored on the first row's word starts.
+
+    Nudged left by `_BAND_EPSILON`, because these edges are clustered from
+    the *header row alone*: a data cell the PDF lays out flush with its
+    header can still start a hair to the left of it, and it would then fall
+    into the previous column. Measured on LMX1204's register summary, `R0`
+    starts 1.5e-5 pt left of `Acronym` — so every acronym in the table read
+    as part of the address cell, and the whole row shifted one column left.
+    A band edge is only meaningful to a fraction of a character width (real
+    columns sit tens of points apart, and `_advice_share` compares edges at
+    0.75 pt), so a hundredth of a point cannot move a genuine column and
+    does absorb the layout's own float noise.
+    """
     if not rows:
         return []
-    return _cluster_lefts([s.x0 for s in rows[0].spans], _HDR_ANCHOR_TAU)
+    return [
+        x - _BAND_EPSILON
+        for x in _cluster_lefts([s.x0 for s in rows[0].spans], _HDR_ANCHOR_TAU)
+    ]
 
 
 def _word_bands(rows: list[_Row], tau: float) -> list[float]:
@@ -1277,6 +1366,29 @@ def _hypothesis(region: list[_Line], page: _Page
             RECONSTRUCTION_RESCUED if best_rescued else RECONSTRUCTION_HEADER)
 
 
+def _is_section_break(lines: list[_Line], index: int,
+                      title_keys: frozenset[str]) -> bool:
+    """Whether the line at `index` is a printed section heading that ends a
+    table region — as opposed to a *cell* whose text happens to equal one.
+
+    A section heading occupies its own baseline; a table cell shares one with
+    the rest of its row. Measured on LMX1204: the register summary prints
+    `SYSREF` in the features column of `0x10 R16 … Go`, and the datasheet has
+    a §6.3.6 called `SYSREF`, so a bare title-key test ended the table twenty
+    rows early and published half a register map. The cheapest thing that
+    tells them apart is the baseline the line shares, and it needs no
+    thresholds: lines are sorted by `(y, x)`, so a row-mate is an immediate
+    neighbour.
+    """
+    if not (title_keys and _squash(lines[index].text) in title_keys):
+        return False
+    y = lines[index].y
+    for other in (index - 1, index + 1):
+        if 0 <= other < len(lines) and abs(lines[other].y - y) <= _BASELINE_SKEW:
+            return False
+    return True
+
+
 def _is_heading_anchor(line: _Line, title_keys: frozenset[str]) -> bool:
     """A printed section heading is a table-anchor candidate (ticket 09,
     SPEC story 10): its line matches a section title key, or its spans are
@@ -1442,14 +1554,14 @@ class _TableExtraction:
             if not m:
                 i += 1
                 continue
-            key = (m.group(1), _squash(m.group(2).strip()))
+            key = (m.group(1), _squash(_CONTINUED_RE.sub("", m.group(2).strip())))
             region: list[tuple[int, _Line]] = []
             j = i + 1
             while j < len(lines):
                 line = lines[j]
                 if (j in furniture or _CAPTION_RE.match(line.text.strip())
                         or _FIGURE_CAPTION_RE.match(line.text.strip())
-                        or (title_keys and _squash(line.text) in title_keys)):
+                        or _is_section_break(lines, j, title_keys)):
                     break
                 region.append((j, line))
                 j += 1
@@ -1476,6 +1588,19 @@ class _TableExtraction:
                         kept_ids.update(id(ln) for ln in row.lines)
                         continue  # repeated header row: caption-like furniture
                     cells = _row_cells(row, acc.lefts)
+                    # The gate's own completeness rule, applied to the rows a
+                    # continuation page contributes: a row with words left of
+                    # the first band is one this grid would silently truncate,
+                    # so it is not a row of this grid. It is the prose that
+                    # follows a table's last page — LMX1204's register summary
+                    # ends on p.33 with two sentences whose linked phrases fall
+                    # inside the band geometry while their opening words do
+                    # not, and appending them would put two more rows under the
+                    # last register's address and read as a duplicate.
+                    if any(s.x0 < acc.lefts[0] for s in row.spans):
+                        continue
+                    if not any(c.strip() for c in cells):
+                        continue  # same rule the table's own first page applies
                     if not cells[0].strip() and carried:
                         cells[0] = carried
                     elif cells[0].strip():

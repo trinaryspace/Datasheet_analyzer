@@ -27,6 +27,7 @@ from datasheet_analyzer.retrieve import (
     Citation,
     PinHit,
     PlotHit,
+    RegisterHit,
     Retriever,
     SearchHit,
     SpecHit,
@@ -183,6 +184,37 @@ def format_pin_hits(hits: list[PinHit], limit: int = 40, *, show_part: bool = Fa
         )
     if len(hits) > limit:
         lines.append(f"... and {len(hits) - limit} more pins")
+    return "\n".join(lines)
+
+
+def format_register_hits(
+    hits: list[RegisterHit], limit: int = 40, *, show_part: bool = False
+) -> str:
+    """Render register hits: address, acronym, reset, access, citation.
+
+    The reset prints as the document printed it and never as a number the
+    corpus computed: `reset=0x0223` is what the page says, and a register the
+    document states no reset for prints `reset=?` rather than a plausible zero
+    — ADR 0005's "null and says so" at the surface a human reads. The limit is
+    the pin renderer's, and for the same reason: a register map is long, and a
+    truncated list that does not admit it is worse than a long one.
+    """
+    if not hits:
+        return "No matching registers."
+    lines: list[str] = []
+    for hit in hits[:limit]:
+        rec = hit.record
+        reset = rec.reset.verbatim if rec.reset is not None else "?"
+        access = f" [{rec.access}]" if rec.access else ""
+        description = f" — {rec.description}" if rec.description else ""
+        lines.append(
+            f"{_part_prefix(hit.citation, show_part)}"
+            f"{rec.address.verbatim}: {rec.name or '(unnamed)'} "
+            f"(reset={reset}){access} — {hit.citation.pages}{description} "
+            f"[via {hit.matched_via} · {hit.confidence}]"
+        )
+    if len(hits) > limit:
+        lines.append(f"... and {len(hits) - limit} more registers")
     return "\n".join(lines)
 
 

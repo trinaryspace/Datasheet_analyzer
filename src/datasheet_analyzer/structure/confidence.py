@@ -48,6 +48,11 @@ the table declared; a pin whose row printed **no name** is `low` too, since a
 designator with no signal on it is not something to wire; a section-range page
 is `medium`; everything else is `high`. There is no unit clause — a pin has no
 value and therefore no unit to be missing.
+
+Registers (phase 6, ticket 05) are read off a grid too, so theirs is the pin
+rule with one addition: an address the grammar could not read as an integer is
+`medium`, because the printed string is still the answer while `dsa regs
+--addr` cannot reach it.
 """
 
 from __future__ import annotations
@@ -60,6 +65,7 @@ from datasheet_analyzer.models import (
     Confidence,
     PinRecord,
     PlotRecord,
+    RegisterRecord,
     SectionNode,
     SpecRecord,
     TableBlock,
@@ -105,6 +111,29 @@ def grade_pin_record(
     return Confidence.HIGH
 
 
+def grade_register_record(
+    record: RegisterRecord, table: TableBlock, section: SectionNode
+) -> Confidence:
+    """Grade one register row against the rule in this module's docstring.
+
+    The pin rule with the register's own "did the row say anything" clause: a
+    **rescued** grid is `low`, a register whose row printed **no name** is
+    `low` (an address with no acronym on it is not something to program), a
+    section-range page is `medium`, and an address the grammar could not read
+    as a number is `medium` — the printed string is still the answer, but
+    `dsa regs --addr` cannot reach it, and a caller deserves to be told.
+    """
+    if table.reconstruction == RECONSTRUCTION_RESCUED:
+        return Confidence.LOW
+    if not record.name.strip():
+        return Confidence.LOW
+    if record.address.value is None:
+        return Confidence.MEDIUM
+    if not page_is_exact(record, table, section):
+        return Confidence.MEDIUM
+    return Confidence.HIGH
+
+
 def grade_plot_record(record: PlotRecord) -> Confidence:
     """Grade one cataloged plot on citation precision + identification."""
     if record.page_start is None:
@@ -117,7 +146,9 @@ def grade_plot_record(record: PlotRecord) -> Confidence:
 
 
 def page_is_exact(
-    record: SpecRecord | PinRecord, table: TableBlock, section: SectionNode
+    record: SpecRecord | PinRecord | RegisterRecord,
+    table: TableBlock,
+    section: SectionNode,
 ) -> bool:
     """True when the row cites one printed page rather than a section's range.
 

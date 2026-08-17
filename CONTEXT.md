@@ -112,6 +112,20 @@ understand must never read as a supply. Closing a gap is a YAML edit — a
 longer, more specific phrase.
 _Avoid_: category, class, function, role, direction
 
+**Register**:
+One addressable configuration word of a device as a record: its address —
+printed exactly as the document prints it *and* as an integer — the acronym
+beside it, what the document says the register is for, the printed access
+column where there is one, and the reset value where the document states one.
+It is the unit a firmware engineer works in during bring-up, so it must be
+findable by every notation an address is written in; that is why the integer
+travels beside the string, and why a cell the grammar cannot read keeps the
+string and publishes no integer rather than a guessed one. A register the
+document states no reset or access for has none — never a zero, never `R/W`.
+A part with no readable register summary has no registers rather than some of
+them.
+_Avoid_: field, bit, setting, parameter, address
+
 **Search index**:
 The precomputed inverted index of one document's section files
 (`search_index.json`, written at publish): per section, how often each token

@@ -69,6 +69,7 @@ from datasheet_analyzer.publish import (
     doc_dir_name_for_source,
     pins_current,
     plots_current,
+    registers_current,
     search_index_current,
     specs_current,
 )
@@ -320,7 +321,7 @@ def _publish_artifacts_stale(
             return True
         if not specs_current(doc_dir) or not plots_current(doc_dir):
             return True
-        if not pins_current(doc_dir):
+        if not pins_current(doc_dir) or not registers_current(doc_dir):
             return True
     return False
 

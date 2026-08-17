@@ -8,6 +8,7 @@ Layout per part:
       docs/<doc_type>-<hash8>/
         sections/*.md
         tables/*.csv
+        specs.json / plots.json / pins.json / registers.json  (when there is one)
         search_index.json
 """
 
@@ -21,6 +22,7 @@ from datasheet_analyzer.config import (
     CARD_VERSION,
     PINS_SCHEMA_VERSION,
     PLOTS_SCHEMA_VERSION,
+    REGISTERS_SCHEMA_VERSION,
     SPECS_SCHEMA_VERSION,
 )
 from datasheet_analyzer.models import (
@@ -32,6 +34,8 @@ from datasheet_analyzer.models import (
     PlotRecord,
     PlotSet,
     RawDocument,
+    RegisterRecord,
+    RegisterSet,
     SectionFile,
     SourceDocument,
     SpecRecord,
@@ -109,6 +113,16 @@ def pins_current(doc_dir: Path) -> bool:
     return _artifact_schema_current(doc_dir, "pins.json", PINS_SCHEMA_VERSION)
 
 
+def registers_current(doc_dir: Path) -> bool:
+    """`registers.json`'s twin, keyed on `REGISTERS_SCHEMA_VERSION`.
+
+    A *missing* file reads as current, for the same reason as `pins_current`:
+    almost no document prints a register summary, and demanding a file they
+    cannot produce would rebuild those parts forever.
+    """
+    return _artifact_schema_current(doc_dir, "registers.json", REGISTERS_SCHEMA_VERSION)
+
+
 def write_corpus(
     part_dir: Path,
     docs: list[tuple[RawDocument, list[SectionPlan], dict[str, str]]],
@@ -119,6 +133,7 @@ def write_corpus(
     specsets: list[SpecSet] | None = None,
     plotsets: list[PlotSet] | None = None,
     pinsets: list[PinSet] | None = None,
+    registersets: list[RegisterSet] | None = None,
     card_version: str = CARD_VERSION,
 ) -> CorpusManifest:
     """Write all corpus artifacts; return the manifest.
@@ -144,6 +159,14 @@ def write_corpus(
     which land in `CorpusManifest.derived_warnings`, because the ADR decided a
     mismatch is recorded rather than logged.
 
+    Optional `registersets` follow the pin rule exactly, and for the same
+    reason: `docs/<doc>/registers.json` is written **only when the set holds
+    registers**, a set with none deletes any earlier file, and its `warnings`
+    (how many of its registers the document states a reset for) travel into
+    `CorpusManifest.derived_warnings` either way. A firmware engineer who greps
+    a half-published register map for `0x1A04` and concludes the register does
+    not exist has been misled in the most expensive way this corpus can manage.
+
     `card_version` is the derivation-rule version this corpus's derived
     artifacts were produced under (ADR 0005). It is stamped into the manifest
     because nothing else can carry it: derived values are computed from
@@ -163,11 +186,13 @@ def write_corpus(
     specsets_by_hash = {s.doc_hash: s for s in (specsets or [])}
     plotsets_by_hash = {p.doc_hash: p for p in (plotsets or [])}
     pinsets_by_hash = {p.doc_hash: p for p in (pinsets or [])}
+    registersets_by_hash = {r.doc_hash: r for r in (registersets or [])}
     # Per-part confidence mix, accumulated across the part's documents so the
     # manifest carries one measured number per grade (ticket 04).
     graded_specs: list[SpecRecord] = []
     graded_plots: list[PlotRecord] = []
     graded_pins: list[PinRecord] = []
+    graded_registers: list[RegisterRecord] = []
 
     doc_dirs: list[str] = []
 
@@ -207,6 +232,21 @@ def write_corpus(
                 # `publish.pins_current` false so the part rebuilt on every
                 # run (`batch.skip_reason`) without ever settling.
                 pins_path.unlink(missing_ok=True)
+
+        registerset = registersets_by_hash.get(raw.source.content_hash)
+        if registerset is not None:
+            # Same shape as pins: the warnings travel even when the file does
+            # not, and a set with no registers takes the old file with it.
+            manifest.derived_warnings.extend(registerset.warnings)
+            registers_path = doc_abs / "registers.json"
+            if registerset.registers:
+                registers_path.write_text(
+                    registerset.model_dump_json(indent=2), encoding="utf-8"
+                )
+                stats.n_registers += len(registerset.registers)
+                graded_registers.extend(registerset.registers)
+            else:
+                registers_path.unlink(missing_ok=True)
 
         plotset = plotsets_by_hash.get(raw.source.content_hash)
         if plotset is not None:
@@ -298,6 +338,8 @@ def write_corpus(
         stats.plot_confidence = confidence_mix(graded_plots)
     if graded_pins:
         stats.pin_confidence = confidence_mix(graded_pins)
+    if graded_registers:
+        stats.register_confidence = confidence_mix(graded_registers)
 
     manifest.stats = stats
     (part_dir / "manifest.json").write_text(
@@ -310,9 +352,9 @@ def write_corpus(
         stats.total_tokens, stats.index_tokens, stats.agent_doc_tokens,
     )
     log.info(
-        "confidence mix: specs %s; plots %s; pins %s",
+        "confidence mix: specs %s; plots %s; pins %s; registers %s",
         stats.spec_confidence or "(none)", stats.plot_confidence or "(none)",
-        stats.pin_confidence or "(none)",
+        stats.pin_confidence or "(none)", stats.register_confidence or "(none)",
     )
     for warning in manifest.derived_warnings:
         log.warning("derived-artifact warning recorded in the manifest: %s", warning)
