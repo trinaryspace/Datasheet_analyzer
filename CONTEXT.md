@@ -142,9 +142,9 @@ why; it never passes quietly.
 _Avoid_: tag, mode, category, test type
 
 **Part**:
-A named device (e.g. AFE7950) and its corpus: a folder under `parts/`
-holding an index, inventory, manifest, and one document directory per source
-document.
+A named device, identified by its part number (e.g. AFE7950). Its corpus is
+every SourceDocument that applies to it; a Part owns no documents — it is
+named by them.
 _Avoid_: device, chip, family
 
 **Project**:
@@ -166,9 +166,37 @@ the index pointers are the product and are never what a budget removes.
 _Avoid_: summary, dashboard, manifest, catalog
 
 **SourceDocument**:
-A registered input file of a part (datasheet, register map, errata, app
-note). Identity is the sha256 of its bytes.
+A registered input file (datasheet, register map, errata, app note).
+Identity is the sha256 of its bytes. It belongs to the Library, not to any
+one Part.
 _Avoid_: PDF, file, doc
+
+**Library**:
+Every SourceDocument registered so far, as one flat set. A Batch is one
+directory processed in a single run; the Library is what has accumulated
+across runs, and is what a question is asked against.
+_Avoid_: corpus, collection, shelf, database
+
+**Applicability**:
+The set of Parts a SourceDocument is about: named part numbers, a family
+prefix (e.g. `AFE79xx`), or every part. Inferred at build time from the
+document's own text and correctable by hand. A document may apply to many
+parts, and a part is constituted by the documents that apply to it.
+_Avoid_: ownership, assignment, grouping, scope
+
+**Tag**:
+A machine-derived facet of a PlotRecord — signal path (`tx`, `rx`), a
+normalized frequency, or a measurement keyword — computed from the section
+title and figure caption at build time. Reproducible and never hand-edited;
+its human counterpart is a Label.
+_Avoid_: label, keyword, topic
+
+**Label**:
+Short text a person attaches to a SourceDocument to organize their own shelf
+(e.g. `reviewed`, `thermal`, `jesd204`). Free-form and mutable; it records
+what a human thinks, never what the pipeline derived. Its machine
+counterpart is a Tag.
+_Avoid_: tag, keyword, annotation, category
 
 **Build**:
 The pipeline run that turns one source document set into one part corpus:
