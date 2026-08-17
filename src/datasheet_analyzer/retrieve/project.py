@@ -29,7 +29,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from datasheet_analyzer.retrieve.results import PlotHit, SearchHit, SectionHit, SpecHit
+from datasheet_analyzer.retrieve.results import PinHit, PlotHit, SearchHit, SectionHit, SpecHit
 from datasheet_analyzer.retrieve.retriever import Retriever
 
 if TYPE_CHECKING:  # pragma: no cover - import cycle guard, typing only
@@ -75,6 +75,38 @@ class ProjectRetriever:
             for member in self.members
             for hit in member.specs(symbol=symbol, name=name, section=section)
         ]
+
+    def pins(
+        self, *, pin: str = "", name: str = "", type: str = "", q: str = ""
+    ) -> list[PinHit]:
+        """Every member's pin table, filtered the same way, in member order.
+
+        Two parts of a design can print the same designator (`A1` exists on
+        both), so a project-scoped pin lookup returns both and each hit names
+        its part — the same rule every other project lookup follows.
+        """
+        return [
+            hit
+            for member in self.members
+            for hit in member.pins(pin=pin, name=name, type=type, q=q)
+        ]
+
+    def pin_gap(self) -> str:
+        """`""` when some member has a pin table, else why none has.
+
+        A design where no member published pins cannot answer a pin question,
+        and must say so rather than return an empty list that reads as "this
+        board has no such pin". Weaker than the single-part form only in that
+        one member with pins is enough to make the lookup meaningful; the
+        members without one are still visible as parts with no hits.
+        """
+        if any(not member.pin_gap() for member in self.members):
+            return ""
+        parts = ", ".join(self.parts) or "(none)"
+        return (
+            f"no part of project {self.name} ({parts}) published a pin table — "
+            "a pin lookup across this design establishes nothing."
+        )
 
     def plots(
         self,

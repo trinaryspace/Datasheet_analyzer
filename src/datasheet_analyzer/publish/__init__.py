@@ -8,6 +8,7 @@ from datasheet_analyzer.publish.search_index import (
 from datasheet_analyzer.publish.writer import (
     doc_dir_name,
     doc_dir_name_for_source,
+    pins_current,
     plots_current,
     specs_current,
     write_corpus,
@@ -18,6 +19,7 @@ __all__ = [
     "build_search_index",
     "doc_dir_name",
     "doc_dir_name_for_source",
+    "pins_current",
     "plots_current",
     "search_index_current",
     "specs_current",

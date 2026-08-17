@@ -674,6 +674,252 @@ class TestNumericLayerParseRate:
             assert len(population.listing()) == population.n_unparsed, name
 
 
+class TestPinsOnTheGateCorpora:
+    """Phase 6, ticket 04 — pins measured on four real datasheets.
+
+    The ticket's first criterion is *"pin tables extract for all six built
+    parts **or are honestly rejected with a recorded reason**; a part with no
+    parseable pin table produces no `pins.json` rather than a partial one"*.
+    Measured, the four gate PDFs land in three different states, and all three
+    are the honest one:
+
+    | Part | Printed pin table | Outcome |
+    |---|---|---|
+    | AD9081 | Table 21, 18x18 BGA | 321 pins published; the package states 324, so the cross-check warns |
+    | HMC520A | Table 4, 24-terminal LCC | identified and **rejected whole** — pin 15 is claimed by two entries |
+    | LM741 | printed, but the layout floor never reconstructs it as a grid | no pin table, no file |
+    | QPA1003P | none printed | no pin table, no file |
+
+    The two TI reference parts are the fifth and sixth built corpora and print
+    no pin section at all; that is asserted in `test_afe7950_build.py`, where
+    those corpora live.
+
+    Numbers are printed as well as asserted, because the phase report quotes
+    them; what is *asserted* is the contract — whole or nothing, every pin
+    cited, the cross-check recorded — rather than a count that an honest
+    extraction improvement would break.
+    """
+
+    #: Measured. AD9081 is the only gate part that publishes pins.
+    PINS: ClassVar[dict[str, int]] = {
+        "AD9081": 321, "LM741": 0, "QPA1003P": 0, "HMC520A": 0,
+    }
+
+    def _pins(self, result):
+        from datasheet_analyzer.retrieve import CorpusIndex
+
+        return [rec for doc in CorpusIndex.load(result.part_dir).docs for rec in doc.pins]
+
+    def test_every_gate_part_extracts_its_pins_or_publishes_none(self, gate, capsys):
+        rows: list[str] = []
+        for name in GATE:
+            result = gate[name]
+            stats = result.manifest.stats
+            files = list((result.part_dir / "docs").glob("*/pins.json"))
+            pins = self._pins(result)
+            assert len(pins) == stats.n_pins == self.PINS[name], name
+            assert bool(files) == bool(pins), (
+                f"{name}: a part with no pins must publish no pins.json"
+            )
+            reasons = [
+                r
+                for st in result.manifest.extraction_stats.values()
+                for r in st.rejection_reasons
+                if r.startswith("device-table")
+            ]
+            rows.append(
+                f"  {name:<9} {len(pins):>4} pins   "
+                f"{'pins.json' if files else 'no pins.json':<13} "
+                f"{'; '.join(reasons) or '(no device-table rejection)'}"
+            )
+        with capsys.disabled():
+            print("\npins, four gate corpora\n" + "\n".join(rows) + "\n")
+
+    def test_a_rejected_pin_table_is_recorded_and_publishes_nothing(self, gate):
+        """HMC520A prints a real 24-terminal pin table whose EPAD row the
+        layout floor materializes onto pin 15. Two entries claiming one pin is
+        a misread grid, so the table is refused **whole** and says why — a
+        half-published pin table reads as a complete one to whoever greps it."""
+        result = gate["HMC520A"]
+        reasons = [
+            r
+            for st in result.manifest.extraction_stats.values()
+            for r in st.rejection_reasons
+            if r.startswith("device-table")
+        ]
+        assert reasons, "the rejection must be recorded, not merely logged"
+        assert any('duplicate pin "15"' in r for r in reasons), reasons
+        assert not list((result.part_dir / "docs").glob("*/pins.json"))
+        # ...and the cross-check still ran: the package states 24 terminals.
+        assert any(
+            "no pin table was published" in w for w in result.manifest.derived_warnings
+        ), result.manifest.derived_warnings
+
+    def test_the_package_cross_check_warns_and_keeps_every_pin(self, gate):
+        """ADR 0005's decided outcome, on a real mismatch. AD9081 is a
+        324-ball BGA and 321 balls survive extraction: three are lost to a
+        `M2 to` / `M5` range broken across two printed lines. The count warns,
+        it is recorded in the manifest, and it suppresses nothing."""
+        result = gate["AD9081"]
+        warnings = result.manifest.derived_warnings
+        assert any(
+            "pin count mismatch" in w and "324" in w and "321" in w for w in warnings
+        ), warnings
+        assert result.manifest.stats.n_pins == 321, "a bad count never drops a good table"
+
+    def test_every_published_pin_is_individually_cited_and_verbatim(self, gate):
+        """Criterion 2, on the real table: `A2, E2, H2, L2, P2, V2` is one
+        printed row and six citable pins, each quoting that row."""
+        pins = self._pins(gate["AD9081"])
+        by_pin = {rec.pin: rec for rec in pins}
+        assert len(by_pin) == len(pins), "a pin designator is unique in a package"
+        shared = [rec for rec in pins if rec.name == "AVDD2"]
+        assert [rec.pin for rec in shared] == ["A2", "E2", "H2", "L2", "P2", "V2"]
+        for rec in shared:
+            assert rec.pin_verbatim == "A2, E2, H2, L2, P2, V2"
+            assert rec.description == "Analog 2.0 V Supply Inputs for DAC."
+            assert rec.page == 22
+            assert rec.id and rec.confidence.value in ("high", "medium", "low")
+        assert all(rec.page is not None for rec in pins), "an uncited pin is not an answer"
+
+    def test_every_one_of_the_321_pins_resolves_through_its_source_reference(self, gate):
+        """ADR 0005's enforcement clause on the real artifact: *every* `source`
+        walks back to a real record and a printed page, not a sampled one.
+
+        The unit suite runs the same loop over a 9-pin fixture; only the real
+        table has enough records for an id collision or an ordinal drift to
+        have somewhere to hide."""
+        from datasheet_analyzer.provenance import PINS_ARTIFACT, resolve_source, source_ref
+        from datasheet_analyzer.retrieve import CorpusIndex
+
+        part_dir = gate["AD9081"].part_dir
+        index = CorpusIndex.load(part_dir)
+        ids = [rec.id for doc in index.docs for rec in doc.pins]
+        assert len(ids) == 321 and len(set(ids)) == 321, "a pin id is unique per part"
+        for doc in index.docs:
+            for record in doc.pins:
+                ref = source_ref(record.id, artifact=PINS_ARTIFACT, doc=doc.name)
+                found = resolve_source(part_dir, ref)
+                assert found is not None, ref
+                assert found.record.pin == record.pin
+                assert found.page is not None and found.page == record.page
+
+    def test_the_type_lexicon_labels_the_table_and_admits_what_it_cannot(
+        self, gate, capsys
+    ):
+        """Criterion 3 on real data: labels come from
+        `registry/pin_types.yaml`, every labelled pin names the phrase that
+        decided it, and the rows the lexicon cannot read stay `unknown` with no
+        evidence rather than being guessed into a category."""
+        from collections import Counter
+
+        from datasheet_analyzer.models import PinType
+
+        pins = self._pins(gate["AD9081"])
+        counts = Counter(rec.type.value for rec in pins)
+        for rec in pins:
+            assert bool(rec.type_evidence) == (rec.type is not PinType.UNKNOWN), rec.pin
+            if rec.type_evidence:
+                assert rec.type_evidence.startswith(("name:", "description:"))
+        assert counts["unknown"], "a lexicon that claims every row is not honest"
+        assert counts["power"] and counts["ground"] and counts["digital"]
+        with capsys.disabled():
+            print(
+                "\nAD9081 pin types (registry/pin_types.yaml)\n  "
+                + "  ".join(f"{t} {n}" for t, n in sorted(counts.items()))
+                + "\n"
+            )
+
+    def test_dsa_pins_type_power_returns_the_hand_checked_supply_set(self, gate, capsys):
+        """Criterion 6, on AD9081 rather than AFE7950: the two TI reference
+        datasheets print no pin section at all, so the hand-checked supply set
+        is measured on the one built part that has one.
+
+        Hand-checked against "Table 21. Pin Function Descriptions", p.22-23:
+        every AD9081 supply rail is present and nothing else is. Asserted as
+        the *rail set* rather than the ball count, because the balls are what
+        an extraction improvement may legitimately move and the rails are what
+        a designer is asking for.
+        """
+        from datasheet_analyzer.retrieve import Retriever
+
+        hits = Retriever.for_part(gate["AD9081"].part_dir).pins(type="power")
+        rails = sorted({hit.record.name for hit in hits})
+        assert rails == [
+            "AVDD1", "AVDD1_ADC", "AVDD2", "AVDD2_PLL", "BVDD2", "BVDD3", "BVNN2",
+            "CLKVDD1", "DAVDD1", "DCLKVDD1", "DVDD1", "DVDD1P8", "DVDD1_RT", "FVDD1",
+            "NVG1_OUT", "PLLCLKVDD1", "RVDD2", "SVDD1", "SVDD1_PLL", "SVDD2_PLL",
+            "VCO_VREG", "VDD1_NVG", "VNN1",
+        ]
+        assert len(hits) == 85
+        assert all(hit.citation.page_start in (22, 23) for hit in hits)
+        assert all(hit.matched_via == "type" for hit in hits)
+        # no ground, no signal, no no-connect leaked into the supply set
+        assert not any(hit.record.name in ("GND", "NC", "DNC") for hit in hits)
+        with capsys.disabled():
+            print(
+                f"\ndsa pins --part AD9081 --type power: {len(hits)} balls across "
+                f"{len(rails)} rails\n  {', '.join(rails)}\n"
+            )
+
+    def test_a_part_with_no_pin_table_says_so_rather_than_no_such_pin(self, gate):
+        """The honest-absence half. LM741 prints a "Pin Functions" table the
+        layout floor never reconstructs as a grid; a pin lookup there must not
+        read as "this device has no VDD pin"."""
+        from datasheet_analyzer.retrieve import Retriever
+
+        for name in ("LM741", "QPA1003P", "HMC520A"):
+            retriever = Retriever.for_part(gate[name].part_dir)
+            assert retriever.pins() == [], name
+            assert "establishes nothing" in retriever.pin_gap(), name
+        assert Retriever.for_part(gate["AD9081"].part_dir).pin_gap() == ""
+
+    def test_the_pin_goldens_verify_at_100_percent_with_page_cites(self, gate, capsys):
+        """Criterion 5, through the shipped verifier `dsa verify` runs."""
+        from datasheet_analyzer.evalh.citations import verify_pin_queries
+        from datasheet_analyzer.evalh.golden import load_golden
+
+        questions = load_golden(GATE["AD9081"]["golden"])
+        results = verify_pin_queries(questions, gate["AD9081"].part_dir)
+        assert len(results) == 3, "pin -> name, name -> pins, count by type"
+        failed = [(r.question.id, r.detail) for r in results if not r.ok]
+        assert failed == [], failed
+        with capsys.disabled():
+            print(
+                "\npin-path goldens, AD9081\n"
+                + "\n".join(f"  {r.question.id:<24} {r.detail}" for r in results)
+                + "\n"
+            )
+
+    def test_package_drawings_stay_figures_and_nothing_here_parses_one(self, gate):
+        """The ticket's last criterion. AD9081's pin *configuration* is a
+        drawing; it is still a retrievable figure with real pixels, and the
+        pin records all come from the printed table — every one of them cites a
+        page inside it."""
+        from datasheet_analyzer.retrieve import Retriever
+
+        retriever = Retriever.for_part(gate["AD9081"].part_dir)
+        figures = [
+            hit for hit in retriever.plots()
+            if hit.record.file
+            and (gate["AD9081"].part_dir / hit.record.file).stat().st_size > 1024
+        ]
+        assert figures, "the figure catalog must still hand over drawings"
+        # ...and specifically *this* drawing. A generic "some figure has pixels"
+        # would pass on a typical-characteristics curve while the package
+        # drawing had been dropped from the catalog, which is the regression
+        # this criterion exists to catch.
+        drawings = [
+            hit for hit in figures if "Pin Configuration" in hit.record.caption
+        ]
+        assert drawings, sorted({hit.record.caption for hit in figures})[:10]
+        assert all(
+            (gate["AD9081"].part_dir / hit.record.file).exists() for hit in drawings
+        )
+        table_pages = {22, 23, 24, 25, 26}
+        assert {rec.page for rec in self._pins(gate["AD9081"])} <= table_pages
+
+
 class TestAnswerPacks:
     """Phase 5, ticket 05: `dsa ask` measured on four real corpora.
 

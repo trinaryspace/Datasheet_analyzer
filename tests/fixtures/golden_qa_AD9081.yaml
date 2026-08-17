@@ -59,6 +59,41 @@ questions:
       unnumbered "DAC DC Specifications" section, whose text holds the
       answer only because ticket 05 attaches footnote bodies to their table.
 
+  # Phase 6, ticket 04 — the three pin shapes the ticket names: pin -> name,
+  # name -> pins, and a count by type. AD9081 is the only one of the six built
+  # parts whose datasheet prints a machine-readable pin table (AFE7950 /
+  # AFE7953 print no pin section at all, LM741's "Pin Functions" never
+  # reconstructs as a grid, QPA1003P prints none, and HMC520A's is rejected
+  # whole), so the pin benchmark lives here. Every value below was read off
+  # "Table 21. Pin Function Descriptions" on the printed pages it cites.
+  - id: n1-pin-a2-name
+    question: What signal is on ball A2?
+    expected_substrings: ["AVDD2", "Analog 2.0 V Supply Inputs for DAC"]
+    pages: [22]
+    kind: pin
+    pin_query: {pin: "A2"}
+    notes: pin -> name. A2 is one of the six balls the printed row
+      "A2, E2, H2, L2, P2, V2" names, expanded to its own citable record.
+
+  - id: n2-clkin-balls
+    question: Which balls carry the differential device clock input?
+    expected_substrings: ["CLKINP", "J1", "K1"]
+    pages: [24]
+    kind: pin
+    pin_query: {name: "CLKIN", count: "2"}
+    notes: name -> pins. The printed row is "J1, K1  CLKINP, CLKINN"; both
+      balls must come back, and exactly two of them.
+
+  - id: n3-no-connect-count
+    question: How many pins are no-connect or do-not-connect?
+    expected_substrings: ["No Connect", "Do Not Connect"]
+    pages: [25, 26]
+    kind: pin
+    pin_query: {type: "nc", count: "6"}
+    notes: count by type. Two NC balls print on p.25 and four DNC balls on
+      p.26; the type label comes from registry/pin_types.yaml, and the count
+      is the whole result set rather than the cited subset.
+
   - id: p1-hd2-6gsps
     question: Which figure shows HD2 vs fOUT over digital scale at a 6 GSPS DAC sample rate?
     expected_substrings: ["HD2 vs. fOUT over Digital Scale, 6 GSPS"]

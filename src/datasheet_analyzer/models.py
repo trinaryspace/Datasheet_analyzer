@@ -70,6 +70,29 @@ class ValueKind(str, Enum):
     TOLERANCE = "tolerance"
 
 
+class PinType(str, Enum):
+    """What a pin is *for*, as a checked-in lexicon labels it (ADR 0005 (c)).
+
+    Deliberately not the `I/O` column a datasheet prints — that is the pin's
+    *direction* and travels verbatim on the record beside this. This is the
+    category a designer filters on during schematic capture ("show me the
+    supplies"), and it is a **classification**, so it is only ever as good as
+    the lexicon: `UNKNOWN` is a legitimate output and a guess is not. A row the
+    lexicon does not recognise, and a row whose evidence points at two
+    categories at once, both land here as `UNKNOWN`.
+    """
+
+    POWER = "power"
+    GROUND = "ground"
+    ANALOG = "analog"
+    DIGITAL = "digital"
+    CLOCK = "clock"
+    RF = "rf"
+    NC = "nc"
+    RESERVED = "reserved"
+    UNKNOWN = "unknown"
+
+
 class ParseConfidence(str, Enum):
     """Whether the numeric layer could read a record's printed value.
 
@@ -244,6 +267,12 @@ class CorpusStats(BaseModel):
     n_figures: int = 0
     n_footnotes: int = 0
     n_specs: int = 0
+    # Phase 6, ticket 04: how many individually citable pin records the part
+    # published. 0 both for a part whose datasheet prints no pin table and for
+    # one whose pin table was rejected — the difference is in
+    # `ExtractionStats.rejection_reasons`, where a rejection is recorded and an
+    # absence is honestly nothing at all.
+    n_pins: int = 0
     n_plot_files: int = 0
     total_tokens: int = 0
     index_tokens: int = 0
@@ -263,6 +292,9 @@ class CorpusStats(BaseModel):
     # it — rather than a claim in a report. Additive: `{}` on older corpora.
     spec_confidence: dict[str, int] = Field(default_factory=dict)
     plot_confidence: dict[str, int] = Field(default_factory=dict)
+    # Phase 6, ticket 04: the same mix for pin records. `{}` for a part with
+    # no pin table.
+    pin_confidence: dict[str, int] = Field(default_factory=dict)
     # Phase 5 ticket 08: the measured size of the `AGENT.md` published beside
     # `INDEX.md`. Recorded for the same reason `index_tokens` is — a file an
     # agent loads every time has a cost, and the cost belongs in the manifest
@@ -311,6 +343,13 @@ class CorpusManifest(BaseModel):
     vendor: str = ""
     # Per-document extraction stats keyed by content_hash.
     extraction_stats: dict[str, ExtractionStats] = Field(default_factory=dict)
+    # Warnings raised while *deriving* an artifact (ADR 0005) — today the
+    # pin-count cross-check, tomorrow a card's. They live in the manifest
+    # rather than in a build log because the ADR decided a mismatch "warns,
+    # and is recorded": a warning is only weaker than a rejection when it can
+    # be ignored, and a fact the corpus carries is auditable across every part
+    # at once (`dsa audit`, phase 7). Additive — [] on older corpora.
+    derived_warnings: list[str] = Field(default_factory=list)
     generated_at: datetime = Field(default_factory=_utcnow)
     documents: list[SourceDocument] = Field(default_factory=list)
     sections: list[SectionFile] = Field(default_factory=list)
@@ -421,6 +460,70 @@ class PlotSet(BaseModel):
     part_number: str = ""
     doc_hash: str = ""
     plots: list[PlotRecord] = Field(default_factory=list)
+
+
+class PinRecord(BaseModel):
+    """One pin of one package, individually citable (phase 6, ticket 04).
+
+    The unit a designer works in during schematic capture. A printed pin row
+    that names several pins (`A1, A2, B1`, `A1-A4`) becomes one record each —
+    a pin search must not miss a pin that shared a row — and every one of them
+    quotes the cell it came from (`pin_verbatim`) and the row it was printed on
+    (`row_verbatim`), so an expansion is always traceable back to the single
+    line the datasheet printed.
+
+    Everything here except `type` is verbatim: `name`, `direction` (the printed
+    `I/O` / `Type` column) and `description` are the table's own cells, and
+    `page` is the page that row appears on. `type` is the one derived field —
+    a structural label from `registry/pin_types.yaml` — so it carries
+    `type_evidence`, the phrase that decided it, which is invariant 8's
+    `derivation` for this record. An unrecognised or ambiguous row is
+    `UNKNOWN` with no evidence, never a plausible guess.
+    """
+
+    # Stable, addressable id within the document's `pins.json` ("pin_12"),
+    # minted by `provenance.pin_record_id`. Emission order is fully determined
+    # by the document, so a rebuild of identical input reproduces every id.
+    id: str = ""
+    pin: str = ""  # one pin designator, e.g. "A1"
+    pin_verbatim: str = ""  # the key cell as printed, e.g. "A1, A2, B1"
+    name: str = ""  # the printed pin name / mnemonic
+    type: PinType = PinType.UNKNOWN
+    type_evidence: str = ""  # the lexicon phrase that produced `type`
+    direction: str = ""  # the printed I/O column, verbatim ("" when absent)
+    description: str = ""
+    # identity within the document
+    section: str = ""
+    table_index: int = 0
+    row_index: int = 0
+    page: int | None = None
+    row_verbatim: list[str] = Field(default_factory=list)
+    # Per-record extraction confidence, same contract as `SpecRecord`.
+    confidence: Confidence = Confidence.UNKNOWN
+
+
+class PinSet(BaseModel):
+    """A document's pin table(s) as records, plus what could not be read.
+
+    `stated_count` is the pin count parsed from the document's own package
+    descriptor (`324-ball BGA`), or `None` when the document states none or
+    states several that disagree. `warnings` carries the cross-check outcome
+    and anything else the read wanted to say; it is published in the part's
+    manifest rather than logged and forgotten, because ADR 0005 decided a
+    pin-count mismatch **warns and is recorded** — a warning is only weaker
+    than a rejection when it can be ignored.
+
+    A `PinSet` with no `pins` is still a `PinSet`: the warnings are part of the
+    finding. The publisher is what refuses to write `pins.json` for it, so a
+    part with no readable pin table has no pin file rather than a partial one.
+    """
+
+    schema_version: str = ""
+    part_number: str = ""
+    doc_hash: str = ""
+    pins: list[PinRecord] = Field(default_factory=list)
+    stated_count: int | None = None
+    warnings: list[str] = Field(default_factory=list)
 
 
 class DerivedValue(BaseModel):
@@ -534,6 +637,7 @@ class GoldenQuestion(BaseModel):
     |---|---|---|
     | `spec_query` | `dsa query` | a record on a cited page carries every expected substring |
     | `plot_query` | `dsa plots` | a cataloged figure on a cited page has real pixels |
+    | `pin_query` | `dsa pins` | pin records on a cited page carry them; `count` must match exactly |
     | `ask_query` | `dsa ask` | the pack's rows on a cited page carry them, inside its budget |
     | `search_query` | `dsa search` | the **top-1** hit is a section covering a cited page, and that section holds them |
 
@@ -555,6 +659,11 @@ class GoldenQuestion(BaseModel):
     kind: str = "direct"  # direct | derived | plot | ask | search
     spec_query: dict[str, str] | None = None  # Phase 2 deterministic lookup
     plot_query: dict[str, str] | None = None  # Phase 3 deterministic plot lookup
+    # Phase 6 pin lookup ({pin} | {name} | {type} | {q}, plus an optional
+    # `count` the result set must match exactly — "how many supply pins" is a
+    # pin question a designer really asks, and a count that drifts is a pin
+    # table that quietly gained or lost rows).
+    pin_query: dict[str, str] | None = None
     ask_query: dict[str, str] | None = None  # Phase 5 answer pack ({route})
     search_query: dict[str, str] | None = None  # Phase 5 full text ({query, rank})
     notes: str = ""

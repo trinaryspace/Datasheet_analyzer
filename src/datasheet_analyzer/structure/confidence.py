@@ -40,6 +40,14 @@ figure can be cited and identified: an exact printed page and a caption is
 `high`, a section-range page or a captionless figure is `medium`, no page at
 all is `low` — there is nothing to open, and unlike a spec row a plot has no
 printed value that could stand on its own without one.
+
+Pins (phase 6, ticket 04) are read off a grid, so their rule is the spec rule
+with the pin's own "did the row say anything" clause: a **rescued** grid is
+`low`, because the columns a pin table is entirely made of were not the ones
+the table declared; a pin whose row printed **no name** is `low` too, since a
+designator with no signal on it is not something to wire; a section-range page
+is `medium`; everything else is `high`. There is no unit clause — a pin has no
+value and therefore no unit to be missing.
 """
 
 from __future__ import annotations
@@ -50,6 +58,7 @@ from collections.abc import Iterable
 from datasheet_analyzer.models import (
     RECONSTRUCTION_RESCUED,
     Confidence,
+    PinRecord,
     PlotRecord,
     SectionNode,
     SpecRecord,
@@ -83,6 +92,19 @@ def grade_spec_record(
     return Confidence.HIGH
 
 
+def grade_pin_record(
+    record: PinRecord, table: TableBlock, section: SectionNode
+) -> Confidence:
+    """Grade one pin row against the rule in this module's docstring."""
+    if table.reconstruction == RECONSTRUCTION_RESCUED:
+        return Confidence.LOW
+    if not record.name.strip():
+        return Confidence.LOW
+    if not page_is_exact(record, table, section):
+        return Confidence.MEDIUM
+    return Confidence.HIGH
+
+
 def grade_plot_record(record: PlotRecord) -> Confidence:
     """Grade one cataloged plot on citation precision + identification."""
     if record.page_start is None:
@@ -94,18 +116,25 @@ def grade_plot_record(record: PlotRecord) -> Confidence:
     return Confidence.HIGH
 
 
-def page_is_exact(record: SpecRecord, table: TableBlock, section: SectionNode) -> bool:
+def page_is_exact(
+    record: SpecRecord | PinRecord, table: TableBlock, section: SectionNode
+) -> bool:
     """True when the row cites one printed page rather than a section's range.
 
     Exact means the page was *pinned*: the row's own page on a merged
     multi-page grid, or the table's pinned page. The one other case that pins a
     row unambiguously is a section that occupies a single page — there the
     range and the printed page are the same number.
+
+    A negative `row_index` is a row read out of the block's *header* row
+    (`device_tables.HEADER_ROW_INDEX`), which has no `row_pages` entry; the
+    bounds check is what stops it indexing the list from the end and adopting
+    the last row's page.
     """
     if record.page is None:
         return False
     row_pages = table.row_pages
-    if len(row_pages) > record.row_index and row_pages[record.row_index] is not None:
+    if 0 <= record.row_index < len(row_pages) and row_pages[record.row_index] is not None:
         return True
     if table.page is not None:
         return True

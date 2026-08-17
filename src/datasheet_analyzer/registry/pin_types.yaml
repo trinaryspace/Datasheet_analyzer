@@ -1,0 +1,219 @@
+# Pin-type lexicon — the words that say what a pin is for.
+#
+# Data, not code (same philosophy as the alias lexicon, the vendor brand marks
+# and the device-table headers): teaching the classifier that a vendor writes
+# `VDDQ` or `Not Internally Connected` is an edit here, never a Python change.
+# `structure/pins.py` hard-codes no pin word at all.
+#
+# ADR 0005 (c) licenses exactly this: a structural label drawn from a
+# checked-in lexicon. What it does **not** license is a guess, so the rule is
+# deliberately narrow and is documented in `structure/pins.py`:
+#
+#   1. `names` are matched against the pin's printed name. A phrase matches
+#      when it is a whole token of the name (split on non-alphanumerics *and*
+#      at letter/digit boundaries: `DVDD1P8` -> dvdd, 1, p, 8) or when it is at
+#      least 3 characters and appears anywhere in it.
+#   2. `descriptions` are matched as plain substrings of the printed
+#      description, and are consulted **only** when the name matched nothing —
+#      a mnemonic is chosen to identify the pin; a description is a sentence
+#      about it.
+#   3. Inside a tier the **longest matched phrase wins**, because the longer
+#      phrase is the more of the text it explains (the same rule the alias
+#      lexicon and the device-table captions use). Two types tied at the same
+#      length is the lexicon admitting it cannot tell them apart, and the pin
+#      is `unknown`. Closing that gap is a longer, more specific phrase here —
+#      `clkvdd` beats `clk`, which is exactly why it is listed.
+#
+# Two lists are deliberately short:
+#
+# - `nc` descriptions do **not** include "do not connect". Real datasheets end
+#   an ordinary output's description with "Do not connect if unused", and a
+#   fast-detect output labelled `nc` is worse than one labelled `unknown`.
+#   `NC` / `DNC` / `NIC` are caught by name, where they are unambiguous.
+# - `ground` descriptions do **not** include bare "ground". "Ground
+#   Referenced", "Tie these pins to GND" and "Decouple to GND" are printed all
+#   over an analog pin table; a supply or a DAC output is not a ground pin
+#   because its description mentions one.
+
+power:
+  names:
+    - vdd
+    - avdd
+    - dvdd
+    - svdd
+    - bvdd
+    - rvdd
+    - fvdd
+    - davdd
+    - clkvdd      # longer than `clk`, so PLLCLKVDD1 reads as a supply
+    - vddio
+    - vdda
+    - vddd
+    - vddq
+    - vcc
+    - avcc
+    - dvcc
+    - vee
+    - vpp
+    - vbat
+    - vnn
+    - vreg
+    - vsup
+    - vddcore
+    - pwr
+  descriptions:
+    - supply
+    - supply input
+    - supply output
+    - supply voltage
+    - power supply
+    - decoupling pin
+    - regulator output
+    - voltage regulator
+    - ldo output
+
+ground:
+  names:
+    - gnd
+    - agnd
+    - dgnd
+    - pgnd
+    - gnda
+    - gndd
+    - vss
+    - vssa
+    - vssd
+    - epad
+    - gndpad
+  descriptions:
+    - ground pin
+    - ground return
+    - ground connection
+    - ground reference pin
+    - device ground
+    - exposed pad
+    - thermal pad
+
+clock:
+  names:
+    - clk
+    - clkin
+    - clkout
+    - sclk
+    - mclk
+    - dclk
+    - refclk
+    - sysref
+    - xtal
+    - osc
+  descriptions:
+    - clock
+    - clock input
+    - clock output
+    - reference clock
+    - system reference
+    - crystal oscillator
+
+rf:
+  names:
+    - rf
+    - rfin
+    - rfout
+    - rfp
+    - rfn
+    - lo
+    - loin
+    - lop
+    - lon
+    - ant
+  descriptions:
+    - rf port
+    - rf input
+    - rf output
+    - lo port
+    - lo input
+    - antenna port
+
+analog:
+  names:
+    - vref
+    - iset
+    - vcm
+    - iref
+    - vbias
+  descriptions:
+    - analog input
+    - analog output
+    - differential input
+    - differential output
+    - output current
+    - common-mode
+    - bias current
+    - reference voltage
+    - reference current
+    - loop filter
+    - reference
+
+digital:
+  names:
+    - spi
+    - sdio
+    - sdi
+    - sdo
+    - csb
+    - cs
+    - miso
+    - mosi
+    - gpio
+    - reset
+    - resetb
+    - irq
+    - irqb
+    - sync
+    - serdin
+    - serdout
+    - txen
+    - rxen
+    - scl
+    - sda
+    - tms
+    - tck
+    - tdi
+    - tdo
+  descriptions:
+    - serial port
+    - spi
+    - i2c
+    - cmos
+    - lvds
+    - logic input
+    - logic output
+    - reset input
+    - interrupt
+    - general-purpose input
+    - digital input
+    - digital output
+
+nc:
+  names:
+    - nc
+    - dnc
+    - nic
+    - dnu
+  descriptions:
+    - no connect
+    - no internal connection
+    - not internally connected
+    - leave unconnected
+
+reserved:
+  names:
+    - rsvd
+    - reserved
+    - test
+    - tp
+  descriptions:
+    - reserved for factory
+    - factory test
+    - reserved pin
+    - manufacturer use

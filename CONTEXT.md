@@ -89,6 +89,29 @@ reason, because a half-parsed pin table reads as a complete one to whoever
 greps it.
 _Avoid_: pin map, register map, lookup table, matrix
 
+**Pin**:
+One pin of one package as a record: its designator, the name the datasheet
+printed beside it, what the lexicon says it is *for*, the printed I/O
+direction, the description, and the page it appears on. It is the unit a
+designer works in during schematic capture, so a printed row naming several
+pins (`A1, A2, B1`) becomes one record each — a pin search must not miss a pin
+that shared a row — and each of them still quotes the row it came from.
+Everything on it is verbatim except the type, which is a label from
+`registry/pin_types.yaml` and therefore carries the phrase that decided it.
+A part with no readable pin table has no pins rather than some of them.
+_Avoid_: ball, net, terminal, signal, connection
+
+**Pin type**:
+What a pin is for — `power | ground | analog | digital | clock | rf | nc |
+reserved | unknown` — decided by a checked-in lexicon over the pin's name and
+description, name first and longest phrase wins. It is not the `I/O` column a
+datasheet prints; that is the pin's *direction* and travels verbatim beside
+it. `unknown` is a legitimate answer and appears whenever the lexicon matched
+nothing or matched two categories equally well: a pin the corpus does not
+understand must never read as a supply. Closing a gap is a YAML edit — a
+longer, more specific phrase.
+_Avoid_: category, class, function, role, direction
+
 **Search index**:
 The precomputed inverted index of one document's section files
 (`search_index.json`, written at publish): per section, how often each token

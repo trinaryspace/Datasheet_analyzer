@@ -20,6 +20,12 @@ already returned, so a record whose unit is missing still answers. Nothing
 matches at all → an empty list plus `suggest_specs()` for the nearest
 candidates, never a rung-6 guess.
 
+`pins()` (phase 6, ticket 04) is the pin table as a lookup: exact designator,
+name or description substring, or lexicon type. It is deliberately *not* a
+ladder — a pin designator is an exact thing and a near-miss on one is a wiring
+error — and `pin_gap()` is its honest-absence half, the twin of
+`search_unavailable()`: a part with no pin table must not answer "no such pin".
+
 `search()` (ticket 03) is the second retrieval path: BM25 over the
 `search_index.json` built at publish, returning section hits cited from the
 manifest. A corpus built before the index existed does not crash and does not
@@ -47,6 +53,7 @@ from datasheet_analyzer.models import PlotRecord, SearchIndex, SectionFile, Spec
 from datasheet_analyzer.retrieve.index import CorpusIndex, IndexedDoc
 from datasheet_analyzer.retrieve.results import (
     Citation,
+    PinHit,
     PlotHit,
     SearchHit,
     SectionHit,
@@ -269,6 +276,71 @@ class Retriever:
                 for doc, rec in pool
                 if token_overlap(term, rec.name) >= FUZZY_THRESHOLD
             ]
+
+    def pins(
+        self,
+        *,
+        pin: str = "",
+        name: str = "",
+        # `type` shadows the builtin deliberately: it is the record's own
+        # field name, and a lookup that spells its filters differently from
+        # the data it filters is a second vocabulary to learn.
+        type: str = "",
+        q: str = "",
+    ) -> list[PinHit]:
+        """Pins of this part, ANDed across the filters given (ticket 04).
+
+        `pin` is an **exact** designator match, case-folded: a designer typing
+        `A1` means ball A1 and not A10 to A19 as well. Everything else is a
+        substring: `name` against the printed pin name, `q` against name and
+        description together, and `type` against the lexicon label — where
+        `unknown` is a legitimate value to ask for, because "which pins does
+        this corpus not understand?" is a real question about the extraction.
+
+        No filters at all returns the whole pin table, in printed order.
+        """
+        wanted_type = type.strip().lower()
+        hits: list[PinHit] = []
+        for doc in self.index.docs:
+            for rec in doc.pins:
+                if pin and rec.pin.casefold() != pin.strip().casefold():
+                    continue
+                if name and name.lower() not in rec.name.lower():
+                    continue
+                if wanted_type and rec.type.value != wanted_type:
+                    continue
+                if q and q.lower() not in f"{rec.name} {rec.description}".lower():
+                    continue
+                hits.append(
+                    PinHit(
+                        record=rec,
+                        citation=Citation.for_pin(
+                            rec, doc=doc.name, doc_hash=doc.doc_hash, part=self.part
+                        ),
+                        matched_via=_pin_matched_via(pin, name, wanted_type, q),
+                        confidence=record_confidence(rec),
+                    )
+                )
+        return hits
+
+    def pin_gap(self) -> str:
+        """`""` when this part has pins, else why a pin lookup found none.
+
+        The same distinction `search_unavailable()` draws, for the same reason:
+        an empty pin result means either "no pin matches that" or "this corpus
+        has no pin table at all", and reading the second as the first would put
+        a claim about the datasheet behind a gap in the extraction. Whether the
+        pin table was rejected or never printed is a *document* finding and
+        lives in the manifest's rejection reasons; what a caller needs here is
+        that absence establishes nothing.
+        """
+        if any(doc.pins for doc in self.index.docs):
+            return ""
+        return (
+            f"no pin table in the corpus for part {self.part} — this datasheet "
+            f"prints none, or the one it prints was rejected (see `dsa status` "
+            f"for the recorded reason). A pin lookup here establishes nothing."
+        )
 
     def plots(
         self,
@@ -601,6 +673,19 @@ def _covers_page(sec: SectionFile, page: int) -> bool:
     if sec.page_start is None:
         return False
     return sec.page_start <= page <= (sec.page_end or sec.page_start)
+
+
+def _pin_matched_via(pin: str, name: str, pin_type: str, q: str) -> str:
+    """Which filter produced a pin hit, strongest first."""
+    if pin:
+        return "pin"
+    if name:
+        return "name"
+    if q:
+        return "text"
+    if pin_type:
+        return "type"
+    return "all"
 
 
 def _plot_matched_via(

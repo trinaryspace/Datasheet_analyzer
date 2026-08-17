@@ -106,6 +106,15 @@ def render_plot_query_report(results: list[QueryResult]) -> str:
     return _query_report("Plot query verification", results, "plot_query", detail)
 
 
+def render_pin_query_report(results: list[QueryResult]) -> str:
+    """Pin-query verification table (phase 6, ticket 04; runs whenever a golden
+    set carries `pin_query` questions). The detail column is the verifier's own
+    sentence, for the same reason the ticket-09 tables use one."""
+    return _query_report(
+        "Pin query verification", results, "pin_query", lambda r: r.detail
+    )
+
+
 def render_ask_query_report(results: list[QueryResult]) -> str:
     """Ask-path verification table (ticket 09; runs whenever a golden set
     carries `ask_query` questions). The detail column is the verifier's own

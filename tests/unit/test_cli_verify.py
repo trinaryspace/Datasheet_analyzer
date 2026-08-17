@@ -15,7 +15,16 @@ from mcp_corpus import build_part as build_mcp_part
 
 from datasheet_analyzer import cli
 from datasheet_analyzer.config import Settings
-from datasheet_analyzer.models import PlotRecord, PlotSet, SpecRecord, SpecSet, SpecUnit
+from datasheet_analyzer.models import (
+    PinRecord,
+    PinSet,
+    PinType,
+    PlotRecord,
+    PlotSet,
+    SpecRecord,
+    SpecSet,
+    SpecUnit,
+)
 
 DOC = "datasheet-deadbeef"
 
@@ -91,6 +100,27 @@ def _make_part(part_dir):
     )
     (doc_dir / "plots.json").write_text(plotset.model_dump_json(), encoding="utf-8")
     (doc_dir / "figures" / "f1.gif").write_bytes(b"\x00" * 2048)  # >1 KB requirement
+
+    # A pin table (phase 6, ticket 04), so `dsa verify` has something for a
+    # `pin_query` golden to be judged against. Written here rather than in the
+    # MCP fixture corpus because this module is the one that drives the command.
+    pinset = PinSet(
+        schema_version="1",
+        part_number="T",
+        pins=[
+            PinRecord(
+                id="pin_1", pin="C1", pin_verbatim="C1, C2", name="AVDD1",
+                type=PinType.POWER, type_evidence="name:vdd", direction="Input",
+                description="Analog 1.0 V supply input.", section="4.5", page=7,
+            ),
+            PinRecord(
+                id="pin_2", pin="C2", pin_verbatim="C1, C2", name="AVDD1",
+                type=PinType.POWER, type_evidence="name:vdd", direction="Input",
+                description="Analog 1.0 V supply input.", section="4.5", page=7,
+            ),
+        ],
+    )
+    (doc_dir / "pins.json").write_text(pinset.model_dump_json(), encoding="utf-8")
 
 
 def test_verify_summary_counts_only_passing(tmp_path, monkeypatch, capsys):
@@ -298,3 +328,80 @@ class TestVerifyRunsTheNewPaths:
         assert "❌" not in tail
         # the measured cost of the pack, against the budget it was given
         assert "tok" in tail
+
+
+PIN_GOLDEN = {
+    "questions": [
+        {
+            "id": "pin-pass",
+            "question": "What signal is on ball C1?",
+            "expected_substrings": ["AVDD1", "Analog 1.0 V supply input"],
+            "pages": [7],
+            "kind": "pin",
+            "pin_query": {"pin": "C1"},
+        },
+        {
+            "id": "pin-fail",
+            "question": "fails: no such ball",
+            "expected_substrings": ["zzz"],
+            "pages": [7],
+            "kind": "pin",
+            "pin_query": {"pin": "Z99"},
+        },
+    ]
+}
+
+
+class TestVerifyRunsThePinPath:
+    """Phase 6, ticket 04: `dsa verify` runs a golden set's `pin_query`
+    questions, renders them as their own table, counts only the passing ones,
+    and fails the command when one fails.
+
+    The verifier itself is unit-tested in `test_pins.py`; what is proven here
+    is the **wiring** — delete the block from `cli.py` and this fails, which is
+    what makes "a `dsa verify` pin table" a claim about the shipped command
+    rather than about a function nothing calls. Same shape, and the same
+    reason, as the ask/search-path test above.
+    """
+
+    def _run(self, tmp_path, monkeypatch, golden: dict) -> int:
+        settings = _part_settings(tmp_path)
+        path = tmp_path / "golden.yaml"
+        path.write_text(yaml.safe_dump(golden), encoding="utf-8")
+        monkeypatch.setattr("datasheet_analyzer.cli.get_settings", lambda: settings)
+        return cli.main(["verify", "--part", "T", "--golden", str(path)])
+
+    def test_the_table_renders_counts_only_passing_and_fails_the_run(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        exit_code = self._run(tmp_path, monkeypatch, PIN_GOLDEN)
+        out = capsys.readouterr().out
+        assert "Pin query verification" in out
+        assert out.count("**1/2 passed**") == 1
+        # one row each way, inside the pin table rather than anywhere in the run
+        pin_table = out.split("Pin query verification")[1]
+        assert pin_table.count("✅") == 1 and pin_table.count("❌") == 1
+        assert "pin='C1'" in pin_table and "pin='Z99'" in pin_table
+        assert exit_code == 1
+
+    def test_a_passing_set_is_reported_as_passing(self, tmp_path, monkeypatch, capsys):
+        """The pin table's own verdict, isolated from the text table.
+
+        The command's exit code cannot separate the two here: run without
+        `--pdf` the page-truth check is unproven for every non-plot question,
+        so the text table fails the run on its own — the same honest
+        degradation the ask/search-path tests above live with.
+        """
+        golden = {"questions": [PIN_GOLDEN["questions"][0]]}
+        self._run(tmp_path, monkeypatch, golden)
+        tail = capsys.readouterr().out.split("Pin query verification")[1]
+        assert "❌" not in tail
+        assert "**1/1 passed**" in tail
+
+    def test_a_set_without_pin_queries_prints_no_pin_table(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        """Additive, like every path table before it: a benchmark written
+        before pins existed still verifies, and says nothing about them."""
+        self._run(tmp_path, monkeypatch, PLOT_ONLY_GOLDEN)
+        assert "Pin query verification" not in capsys.readouterr().out

@@ -32,8 +32,25 @@ The pipeline is four named steps, in this order:
 4. **emit** — one `DeviceRecord` per key, carrying full provenance (section,
    table index, row index, page) and the row exactly as printed.
 
-Three rules are load-bearing and deliberate:
+Four rules are load-bearing and deliberate:
 
+- **A wrapped row is one row.** A printed device table breaks a long
+  description — and a long key list, and sometimes the name itself — over
+  several lines, and the layout floor hands each line back as its own grid row
+  (the ticket-09 rowspan materialization even replicates the key cell into
+  them). Read literally that is a duplicate key, and a duplicate key rejects
+  the whole table: a real 322-pin table would be thrown away because its
+  descriptions are long. So a row that prints **no identity field** (the column
+  the lexicon names in `identity:`) is read as a continuation of the row above:
+  its text appends, and any key-shaped keys in its key cell join that row. A row
+  that *does* print an identity is a new entry even when its key cell repeats —
+  unless the row above left that identity **mid-list** (a trailing `,`), which
+  is how a wrapped name list looks on the page. That narrowness is the point:
+  the reading only ever merges lines the page shows as one entry, and
+  everything else stays a duplicate and rejects the table. A comma is the only
+  marker precisely because it is the only one that cannot end a mnemonic —
+  `VREF+` and `RESET-` are finished names, and reading the next line as their
+  continuation would fuse two pins into one and quietly drop a pin.
 - **Multi-value key cells expand.** `A1, A2, B1` and `A1-A4` are four pins that
   happen to share a row, and a designer grepping for `A3` must find it. Every
   expanded record keeps its source row's provenance and the cell as printed
@@ -58,7 +75,7 @@ from __future__ import annotations
 
 import logging
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from functools import cache
 from pathlib import Path
 
@@ -115,6 +132,23 @@ REJECTION_PREFIX = "device-table"
 #: layout engine's own cap: a manifest is a summary, not a log.
 MAX_RECORDED_REASONS = 8
 
+#: What the end of an *unfinished* identity cell looks like. A pin row printing
+#: `SERDOUT0+,` has not finished naming itself, so the next line — which
+#: repeats the same key cell — is the rest of that name rather than a second
+#: pin. Nothing else lets a row with its own identity be absorbed.
+#:
+#: Deliberately the **list separator alone**. `-`, `+` and `/` all terminate
+#: ordinary mnemonics (`RESET-`, `VREF+`, `CS/`), so treating them as "this
+#: name is unfinished" misfires on a whole class of real tables: a misread grid
+#: printing `A1 VREF+` then `A1 VREF-` would be absorbed into a single fused
+#: record — one pin lost, two names concatenated into a string the page never
+#: printed — instead of rejecting whole on the duplicate key. A partial pin
+#: table published confidently is exactly the failure ADR 0005 exists to
+#: prevent; a whole-table rejection with a recorded reason is the honest one.
+#: A comma cannot end a mnemonic, which is what makes it safe to read as
+#: "more of this name follows".
+CONTINUATION_MARKERS = (",",)
+
 _MARKER_RE = re.compile(r"\(\d+\)")
 _WS = re.compile(r"\s+")
 
@@ -152,6 +186,12 @@ class DeviceSpec:
     expand_key: bool = False
     monotonic_key: bool = False
     key_numeric: str = ""
+    #: The column that declares "this row is a new entry" (`identity:` in the
+    #: lexicon). `""` switches the wrapped-row reading off for this kind, which
+    #: is the conservative default: a kind that has not said which column
+    #: identifies a row gets every printed line as its own record, exactly as
+    #: before.
+    identity_field: str = ""
 
     def field_for_header(self, header: str) -> str:
         """The field a header cell names, or `""` when the lexicon has no entry.
@@ -266,10 +306,20 @@ class DeviceLexicon:
             captions = body.get("captions") or []
             if isinstance(captions, str):
                 captions = [captions]
+            identity_field = str(body.get("identity") or "")
+            if identity_field and identity_field not in columns:
+                # Named a column that does not exist: the wrapped-row reading
+                # would silently never fire, so say so and fall back to off.
+                log.warning(
+                    "device-table entry %r: identity %r is not one of its columns",
+                    kind, identity_field,
+                )
+                identity_field = ""
             specs.append(
                 DeviceSpec(
                     kind=str(kind).strip().lower(),
                     key_field=key_field,
+                    identity_field=identity_field,
                     fields=tuple(str(name) for name in columns),
                     headers=headers,
                     captions=tuple(str(c) for c in captions),
@@ -393,6 +443,12 @@ class DeviceTable:
     unkeyed_rows: tuple[int, ...] = ()
     warnings: tuple[str, ...] = ()
     page: int | None = None
+    #: Which of the document's sections this table came from, by position.
+    #: `section` above is the *printed* number, and a whole era of datasheets
+    #: prints none (ADR 0004), so a consumer that needs the section back — to
+    #: grade a record against the grid it was read from, say — cannot look it
+    #: up by number. `-1` when the table was read outside a document walk.
+    section_index: int = -1
 
 
 @dataclass(frozen=True)
@@ -663,13 +719,13 @@ def read_device_tables(
     if raw.extractor == "pdf_text":
         return result
     lexicon = load_device_lexicon() if lexicon is None else lexicon
-    for section in raw.sections:
+    for section_index, section in enumerate(raw.sections):
         for index, table in enumerate(section.tables):
             accepted, rejected = read_device_table(
                 section, table, index, kind=kind, lexicon=lexicon
             )
             if accepted is not None:
-                result.tables.append(accepted)
+                result.tables.append(replace(accepted, section_index=section_index))
                 result.warnings.extend(accepted.warnings)
             elif rejected is not None:
                 result.rejections.append(rejected)
@@ -680,6 +736,63 @@ def read_device_tables(
     return result
 
 
+@dataclass
+class _Entry:
+    """One printed entry of a device table — its anchor row plus any wrapped
+    continuation lines, gathered before a single record per key is emitted."""
+
+    fields: dict[str, str]
+    identity: str
+    key_cell: str
+    #: `(row index, the key cell that row printed, one key)`, in printed order.
+    keys: list[tuple[int, str, str]] = field(default_factory=list)
+    #: The printed row each contributing line came from, by row index.
+    rows: dict[int, tuple[str, ...]] = field(default_factory=dict)
+
+    def absorb(self, spec: DeviceSpec, row_index: int, row: list[str],
+               cell: str, keys: list[str], column_map: ColumnMap) -> None:
+        """Fold a wrapped continuation line into this entry.
+
+        Only **key-shaped** keys join: the anchor row's key cell is the row's
+        own key as printed and validation judges it, but a continuation line is
+        a wrap, and letting an arbitrary fragment of one add a pin would invent
+        records out of a line break. Text appends field by field, so a
+        description broken over four lines reads back as the sentence the page
+        prints.
+        """
+        have = {key for _row, _cell, key in self.keys}
+        for key in keys:
+            if spec.key_shaped(key) and key not in have:
+                self.keys.append((row_index, cell.strip(), key))
+                have.add(key)
+                self.rows[row_index] = tuple(row)
+        for name, index in column_map.columns.items():
+            if name == spec.key_field or len(row) <= index:
+                continue
+            text = row[index].strip()
+            if not text:
+                continue
+            self.fields[name] = f"{self.fields.get(name, '')} {text}".strip()
+        self.identity = self.fields.get(spec.identity_field, self.identity)
+        if cell.strip():
+            self.key_cell = cell.strip()
+
+    def continues(self, spec: DeviceSpec, cell: str, identity: str) -> bool:
+        """Whether the next printed line belongs to this entry.
+
+        A line printing no identity always continues the entry above. A line
+        that *does* print one continues it only when this entry's identity was
+        left mid-list (`CONTINUATION_MARKERS`) **and** the key cell repeats
+        verbatim — anything else is a second entry claiming the same key, which
+        is a misread grid and must reject the whole table rather than merge.
+        """
+        if not identity:
+            return True
+        return bool(cell.strip()) and cell.strip() == self.key_cell and self.identity.endswith(
+            CONTINUATION_MARKERS
+        )
+
+
 def _emit(
     spec: DeviceSpec,
     column_map: ColumnMap,
@@ -688,8 +801,15 @@ def _emit(
     table: TableBlock,
     table_index: int,
 ) -> tuple[list[DeviceRecord], list[int], list[str]]:
-    """One record per key, plus the rows that had none and what was odd."""
-    records: list[DeviceRecord] = []
+    """One record per key, plus the rows that had none and what was odd.
+
+    Printed lines are gathered into entries first (see `_Entry`), because a
+    wrapped description or a wrapped key list is one entry of the table however
+    many lines it occupies. Each entry then emits one record per key, and every
+    key keeps the row *it* was printed on — so an expanded pin cites its own
+    page even when the entry spans a page break.
+    """
+    entries: list[_Entry] = []
     unkeyed: list[int] = []
     warnings: list[str] = []
 
@@ -698,11 +818,30 @@ def _emit(
         rows.append((HEADER_ROW_INDEX, list(table.headers)))
     rows.extend(enumerate(table.grid))
 
+    # `None` both when the kind declares no identity column and when this
+    # table's headers never named it. The second case is deliberate: a column
+    # the lexicon did not recognise cannot be read as "this row is a new
+    # entry", so the wrapped-row reading stays off and every printed line is
+    # its own record — the conservative reading, and the one whose damage
+    # (a row with no name) the confidence grade already reports.
+    identity_index = column_map.index(spec.identity_field) if spec.identity_field else None
+
     for row_index, row in rows:
         if not any(cell.strip() for cell in row):
             continue
         cell = row[key_index] if len(row) > key_index else ""
         keys = expand_keys(cell, expand=spec.expand_key)
+        identity = ""
+        if identity_index is not None:
+            identity = row[identity_index].strip() if len(row) > identity_index else ""
+            if entries and entries[-1].continues(spec, cell, identity):
+                entries[-1].absorb(spec, row_index, row, cell, keys, column_map)
+                continue
+            if not identity:
+                # A line with no identity and no entry above it is a band
+                # header ("POWER SUPPLIES"), not the table's first entry.
+                unkeyed.append(row_index)
+                continue
         if not keys:
             unkeyed.append(row_index)
             continue
@@ -711,26 +850,35 @@ def _emit(
                 f'{spec.key_field} cell "{normalize_text(cell)}" spans more than '
                 f"{MAX_EXPANSION} keys; kept whole"
             )
-        fields = {
-            name: (row[index].strip() if len(row) > index else "")
-            for name, index in column_map.columns.items()
-            if name != spec.key_field
-        }
-        page = _row_page(table, section, row_index)
-        for key in keys:
-            records.append(
-                DeviceRecord(
-                    kind=spec.kind,
-                    key=key,
-                    key_verbatim=cell.strip(),
-                    fields=dict(fields),
-                    section=section.number,
-                    table_index=table_index,
-                    row_index=row_index,
-                    page=page,
-                    row_verbatim=tuple(row),
-                )
+        entries.append(
+            _Entry(
+                fields={
+                    name: (row[index].strip() if len(row) > index else "")
+                    for name, index in column_map.columns.items()
+                    if name != spec.key_field
+                },
+                identity=identity,
+                key_cell=cell.strip(),
+                keys=[(row_index, cell.strip(), key) for key in dict.fromkeys(keys)],
+                rows={row_index: tuple(row)},
             )
+        )
+
+    records = [
+        DeviceRecord(
+            kind=spec.kind,
+            key=key,
+            key_verbatim=key_cell,
+            fields=dict(entry.fields),
+            section=section.number,
+            table_index=table_index,
+            row_index=row_index,
+            page=_row_page(table, section, row_index),
+            row_verbatim=entry.rows.get(row_index, ()),
+        )
+        for entry in entries
+        for row_index, key_cell, key in entry.keys
+    ]
 
     if unkeyed:
         warnings.append(
@@ -839,10 +987,22 @@ def cross_check_count(records: list[DeviceRecord], expected: int, *, kind: str =
     is why this returns a string for the caller to keep rather than logging and
     forgetting.
     """
-    if expected < 0 or len(records) == expected:
-        return ""
     label = kind or (records[0].kind if records else "device")
-    return f"{label} count mismatch: document states {expected}, table yields {len(records)}"
+    return count_mismatch(len(records), expected, kind=label)
+
+
+def count_mismatch(actual: int, expected: int, *, kind: str = "device") -> str:
+    """The count-mismatch sentence itself, or `""` when the counts agree.
+
+    Split out of `cross_check_count` so a consumer that already knows its own
+    count — `structure/pins.py` counts `PinRecord`s, not `DeviceRecord`s —
+    does not have to build throwaway records to ask the question. One wording,
+    one place: the warning is recorded in a manifest and read by `dsa audit`,
+    so two spellings of it would be two facts.
+    """
+    if expected < 0 or actual == expected:
+        return ""
+    return f"{kind} count mismatch: document states {expected}, table yields {actual}"
 
 
 def record_rejections(

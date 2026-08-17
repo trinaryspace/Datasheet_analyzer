@@ -26,6 +26,8 @@ from pathlib import Path
 from datasheet_analyzer.config import PIPELINE_VERSION
 from datasheet_analyzer.models import (
     CorpusManifest,
+    PinRecord,
+    PinSet,
     PlotRecord,
     PlotSet,
     SearchIndex,
@@ -75,6 +77,15 @@ class IndexedDoc:
     doc_hash: str = ""
     specs: tuple[SpecRecord, ...] = ()
     plots: tuple[PlotRecord, ...] = ()
+    # `pins.json` (phase 6, ticket 04). Empty both for a document that prints
+    # no pin table and for one whose pin table was rejected — the publisher
+    # writes no file for either, and the rejection reason lives in the
+    # manifest's extraction stats.
+    pins: tuple[PinRecord, ...] = ()
+    # The pin count the document's package descriptor stated, when it stated
+    # one that every descriptor agreed on. Carried so a caller can report the
+    # cross-check without re-parsing the datasheet.
+    stated_pin_count: int | None = None
     # `search_index.json`, or None for a corpus built before full-text search
     # existed. None is what `Retriever.search_unavailable()` reports on, so an
     # older corpus is told to rebuild rather than silently answering nothing.
@@ -120,6 +131,7 @@ class CorpusIndex:
             for doc_dir in sorted(d for d in docs_dir.iterdir() if d.is_dir()):
                 specset = _load_json_model(doc_dir / "specs.json", SpecSet)
                 plotset = _load_json_model(doc_dir / "plots.json", PlotSet)
+                pinset = _load_json_model(doc_dir / "pins.json", PinSet)
                 search = _load_json_model(doc_dir / "search_index.json", SearchIndex)
                 docs.append(
                     IndexedDoc(
@@ -127,10 +139,13 @@ class CorpusIndex:
                         doc_hash=(
                             (specset.doc_hash if specset else "")
                             or (plotset.doc_hash if plotset else "")
+                            or (pinset.doc_hash if pinset else "")
                             or (search.doc_hash if search else "")
                         ),
                         specs=tuple(specset.records) if specset else (),
                         plots=tuple(plotset.plots) if plotset else (),
+                        pins=tuple(pinset.pins) if pinset else (),
+                        stated_pin_count=pinset.stated_count if pinset else None,
                         search=search,
                     )
                 )

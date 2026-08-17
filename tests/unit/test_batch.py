@@ -398,6 +398,64 @@ def test_stale_spec_or_plot_schema_rebuilds_part(batch_env, artifact):
     assert again["PLAIN"].status == STATUS_SKIPPED
 
 
+def test_stale_pin_file_schema_rebuilds_part(batch_env):
+    """Phase 6, ticket 04: `pins.json` joins the publish cache key.
+
+    Written separately from its `specs.json` / `plots.json` siblings because
+    the synthetic batch PDFs print no pin table, so the file has to be planted
+    to be staled — which is also the real case worth guarding: a corpus that
+    *does* carry pins must republish them when the schema moves, and a corpus
+    that carries none must not (the next test).
+    """
+    from datasheet_analyzer.publish import doc_dir_name_for_source
+
+    pdfs, settings = batch_env
+    assert run_batch(pdfs, settings=settings, use_llm=False).ok
+    manifest = json.loads(
+        (settings.parts_dir / "PLAIN" / "manifest.json").read_text(encoding="utf-8")
+    )
+    from datasheet_analyzer.models import SourceDocument
+
+    for doc in manifest["documents"]:
+        doc_dir = (
+            settings.parts_dir / "PLAIN" / "docs"
+            / doc_dir_name_for_source(SourceDocument.model_validate(doc))
+        )
+        (doc_dir / "pins.json").write_text(
+            '{"schema_version": "0", "pins": []}', encoding="utf-8"
+        )
+
+    by_part = {j.part: j for j in run_batch(pdfs, settings=settings, use_llm=False).jobs}
+    assert by_part["PLAIN"].status == STATUS_DONE
+    assert by_part["TEST9000"].status == STATUS_SKIPPED
+
+    # republished once, then skipped again — not a permanent rebuild loop. This
+    # is the assertion its `specs.json` / `plots.json` sibling makes, and it is
+    # the one that matters most here: PLAIN prints no pin table, so the only
+    # way the corpus can settle is for the republish to *remove* the stale file
+    # rather than leave it (see `publish.write_corpus`).
+    again = {j.part: j for j in run_batch(pdfs, settings=settings, use_llm=False).jobs}
+    assert again["PLAIN"].status == STATUS_SKIPPED
+    for doc_dir in (settings.parts_dir / "PLAIN" / "docs").iterdir():
+        assert not (doc_dir / "pins.json").exists(), (
+            "a superseded pin table must not stay in the corpus"
+        )
+
+
+def test_absent_pin_file_does_not_force_a_rebuild(batch_env):
+    """Most datasheets print no pin table at all. Demanding a `pins.json` they
+    cannot produce would put every one of those parts in a rebuild loop."""
+    from datasheet_analyzer.publish import pins_current
+
+    pdfs, settings = batch_env
+    assert run_batch(pdfs, settings=settings, use_llm=False).ok
+    for doc_dir in (settings.parts_dir / "PLAIN" / "docs").iterdir():
+        assert not (doc_dir / "pins.json").exists()
+        assert pins_current(doc_dir)
+    by_part = {j.part: j for j in run_batch(pdfs, settings=settings, use_llm=False).jobs}
+    assert by_part["PLAIN"].status == STATUS_SKIPPED
+
+
 def test_changed_card_version_rebuilds_part(batch_env):
     """`DSA_CARD_VERSION` is part of the publish cache key (ADR 0005).
 
@@ -420,6 +478,32 @@ def test_changed_card_version_rebuilds_part(batch_env):
     # while the old rule version still sees the corpus as stale
     old = {j.part: j for j in run_batch(pdfs, settings=settings, use_llm=False).jobs}
     assert [j.status for j in old.values()] == [STATUS_DONE] * 3
+
+
+def test_a_manifest_stamped_with_an_older_card_version_rebuilds(batch_env):
+    """The real upgrade path, from the corpus's side rather than the settings'.
+
+    A part built before phase 6, ticket 04 carries `card_version: "1"` and no
+    `pins.json` — and nothing else about it moves when the ticket lands: no
+    source byte changes, no extractor version bumps, and `pins_current` reads a
+    *missing* file as current. Only the stamped rule version can catch it, and
+    it must: a datasheet that prints a pin table would otherwise skip forever
+    and keep answering `pin_gap()` with "this datasheet prints none".
+    """
+    pdfs, settings = batch_env
+    assert run_batch(pdfs, settings=settings, use_llm=False).ok
+    path = settings.parts_dir / "PLAIN" / "manifest.json"
+    manifest = json.loads(path.read_text(encoding="utf-8"))
+    assert manifest["card_version"] == settings.card_version != "1"
+    manifest["card_version"] = "1"  # the pre-ticket-04 rule set
+    path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    by_part = {j.part: j for j in run_batch(pdfs, settings=settings, use_llm=False).jobs}
+    assert by_part["PLAIN"].status == STATUS_DONE
+    assert by_part["TEST9000"].status == STATUS_SKIPPED
+
+    again = {j.part: j for j in run_batch(pdfs, settings=settings, use_llm=False).jobs}
+    assert again["PLAIN"].status == STATUS_SKIPPED
 
 
 @pytest.mark.parametrize("artifact", ["specs.json", "plots.json"])

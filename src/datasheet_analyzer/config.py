@@ -34,6 +34,11 @@ PIPELINE_VERSION = "0.4.0"
 SPECS_SCHEMA_VERSION = "4"
 PLOTS_SCHEMA_VERSION = "2"
 SEARCH_SCHEMA_VERSION = "1"
+# "1": phase 6, ticket 04 — `pins.json`, the pin table as individually citable
+# records. New artifact, so version 1; it joins the publish cache key for the
+# same reason its siblings did, and a *missing* file reads as current because a
+# datasheet that prints no pin table legitimately publishes none.
+PINS_SCHEMA_VERSION = "1"
 
 # The version of the *derivation rules* (ADR 0005 / invariant 8). Derived
 # artifacts — design cards and anything else computed from records by a named
@@ -43,7 +48,14 @@ SEARCH_SCHEMA_VERSION = "1"
 # and read by `batch.skip_reason`, so changing a derivation rule regenerates
 # the derived artifacts instead of leaving stale ones behind. Bump it whenever
 # a derivation rule changes what it produces.
-CARD_VERSION = "1"
+# "2": phase 6, ticket 04 — `pins.json`, a wholly new derived artifact with a
+# new derived field (`type`, from `registry/pin_types.yaml`) and a new derived
+# warning (the package cross-check). Nothing else moves for it: no source byte
+# changes, no extractor version bumps, and `pins_current` reads a *missing*
+# file as current, so a part built before this ticket would skip forever and
+# never gain a pin table it does print — after which `pin_gap()` would state
+# something false about the datasheet.
+CARD_VERSION = "2"
 
 
 class Settings(BaseSettings):

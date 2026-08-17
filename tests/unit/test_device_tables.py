@@ -601,6 +601,169 @@ class TestMultiValueKeysExpand:
         assert 'duplicate pin "A2"' in rejected.reason
 
 
+class TestWrappedRowsAreOneEntry:
+    """Phase 6, ticket 04's addition: a printed entry that occupies several
+    grid rows is one entry.
+
+    A real ADI pin table breaks a long description — and a long key list, and
+    sometimes the name itself — over several lines, and the ticket-09 rowspan
+    materialization replicates the key cell into each of them. Read literally
+    that is a duplicate key, and a duplicate key rejects the whole table: a
+    322-pin table would be thrown away because its descriptions are long.
+
+    The reading is deliberately narrow, and each of the four cases below is one
+    half of that narrowness.
+    """
+
+    def test_a_line_with_no_name_continues_the_entry_above(self):
+        table = _block(
+            headers=["NO.", "NAME", "I/O", "DESCRIPTION"],
+            grid=[
+                ["D10, R10", "VDD1_NVG", "Input", "Analog 1.0 V Supply Inputs for the"],
+                ["D10, R10", "", "", "Negative Voltage Generator."],
+                ["B1", "RXCLK", "I", "Receiver clock input"],
+            ],
+        )
+        accepted, rejected = read_device_table(_section(), table, 0)
+        assert rejected is None and accepted is not None
+        assert [r.key for r in accepted.records] == ["D10", "R10", "B1"]
+        assert accepted.records[0].field("description") == (
+            "Analog 1.0 V Supply Inputs for the Negative Voltage Generator."
+        )
+
+    def test_a_wrapped_key_list_adds_its_keys_to_the_entry_above(self):
+        """`GND` prints one name and eight lines of ball numbers; every one of
+        those balls is a GND pin, and a designer greping for the last of them
+        must find it."""
+        table = _block(
+            headers=["NO.", "NAME", "I/O", "DESCRIPTION"],
+            grid=[
+                ["A1, A3, A4", "GND", "Input/output", "Ground References."],
+                ["B2 to B4, C2", "", "", ""],
+            ],
+        )
+        accepted, _rejected = read_device_table(_section(), table, 0)
+        assert accepted is not None
+        assert [r.key for r in accepted.records] == [
+            "A1", "A3", "A4", "B2", "B3", "B4", "C2",
+        ]
+        assert {r.field("name") for r in accepted.records} == {"GND"}
+        # each key still quotes the line it was printed on
+        assert accepted.records[-1].key_verbatim == "B2 to B4, C2"
+        assert accepted.records[-1].row_index == 1
+
+    def test_a_repeated_key_continues_only_an_unfinished_name(self):
+        """`SERDOUT0+,` has not finished naming itself, so the next line — which
+        repeats the key cell — is the rest of that name."""
+        table = _block(
+            headers=["NO.", "NAME", "I/O", "DESCRIPTION"],
+            grid=[
+                ["A15, A14", "SERDOUT0+,", "Output", "JTx Lane 0 Outputs,"],
+                ["A15, A14", "SERDOUT0−", "", "Data True/Complement."],
+            ],
+        )
+        accepted, rejected = read_device_table(_section(), table, 0)
+        assert rejected is None and accepted is not None
+        assert [r.key for r in accepted.records] == ["A15", "A14"]
+        assert accepted.records[0].field("name") == "SERDOUT0+, SERDOUT0−"
+
+    def test_a_repeated_key_under_a_finished_name_is_still_a_duplicate(self):
+        """The other half of the rule, and the one that keeps it honest: two
+        complete entries claiming pin 15 is a misread grid, and the table is
+        refused whole even though merging them would have "worked"."""
+        table = _block(
+            headers=["NO.", "NAME", "DESCRIPTION"],
+            grid=[
+                ["15", "LO", "LO Port, dc-coupled and matched to 50 ohm."],
+                ["15", "EPAD", "Exposed Pad. Connect to the GND pin."],
+            ],
+        )
+        accepted, rejected = read_device_table(_section(), table, 0)
+        assert accepted is None and rejected is not None
+        assert 'duplicate pin "15"' in rejected.reason
+
+    def test_a_name_ending_in_a_mnemonic_character_is_a_finished_name(self):
+        """Regression: `+`, `-` and `/` end ordinary mnemonics, so they may not
+        read as "this name is unfinished".
+
+        `VREF+` and `VREF-` are two complete pin names. If a trailing `+` were
+        a continuation marker, a misread grid claiming ball A1 twice would be
+        *merged* — one pin silently lost and two names fused into a string the
+        page never printed, published with a page citation — instead of being
+        refused whole. A partial pin table that looks complete is precisely the
+        failure invariant 8 exists to prevent, so only the list separator marks
+        an unfinished name.
+        """
+        for finished, wrapped in (("VREF+", "VREF-"), ("RESET-", "SDIO"), ("CS/", "SDO")):
+            table = _block(
+                headers=["NO.", "NAME", "I/O", "DESCRIPTION"],
+                grid=[
+                    ["A1", finished, "Input", "Positive reference input."],
+                    ["A1", wrapped, "Input", "Negative reference input."],
+                    ["A2", "GND", "Ground", "Ground."],
+                ],
+            )
+            accepted, rejected = read_device_table(_section(), table, 0)
+            assert accepted is None, f"{finished}/{wrapped} must not merge"
+            assert rejected is not None and 'duplicate pin "A1"' in rejected.reason
+
+    def test_a_merge_never_chains_past_the_line_that_finished_the_name(self):
+        """A third line claiming the same key is a duplicate again: absorbing a
+        continuation must not leave the entry permanently open."""
+        table = _block(
+            headers=["NO.", "NAME", "I/O", "DESCRIPTION"],
+            grid=[
+                ["A15, A14", "SERDOUT0+,", "Output", "JTx Lane 0 Outputs,"],
+                ["A15, A14", "SERDOUT0−", "", "Data True/Complement."],
+                ["A15, A14", "SPARE", "", "Something else entirely."],
+            ],
+        )
+        accepted, rejected = read_device_table(_section(), table, 0)
+        assert accepted is None and rejected is not None
+        assert 'duplicate pin "A15"' in rejected.reason
+
+    def test_a_band_header_before_the_first_entry_is_not_a_key(self):
+        """`POWER SUPPLIES` opens an ADI pin table and belongs to no pin.
+        Emitting it as one would put a record in `pins.json` keyed on a
+        sentence."""
+        table = _block(
+            headers=["NO.", "NAME", "I/O", "DESCRIPTION"],
+            grid=[
+                ["POWER SUPPLIES", "", "", ""],
+                ["A2", "VDD1P8", "P", "1.8 V analog supply"],
+                ["B1", "RXCLK", "I", "Receiver clock input"],
+            ],
+        )
+        accepted, _rejected = read_device_table(_section(), table, 0)
+        assert accepted is not None
+        assert [r.key for r in accepted.records] == ["A2", "B1"]
+        assert accepted.unkeyed_rows == (0,)
+
+    def test_a_kind_that_declares_no_identity_reads_every_line_as_an_entry(self):
+        """The reading is opt-in per kind (`identity:` in the lexicon), so a
+        kind that has not said which column identifies a row keeps the exact
+        behaviour it had before — including rejecting on a repeated key."""
+        assert load_device_lexicon().by_kind(REGISTER).identity_field == ""
+        table = _block(
+            caption="Table 7-1. Register Summary",
+            headers=["ADDRESS", "NAME", "RESET", "ACCESS"],
+            grid=[["0x0000", "CHIP_ID", "0x01", "R"],
+                  ["0x0000", "", "", "continued"]],
+        )
+        _accepted, rejected = read_device_table(_section(number="7.1"), table, 0)
+        assert rejected is not None
+        assert 'duplicate address "0x0000"' in rejected.reason
+
+    def test_an_identity_naming_a_column_that_does_not_exist_is_refused(self, caplog):
+        with caplog.at_level(logging.WARNING):
+            lexicon = DeviceLexicon.from_mapping(
+                {"pin": {"key": "pin", "identity": "nope",
+                         "columns": {"pin": ["pin"], "name": ["name"]}}}
+            )
+        assert lexicon.by_kind(PIN).identity_field == ""
+        assert "identity 'nope' is not one of its columns" in caplog.text
+
+
 class TestRejectionsAreMeasurable:
     """Criterion 4: the reasons land where the reconstruction gate's do."""
 

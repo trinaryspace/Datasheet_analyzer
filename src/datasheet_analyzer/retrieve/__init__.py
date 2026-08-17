@@ -21,6 +21,7 @@ from datasheet_analyzer.retrieve.project import ProjectRetriever
 from datasheet_analyzer.retrieve.results import (
     CONFIDENCE_UNKNOWN,
     Citation,
+    PinHit,
     PlotHit,
     SearchHit,
     SectionHit,
@@ -64,6 +65,7 @@ __all__ = [
     "IndexedDoc",
     "PackExcerpt",
     "PackLine",
+    "PinHit",
     "PlotHit",
     "ProjectRetriever",
     "Retriever",

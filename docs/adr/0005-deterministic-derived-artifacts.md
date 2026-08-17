@@ -146,3 +146,38 @@ instead of a line someone did or did not read in a build log. This keeps a
 usable pin table available while making its uncertainty impossible to lose,
 which is the same stance the per-record confidence grade already takes — the
 `low` record is still returned, and it still says it is `low`.
+
+### As built (ticket 04)
+
+`CorpusManifest.derived_warnings` is the recording place — a list, not a
+pin-specific field, because the register summary and the design cards will
+have the same kind of thing to say. `dsa status` prints it today; `dsa audit`
+reads the same field in Phase 7.
+
+`CARD_VERSION` moves to `2` with this ticket, which is the ADR's publish-cache-key
+clause doing its job for the first time: `pins.json` is a new derived artifact
+with a new derived field, and nothing else in the skip gate notices it — no
+source byte changes, no extractor version bumps, and a *missing* `pins.json`
+reads as current. Without the bump a part built one ticket earlier would skip
+forever and keep reporting, through `pin_gap()`, that its datasheet prints no
+pin table.
+
+Two details the decision did not anticipate, both settled the same way:
+
+- **The check runs even when nothing was published.** HMC520A states
+  `24-terminal` and its printed pin table is rejected whole, so there is no
+  `pins.json` for a count to disagree with — and "the package has 24 terminals
+  and the corpus has none of them" is the most useful thing that part can say.
+  It is recorded as a mismatch rather than as silence.
+- **A stated count is read only from a hyphen-joined package descriptor**
+  (`324-ball BGA`), and only when every such descriptor in the document
+  agrees. A count parsed from prose may not suppress a table, and by the same
+  reasoning a count parsed from *contradictory* prose may not raise a warning:
+  AD9081's own table of contents prints "21 Pin Configuration and Function
+  Descriptions", and LM741 prints `8-Pin CDIP` beside a revision-history
+  `10-Pin CLGA`. Disagreement is treated as no evidence, not as a tie to
+  break.
+
+Measured: AD9081 states 324 balls and publishes 321 (three lost to a ball
+range broken across two printed lines), which is the mismatch this section
+exists for; it warns, it is in the manifest, and all 321 pins are served.

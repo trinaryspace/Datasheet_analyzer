@@ -34,7 +34,14 @@ from datasheet_analyzer.enrich import (
 from datasheet_analyzer.extract import get_backend
 from datasheet_analyzer.extract.http import CachingBinaryFetcher, CachingFetcher
 from datasheet_analyzer.extract.pdf_structure import page_texts, read_toc
-from datasheet_analyzer.models import CorpusManifest, DocType, PlotSet, RawDocument, SourceDocument
+from datasheet_analyzer.models import (
+    CorpusManifest,
+    DocType,
+    PinSet,
+    PlotSet,
+    RawDocument,
+    SourceDocument,
+)
 from datasheet_analyzer.publish import write_corpus
 from datasheet_analyzer.publish.plots import (
     fetch_plot_images,
@@ -44,6 +51,7 @@ from datasheet_analyzer.publish.plots import (
 from datasheet_analyzer.publish.writer import doc_dir_name
 from datasheet_analyzer.structure.corpus import SectionPlan, build_section_plans
 from datasheet_analyzer.structure.pagemap import pin_table_pages
+from datasheet_analyzer.structure.pins import build_pinset
 from datasheet_analyzer.structure.plots import build_plotset
 from datasheet_analyzer.structure.specs import build_specset
 from datasheet_analyzer.vendor import select_backend, warn_vendor_drift
@@ -293,15 +301,20 @@ def build_part(
     _progress("structuring")
     specsets: list[PlotSet] = []
     plotsets: list[PlotSet] = []
+    pinsets: list[PinSet] = []
     doc_summaries: list[tuple[str, str, int, str]] = []
     brief, facts = "", []
     for raw in docs:
-        # specs and plots are deterministic transforms over the raw doc
+        # specs, plots and pins are deterministic transforms over the raw doc
         specset = build_specset(raw, part_number)
         if specset is not None:
             specsets.append(specset)
         plotset = build_plotset(raw, part_number)
         plotsets.append(plotset)
+        # Always appended, even when it holds no pins: a set with none still
+        # carries the package cross-check and the rejection reasons, and the
+        # publisher is what declines to write a file for it.
+        pinsets.append(build_pinset(raw, part_number))
 
         # pixel fetch only for html-derived docs; pdf_layout figures are
         # clip-rendered from their vector regions (never fetched)
@@ -378,6 +391,7 @@ def build_part(
         vendor=part_vendor,
         specsets=specsets,
         plotsets=plotsets,
+        pinsets=pinsets,
         card_version=settings.card_version,
     )
     return BuildResult(

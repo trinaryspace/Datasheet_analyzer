@@ -23,7 +23,14 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from datasheet_analyzer.models import PlotRecord, SpecRecord
-from datasheet_analyzer.retrieve import Citation, PlotHit, Retriever, SearchHit, SpecHit
+from datasheet_analyzer.retrieve import (
+    Citation,
+    PinHit,
+    PlotHit,
+    Retriever,
+    SearchHit,
+    SpecHit,
+)
 
 
 @dataclass
@@ -149,6 +156,33 @@ def format_search_hits(hits: list[SearchHit], *, show_part: bool = False) -> str
         )
         if hit.snippet:
             lines.append(f"   {hit.snippet}")
+    return "\n".join(lines)
+
+
+def format_pin_hits(hits: list[PinHit], limit: int = 40, *, show_part: bool = False) -> str:
+    """Render pin hits: designator, name, lexicon type, direction, citation.
+
+    The limit is high on purpose — a pin lookup's whole point is that a
+    designer stops scrolling a 200-row table, and `--type power` on a large
+    BGA legitimately returns dozens of balls. The tail line still says how
+    many were held back, because a truncated list that does not admit it is
+    the one failure mode worse than a long one.
+    """
+    if not hits:
+        return "No matching pins."
+    lines: list[str] = []
+    for hit in hits[:limit]:
+        rec = hit.record
+        direction = f" [{rec.direction}]" if rec.direction else ""
+        description = f" — {rec.description}" if rec.description else ""
+        lines.append(
+            f"{_part_prefix(hit.citation, show_part)}"
+            f"{rec.pin}: {rec.name or '(unnamed)'} ({rec.type.value}){direction} — "
+            f"{hit.citation.pages}{description} "
+            f"[via {hit.matched_via} · {hit.confidence}]"
+        )
+    if len(hits) > limit:
+        lines.append(f"... and {len(hits) - limit} more pins")
     return "\n".join(lines)
 
 

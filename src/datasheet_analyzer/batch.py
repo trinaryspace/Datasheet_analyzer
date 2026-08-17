@@ -67,6 +67,7 @@ from datasheet_analyzer.pipeline import build_part
 from datasheet_analyzer.protocol import agent_doc_current
 from datasheet_analyzer.publish import (
     doc_dir_name_for_source,
+    pins_current,
     plots_current,
     search_index_current,
     specs_current,
@@ -289,8 +290,9 @@ def _publish_artifacts_stale(
     part of the skip gate is what "caching keyed by identity" means for a
     publish-time schema — the corpus republishes once and then skips again.
 
-    `specs.json` and `plots.json` are the same kind of artifact and are gated
-    the same way, on `SPECS_SCHEMA_VERSION` / `PLOTS_SCHEMA_VERSION`. Without
+    `specs.json`, `plots.json` and `pins.json` are the same kind of artifact
+    and are gated the same way, on `SPECS_SCHEMA_VERSION` /
+    `PLOTS_SCHEMA_VERSION` / `PINS_SCHEMA_VERSION`. Without
     that, a part whose extractor version did not move — every `ti_html` part,
     since the layout engine's `output_version` bumps say nothing about TI's
     HTML path — would keep pre-`confidence` records forever and answer every
@@ -317,6 +319,8 @@ def _publish_artifacts_stale(
         if not search_index_current(doc_dir):
             return True
         if not specs_current(doc_dir) or not plots_current(doc_dir):
+            return True
+        if not pins_current(doc_dir):
             return True
     return False
 

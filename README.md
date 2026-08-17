@@ -222,6 +222,33 @@ numbers are deliberately *not* indexed — `dsa query` is the exact-value path,
 and a bare `105` ranks nothing. A corpus built before search existed says
 "rebuild to enable search" instead of returning an empty result.
 
+### Look up a pin (`dsa pins`)
+
+```bash
+dsa pins --part AD9081 --pin A2            # one ball -> its signal, on its page
+dsa pins --part AD9081 --name VDD          # every ball whose name carries VDD
+dsa pins --part AD9081 --type power        # every supply ball
+dsa pins --part AD9081 --q "clock" --json
+```
+
+Returns `pins.json` records: the designator, the printed name, the `I/O`
+direction as printed, the description, the page, and a **type** —
+`power | ground | analog | digital | clock | rf | nc | reserved | unknown` —
+drawn from `registry/pin_types.yaml`. A printed row naming several pins
+(`A1, A2, B1`, `C1-C3`) becomes one record per pin, each still quoting the row
+it came from, so a pin search cannot miss a pin that shared a row.
+
+Two honesty rules apply, and both are visible in the output. `unknown` is a
+real answer: a pin the lexicon cannot read, or one whose evidence points at two
+categories at once, is never guessed into a category, and every classified pin
+publishes the phrase that decided it (`type_evidence`). And a part whose
+datasheet prints no pin table — or whose pin table failed validation and was
+rejected whole — has **no** `pins.json` at all; `dsa pins` there says so and
+exits 2 rather than returning an empty list that would read as "this device has
+no such pin". Where the package states a pin count and the extracted count
+disagrees, the mismatch is recorded in the manifest and printed by
+`dsa status`; it never suppresses the table.
+
 ### Find a plot
 
 ```bash
@@ -393,7 +420,8 @@ with the honest `pdf_text` backend (paragraphs only; no trusted tables, no
 
 ```bash
 dsa status    # config, LLM availability, built parts, per-part confidence mix
-              # + per-doc extraction stats + projects
+              # + per-doc extraction stats + recorded derived-artifact
+              # warnings (e.g. a pin-count mismatch) + projects
 dsa version
 ```
 
@@ -483,6 +511,15 @@ ran establishes nothing.
   parsed layer (`value_si` / `unit_si` / `value_kind` in `specs.json`) is
   additive, may be absent for any row, and never rewrites what was printed.
   Where the two disagree, the printed string is correct by definition.
+- **Pin tables are read from printed tables only.** Package *drawings* stay
+  figure images (retrievable with `dsa plots` / the MCP `get_figure`); nothing
+  reconstructs a ball map from a drawing, and no model is allowed anywhere in
+  the pin path. A datasheet that prints its pin list only as a drawing, or
+  whose printed pin table fails validation, therefore publishes no
+  `pins.json` — deliberately, because a partial pin table reads as a complete
+  one to whoever greps it. Measured on the six built corpora: AD9081 publishes
+  321 pins, HMC520A's printed table is rejected with a recorded reason, and
+  AFE7950 / AFE7953 / LM741 / QPA1003P publish none.
 - **PyMuPDF is AGPL-3.0** — it is the engine behind the offline
   `pdf_layout` extraction floor, and TI's HTML path uses it for
   TOC/identity/verification. Fine for local research; review before

@@ -10,8 +10,9 @@ Matching is two-tier: exact containment first, then an alnum-squashed
 comparison that is immune to dash/space/ligature differences between the
 HTML source and PDF text layer.
 
-Golden questions carrying a `spec_query` / `plot_query` are verified here too
-(`verify_spec_queries` / `verify_plot_queries`), against the retrieval core.
+Golden questions carrying a `spec_query` / `plot_query` / `pin_query` are
+verified here too (`verify_spec_queries` / `verify_plot_queries` /
+`verify_pin_queries`, phase 6 ticket 04), against the retrieval core.
 That work used to sit inline in `cli.py`; retrieval and its pass/fail rules
 belong behind the seam, and the CLI now only renders the results.
 
@@ -32,8 +33,8 @@ from pathlib import Path
 
 import yaml
 
-from datasheet_analyzer.models import GoldenQuestion, SpecRecord
-from datasheet_analyzer.retrieve import AnswerPack, PlotHit, Retriever, SpecHit
+from datasheet_analyzer.models import GoldenQuestion, PinRecord, SpecRecord
+from datasheet_analyzer.retrieve import AnswerPack, PinHit, PlotHit, Retriever, SpecHit
 
 _NONALNUM = re.compile(r"[^a-z0-9]+")
 
@@ -131,8 +132,8 @@ def verify_questions(
 
 @dataclass
 class QueryResult:
-    """Outcome of one golden `spec_query` / `plot_query` / `ask_query` /
-    `search_query`.
+    """Outcome of one golden `spec_query` / `plot_query` / `pin_query` /
+    `ask_query` / `search_query`.
 
     `n_records` is how many records the query matched at all; `n_verified` is
     how many survived the page + value check (for plots, how many also have an
@@ -226,6 +227,62 @@ def verify_plot_queries(
             )
         )
     return results
+
+
+def verify_pin_queries(
+    questions: list[GoldenQuestion], part_dir: Path
+) -> list[QueryResult]:
+    """Deterministic pin-lookup verification for every `pin_query` golden.
+
+    The pass rule is `verify_spec_queries`' rule, applied to pins: at least one
+    matching record must sit on a page the question cites, and every expected
+    substring must appear on one of those *cited* records. A pin beside the
+    wrong page is not an answer, and neither is a right page with no pin.
+
+    `{count: N}` is the third shape the ticket asks for — "how many supply
+    pins" — and it is checked against the **whole** result set rather than the
+    cited subset, because a count is a claim about the pin table and not about
+    one page. A count that drifts is a pin table that quietly gained or lost
+    rows, which is exactly what a benchmark exists to catch.
+    """
+    retriever = Retriever.for_part(part_dir)
+    results: list[QueryResult] = []
+    for q in questions:
+        if not q.pin_query:
+            continue
+        query = dict(q.pin_query)
+        expected = query.pop("count", "")
+        hits: list[PinHit] = retriever.pins(**query)
+        paged = [h for h in hits if h.record.page is not None and h.record.page in q.pages]
+        ok = bool(paged) and all(
+            any(contains(_pin_fields(h.record), sub) for h in paged)
+            for sub in q.expected_substrings
+        )
+        detail = f"{len(paged)} cited pin(s) of {len(hits)}"
+        if expected:
+            counted = len(hits) == int(expected)
+            ok = ok and counted
+            if not counted:
+                detail = f"{len(hits)} pin(s), expected {expected}"
+        results.append(
+            QueryResult(
+                question=q, ok=ok, n_records=len(hits), n_verified=len(paged), detail=detail
+            )
+        )
+    return results
+
+
+def _pin_fields(record: PinRecord) -> str:
+    """Every verbatim field of a pin a golden substring may match against.
+
+    `type` is deliberately included even though it is derived: "which pins are
+    supplies" is a pin question, and the label is published, so a benchmark
+    must be able to hold it to account.
+    """
+    return (
+        f"{record.pin} {record.pin_verbatim} {record.name} "
+        f"{record.type.value} {record.direction} {record.description}"
+    )
 
 
 def pack_answers_question(question: GoldenQuestion, pack: AnswerPack) -> bool:

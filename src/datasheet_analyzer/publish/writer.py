@@ -17,11 +17,18 @@ import json
 import logging
 from pathlib import Path
 
-from datasheet_analyzer.config import CARD_VERSION, PLOTS_SCHEMA_VERSION, SPECS_SCHEMA_VERSION
+from datasheet_analyzer.config import (
+    CARD_VERSION,
+    PINS_SCHEMA_VERSION,
+    PLOTS_SCHEMA_VERSION,
+    SPECS_SCHEMA_VERSION,
+)
 from datasheet_analyzer.models import (
     CorpusManifest,
     CorpusStats,
     ExtractionStats,
+    PinRecord,
+    PinSet,
     PlotRecord,
     PlotSet,
     RawDocument,
@@ -91,6 +98,17 @@ def plots_current(doc_dir: Path) -> bool:
     return _artifact_schema_current(doc_dir, "plots.json", PLOTS_SCHEMA_VERSION)
 
 
+def pins_current(doc_dir: Path) -> bool:
+    """`pins.json`'s twin, keyed on `PINS_SCHEMA_VERSION`.
+
+    A *missing* file reads as current, exactly as for its siblings and for the
+    same reason: most datasheets in this corpus print no pin table at all, and
+    demanding a file they cannot produce would put those parts in a rebuild
+    loop forever.
+    """
+    return _artifact_schema_current(doc_dir, "pins.json", PINS_SCHEMA_VERSION)
+
+
 def write_corpus(
     part_dir: Path,
     docs: list[tuple[RawDocument, list[SectionPlan], dict[str, str]]],
@@ -100,6 +118,7 @@ def write_corpus(
     vendor: str = "",
     specsets: list[SpecSet] | None = None,
     plotsets: list[PlotSet] | None = None,
+    pinsets: list[PinSet] | None = None,
     card_version: str = CARD_VERSION,
 ) -> CorpusManifest:
     """Write all corpus artifacts; return the manifest.
@@ -112,6 +131,18 @@ def write_corpus(
     Every document also gets `docs/<doc>/search_index.json` — the BM25 index
     over the section markdown written here, so what is searchable is exactly
     what is readable.
+
+    Optional `pinsets` are written as `docs/<doc>/pins.json` **only when they
+    hold pins**. A document whose pin table was rejected, or that prints none,
+    gets no file rather than an empty or partial one: a designer who greps a
+    half-published pin table for a pin, gets no hit and concludes it does not
+    exist has been misled (ADR 0005). A set with no pins also *removes* any
+    `pins.json` an earlier build left behind, because a corpus must never serve
+    a superseded pin table — and because the skip gate reads that file's schema,
+    so a stale one left on disk would rebuild the part forever. What such a set
+    still contributes is its `warnings` — the package cross-check above all —
+    which land in `CorpusManifest.derived_warnings`, because the ADR decided a
+    mismatch is recorded rather than logged.
 
     `card_version` is the derivation-rule version this corpus's derived
     artifacts were produced under (ADR 0005). It is stamped into the manifest
@@ -131,10 +162,12 @@ def write_corpus(
     )
     specsets_by_hash = {s.doc_hash: s for s in (specsets or [])}
     plotsets_by_hash = {p.doc_hash: p for p in (plotsets or [])}
+    pinsets_by_hash = {p.doc_hash: p for p in (pinsets or [])}
     # Per-part confidence mix, accumulated across the part's documents so the
     # manifest carries one measured number per grade (ticket 04).
     graded_specs: list[SpecRecord] = []
     graded_plots: list[PlotRecord] = []
+    graded_pins: list[PinRecord] = []
 
     doc_dirs: list[str] = []
 
@@ -153,6 +186,27 @@ def write_corpus(
             )
             stats.n_specs += len(specset.records)
             graded_specs.extend(specset.records)
+
+        pinset = pinsets_by_hash.get(raw.source.content_hash)
+        if pinset is not None:
+            # The warnings travel even when the file does not: a rejected pin
+            # table still has something to say about this part.
+            manifest.derived_warnings.extend(pinset.warnings)
+            pins_path = doc_abs / "pins.json"
+            if pinset.pins:
+                pins_path.write_text(
+                    pinset.model_dump_json(indent=2), encoding="utf-8"
+                )
+                stats.n_pins += len(pinset.pins)
+                graded_pins.extend(pinset.pins)
+            else:
+                # A republish that now yields no pins must take the old file
+                # with it. Leaving it would serve a superseded — possibly
+                # rejected — pin table forever, which is the opposite of "no
+                # pins.json rather than a partial one", and would keep
+                # `publish.pins_current` false so the part rebuilt on every
+                # run (`batch.skip_reason`) without ever settling.
+                pins_path.unlink(missing_ok=True)
 
         plotset = plotsets_by_hash.get(raw.source.content_hash)
         if plotset is not None:
@@ -242,6 +296,8 @@ def write_corpus(
         stats.spec_confidence = confidence_mix(graded_specs)
     if graded_plots:
         stats.plot_confidence = confidence_mix(graded_plots)
+    if graded_pins:
+        stats.pin_confidence = confidence_mix(graded_pins)
 
     manifest.stats = stats
     (part_dir / "manifest.json").write_text(
@@ -254,9 +310,12 @@ def write_corpus(
         stats.total_tokens, stats.index_tokens, stats.agent_doc_tokens,
     )
     log.info(
-        "confidence mix: specs %s; plots %s",
+        "confidence mix: specs %s; plots %s; pins %s",
         stats.spec_confidence or "(none)", stats.plot_confidence or "(none)",
+        stats.pin_confidence or "(none)",
     )
+    for warning in manifest.derived_warnings:
+        log.warning("derived-artifact warning recorded in the manifest: %s", warning)
     log.info(
         "search index: %d bytes over %d bytes of section markdown (%.0f%%)",
         stats.search_index_bytes, stats.section_bytes,

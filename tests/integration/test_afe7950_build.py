@@ -734,3 +734,56 @@ class TestCommittedReferenceCorpora:
         with capsys.disabled():
             print(f"\nconfidence mix, AFE7953: specs {measured['specs']} "
                   f"plots {measured['plots']}\n")
+
+
+@pytest.mark.integration
+class TestTheReferencePartsPrintNoPinTable:
+    """Phase 6, ticket 04 — the fifth and sixth built parts, honestly empty.
+
+    The ticket asks that pin tables extract for all six built parts *or* that
+    the part publishes no `pins.json` rather than a partial one. AFE7950 and
+    AFE7953 are the "or": their datasheets are specification documents — 39
+    sections of characteristics and typical-characteristics galleries — and
+    neither prints a pin section at all. There is nothing to extract, nothing
+    to reject, and therefore no pin file and no recorded reason: an absence in
+    the *document* is not a finding about the extraction.
+
+    Asserted rather than assumed, because "this part has no pins.json" would
+    otherwise be indistinguishable from a pin reader that silently stopped
+    working.
+    """
+
+    def test_the_fresh_afe7950_build_publishes_no_pin_file(self, built):
+        result, _ = built
+        assert result.manifest.stats.n_pins == 0
+        assert result.manifest.stats.pin_confidence == {}
+        assert not list((result.part_dir / "docs").glob("*/pins.json"))
+        # nothing was rejected either — the datasheet simply has no pin table
+        assert not [
+            reason
+            for stats in result.manifest.extraction_stats.values()
+            for reason in stats.rejection_reasons
+            if reason.startswith("device-table")
+        ]
+
+    def test_a_pin_lookup_on_afe7950_establishes_nothing_and_says_so(self, built):
+        from datasheet_analyzer.retrieve import Retriever
+
+        result, _ = built
+        retriever = Retriever.for_part(result.part_dir)
+        assert retriever.pins() == []
+        assert "establishes nothing" in retriever.pin_gap()
+
+    @pytest.mark.parametrize("part", ["AFE7950", "AFE7953"])
+    def test_neither_reference_datasheet_prints_a_pin_section(self, part):
+        """The reason there is nothing to extract, stated as a fact about the
+        committed corpora rather than as a claim in a report."""
+        manifest_path = PARTS / part / "manifest.json"
+        if not manifest_path.exists():
+            pytest.skip(f"committed parts/{part} corpus not present")
+        manifest = CorpusManifest.model_validate_json(
+            manifest_path.read_text(encoding="utf-8")
+        )
+        titles = [s.title.lower() for s in manifest.sections]
+        assert titles, part
+        assert not [t for t in titles if "pin" in t], titles

@@ -7,13 +7,14 @@ Commands:
   query --part NAME         deterministic spec lookup (alias ladder; --json)
   search --part NAME "..."  BM25 full-text search, cited by construction (--json)
   ask --part NAME "..."     one cited answer pack inside a token budget (--json)
+  pins --part NAME          pin lookup by designator, name or type (--json)
   plots --part NAME         deterministic plot lookup (--json)
   project new|add|remove|build|status   the noun above `part`: a design
   serve --mcp               the corpus as MCP tools over local stdio
   status                    configuration + detected parts + projects
   version                   print version
 
-`query`, `search`, `ask` and `plots` each take either `--part NAME` or
+`query`, `search`, `ask`, `pins` and `plots` each take either `--part NAME` or
 `--project NAME`; a project fans the lookup out across its member parts and
 labels every hit with the part it came from.
 """
@@ -138,6 +139,7 @@ def _cmd_verify(args: argparse.Namespace) -> int:
     from datasheet_analyzer.evalh.citations import (
         summarize,
         verify_ask_queries,
+        verify_pin_queries,
         verify_plot_queries,
         verify_questions,
         verify_search_queries,
@@ -147,6 +149,7 @@ def _cmd_verify(args: argparse.Namespace) -> int:
         estimate_lookup_tokens,
         load_golden,
         render_ask_query_report,
+        render_pin_query_report,
         render_plot_query_report,
         render_search_query_report,
         render_spec_query_report,
@@ -203,6 +206,16 @@ def _cmd_verify(args: argparse.Namespace) -> int:
         print()
         print(render_plot_query_report(plot_results))
         if any(not r.ok for r in plot_results):
+            failed = True
+
+    # Pin-query verification (Phase 6, ticket 04) runs on the same terms: only
+    # a datasheet that prints a pin table can carry pin questions, so the table
+    # appears exactly when the benchmark has them.
+    pin_results = verify_pin_queries(questions, part_dir)
+    if pin_results:
+        print()
+        print(render_pin_query_report(pin_results))
+        if any(not r.ok for r in pin_results):
             failed = True
 
     # Ask- and search-path verification (Phase 5, ticket 09) run on the same
@@ -357,6 +370,43 @@ def _cmd_ask(args: argparse.Namespace) -> int:
         # degraded, not the question unanswerable.
         return 2
     return 1 if pack.route == ROUTE_NONE else 0
+
+
+def _cmd_pins(args: argparse.Namespace) -> int:
+    import json
+
+    from datasheet_analyzer.query import format_pin_hits
+
+    scope, show_part = _scope(args)
+    if scope is None:
+        return 2
+
+    # A corpus with no pin table degrades with the core's own sentence, never
+    # as an empty result that reads like "this part has no such pin" — the same
+    # distinction `dsa search` draws between no match and no index.
+    gap = scope.pin_gap()
+    if gap:
+        print(gap, file=sys.stderr)
+        return 2
+
+    hits = scope.pins(
+        pin=args.pin or "",
+        name=args.name or "",
+        type=args.type or "",
+        q=args.q or "",
+    )
+    if args.json:
+        # Shape owned by PinHit.as_dict(), like every other JSON surface.
+        payload = {
+            "part": args.part,
+            "project": args.project,
+            "query": {"pin": args.pin, "name": args.name, "type": args.type, "q": args.q},
+            "hits": [h.as_dict() for h in hits],
+        }
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+        return 0 if hits else 1
+    print(format_pin_hits(hits, show_part=show_part))
+    return 0 if hits else 1
 
 
 def _cmd_plots(args: argparse.Namespace) -> int:
@@ -559,7 +609,11 @@ def _confidence_line(stats) -> str:
     printing zeros that would look like a graded corpus with no confidence.
     """
     parts = []
-    for label, mix in (("specs", stats.spec_confidence), ("plots", stats.plot_confidence)):
+    for label, mix in (
+        ("specs", stats.spec_confidence),
+        ("plots", stats.plot_confidence),
+        ("pins", stats.pin_confidence),
+    ):
         if mix:
             counts = " / ".join(f"{n} {grade}" for grade, n in mix.items())
             parts.append(f"{label} {counts}")
@@ -595,6 +649,11 @@ def _part_vendor_info(part: Path) -> tuple[str, str, list[str], list[str]]:
         confidence = _confidence_line(m.stats)
         if confidence:
             doc_lines.append(confidence)
+        # ADR 0005 decided a pin-count mismatch is *recorded*, not logged. It
+        # is a fact the corpus carries, so `status` prints it — the auditable
+        # surface `dsa audit` (phase 7) will grow out of.
+        for warning in m.derived_warnings:
+            doc_lines.append(f"    derived warning: {warning}")
         for doc in m.documents:
             st = m.extraction_stats.get(doc.content_hash)
             if st is None:
@@ -765,6 +824,23 @@ def main(argv: list[str] | None = None) -> int:
         "--json", action="store_true", help="emit the pack as JSON (declared schema)"
     )
     p_ask.set_defaults(func=_cmd_ask)
+
+    p_pins = sub.add_parser("pins", help="pin lookup: designator, name, or type")
+    _add_scope(p_pins)
+    p_pins.add_argument("--pin", default="", help="exact pin designator, e.g. A1")
+    p_pins.add_argument("--name", default="", help="pin name substring, e.g. VDD")
+    p_pins.add_argument(
+        "--type",
+        default="",
+        help="lexicon type: power|ground|analog|digital|clock|rf|nc|reserved|unknown",
+    )
+    p_pins.add_argument("--q", default="", help="name/description substring")
+    p_pins.add_argument(
+        "--json",
+        action="store_true",
+        help="emit hits (with type_evidence, matched_via + confidence) as JSON",
+    )
+    p_pins.set_defaults(func=_cmd_pins)
 
     p_plots = sub.add_parser("plots", help="deterministic plot lookup")
     _add_scope(p_plots)

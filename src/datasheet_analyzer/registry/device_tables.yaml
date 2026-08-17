@@ -10,6 +10,11 @@
 #   <kind>:
 #     key: <field>              # the column that keys the table: unique per
 #                               # row, and what a record is cited by
+#     identity: <field>         # the column that says "this row is a new
+#                               # entry". A row printing none of it is a
+#                               # wrapped continuation of the row above (see
+#                               # `device_tables.py`); omit to switch that
+#                               # reading off for this kind.
 #     columns:                  # the target schema, in *printed* order — the
 #       <field>: [header, ...]  # positional fallback maps by this order
 #     captions: [phrase, ...]   # title phrases that name this table when its
@@ -32,6 +37,10 @@
 
 pin:
   key: pin
+  # A pin row is a new pin when it prints a name. ADI's pin tables wrap a long
+  # description — and a long *name* list — onto further lines that print no
+  # name of their own; those lines belong to the pin above, not to a new one.
+  identity: name
   columns:
     pin:
       - pin
@@ -60,6 +69,8 @@ pin:
       - pin name
       - signal
       - signal name
+      - mnemonic
+      - mnemonics
     type:
       - type
       - pin type
