@@ -8,7 +8,7 @@ Commands:
   search --part NAME "..."  BM25 full-text search, cited by construction (--json)
   ask --part NAME "..."     one cited answer pack inside a token budget (--json)
   pins --part NAME          pin lookup by designator, name or type (--json)
-  regs --part NAME          register lookup by address, name or text (--json)
+  regs --part NAME          register lookup by address, name, bit field or text (--json)
   plots --part NAME         deterministic plot lookup (--json)
   project new|add|remove|build|status   the noun above `part`: a design
   serve --mcp               the corpus as MCP tools over local stdio
@@ -439,9 +439,19 @@ def _cmd_regs(args: argparse.Namespace) -> int:
         print(gap, file=sys.stderr)
         return 2
 
+    # A `--field` query selects on a *derived* value, so invariant 8 requires it
+    # to state the population it could not consider: the registers that publish
+    # no bit fields. Printed whether or not there were hits, because an empty
+    # field result must never read as "this device has no such bit field".
+    if args.field:
+        gap = scope.register_field_gap()
+        if gap:
+            print(gap, file=sys.stderr)
+
     hits = scope.registers(
         addr=args.addr or "",
         name=args.name or "",
+        field=args.field or "",
         q=args.q or "",
     )
     if args.json:
@@ -449,12 +459,21 @@ def _cmd_regs(args: argparse.Namespace) -> int:
         payload = {
             "part": args.part,
             "project": args.project,
-            "query": {"addr": args.addr, "name": args.name, "q": args.q},
+            "query": {
+                "addr": args.addr, "name": args.name, "field": args.field, "q": args.q
+            },
             "hits": [h.as_dict() for h in hits],
         }
         print(json.dumps(payload, ensure_ascii=False, indent=2))
         return 0 if hits else 1
-    print(format_register_hits(hits, show_part=show_part))
+    # Bit fields are printed when the caller asked about one, or asked for one
+    # register by its address or name — the two cases where the register's
+    # fields are the answer rather than noise across a 35-row map.
+    print(format_register_hits(
+        hits,
+        show_part=show_part,
+        show_fields=bool(args.field or args.addr or args.name),
+    ))
     return 0 if hits else 1
 
 
@@ -900,11 +919,16 @@ def main(argv: list[str] | None = None) -> int:
         help="register address; resolved by value, so 0x1A04 / 0x1a04 / 6660 agree",
     )
     p_regs.add_argument("--name", default="", help="exact register acronym, e.g. R12")
+    p_regs.add_argument(
+        "--field",
+        default="",
+        help="bit-field name substring, e.g. NCO_EN — the register it lives in",
+    )
     p_regs.add_argument("--q", default="", help="name/description substring")
     p_regs.add_argument(
         "--json",
         action="store_true",
-        help="emit hits (parsed address, reset, matched_via + confidence) as JSON",
+        help="emit hits (parsed address, reset, bit fields, matched_via + confidence) as JSON",
     )
     p_regs.set_defaults(func=_cmd_regs)
 

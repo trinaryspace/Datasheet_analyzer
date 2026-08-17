@@ -355,6 +355,7 @@ class Retriever:
         *,
         addr: str = "",
         name: str = "",
+        field: str = "",
         q: str = "",
     ) -> list[RegisterHit]:
         """Registers of this part, ANDed across the filters given (ticket 05).
@@ -368,20 +369,29 @@ class Retriever:
 
         `name` is an exact, case-folded match on the printed acronym: `R1` is
         register 1 and not R11 through R19 as well, the same reason
-        `pins(pin=...)` is exact. `q` is the loose one — a substring over the
-        name and the description together.
+        `pins(pin=...)` is exact. `field` is the **bit-field** filter (ticket
+        06) — a substring over the published field names, because a firmware
+        engineer knows `NCO_EN` and wants the register it lives in, and it
+        matches nothing at all on a register whose field set was refused rather
+        than pretending the field is absent from the device. `q` is the loose
+        one — a substring over the name and the description together.
 
         No filters at all returns the whole register map, in printed order.
         """
         wanted = parse_register_word(addr) if addr else None
         low_addr = addr.strip().casefold()
         low_name = name.strip().casefold()
+        low_field = field.strip().casefold()
         hits: list[RegisterHit] = []
         for doc in self.index.docs:
             for rec in doc.registers:
                 if addr and not _register_addr_matches(rec, wanted, low_addr):
                     continue
                 if name and rec.name.casefold() != low_name:
+                    continue
+                if low_field and not any(
+                    low_field in f.name.casefold() for f in rec.fields
+                ):
                     continue
                 if q and q.lower() not in f"{rec.name} {rec.description}".lower():
                     continue
@@ -391,7 +401,7 @@ class Retriever:
                         citation=Citation.for_register(
                             rec, doc=doc.name, doc_hash=doc.doc_hash, part=self.part
                         ),
-                        matched_via=_register_matched_via(addr, name, q),
+                        matched_via=_register_matched_via(addr, name, field, q),
                         confidence=record_confidence(rec),
                     )
                 )
@@ -412,6 +422,29 @@ class Retriever:
             f"document of this part prints one, or the one it prints was "
             f"rejected (see `dsa status` for the recorded reason). A register "
             f"lookup here establishes nothing."
+        )
+
+    def register_field_gap(self) -> str:
+        """`""` when every register here publishes bit fields, else what is missing.
+
+        Invariant 8's honesty clause for the one filter that *selects* on a
+        derived value: `registers(field=...)` can only match a register whose
+        field set was published, so a caller filtering on a field name has an
+        unconsidered population and must be told its size. Unlike
+        `register_gap()` this is not an unavailability — the register map is
+        there and answers by address and name — it is the note that goes beside
+        a field result, which is why it names the count instead of refusing.
+        """
+        registers = [rec for doc in self.index.docs for rec in doc.registers]
+        without = [rec for rec in registers if not rec.fields]
+        if not registers or not without:
+            return ""
+        return (
+            f"{len(without)} of {len(registers)} registers in the corpus for part "
+            f"{self.part} publish no bit fields ({', '.join(r.name or r.address.verbatim for r in without[:6])}"
+            f"{', …' if len(without) > 6 else ''}); each says why in its own "
+            f"`fields_reason`. A bit-field lookup here cannot establish that a "
+            f"field does not exist."
         )
 
     def plots(
@@ -763,12 +796,14 @@ def _register_addr_matches(
     return record.address.verbatim.strip().casefold() == printed
 
 
-def _register_matched_via(addr: str, name: str, q: str) -> str:
+def _register_matched_via(addr: str, name: str, field: str, q: str) -> str:
     """Which filter produced a register hit, strongest first."""
     if addr:
         return "address"
     if name:
         return "name"
+    if field:
+        return "field"
     if q:
         return "text"
     return "all"

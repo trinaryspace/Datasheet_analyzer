@@ -255,6 +255,14 @@ class RegisterHit:
     the question findable. `reset` rides along in the same shape, with the
     page it was read off and the rule that produced it, since (unlike the rest
     of the record) a reset is often printed somewhere other than the row.
+
+    The bit fields (ticket 06) travel with **all four** of the things that make
+    them checkable rather than merely present: the register `width` they were
+    validated against, the bits of it `unaccounted_for` by any field, and —
+    when the list is empty — the `reason` it is. A caller must be able to tell
+    "this register has no fields printed anywhere" from "this register's field
+    table was refused", because only one of those is a statement about the
+    device.
     """
 
     record: RegisterRecord
@@ -280,6 +288,26 @@ class RegisterHit:
                 "evidence": reset.evidence,
                 "derivation": reset.derivation,
             },
+            "width": rec.width,
+            "fields": [
+                {
+                    "name": f.name,
+                    "bits": {
+                        "verbatim": f.bits.verbatim,
+                        "hi": f.bits.hi,
+                        "lo": f.bits.lo,
+                        "derivation": f.bits.derivation,
+                    },
+                    "access": f.access,
+                    "reset": f.reset,
+                    "description": f.description,
+                    "page": f.page,
+                }
+                for f in rec.fields
+            ],
+            "fields_unaccounted_for": list(rec.unaccounted_bits),
+            "fields_reason": rec.fields_reason,
+            "fields_confidence": rec.fields_confidence.value,
             "section": self.citation.section,
             "page": self.citation.page_start,
             "part": self.citation.part,

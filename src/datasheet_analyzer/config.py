@@ -49,7 +49,12 @@ PINS_SCHEMA_VERSION = "1"
 # individually citable records. New artifact, so version 1; it joins the
 # publish cache key exactly as its siblings do, and a *missing* file reads as
 # current because most documents print no register summary at all.
-REGISTERS_SCHEMA_VERSION = "1"
+# "2": phase 6, ticket 06 added each register's **bit fields** (`fields`,
+# `width`, `unaccounted_bits`, `fields_reason`, and their provenance). A corpus
+# published at version 1 answers every bit-field question with nothing, and
+# nothing about its source bytes changed, so it republishes once instead of
+# reading as a part whose registers simply have no fields.
+REGISTERS_SCHEMA_VERSION = "2"
 
 # The version of the *derivation rules* (ADR 0005 / invariant 8). Derived
 # artifacts — design cards and anything else computed from records by a named
@@ -73,7 +78,13 @@ REGISTERS_SCHEMA_VERSION = "1"
 # reasoning as "2": nothing in the extraction gate notices a new derived
 # artifact, so without the bump a part built one ticket earlier would skip
 # forever and keep answering register questions with nothing.
-CARD_VERSION = "3"
+# "4": phase 6, ticket 06 — register **bit fields**, with two more derived
+# values per register (`bits`, from `parse_bit_range` or the geometric
+# `bit_header_span`, and `width`, from the printed reset word) and a new derived
+# warning (how many registers publish a field set). Same reasoning again: a part
+# built at ticket 05 would skip forever and keep publishing registers with no
+# fields, which reads as a document that prints none.
+CARD_VERSION = "4"
 
 
 class Settings(BaseSettings):

@@ -564,6 +564,67 @@ class RegisterWord(BaseModel):
     derivation: str = ""
 
 
+class BitRange(BaseModel):
+    """The bits one field occupies, printed and parsed (phase 6, ticket 06).
+
+    `RegisterWord`'s shape one level down, and the field on which this repo is
+    least willing to guess: a driver written against a wrong bit range
+    misconfigures silicon silently. So the printed cell is kept exactly as the
+    document laid it out (`15:3`, `[3]`, `7..0`) and `hi` / `lo` are the
+    parsed reading of *that cell alone* — never of a neighbouring one, never
+    widened to make a field list tile a register. A cell the anchored grammar
+    cannot read leaves both `None`, which makes the field unusable and is
+    therefore what refuses the whole register's field set rather than
+    publishing a range nobody read.
+
+    `derivation` names which rule produced the pair: `parse_bit_range` for a
+    document that prints the range as text, `bit_header_span` for one that
+    prints a bit-position header row and lets a field cell span columns under
+    it (invariant 8's `derivation`, per field).
+    """
+
+    verbatim: str = ""
+    hi: int | None = None
+    lo: int | None = None
+    derivation: str = ""
+
+    @property
+    def n_bits(self) -> int:
+        """How many bits this range covers; `0` when it never parsed."""
+        if self.hi is None or self.lo is None:
+            return 0
+        return self.hi - self.lo + 1
+
+
+class RegisterField(BaseModel):
+    """One bit field of one register, individually citable (phase 6, ticket 06).
+
+    The unit a driver is written against. Everything on it is verbatim from the
+    register's own field table — `name` (including `RESERVED`, which is a name
+    the document printed and not a gap), the printed access code, the printed
+    field reset and the description as the page prints it — except `bits`,
+    which carries its own derivation because a bit range is the one thing here
+    that has to be read rather than copied.
+
+    A field reset is a **string** deliberately: it is a field-width value whose
+    base is only meaningful beside the field's width (`0x3` in a two-bit
+    field), and a register's programmable word is what `RegisterRecord.reset`
+    already publishes as a number.
+    """
+
+    name: str = ""
+    bits: BitRange = Field(default_factory=BitRange)
+    access: str = ""  # the printed Type / Access cell, verbatim ("" when absent)
+    reset: str = ""  # the printed field reset, verbatim ("" when absent)
+    description: str = ""
+    # identity within the document — the field table's row, and the page it is
+    # printed on, so one field is as citable as one register.
+    table_index: int = 0
+    row_index: int = 0
+    page: int | None = None
+    row_verbatim: list[str] = Field(default_factory=list)
+
+
 class RegisterRecord(BaseModel):
     """One register of one device, individually citable (phase 6, ticket 05).
 
@@ -580,6 +641,23 @@ class RegisterRecord(BaseModel):
       table's own reset column or in the register's printed declaration
       heading (`R0 Register (Offset = 0x0) [Reset = 0x0000]`), which is the
       form every TI programmer's guide uses and where the value actually lives.
+
+    Phase 6, ticket 06 adds the register's **bit fields**, and every one of its
+    fields exists so that an incomplete or unread field set cannot read as a
+    complete one:
+
+    - `fields` is empty unless the register's own field table was read *and*
+      validated; `fields_reason` then says why, per criterion — a register is
+      never dropped for having no readable fields.
+    - `width` is the register's width in bits and `width_evidence` the printed
+      word it was read from. No width, no fields: a field list that cannot be
+      checked against the register's width is exactly the artifact this ticket
+      refuses to ship.
+    - `unaccounted_bits` names the bits of that width no field claims, so the
+      coverage of a field list is checkable by anyone reading the file rather
+      than assumed to be total.
+    - `fields_route` is the derivation (`bit-column` / `bit-diagram`) and
+      `fields_evidence` the caption of the table the fields were read from.
     """
 
     # Stable, addressable id within the document's `registers.json`
@@ -598,6 +676,18 @@ class RegisterRecord(BaseModel):
     row_verbatim: list[str] = Field(default_factory=list)
     # Per-record extraction confidence, same contract as `SpecRecord`.
     confidence: Confidence = Confidence.UNKNOWN
+    # --- bit fields (phase 6, ticket 06) --------------------------------
+    fields: list[RegisterField] = Field(default_factory=list)
+    width: int | None = None
+    width_evidence: str = ""  # the printed word `width` was read from
+    width_derivation: str = ""  # the named rule that read it
+    unaccounted_bits: list[str] = Field(default_factory=list)
+    fields_route: str = ""  # the named rule that produced `fields`
+    fields_evidence: str = ""  # the field table's printed caption
+    fields_reason: str = ""  # why `fields` is empty, when it is
+    # How far the field set can be trusted without opening the printed page.
+    # Same contract as every other grade: metadata, never a filter.
+    fields_confidence: Confidence = Confidence.UNKNOWN
 
 
 class RegisterSet(BaseModel):
@@ -613,6 +703,11 @@ class RegisterSet(BaseModel):
     gap is the honest half of invariant 8: a caller that lists reset values
     must be able to say "18 of 35 registers state one" instead of quietly
     showing 18 rows. `warnings` carries that sentence for the manifest.
+
+    `n_field_sets` is the same clause for bit fields (phase 6, ticket 06): how
+    many of these registers publish a validated field list, so "bit fields for
+    28 of 35 registers" is a fact the corpus carries rather than a shape a
+    caller has to notice.
     """
 
     schema_version: str = ""
@@ -620,6 +715,7 @@ class RegisterSet(BaseModel):
     doc_hash: str = ""
     registers: list[RegisterRecord] = Field(default_factory=list)
     n_reset_stated: int = 0
+    n_field_sets: int = 0
     warnings: list[str] = Field(default_factory=list)
 
 

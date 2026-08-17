@@ -15,6 +15,10 @@
 #                               # wrapped continuation of the row above (see
 #                               # `device_tables.py`); omit to switch that
 #                               # reading off for this kind.
+#     wrap_keys: true|false     # whether a wrapped continuation line's key
+#                               # cell may contribute keys to the entry above
+#                               # (a pin *name list* wraps; a bit range never
+#                               # does). Default true — the pin reading.
 #     columns:                  # the target schema, in *printed* order — the
 #       <field>: [header, ...]  # positional fallback maps by this order
 #     captions: [phrase, ...]   # title phrases that name this table when its
@@ -22,6 +26,10 @@
 #     key_shape: <regex>        # what one key cell looks like, anchored. A
 #                               # column of prose is not a key column, and this
 #                               # is what says so.
+#     key_shape_min: <0..0.6>   # how many of the rows must be key-shaped
+#                               # (default 0.6). A kind may only *lower* it,
+#                               # and only when it validates its records by
+#                               # something stronger (see `bitfield`).
 #     expand_key: true|false    # multi-value key cells ("A1, A2", "A1-A4")
 #                               # become one record each
 #     monotonic_key: true|false # keys must strictly increase down the table
@@ -175,3 +183,93 @@ register:
   expand_key: false
   monotonic_key: true
   key_numeric: hex
+
+# One register's bit fields, as the per-register field table prints them
+# (phase 6, ticket 06). The same structural animal one level down: keyed by a
+# bit range, one row per field. `structure/bitfields.py` is its consumer, and
+# it is the module that joins a field table to the register it belongs to and
+# validates the field set against the register's width — nothing about a bit
+# range is judged here.
+bitfield:
+  key: bit
+  # A field row is a new field when it prints a field name. TI's field tables
+  # wrap a long description over several printed lines, and ticket 09's rowspan
+  # materialization repeats the *bit* cell into them, so a line that prints no
+  # name is the description of the field above continuing.
+  identity: name
+  # ...and, unlike a pin table, a continuation line's key cell may contribute
+  # **nothing**: a pin row wraps a comma-separated name list, but a bit range
+  # is one token that never wraps, so the only bit a continuation line can
+  # carry is the fill the materializer put there — measured on LMX1204, the
+  # *next* field's range. Reading it as another key would publish a field with
+  # the wrong bits, which is the one failure this ticket exists to avoid.
+  wrap_keys: false
+  columns:
+    bit:
+      - bit
+      - bits
+      - bit no.
+      - bit no
+      - bit number
+      - bit numbers
+      - bit range
+      - bit position
+      - bit positions
+      - bit field
+      - bit(s)
+    name:
+      - field
+      - fields
+      - field name
+      - bit name
+      - bit field name
+    access:
+      - type
+      - access
+      - access type
+      - r/w
+      - rw
+      - mode
+    reset:
+      - reset
+      - reset value
+      - default
+      - default value
+      - por
+      - por value
+    description:
+      - description
+      - descriptions
+      - function
+      - functions
+      - comment
+      - comments
+  captions:
+    - register field descriptions
+    - field descriptions
+    - bit field descriptions
+    - bit descriptions
+    - bit field definitions
+  # "15:3", "7", "0" — a bit range as datasheets print it. Two digits at most:
+  # no register in production is 100 bits wide, and a three-digit "cell" is a
+  # value that landed in the bit column.
+  key_shape: "^[0-9]{1,2}(:[0-9]{1,2})?$"
+  # Lowered, and this is the one place in the lexicon that lowers anything.
+  # A field table's region routinely sweeps up the navigation line printed
+  # under it ("R12 is shown in Table 1-13. Return to the Summary Table."), and
+  # on a register with two printed fields those two lines are half the rows —
+  # at the default bar every field of a small register is thrown away. It is
+  # safe *here* because a bit-field set has a stronger validation than any
+  # ratio: it must tile the register's width with no overlap and no overflow
+  # (`structure/bitfields.py`), which no prose row can do, and the bits it does
+  # not cover are published as `unaccounted_bits` rather than assumed.
+  key_shape_min: 0.25
+  # "15:3" is one field, not thirteen: the range *is* the key, and expanding it
+  # would publish thirteen fields the document never named.
+  expand_key: false
+  # Field tables count **down** (15:8, 7, 6:0), so the ascending check does not
+  # apply. Ordering is not what makes a field set sound — tiling the register's
+  # width with no overlap is, and `structure/bitfields.py` is where that is
+  # judged, because only there is the register's width known.
+  monotonic_key: false
+  key_numeric: ""

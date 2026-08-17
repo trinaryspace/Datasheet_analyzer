@@ -53,6 +53,17 @@ Registers (phase 6, ticket 05) are read off a grid too, so theirs is the pin
 rule with one addition: an address the grammar could not read as an integer is
 `medium`, because the printed string is still the answer while `dsa regs
 --addr` cannot reach it.
+
+A register's **bit-field set** (phase 6, ticket 06) is graded separately from
+the register, because it is read off a different table, and its rule is the one
+place where a rescued grid is *not* automatically `low`: a field set only
+publishes at all once it tiles the register's width with no overlap and no
+overflow (`structure/bitfields.py`), and a mis-split grid does not accidentally
+tile a register. So: bits of the width that no field claims are `low` (the list
+is incomplete and the page has to be opened to see what is missing), a
+header-declared grid that covers the width is `high`, and a rescued grid that
+covers it is `medium` — trustworthy enough to program against, with the
+reconstruction still saying "confirm on the printed page".
 """
 
 from __future__ import annotations
@@ -130,6 +141,22 @@ def grade_register_record(
     if record.address.value is None:
         return Confidence.MEDIUM
     if not page_is_exact(record, table, section):
+        return Confidence.MEDIUM
+    return Confidence.HIGH
+
+
+def grade_register_fields(record: RegisterRecord, table: TableBlock) -> Confidence:
+    """Grade one register's published bit-field set (phase 6, ticket 06).
+
+    `table` is the **field** table the set was read from, not the summary table
+    the register came from. Only a validated set reaches this — an overlapping
+    or overflowing one is refused whole and publishes no fields — so what is
+    left to say is how completely it covers the register and how the grid that
+    carried it was reconstructed.
+    """
+    if record.unaccounted_bits:
+        return Confidence.LOW
+    if table.reconstruction == RECONSTRUCTION_RESCUED:
         return Confidence.MEDIUM
     return Confidence.HIGH
 

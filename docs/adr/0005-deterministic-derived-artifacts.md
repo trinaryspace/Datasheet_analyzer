@@ -212,3 +212,51 @@ The reset value therefore cites the table *region*'s page, which pinning does
 not rewrite, and cites nothing at all when the declaration was left in a bare
 paragraph — 29 of 35 with an exact page, 6 with `page: null`. Invariant 3
 already decided that trade: a citation is right, or it is absent.
+
+### As built (ticket 06)
+
+Register **bit fields** are the derived artifact this ADR was written for: a bit
+range is not a quote, a driver is written against it, and a wrong one
+misconfigures silicon without complaining. The ticket therefore carried explicit
+permission to ship nothing. It shipped, and three clauses of this decision are
+what made that defensible.
+
+- **"A field that cannot be filled stays null and says so"**, taken all the way
+  up to the artifact. A register whose field table cannot be read keeps its
+  record with `fields: []` and a `fields_reason`; a register with no *printed*
+  width to check its ranges against publishes no fields at all, because a field
+  list nobody can check against a width is unverifiable. And the register-level
+  `access` that ticket 05 left as `""` **stays** `""`: having read the fields,
+  composing one out of `R`, `R/W` and `R` would be a derived value no page
+  states.
+- **"Any consumer that sorts or compares must report its unparsed population"**,
+  as *coverage*. `unaccounted_bits` lists the bits of the register width that no
+  field claims, and `RegisterSet.n_field_sets` plus a manifest warning says how
+  many registers publish a set at all (measured: 28 of 35, in each of LMX1204's
+  two documents). A field list that covers 12 of 16 bits says which four it does
+  not.
+- **"Enforcement is a test, not a convention"**, at its strongest form yet. The
+  gate hand-verifies five registers field by field off the printed pages and then
+  walks **every** published field of both documents, requiring the quartet the
+  page prints — bit range, name, access, reset, in that order — to appear in that
+  page's text. 232 fields, 232 hits. A range read off the wrong row cannot appear
+  as a run of the printed page, so "no wrong bit ranges" is measured rather than
+  asserted.
+
+Two decisions the ADR implied and this ticket had to make explicit:
+
+- **A refusal is per artifact, not per field.** A field set that overlaps or
+  overflows is refused *whole*, including the fields that look fine. Measured:
+  LMX1204's own R90 table prints `15:8` and then `15:0` — a typo in the
+  document — and publishing either range would be a guess about which was meant.
+- **A gap is not a refusal.** Bits no field claims are reported rather than
+  refused, because the document may genuinely not name them and throwing away the
+  fields it *does* name would remove verifiable information to punish an
+  unverifiable absence.
+
+`CARD_VERSION` moves to `4` (and `REGISTERS_SCHEMA_VERSION` to `2`), for the
+third time and the same reason: two new derived values per register that no other
+gate can see. The limits that came with the ship are recorded in
+`KNOWN_SHORTCOMINGS.md`, including the one this ADR would otherwise hide — the
+geometric bit-diagram route has no real document to gate it, because neither
+reference document prints that shape.

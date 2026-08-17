@@ -27,6 +27,16 @@ What is asserted here, and nowhere else:
   and a caller can print;
 - every register's reset traces back to text printed on the page it cites;
 - the golden set verifies at 100% on all four of its tables.
+
+**Ticket 06's accuracy gate lives here too** (`TestBitFieldAccuracy` onward),
+against the same two documents, because it is the same corpus and the fields
+are published on the very records above. That gate is the one this phase was
+least willing to fake: it hand-verifies five registers field by field off the
+printed pages, and then walks **every** published field of both documents and
+requires its printed quartet — bit range, name, access, reset — to appear on the
+page the field cites. A wrong bit range cannot survive that walk, which is the
+whole point: the ticket's instruction was to ship nothing rather than something
+approximate.
 """
 
 from __future__ import annotations
@@ -54,6 +64,64 @@ PART = "LMX1204"
 #: Measured on both printed summaries (Table 1-1 of SNAU269A, Table 7-1 of
 #: SNAS800B): the same 35 registers, 0x0 through 0x5A.
 N_REGISTERS = 35
+
+#: Measured, ticket 06, identically in both documents: 28 of the 35 registers
+#: publish a validated bit-field set, 116 fields in all. Of the seven that do
+#: not, six print a field table the layout floor's reconstruction gate rejected
+#: (R7, R8, R9, R16, R72, R86) and one — R90 — prints a field table whose own
+#: ranges overlap, which is a typo in the document and a refusal here.
+N_FIELD_SETS = 28
+N_FIELDS = 116
+NO_FIELDS = ("R7", "R8", "R9", "R16", "R72", "R86", "R90")
+
+#: Hand-verified against the printed pages of SNAU269A — the ticket's accuracy
+#: sample, read cell by cell off pp. 4, 5 and 19 and reproduced here as
+#: `(bit range, field name, access, reset)` in printed order. Every field of
+#: every one of these registers must match **exactly**: no partial credit.
+#:
+#: `R25`'s 5:3 name is two printed lines (`CLK_DIV` over `CLK_MULT`, aliases for
+#: one field), which extraction glues with a space — the convention this repo
+#: applies to every wrapped cell, and deliberately not "fixed" here.
+HAND_VERIFIED = {
+    "R0": [  # p.4
+        ("15:3", "RESERVED", "R", "0x0000"),
+        ("2", "POWERDOWN", "R/W", "0x0"),
+        ("1", "RESERVED", "R/W", "0x0"),
+        ("0", "RESET", "R/W", "0x0"),
+    ],
+    "R2": [  # p.4
+        ("15:11", "RESERVED", "R", "0x00"),
+        ("10", "RESERVED", "R/W", "0x0"),
+        ("9:6", "SMCLK_DIV_PRE", "R/W", "0x8"),
+        ("5", "SMCLK_EN", "R/W", "0x1"),
+        ("4:0", "RESERVED", "R/W", "0x03"),
+    ],
+    "R3": [  # p.5
+        ("15", "CH3_EN", "R/W", "0x1"),
+        ("14", "CH2_EN", "R/W", "0x1"),
+        ("13", "CH1_EN", "R/W", "0x1"),
+        ("12", "CH0_EN", "R/W", "0x1"),
+        ("11", "LOGIC_MUTE_CAL", "R/W", "0x1"),
+        ("10", "CH3_MUTE_CAL", "R/W", "0x1"),
+        ("9", "CH2_MUTE_CAL", "R/W", "0x1"),
+        ("8", "CH1_MUTE_CAL", "R/W", "0x1"),
+        ("7", "CH0_MUTE_CAL", "R/W", "0x1"),
+        ("6:3", "RESERVED", "R/W", "0x0"),
+        ("2:0", "SMCLK_DIV", "R/W", "0x6"),
+    ],
+    "R24": [  # p.19
+        ("15:14", "RESERVED", "R", "0x0"),
+        ("13:12", "RESERVED", "R/W", "0x0"),
+        ("11:1", "rb_TEMPSENSE", "R", "0x7FF"),
+        ("0", "EN_TS_COUNT", "R/W", "0x0"),
+    ],
+    "R25": [  # p.19
+        ("15:7", "RESERVED", "R/W", "0x004"),
+        ("6", "CLK_DIV_RST", "R/W", "0x0"),
+        ("5:3", "CLK_DIV CLK_MULT", "R/W", "0x2"),
+        ("2:0", "CLK_MUX", "R/W", "0x1"),
+    ],
+}
 
 
 @pytest.fixture(scope="module")
@@ -253,6 +321,183 @@ class TestRegisterLookup:
         assert Retriever.for_part(gate.part_dir).register_gap() == ""
 
 
+def _by_name(gate, prefix: str = "register_map-") -> dict:
+    """`{acronym: record}` for one of the part's two documents."""
+    return {
+        r.name: r
+        for doc in CorpusIndex.load(gate.part_dir).docs
+        for r in doc.registers
+        if doc.name.startswith(prefix)
+    }
+
+
+class TestBitFieldAccuracy:
+    """Ticket 06's gate: 100% on a hand-verified sample, or nothing ships."""
+
+    @pytest.mark.parametrize("register", sorted(HAND_VERIFIED))
+    def test_every_field_of_a_hand_verified_register_matches_exactly(
+        self, gate, register
+    ):
+        """Name, bit range, access and reset, field for field, in printed order.
+
+        No partial credit and no subset: the published list must be exactly the
+        printed one, so a missing field fails as loudly as a wrong one.
+        """
+        record = _by_name(gate)[register]
+        published = [
+            (f.bits.verbatim, f.name, f.access, f.reset) for f in record.fields
+        ]
+        assert published == HAND_VERIFIED[register], register
+
+    @pytest.mark.parametrize("register", sorted(HAND_VERIFIED))
+    def test_the_parsed_endpoints_agree_with_the_printed_range(self, gate, register):
+        for field in _by_name(gate)[register].fields:
+            hi, lo = field.bits.hi, field.bits.lo
+            assert hi is not None and lo is not None and hi >= lo, field
+            printed = f"{hi}:{lo}" if hi != lo else f"{hi}"
+            assert printed == field.bits.verbatim, field
+
+    def test_the_same_registers_read_identically_out_of_the_datasheet(self, gate):
+        """The two documents print the same register map, so the fields must be
+        the same — read out of a 72-page datasheet and a 25-page programmer's
+        guide by the same rules."""
+        datasheet, regmap = _by_name(gate, "datasheet-"), _by_name(gate)
+        for register in sorted(HAND_VERIFIED):
+            assert [
+                (f.bits.verbatim, f.name, f.access, f.reset)
+                for f in datasheet[register].fields
+            ] == HAND_VERIFIED[register], register
+            assert datasheet[register].width == regmap[register].width == 16
+
+    def test_every_published_field_is_printed_on_the_page_it_cites(self, gate):
+        """The invariant-8 walk for bit fields, over **all** of them.
+
+        For every published field of both documents, the quartet the page prints
+        — bit range, field name, access, reset, in that order — must appear in
+        the text of the page the field cites. That is what makes "no wrong bit
+        ranges" a measurement rather than a hope: a range read off the wrong
+        row, or a name paired with another row's access, cannot appear as a run
+        of the printed page.
+        """
+        from datasheet_analyzer.extract.pdf_structure import page_texts
+
+        pages = {"register_map-": page_texts(REGISTER_MAP),
+                 "datasheet-": page_texts(DATASHEET)}
+        checked = 0
+        for doc in CorpusIndex.load(gate.part_dir).docs:
+            prefix = next((p for p in pages if doc.name.startswith(p)), "")
+            if not prefix:
+                continue
+            texts = pages[prefix]
+            for record in doc.registers:
+                for field in record.fields:
+                    assert field.page is not None, (record.name, field.name)
+                    assert 0 < field.page <= len(texts)
+                    printed = " ".join(texts[field.page - 1].split())
+                    quartet = " ".join(
+                        part
+                        for part in (
+                            field.bits.verbatim, field.name, field.access, field.reset
+                        )
+                        if part
+                    )
+                    assert quartet in printed, (
+                        f"{doc.name}/{record.name}: {quartet!r} is not printed on "
+                        f"p.{field.page}"
+                    )
+                    checked += 1
+        assert checked == 2 * N_FIELDS, checked
+
+
+class TestBitFieldCoverageIsReported:
+    def test_both_documents_publish_the_same_field_sets(self, gate):
+        for prefix in ("register_map-", "datasheet-"):
+            records = _by_name(gate, prefix)
+            with_fields = [r for r in records.values() if r.fields]
+            assert len(with_fields) == N_FIELD_SETS, prefix
+            assert sum(len(r.fields) for r in with_fields) == N_FIELDS, prefix
+
+    def test_every_published_set_tiles_its_register_with_no_gap(self, gate):
+        """Coverage is checkable, and here it is checked: 16 bits, once each."""
+        for record in _by_name(gate).values():
+            if not record.fields:
+                continue
+            assert record.width == 16, record.name
+            claimed = [
+                bit
+                for field in record.fields
+                for bit in range(field.bits.lo, field.bits.hi + 1)
+            ]
+            assert sorted(claimed) == list(range(16)), record.name
+            assert record.unaccounted_bits == [], record.name
+
+    def test_a_register_with_no_readable_fields_is_kept_and_says_why(self, gate):
+        records = _by_name(gate)
+        assert set(NO_FIELDS) == {n for n, r in records.items() if not r.fields}
+        for name in NO_FIELDS:
+            record = records[name]
+            assert record.fields_reason, name
+            # ...and the register itself is intact: address, reset, page
+            assert record.address.value is not None and record.reset is not None
+
+    def test_the_documents_own_overlapping_table_is_refused(self, gate):
+        """R90 prints `15:8` and then `15:0` (SNAU269A p.24) — a typo in the
+        document. Publishing either field would be a guess about which range
+        was meant, so the whole set is refused and the reason says so."""
+        record = _by_name(gate)["R90"]
+        assert record.fields == []
+        assert "claim bit 8" in record.fields_reason
+        assert "15:8" in record.fields_reason and "15:0" in record.fields_reason
+
+    def test_the_set_says_out_loud_how_many_registers_publish_fields(self, gate):
+        warnings = gate.manifest.derived_warnings
+        assert any(
+            f"bit fields published for {N_FIELD_SETS} of {N_REGISTERS} registers" in w
+            for w in warnings
+        ), warnings
+
+    def test_every_field_set_grades_medium(self, gate):
+        """Both documents' field tables only pass the layout floor's gate on a
+        rescue split, and a rescued grid that nonetheless tiles the register is
+        `medium`: program against it, and confirm on the printed page."""
+        grades = {
+            record.fields_confidence.value
+            for record in _by_name(gate).values()
+            if record.fields
+        }
+        assert grades == {"medium"}
+
+
+class TestBitFieldLookup:
+    def test_a_field_name_finds_the_register_it_lives_in(self, gate):
+        hits = Retriever.for_part(gate.part_dir).registers(field="CLK_MUX")
+        assert {h.record.name for h in hits} == {"R25"}
+        assert {h.matched_via for h in hits} == {"field"}
+        # both documents print it, and each hit cites its own
+        assert len({h.citation.doc for h in hits}) == 2
+
+    def test_a_field_no_register_publishes_is_no_hit_rather_than_a_guess(self, gate):
+        assert Retriever.for_part(gate.part_dir).registers(field="NCO_EN") == []
+
+    def test_a_field_lookup_states_the_registers_it_could_not_consider(self, gate):
+        """Invariant 8's honesty clause for a filter on a derived value: seven
+        registers per document publish no fields, so a field lookup across this
+        part's two documents cannot establish that a field does not exist."""
+        gap = Retriever.for_part(gate.part_dir).register_field_gap()
+        assert f"{2 * len(NO_FIELDS)} of {2 * N_REGISTERS} registers" in gap
+        assert "cannot establish that a field does not exist" in gap
+
+    def test_the_json_view_carries_the_bits_both_ways(self, gate):
+        (hit, *_) = Retriever.for_part(gate.part_dir).registers(name="R25")
+        payload = hit.as_dict()
+        assert payload["width"] == 16
+        assert payload["fields"][3]["name"] == "CLK_MUX"
+        assert payload["fields"][3]["bits"] == {
+            "verbatim": "2:0", "hi": 2, "lo": 0, "derivation": "parse_bit_range"
+        }
+        assert payload["fields_unaccounted_for"] == []
+
+
 class TestGoldenSet:
     """The ticket's own gate: the golden questions verify at 100%."""
 
@@ -279,7 +524,9 @@ class TestGoldenSet:
         assert summary["failed"] == 0, render_verification_report(results)
 
         reg_results = verify_reg_queries(questions, gate.part_dir)
-        assert len(reg_results) >= 3, "address->name, decimal->name, name->reset"
+        assert len(reg_results) >= 4, (
+            "address->name, decimal->name, name->reset, name->bit field"
+        )
         assert [r.id for r in [q.question for q in reg_results if not q.ok]] == [], (
             render_reg_query_report(reg_results)
         )

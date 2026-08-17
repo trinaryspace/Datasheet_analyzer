@@ -123,8 +123,25 @@ travels beside the string, and why a cell the grammar cannot read keeps the
 string and publishes no integer rather than a guessed one. A register the
 document states no reset or access for has none — never a zero, never `R/W`.
 A part with no readable register summary has no registers rather than some of
-them.
+them. Where the document also prints the register's own field table, the
+register carries its **bit fields** and the width they were checked against;
+where it does not, or where that table could not be trusted, the register says so
+and carries none.
 _Avoid_: field, bit, setting, parameter, address
+
+**Bit field**:
+One named span of bits inside one register: the name the document printed, the
+bits it occupies — as printed *and* as a `hi`/`lo` pair — the printed access
+code, the printed reset value, and the description. It is the unit a driver is
+written against, which is why it is the one artifact here that is absent rather
+than approximate: a wrong bit range compiles, runs, and misconfigures silicon
+silently. So a field set is published only once it has been checked against the
+register's width and holds no overlap and no overflow; a set that fails is
+refused **whole**, with a recorded reason, and the register keeps its record with
+no fields rather than disappearing. `RESERVED` is a field like any other — the
+document printed it — and bits no field claims are listed rather than assumed, so
+a field list's coverage of the register is checkable by reading it.
+_Avoid_: bit, flag, mask, bitmask, register bit
 
 **Search index**:
 The precomputed inverted index of one document's section files

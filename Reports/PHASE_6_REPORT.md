@@ -517,3 +517,192 @@ The `find_register` MCP tool named in the ticket's prose is deferred to ticket
 `find_pin` also went: the MCP server today registers nine tools and neither
 device-table consumer among them, so adding one of the two in isolation would
 split that surface across two tickets for no gain.
+
+## Ticket 06 — register bit fields (gated; **shipped**)
+
+The ticket that was allowed to ship nothing. It ships, and what earns that is
+the gate below: a hand-verified sample at 100%, plus a page-truth walk over
+**every** published field. Wrong bit positions are worse than absent ones, so
+the rules here are refusals, and the seven registers that publish no fields are
+recorded in `KNOWN_SHORTCOMINGS.md` rather than smoothed over.
+
+### What the reference document actually prints
+
+The plan describes shape (b) as "a bit-position header row (`7 6 5 4 3 2 1 0`)
+over field-name cells that span columns". Neither reference document prints
+that. Both — SNAU269A (the programmer's guide) and SNAS800B §7 (the datasheet) —
+print a per-register **field table**:
+
+| Bit | Field | Type | Reset | Description |
+|---|---|---|---|---|
+| 15:3 | RESERVED | R | 0x0000 | Reserved (not used). |
+| 2 | POWERDOWN | R/W | 0x0 | Sets the device in a low-power state. |
+
+So both shapes are implemented, and only one of them has a real document to gate
+against:
+
+| Route | The bit range comes from | Gated on |
+|---|---|---|
+| `bit-column` | the printed cell, anchored (`parse_bit_range`) | LMX1204's two documents, field by field |
+| `bit-diagram` | **geometry**: which columns of the bit header row a field cell spans (`bit_header_span`) | synthetic PDFs through the real layout floor + hand-built grids (recorded shortcoming #2) |
+
+A field table is read through the **device-table abstraction** — a third kind
+(`bitfield`) in `registry/device_tables.yaml`, keyed by `bit` — which makes this
+the third consumer of ticket 03's machinery. It needed two new lexicon switches,
+both data:
+
+- `wrap_keys: false` — a pin row wraps its comma-separated *name list* over
+  several printed lines, so a continuation line's key cell may add pins. A bit
+  range is one token and never wraps, so the only thing a continuation line's
+  bit cell can hold is ticket 09's rowspan fill — measured, the **next** field's
+  range — and reading it as a key would publish a field with the wrong bits.
+- `key_shape_min: 0.25` — the only lowered bar in the lexicon. A field table's
+  region routinely sweeps up the navigation line printed under it (`R12 is shown
+  in Table 1-13. Return to the Summary Table.`), and on a two-field register
+  those two lines are half the rows: at the default 0.6 every field of every
+  small register was thrown away. It is safe *here* because a bit-field set has a
+  stronger validation than any ratio — it must tile the register's width — which
+  no prose row can pass.
+
+### The artifact
+
+`registers.json` gains bit fields on the records it already publishes (schema
+version 1 → **2**, `CARD_VERSION` 3 → **4**), because a bit field is only
+meaningful as part of a register:
+
+| Field | Source |
+|---|---|
+| `fields[].name` / `access` / `reset` / `description` | the field row's printed cells, verbatim |
+| `fields[].bits` | `verbatim` as printed, plus `hi`/`lo` from `parse_bit_range` or `bit_header_span` — the rule travels on the value |
+| `fields[].page` / `row_verbatim` | the printed page and row, so one field is as citable as one register |
+| `width` + `width_evidence` + `width_derivation` | the register's printed reset word: `0x0000` is four hex digits, so 16 bits |
+| `unaccounted_bits` | bits of that width no field claims — the checkable half of "reserved and unnamed ranges are represented honestly" |
+| `fields_reason` | why `fields` is empty, when it is |
+| `fields_confidence` | complete + header-declared grid `high`, complete + rescued grid `medium`, anything with unaccounted bits `low` |
+
+Four refusals define it. **No width, no fields** — a field list nobody can check
+against a width is unverifiable. **Overlap or overflow refuses the whole set**,
+never the good half of it. **A gap is published, not refused**, because the
+document may simply not name those bits and throwing away the fields it does name
+would be worse. And **a register is never dropped**: it keeps its summary
+record, `fields: []`, and the reason.
+
+One repair was needed to read the real document, and it is deliberately hard to
+trigger: the layout floor sometimes merges a field table's header line with its
+first data line, cell by cell (`Bit 15:13`, `Field RESERVED`, `Type R`). Five of
+the 35 registers land that way, and for three of them the merged line is the
+register's *only* field. `_unglue_header_row` splits those cells back apart only
+when at least two are a lexicon header phrase plus more text, one of them is the
+bit column, **and the bit column's remainder reads as a bit range** — otherwise
+the table is read exactly as it came.
+
+### Measured, LMX1204 (both documents)
+
+| | datasheet (SNAS800B) | register map (SNAU269A) |
+|---|---:|---:|
+| Registers published | 35 | 35 |
+| Registers with a validated field set | 28 | 28 |
+| Fields published | 116 | 116 |
+| Field sets tiling their register exactly | 28 | 28 |
+| Registers with `fields: []` + a recorded reason | 7 | 7 |
+| Field-set grades | 28 medium | 28 medium |
+| Fields whose printed quartet is on the page they cite | 116 / 116 | 116 / 116 |
+
+Every published set covers its 16 bits once each, so `unaccounted_bits` is empty
+on all 28 — the gap-reporting path is exercised by test rather than by this
+document. All 56 sets grade `medium`: these field tables only ever pass the
+layout floor's gate on a *rescue* split, and a rescued grid that nonetheless
+tiles a register is trustworthy in a way a rescued spec row is not, so the rule
+says `medium` ("program against it, confirm on the page") rather than the `low` a
+spec row would get. The seven registers with no fields are R7, R8, R9, R16, R72
+and R86 — their field tables were rejected by the reconstruction gate, six of the
+seven candidates it rejected in that document — and **R90**, whose printed table
+states `15:8` and then `15:0`. That is a typo in the document; the set is refused
+whole rather than the corpus guessing which range was meant.
+
+### The accuracy gate
+
+`tests/integration/test_phase6_registers.py`, against the same two-document
+corpus ticket 05 built:
+
+1. **Hand-verified sample, 100%, no partial credit.** R0, R2, R3, R24 and R25 —
+   28 fields read cell by cell off the printed pages (4, 5, 19) and checked as an
+   exact list: name, bit range, access, reset, in printed order. A missing field
+   fails as loudly as a wrong one, and the same five registers are checked again
+   in the datasheet's own copy of the register map.
+2. **A page-truth walk over all of them.** For every published field of both
+   documents, the quartet the page prints — bit range, name, access, reset, in
+   that order — must appear in the text of the page the field cites. 232 fields,
+   232 hits. A range read off the wrong row, or a name paired with another row's
+   access, cannot appear as a run of the printed page, which is what makes "no
+   wrong bit ranges" a measurement rather than a hope.
+3. **The refusals, on the real document.** R90's overlap; the seven registers
+   that keep their record and their reason; every published set tiling its width.
+4. **A golden question.** `r4-name-to-bit-field` (`{name: R25}` → `CLK_MUX`,
+   `2:0`, `0x1`, cited p.2 + p.19) joins the LMX1204 set, which stays at 100%:
+   **10/10 text, 4/4 register, 1/1 ask, 1/1 search**. `evalh` now matches golden
+   substrings against a register's field names, bit ranges, access codes and
+   resets, so a field set that silently stopped publishing fails the benchmark.
+
+### Surface
+
+`dsa regs --field CLK_MUX` answers "which register holds this bit field", and
+`--name` / `--addr` print the register's fields under it (a 35-row listing does
+not — the fields are the answer only when one register is). A register whose
+field set was refused prints `(no bit fields published: <reason>)` rather than
+looking like a register with nothing to configure.
+
+`--field` is the phase's first filter that *selects* on a derived value, so it
+carries invariant 8's honesty clause: `Retriever.register_field_gap()` states the
+population it could not consider — "14 of 70 registers in the corpus for part
+LMX1204 publish no bit fields (R7, R8, R9, R16, R72, R86, …); each says why in
+its own `fields_reason`. A bit-field lookup here cannot establish that a field
+does not exist." — and `dsa regs --field` prints it on stderr whether or not
+there were hits. It is deliberately *not* a `register_gap()`-style refusal: the
+register map is there and answers by address and name, so the note goes beside
+the result instead of replacing it. `RegisterHit.as_dict()`
+carries `width`, `fields`, `fields_unaccounted_for`, `fields_reason` and
+`fields_confidence`, so a JSON caller can tell "no fields printed anywhere" from
+"this table was refused". The MCP `find_register` tool stays deferred to ticket
+10, with `find_pin`.
+
+### Contract points asserted by test
+
+`tests/unit/test_bitfields.py` (81) is the rule test; the gate above adds 21 to
+`tests/integration/test_phase6_registers.py` (13 → 34).
+
+- `parse_bit_range` on every printed form (`15:3`, `2`, `[3]`, `[15:8]`, `7..0`)
+  and on eleven strings it must refuse — including the inverted `3:15`, the
+  three-digit `150`, and `R2 is shown in`, the navigation line a region sweeps
+  up.
+- `register_width` from a hex reset word only; a decimal reset publishes **no**
+  fields, with a reason, and the register keeps its reset.
+- Overlap, overflow, a gap, no field table, two tables claiming one register, a
+  caption contradicting its preamble, a positionally-mapped table, a table of
+  prose — each with its own reason, and none of them publishing a partial set.
+- The wrapped-row rule: a continuation line extends the description above it,
+  and its rowspan-filled bit cell never becomes a field.
+- The glued-header repair: recovered as data; not fired when the bit column is a
+  plain header; not fired when the remainder is not a bit range.
+- The diagram route through the real layout floor: the header run and span row
+  the floor hands back, a cell spanning four columns, unnamed leading columns
+  becoming unaccounted bits, two stacked header runs, a non-descending header row
+  refusing, a cell outside the numbered columns refusing.
+- Set-level honesty: `n_field_sets`, the "28 of 35" warning, the unread-row
+  count, an orphan field table naming no listed register, and **silence** when
+  the document prints no field table at all (an absence in the document is not a
+  finding about the extraction — ticket 04's stance on a pin-less datasheet).
+- The round trip: `registers.json` at schema version 2 with fields, width and
+  coverage; `CorpusIndex` reading them back field for field; `registers_current`
+  in the skip gate.
+
+### Not built here
+
+Composing a register-level `access` out of its fields' access codes. Ticket 05
+left `access: ""` for LMX1204 and called it ticket 06's shape; having read the
+fields, the answer is that it stays absent. A register whose fields are `R`,
+`R/W` and `R` has no single printed access, and inventing one — "mixed", or the
+majority, or the widest — would be a derived value **no page states**, which is
+precisely what ADR 0005 forbids. The fields' own access codes are published
+verbatim beside their bit ranges, which is where the document puts them.
+

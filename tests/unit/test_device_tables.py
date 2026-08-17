@@ -46,7 +46,9 @@ from datasheet_analyzer.models import (
     TableBlock,
 )
 from datasheet_analyzer.structure.device_tables import (
+    BITFIELD,
     HEADER_ROW_INDEX,
+    KEY_SHAPE_MIN,
     LEXICON_PATH,
     PIN,
     REGISTER,
@@ -171,15 +173,24 @@ def _raw(sections: list[SectionNode], extractor: str = "pdf_layout") -> RawDocum
 class TestLexiconIsCheckedInData:
     """Criterion 1: adding a header variant is a data change, not a code change."""
 
-    def test_the_shipped_lexicon_describes_both_kinds(self):
+    def test_the_shipped_lexicon_describes_every_kind_that_has_a_consumer(self):
+        """Two kinds at ticket 03, three once ticket 06's bit fields joined."""
         lexicon = load_device_lexicon()
-        assert lexicon.kinds == (PIN, REGISTER)
+        assert lexicon.kinds == (PIN, REGISTER, BITFIELD)
         pin, register = lexicon.by_kind(PIN), lexicon.by_kind(REGISTER)
-        assert pin is not None and register is not None
-        assert (pin.key_field, register.key_field) == ("pin", "address")
+        bitfield = lexicon.by_kind(BITFIELD)
+        assert pin is not None and register is not None and bitfield is not None
+        assert (pin.key_field, register.key_field, bitfield.key_field) == (
+            "pin", "address", "bit",
+        )
         # the two behavioural switches the plan calls out, as data
         assert pin.expand_key and not pin.monotonic_key
         assert register.monotonic_key and not register.expand_key
+        # ...and the two ticket 06 added, also as data: a bit range never wraps
+        # onto a second printed line, and a field set is validated by tiling the
+        # register's width rather than by a key-shape ratio.
+        assert pin.wrap_keys and not bitfield.wrap_keys
+        assert bitfield.key_shape_min < pin.key_shape_min == KEY_SHAPE_MIN
 
     def test_every_word_the_abstraction_matches_on_comes_from_the_lexicon(self):
         """A lexicon of words this repo has never printed still works, which is

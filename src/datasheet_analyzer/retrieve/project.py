@@ -116,7 +116,7 @@ class ProjectRetriever:
         )
 
     def registers(
-        self, *, addr: str = "", name: str = "", q: str = ""
+        self, *, addr: str = "", name: str = "", field: str = "", q: str = ""
     ) -> list[RegisterHit]:
         """Every member's register map, filtered the same way, in member order.
 
@@ -127,7 +127,7 @@ class ProjectRetriever:
         return [
             hit
             for member in self.members
-            for hit in member.registers(addr=addr, name=name, q=q)
+            for hit in member.registers(addr=addr, name=name, field=field, q=q)
         ]
 
     def register_gap(self) -> str:
@@ -143,6 +143,17 @@ class ProjectRetriever:
         return (
             f"no part of project {self.name} ({parts}) published a register "
             "summary — a register lookup across this design establishes nothing."
+        )
+
+    def register_field_gap(self) -> str:
+        """Every member's bit-field gap, one line each, in membership order.
+
+        The counts are per part and stay per part: "7 of 35" means nothing merged
+        across two devices, and a design-wide number would hide which device it
+        was about.
+        """
+        return "\n".join(
+            gap for gap in (m.register_field_gap() for m in self.members) if gap
         )
 
     def plots(

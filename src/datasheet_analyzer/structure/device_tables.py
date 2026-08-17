@@ -50,7 +50,10 @@ Four rules are load-bearing and deliberate:
   everything else stays a duplicate and rejects the table. A comma is the only
   marker precisely because it is the only one that cannot end a mnemonic —
   `VREF+` and `RESET-` are finished names, and reading the next line as their
-  continuation would fuse two pins into one and quietly drop a pin.
+  continuation would fuse two pins into one and quietly drop a pin. A kind whose
+  key cannot wrap says so (`wrap_keys: false`, ticket 06's bit fields): a bit
+  range is one token, so the only key a continuation line of *that* table can
+  hold is the rowspan fill — a neighbour's range — and it contributes text only.
 - **Multi-value key cells expand.** `A1, A2, B1` and `A1-A4` are four pins that
   happen to share a row, and a designer grepping for `A3` must find it. Every
   expanded record keeps its source row's provenance and the cell as printed
@@ -94,11 +97,12 @@ log = logging.getLogger(__name__)
 
 LEXICON_PATH = Path(__file__).resolve().parent.parent / "registry" / "device_tables.yaml"
 
-#: The two kinds the shipped lexicon defines. They are *data* — a third kind is
-#: a YAML entry — and these names exist so a consumer can ask for one by name
-#: without spelling a string the lexicon owns.
+#: The three kinds the shipped lexicon defines. They are *data* — a fourth kind
+#: is a YAML entry — and these names exist so a consumer can ask for one by
+#: name without spelling a string the lexicon owns.
 PIN = "pin"
 REGISTER = "register"
+BITFIELD = "bitfield"
 
 #: How many of a kind's fields a header row must name before the header route
 #: claims the table — the key column plus at least one more. One column is not
@@ -109,6 +113,8 @@ MIN_HEADER_FIELDS = 2
 #: The share of keyed rows whose key cell must actually look like a key. Below
 #: it the "table" is prose that happens to be laid out in columns, and it is
 #: rejected — the device-table half of the no-hallucinated-tables guarantee.
+#: A kind may lower its own bar (`key_shape_min:` in the lexicon) when it has a
+#: stronger validation of its own; nothing may raise it silently.
 KEY_SHAPE_MIN = 0.6
 
 #: The largest key range one cell may expand into. A pin row spanning more than
@@ -160,6 +166,29 @@ _RANGE_RE = re.compile(r"^(?P<lo>[A-Za-z]*\d+)\s*(?:-|to|through)\s*(?P<hi>[A-Za
 _DESIGNATOR_RE = re.compile(r"^(?P<alpha>[A-Za-z]*)(?P<digits>\d+)$")
 
 
+def _key_shape_min(kind: str, value: object) -> float:
+    """A kind's key-shape bar, refusing anything but a share below the default.
+
+    A lexicon may only ever *lower* it, and only to a fraction: raising it here
+    would silently tighten a rule the module documents, and a value outside
+    `0..KEY_SHAPE_MIN` is a typo rather than an intention.
+    """
+    if value is None:
+        return KEY_SHAPE_MIN
+    try:
+        share = float(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        log.warning("device-table entry %r: key_shape_min %r is not a number", kind, value)
+        return KEY_SHAPE_MIN
+    if not 0.0 < share <= KEY_SHAPE_MIN:
+        log.warning(
+            "device-table entry %r: key_shape_min %r is outside (0, %s] — using %s",
+            kind, value, KEY_SHAPE_MIN, KEY_SHAPE_MIN,
+        )
+        return KEY_SHAPE_MIN
+    return share
+
+
 def normalize_header(text: str) -> str:
     """A header cell reduced to the form the lexicon is keyed on.
 
@@ -192,6 +221,23 @@ class DeviceSpec:
     #: identifies a row gets every printed line as its own record, exactly as
     #: before.
     identity_field: str = ""
+    #: Whether a wrapped continuation line's key cell may contribute keys to the
+    #: entry above (`wrap_keys:` in the lexicon). True is the pin reading: a pin
+    #: row wraps its comma-separated *name and number list* over several printed
+    #: lines, and those numbers are pins. False is for a kind whose key cannot
+    #: wrap — a bit range is one token — where the only thing a continuation
+    #: line's key cell can hold is ticket 09's rowspan fill, and reading it as a
+    #: key would attach one entry's text to another entry's key.
+    wrap_keys: bool = True
+    #: The share of this kind's rows whose key cell must look like a key
+    #: (`key_shape_min:` in the lexicon; `KEY_SHAPE_MIN` by default). A kind may
+    #: lower it only when it validates its record set by something stronger:
+    #: ticket 06's bit fields have to tile the register's width with no overlap
+    #: and no overflow, which a prose row cannot do, so for that kind the
+    #: ratio's only job — keeping prose-in-columns out — is already done, while
+    #: the *trailing* navigation line a field table's region routinely sweeps up
+    #: would otherwise throw away every field of a four-row register.
+    key_shape_min: float = KEY_SHAPE_MIN
 
     def field_for_header(self, header: str) -> str:
         """The field a header cell names, or `""` when the lexicon has no entry.
@@ -320,6 +366,8 @@ class DeviceLexicon:
                     kind=str(kind).strip().lower(),
                     key_field=key_field,
                     identity_field=identity_field,
+                    wrap_keys=bool(body.get("wrap_keys", True)),
+                    key_shape_min=_key_shape_min(kind, body.get("key_shape_min")),
                     fields=tuple(str(name) for name in columns),
                     headers=headers,
                     captions=tuple(str(c) for c in captions),
@@ -759,9 +807,15 @@ class _Entry:
         records out of a line break. Text appends field by field, so a
         description broken over four lines reads back as the sentence the page
         prints.
+
+        A kind whose key cannot wrap (`wrap_keys: false`) takes **no** key from
+        a continuation line at all: the only thing that cell can hold is the
+        rowspan fill, which is a neighbour's key, and attaching this entry's
+        text to it would publish a record whose key and body were never printed
+        together.
         """
         have = {key for _row, _cell, key in self.keys}
-        for key in keys:
+        for key in keys if spec.wrap_keys else ():
             if spec.key_shaped(key) and key not in have:
                 self.keys.append((row_index, cell.strip(), key))
                 have.add(key)
@@ -938,7 +992,7 @@ def _validate(spec: DeviceSpec, records: list[DeviceRecord], unkeyed: list[int])
         )
 
     shaped = sum(1 for record in records if spec.key_shaped(record.key))
-    if shaped / len(records) < KEY_SHAPE_MIN:
+    if shaped / len(records) < spec.key_shape_min:
         odd = next(record.key for record in records if not spec.key_shaped(record.key))
         return (
             f'{spec.key_field} column does not hold {spec.kind} keys '

@@ -44,8 +44,15 @@ Access is deliberately *not* derived. LMX1204 — both its datasheet and its
 programmer's guide — prints access per **bit field**, in the per-register field
 tables, and states no register-level access anywhere; `access` is therefore
 verbatim from a summary-table access column when the document prints one, and
-`""` when it does not. Composing a register's access out of its fields' is a
-question about bit fields, which is ticket 06's shape.
+`""` when it does not. Composing a register's access out of its fields' would
+still be a derivation nobody printed, so ticket 06 does not do it either: it
+publishes the **fields'** own access verbatim, beside their bit ranges.
+
+Ticket 06 attaches those bit fields here (`structure/bitfields.py` reads and
+validates them), which is why they live on `RegisterRecord` rather than in a
+file of their own: a bit field is only meaningful as part of a register, and a
+register whose fields could not be read must still be published — with
+`fields: []` and a recorded reason — rather than dropped.
 """
 
 from __future__ import annotations
@@ -64,6 +71,7 @@ from datasheet_analyzer.models import (
     TableBlock,
 )
 from datasheet_analyzer.provenance import register_record_id
+from datasheet_analyzer.structure.bitfields import attach_fields, field_table_register
 from datasheet_analyzer.structure.confidence import grade_register_record
 from datasheet_analyzer.structure.device_tables import (
     REGISTER,
@@ -107,11 +115,9 @@ _DECLARATION_RE = re.compile(
 
 #: A field-description table's caption names the register it belongs to
 #: (`Table 1-3. R0 Register Field Descriptions`), which is how a declaration
-#: found in a bare paragraph gets a page to cite.
-_FIELD_TABLE_RE = re.compile(
-    r"(?:^|[^A-Za-z0-9_])(?P<name>[A-Za-z][A-Za-z0-9_]*)\s+register\s+field",
-    re.IGNORECASE,
-)
+#: found in a bare paragraph gets a page to cite. The reading itself lives in
+#: `structure/bitfields.py` (`field_table_register`), which joins the same
+#: caption to the same register for its fields: one caption, one reading.
 
 
 def parse_register_word(text: str) -> int | None:
@@ -231,11 +237,11 @@ def _field_table_pages(raw: RawDocument) -> dict[str, int]:
     seen: dict[str, set[int]] = {}
     for section in raw.sections:
         for table in section.tables:
-            match = _FIELD_TABLE_RE.search(normalize_text(table.caption))
+            name = field_table_register(table.caption)
             page = _region_page(table)
-            if match is None or page is None:
+            if not name or page is None:
                 continue
-            seen.setdefault(match.group("name").casefold(), set()).add(page)
+            seen.setdefault(name.casefold(), set()).add(page)
     return {name: next(iter(pages)) for name, pages in seen.items() if len(pages) == 1}
 
 
@@ -265,6 +271,11 @@ def build_registerset(raw: RawDocument, part_number: str) -> RegisterSet:
     read happened) into the same `rejection_reasons` list the reconstruction
     gate writes to. The publisher is what refuses to write `registers.json` for
     a set with no registers.
+
+    Each published register then gains its **bit fields** where the document
+    prints a readable field table for it (ticket 06) and `fields: []` plus a
+    recorded reason where it does not; the coverage of that is reported in
+    `n_field_sets` and in the set's warnings, never left to be noticed.
     """
     result = read_device_tables(raw, kind=REGISTER)
     if raw.extraction_stats is not None:
@@ -281,6 +292,14 @@ def build_registerset(raw: RawDocument, part_number: str) -> RegisterSet:
     for ordinal, record in enumerate(registers):
         record.id = register_record_id(ordinal)
 
+    # Bit fields (ticket 06). Every register comes back with either a validated
+    # field set or an empty one and a recorded reason; the field tables the
+    # abstraction refused join the same `rejection_reasons` list the summary's
+    # own rejections do.
+    fields_result, field_warnings = attach_fields(registers, raw)
+    if raw.extraction_stats is not None:
+        record_rejections(raw.extraction_stats, fields_result.rejections)
+
     warnings = list(result.warnings)
     with_reset = sum(1 for record in registers if record.reset is not None)
     if registers and with_reset < len(registers):
@@ -294,12 +313,17 @@ def build_registerset(raw: RawDocument, part_number: str) -> RegisterSet:
         log.info("%s: %s", part_number, warning)
         warnings.append(warning)
 
+    for warning in field_warnings:
+        log.info("%s: %s", part_number, warning)
+    warnings.extend(field_warnings)
+
     return RegisterSet(
         schema_version=REGISTERS_SCHEMA_VERSION,
         part_number=part_number,
         doc_hash=raw.source.content_hash,
         registers=registers,
         n_reset_stated=with_reset,
+        n_field_sets=sum(1 for record in registers if record.fields),
         warnings=warnings,
     )
 

@@ -256,7 +256,8 @@ disagrees, the mismatch is recorded in the manifest and printed by
 ```bash
 dsa regs --part LMX1204 --addr 0x19        # one address -> its acronym + reset
 dsa regs --part LMX1204 --addr 25          # ...the same register, in decimal
-dsa regs --part LMX1204 --name R25         # exact acronym
+dsa regs --part LMX1204 --name R25         # exact acronym, with its bit fields
+dsa regs --part LMX1204 --field CLK_MUX    # which register holds a bit field
 dsa regs --part LMX1204 --q "SYSREF" --json
 ```
 
@@ -280,6 +281,39 @@ validation is rejected whole with a recorded reason and publishes no file, and
 a part with no register summary anywhere makes `dsa regs` say so and exit 2
 rather than return an empty list that would read as "this device has no such
 register". A register the document states no reset for prints `reset=?`.
+
+**Bit fields** ride on the same records: each register carries the fields its
+own field table prints — name, bit range (as printed *and* as `hi`/`lo`), the
+printed access code, the printed field reset and the description — plus the
+register `width` those ranges were validated against and the bits of it no
+field claims (`unaccounted_bits`). Asking for one register (`--name`, `--addr`)
+or for a field (`--field`) prints them; a 35-row listing does not.
+
+Bit fields are the one artifact here that ships **only** when it can be
+verified, because a driver written against a wrong bit range misconfigures
+silicon silently:
+
+- a field set that overlaps or overflows its register's width is **refused
+  whole** with a recorded reason — measured, LMX1204's own R90 table prints
+  `15:8` and then `15:0`, a typo in the document, and the corpus publishes
+  neither field rather than picking one;
+- a register whose fields could not be read keeps its record with `fields: []`
+  and that reason, so it is never silently absent;
+- bits no field claims are listed rather than assumed, so the coverage of a
+  field list is checkable by reading it;
+- a register with no printed width to check against publishes no fields at all.
+
+Because `--field` filters on a value the corpus *derived*, it also prints what it
+could not consider — "14 of 70 registers … publish no bit fields; a bit-field
+lookup here cannot establish that a field does not exist" — so an empty result is
+never mistaken for a device without that bit.
+
+Measured on LMX1204: **28 of 35 registers** publish a field set in each of its
+two documents (116 fields each), every one of them tiling its 16-bit register
+exactly, and every published field's printed quartet — bit range, name, access,
+reset — verified against the text of the page it cites
+(`tests/integration/test_phase6_registers.py`). The seven that publish none are
+recorded in `KNOWN_SHORTCOMINGS.md`.
 
 ### Find a plot
 
@@ -560,6 +594,17 @@ ran establishes nothing.
   --part LMX1204 --vendor unknown` + `dsa add-doc LMX1204_registermap.pdf`):
   35 registers from each of its two documents, all graded `high`, with 29 of
   35 resets citing an exact printed page and 6 honestly citing none.
+- **Bit fields are published only where they can be checked.** Each register
+  carries the fields its own field table prints (name, bit range printed *and*
+  parsed, printed access, printed field reset) together with the register width
+  the ranges were validated against and the bits no field claims. Overlap or
+  overflow **refuses the register's whole field set** with a recorded reason, a
+  register whose fields could not be read keeps `fields: []` and that reason,
+  and no width means no fields — a field list nobody can check against a width
+  is exactly the artifact this rule exists to prevent, since a wrong bit range
+  becomes a driver that misconfigures silicon without complaining. Measured on
+  LMX1204: 28 of 35 registers per document, 116 fields, each verified against
+  the printed page it cites; the gaps are recorded in `KNOWN_SHORTCOMINGS.md`.
 - **Pin tables are read from printed tables only.** Package *drawings* stay
   figure images (retrievable with `dsa plots` / the MCP `get_figure`); nothing
   reconstructs a ball map from a drawing, and no model is allowed anywhere in

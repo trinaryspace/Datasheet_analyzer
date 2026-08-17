@@ -188,7 +188,11 @@ def format_pin_hits(hits: list[PinHit], limit: int = 40, *, show_part: bool = Fa
 
 
 def format_register_hits(
-    hits: list[RegisterHit], limit: int = 40, *, show_part: bool = False
+    hits: list[RegisterHit],
+    limit: int = 40,
+    *,
+    show_part: bool = False,
+    show_fields: bool = False,
 ) -> str:
     """Render register hits: address, acronym, reset, access, citation.
 
@@ -198,6 +202,11 @@ def format_register_hits(
     — ADR 0005's "null and says so" at the surface a human reads. The limit is
     the pin renderer's, and for the same reason: a register map is long, and a
     truncated list that does not admit it is worse than a long one.
+
+    `show_fields` prints each register's bit fields underneath it (ticket 06),
+    and prints the *reason* there are none when there are none — a register
+    whose field table was refused must not look like a register with nothing to
+    configure. Bits nobody claimed are printed too, for the same reason.
     """
     if not hits:
         return "No matching registers."
@@ -213,9 +222,32 @@ def format_register_hits(
             f"(reset={reset}){access} — {hit.citation.pages}{description} "
             f"[via {hit.matched_via} · {hit.confidence}]"
         )
+        if show_fields:
+            lines.extend(_register_field_lines(hit))
     if len(hits) > limit:
         lines.append(f"... and {len(hits) - limit} more registers")
     return "\n".join(lines)
+
+
+def _register_field_lines(hit: RegisterHit) -> list[str]:
+    """The indented bit-field block under one rendered register."""
+    rec = hit.record
+    if not rec.fields:
+        return [f"    (no bit fields published: {rec.fields_reason})"]
+    width = f"{rec.width}-bit" if rec.width is not None else "unknown width"
+    lines = [f"    {width} · fields {rec.fields_confidence.value}"]
+    for record in rec.fields:
+        access = f" [{record.access}]" if record.access else ""
+        reset = f" reset={record.reset}" if record.reset else ""
+        lines.append(
+            f"    [{record.bits.verbatim}] {record.name or '(unnamed)'}"
+            f"{access}{reset} — p.{record.page if record.page is not None else '?'}"
+        )
+    if rec.unaccounted_bits:
+        lines.append(
+            f"    bits claimed by no field: {', '.join(rec.unaccounted_bits)}"
+        )
+    return lines
 
 
 def find_plots(

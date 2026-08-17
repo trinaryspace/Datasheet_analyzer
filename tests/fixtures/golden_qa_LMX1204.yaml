@@ -17,14 +17,16 @@
 # Every expected_substring was verified against the printed PDF page text AND
 # the built corpus section covering that page.
 #
-# Not present, and deliberately: a **name -> access** register question.
+# Not present, and deliberately: a **register-level name -> access** question.
 # Neither this document nor the datasheet prints a register-level access
 # column — TI states access per *bit field*, in the per-register field tables
-# (`Type`: R, R/W), which is ticket 06's shape. `registers.json` therefore
-# publishes `access: ""` for every LMX1204 register, which is the honest
-# reading, and there is nothing to hold a golden question to. `dsa regs` does
-# read and publish an access column when a document prints one; that path is
-# gated on a synthetic register summary in `tests/unit/test_registers.py`.
+# (`Type`: R, R/W). `registers.json` therefore publishes `access: ""` for every
+# LMX1204 register, which is the honest reading, and there is nothing to hold a
+# golden question to. `dsa regs` does read and publish an access column when a
+# document prints one; that path is gated on a synthetic register summary in
+# `tests/unit/test_registers.py`. The **fields'** own access is published and
+# verified — see `r4-name-to-bit-field` below, and the field-by-field accuracy
+# gate in `tests/integration/test_phase6_registers.py`.
 questions:
   - id: q01-what-this-document-is
     question: What does the LMX1204 register map document define?
@@ -87,6 +89,17 @@ questions:
     pages: [2, 11]
     kind: direct
     reg_query: {name: "R12"}
+
+  # name -> bit field (phase 6, ticket 06). The summary row is on p.2 and the
+  # field table on p.19, so both are cited: the register is found by its
+  # acronym, and the answer — which bits, and what they reset to — is read off
+  # the register's own field table.
+  - id: r4-name-to-bit-field
+    question: Which bits of R25 select the device function, and what do they reset to?
+    expected_substrings: ["CLK_MUX", "2:0", "0x1"]
+    pages: [2, 19]
+    kind: direct
+    reg_query: {name: "R25"}
 
   # --- the two phase-5 paths, on this part's own ground truth --------------
   - id: a1-ask-where-the-registers-are

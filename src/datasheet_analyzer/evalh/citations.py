@@ -351,12 +351,23 @@ def _register_fields(record: RegisterRecord) -> str:
     printed and the integer it parses to — because a reset that silently
     stopped being found would otherwise pass a benchmark that only reads the
     row. The parsed *address* is included for the same reason.
+
+    The register's **bit fields** are included the same way (phase 6, ticket
+    06): each field's name, its printed bit range and its access, so a golden
+    question can hold "which bits select the clock mux, and what may write
+    them" to account. Only a *published* field set contributes text, which is
+    the point — a benchmark must fail when a field set is refused, not match
+    the reason it was.
     """
     reset = record.reset
+    bits = " ".join(
+        f"{f.name} {f.bits.verbatim} [{f.bits.verbatim}] {f.access} {f.reset}"
+        for f in record.fields
+    )
     return (
         f"{record.address.verbatim} {record.address.value} {record.name} "
         f"{record.access} {record.description} "
-        f"{reset.verbatim if reset else ''} {reset.value if reset else ''}"
+        f"{reset.verbatim if reset else ''} {reset.value if reset else ''} {bits}"
     )
 
 
