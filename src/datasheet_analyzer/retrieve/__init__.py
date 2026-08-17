@@ -10,6 +10,7 @@ budget cannot be enforced on text the core did not produce, so the pack renders
 itself and reports what it cost.
 """
 
+from datasheet_analyzer.retrieve.compare import Comparison, check_parts
 from datasheet_analyzer.retrieve.index import (
     INDEX_FILENAME,
     CorpusIndex,
@@ -62,6 +63,7 @@ __all__ = [
     "ROUTE_UNAVAILABLE",
     "AnswerPack",
     "Citation",
+    "Comparison",
     "CorpusIndex",
     "IndexedDoc",
     "PackExcerpt",
@@ -77,6 +79,7 @@ __all__ = [
     "SpecHit",
     "build_pack",
     "build_project_pack",
+    "check_parts",
     "clear_index_cache",
     "discover_parts",
     "gap_axis",

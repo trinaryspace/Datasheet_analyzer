@@ -1,4 +1,4 @@
-"""The MCP server itself: nine tools, two resources, local stdio only.
+"""The MCP server itself: ten tools, two resources, local stdio only.
 
 **This is a front end.** It holds no retrieval logic — no corpus walk, no
 parsing of corpus artifacts, no hand-built citation string. Every lookup goes
@@ -19,6 +19,7 @@ the moment retrieval creeps back in here.
 | `read_section` | part | one section's verbatim markdown, budgeted |
 | `find_plots` | part or project | the plot catalog, filtered |
 | `get_figure` | part | one figure **as an image content block** |
+| `compare_parts` | a list of parts | one parameter or one card, side by side, with SI deltas |
 | `ask` | part or project | one cited, budget-bounded answer pack |
 
 Resources `dsa://part/<PART>/INDEX.md` and
@@ -72,8 +73,10 @@ from datasheet_analyzer.projects import (
 )
 from datasheet_analyzer.retrieve import (
     INDEX_FILENAME,
+    Comparison,
     ProjectRetriever,
     Retriever,
+    check_parts,
     discover_parts,
 )
 
@@ -387,6 +390,69 @@ def build_server(settings: Settings | None = None) -> MCPServer:
             ],
             structured_content=payload,
         )
+
+    @server.tool(name="compare_parts", meta=declared("compare_parts"))
+    def compare_parts(
+        parts: list[str], symbol: str = "", name: str = "", card: str = ""
+    ) -> dict[str, Any]:
+        """Compare two or more parts on one parameter, or on a whole design card.
+
+        The part-selection question in one call. Rows align by **alias-resolved
+        symbol**, so two datasheets that name a parameter differently still line
+        up, and every row records what it aligned on. Each row shows every part's
+        printed value with its own page citation, plus an SI delta against the
+        first part named — computed **only** where both sides parsed the same
+        printed column into the same base.
+
+        Nothing is dropped: a parameter one part prints and another does not is
+        flagged `only-in`, a part printing several rows no shared name could pair
+        is flagged `ambiguous`, and every pair that could not be compared is
+        listed verbatim in the comparison's `unparsed`. Three or more parts is
+        supported; the list is never truncated.
+        """
+        names, error = check_parts(list(parts or []))
+        if error:
+            return error_response(
+                "compare_parts", error, max_tokens=cap,
+                comparison=None, rows=[], count=0, total=0,
+            )
+        unbuilt = [p for p in names if not is_built(p, settings.parts_dir)]
+        if unbuilt:
+            return error_response(
+                "compare_parts",
+                f"no corpus for {', '.join(unbuilt)} under {settings.parts_dir} — "
+                f"build each one first: `dsa build <pdf> --part {unbuilt[0]}`",
+                max_tokens=cap,
+                comparison=None, rows=[], count=0, total=0,
+            )
+        if not (symbol or name or card):
+            return error_response(
+                "compare_parts",
+                "name one of `symbol`, `name` or `card` — a comparison has to "
+                "know what it is comparing",
+                max_tokens=cap,
+                comparison=None, rows=[], count=0, total=0,
+            )
+        scope = Comparison.for_parts([settings.parts_dir / p for p in names])
+        comparison = (
+            scope.card(card) if card else scope.specs(symbol=symbol, name=name)
+        )
+        if comparison is None:
+            return error_response(
+                "compare_parts",
+                f"no card named {card!r} — these builds declare: "
+                f"{', '.join(scope.card_names()) or '(none)'}",
+                max_tokens=cap,
+                comparison=None, rows=[], count=0, total=0,
+            )
+        payload = envelope("compare_parts", max_tokens=cap)
+        body = comparison.model_dump(mode="json")
+        # The rows are hoisted out of the comparison so the cap drops whole rows
+        # in order instead of truncating a nested object; what stays behind is
+        # the header and every refusal, which a caller needs whatever the cap did.
+        payload["rows"] = body.pop("rows")
+        payload["comparison"] = body
+        return fit_list(payload, "rows", cap)
 
     @server.tool(name="ask", meta=declared("ask"))
     def ask(question: str, part: str = "", project: str = "", budget: int = 0) -> dict[str, Any]:

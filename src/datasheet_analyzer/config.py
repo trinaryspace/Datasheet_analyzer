@@ -70,6 +70,12 @@ REGISTERS_SCHEMA_VERSION = "2"
 # as current: every published part gets all four cards, an honestly empty one
 # included, so an absent card file really is staleness (`publish.cards_current`).
 CARDS_SCHEMA_VERSION = "1"
+# "1": phase 6, ticket 09 — the shape `dsa compare` / the MCP `compare_parts`
+# tool return. It is deliberately **not** part of any publish cache key: a
+# comparison is derived live from records the corpora already publish and is
+# never written to disk, so there is no stale file for a version to invalidate.
+# It exists so a machine consumer can tell one payload shape from the next.
+COMPARE_SCHEMA_VERSION = "1"
 
 # The version of the *derivation rules* (ADR 0005 / invariant 8). Derived
 # artifacts — design cards and anything else computed from records by a named

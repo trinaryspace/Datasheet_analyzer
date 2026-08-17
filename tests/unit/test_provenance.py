@@ -202,10 +202,27 @@ class TestSourceRefFormat:
             "plots.json#4.12.1-f001"
         )
 
-    def test_parse_round_trips_both_forms(self):
+    def test_part_qualified_ref_names_its_corpus(self):
+        """Phase 6, ticket 09 — the additive third form.
+
+        A design card's values all come from one part, so its references leave
+        the part implicit. A cross-part comparison's delta cites one record in
+        each of two corpora, and `rec_412` exists in nearly every corpus, so a
+        reference that does not name its part resolves to a confident, wrong
+        record. This form is what makes such a value walkable by a caller who
+        does *not* already know the answer.
+        """
+        assert source_ref("rec_412", doc=DOC, part="AFE7950") == (
+            f"parts/AFE7950/docs/{DOC}/specs.json#rec_412"
+        )
+
+    def test_parse_round_trips_all_three_forms(self):
         for ref in (
             SourceRef(artifact=SPECS_ARTIFACT, record_id="rec_412", doc=DOC),
             SourceRef(artifact=PLOTS_ARTIFACT, record_id="4.12.1-f001"),
+            SourceRef(
+                artifact=SPECS_ARTIFACT, record_id="rec_412", doc=DOC, part="AFE7950"
+            ),
         ):
             assert parse_source(str(ref)) == ref
 
@@ -220,9 +237,15 @@ class TestSourceRefFormat:
             "sections/4-5.md#rec_1",  # not an addressable artifact
             "INDEX.md#rec_1",
             f"docs/{DOC}/specs.json#rec 1",  # whitespace in the id
-            f"parts/TEST/docs/{DOC}/specs.json#rec_1",  # not corpus-relative
             "docs/specs.json#rec_1",  # no document name
             "docs//specs.json#rec_1",
+            # The part-qualified form (ticket 09) is exact too: it is
+            # `parts/<PART>/docs/<doc>/<artifact>`, and every near miss is
+            # refused rather than read as one of the shorter forms.
+            f"parts//docs/{DOC}/specs.json#rec_1",  # no part name
+            "parts/TEST/specs.json#rec_1",  # no document
+            f"parts/TEST/{DOC}/specs.json#rec_1",  # no `docs/` segment
+            f"corpus/TEST/docs/{DOC}/specs.json#rec_1",  # not the layout
         ],
     )
     def test_malformed_references_are_refused_not_repaired(self, bad):

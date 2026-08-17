@@ -365,6 +365,46 @@ manifest's `derived_warnings` (measured: LM741 is an op-amp, so its interface
 card has no rows and says so). Widening a card is a YAML edit — a table title, a
 unit, a symbol phrase — never a looser rule.
 
+### Compare candidate parts (`dsa compare`)
+
+```bash
+dsa compare AD9081 LM741 --name "junction temperature"   # one parameter, side by side
+dsa compare AFE7950 AFE7953 --symbol Pdiss               # by symbol
+dsa compare AD9081 LM741 --card thermal                  # a whole card, row by row
+dsa compare AD9081 LM741 QPA1003P --card thermal --json  # three or more is supported
+```
+
+The part-selection question, answered in one call. Rows align by **alias-resolved
+symbol**, so two datasheets that name a parameter differently still line up
+(`OPERATING JUNCTION TEMPERATURE (TJ)` against `Junction temperature`), and each
+row prints what it aligned on — a mis-alignment has to be readable, not invisible.
+Every cell carries the value as its datasheet printed it *and* the page it is on:
+
+| Parameter | AD9081 | LM741 | Δ LM741 − AD9081 |
+|---|---|---|---|
+| **TJ** (max) — card-row | +120 °C (p.4) | 150 °C (§6.1, p.4) | +30 °C *(derived)* |
+
+The delta is the only number a comparison adds, and it exists **only where both
+sides parsed the same printed column** into the same SI base. A typical is not
+subtracted from a maximum, two different bases are refused, and a printed range
+(`-55 to 150`) is never reduced to one of its endpoints to make a delta possible.
+Where one cannot be computed, both values are still shown, still cited, and the
+reason is listed under a **Not comparable** heading — together with each part's
+unparsed population, because a comparison that silently drops rows from a decision
+is exactly what invariant 8 exists to prevent.
+
+Two more findings are rows rather than silences. A parameter one part prints and
+another does not is flagged `only in A` — during part selection that *is* the
+answer. And a part that prints several rows no shared printed name can pair holds
+no column, is named, and has every one of those rows quoted below: the parts that
+are unambiguous still compare, so a third device's messy table cannot erase a
+clean comparison between two others.
+
+`--json` gives every value in its provenance envelope, with each reference named
+to its part (`parts/LM741/docs/<doc>/specs.json#rec_9`) — because `rec_9` exists
+in nearly every corpus, and a cross-part reference that did not say which one it
+meant would resolve to a confident, wrong record.
+
 ### Find a plot
 
 ```bash
@@ -529,6 +569,7 @@ On macOS/Linux the command is `/path/to/repo/.venv/bin/dsa`.
 | `read_section` | part | one section verbatim, bounded by `max_tokens` |
 | `find_plots` | part or project | the plot catalog, filtered |
 | `get_figure` | part | one figure **as an image content block** |
+| `compare_parts` | a list of parts | one parameter or one card, side by side, with SI deltas |
 | `ask` | part or project | one cited, budget-bounded answer pack |
 
 Resources `dsa://part/<PART>/INDEX.md` and

@@ -13,6 +13,12 @@ that round trip:
   `CorpusIndex`, so nothing here walks a part directory of its own) and hands
   back the record, its document and its page.
 
+A reference may also name its **part** (`parts/AFE7950/docs/<doc>/specs.json#rec_412`,
+phase 6 ticket 09): a cross-part comparison's delta cites one record in each of
+two corpora, and a reference that leaves its part implicit can only be walked
+back by a caller who already knows which corpus it came from. Resolving one
+against a different part is refused rather than searched for.
+
 Two rules are deliberate. A reference that names no document
 (`specs.json#rec_412`, the shorthand ADR 0005 writes) resolves **only when
 exactly one document of the part carries that record** — an ambiguous
@@ -64,6 +70,16 @@ REGISTER_ID_PREFIX = "reg_"
 #: reference is `docs/<doc>/<artifact>#<record id>`.
 _DOCS_DIR = "docs"
 
+#: A **part-qualified** reference names the corpus too:
+#: `parts/<PART>/docs/<doc>/<artifact>#<record id>`. Additive, phase 6 ticket 09.
+#: A design card's values all come from one part, so naming it would be noise;
+#: a cross-part comparison's do not, and a delta cites a record in each of two
+#: corpora — a reference that leaves its part implicit is only resolvable by a
+#: caller who already knows the answer, which is not a round trip. It mirrors
+#: the on-disk layout (`parts/<PART>/docs/…`) so the string reads as the path it
+#: is, and the unqualified forms keep working exactly as they did.
+_PARTS_DIR = "parts"
+
 
 def spec_record_id(ordinal: int) -> str:
     """Id of the `ordinal`-th (0-based) spec record of a document."""
@@ -86,15 +102,20 @@ class SourceRef:
 
     `doc` is the document directory name (`datasheet-a1b2c3d4`) or `""` for
     the unqualified shorthand, which resolves only when the part leaves no
-    doubt about which document was meant.
+    doubt about which document was meant. `part` is the part number when the
+    reference names one (a cross-part artifact must — see `_PARTS_DIR`), and
+    `""` when the reference is scoped to a part the caller already holds.
     """
 
     artifact: str
     record_id: str
     doc: str = ""
+    part: str = ""
 
     def __str__(self) -> str:
-        return source_ref(self.record_id, artifact=self.artifact, doc=self.doc)
+        return source_ref(
+            self.record_id, artifact=self.artifact, doc=self.doc, part=self.part
+        )
 
 
 @dataclass(frozen=True)
@@ -115,15 +136,24 @@ class ResolvedSource:
     page: int | None
 
 
-def source_ref(record_id: str, *, artifact: str = SPECS_ARTIFACT, doc: str = "") -> str:
+def source_ref(
+    record_id: str, *, artifact: str = SPECS_ARTIFACT, doc: str = "", part: str = ""
+) -> str:
     """The `source` string for one record: `docs/<doc>/<artifact>#<id>`.
 
     `doc` is the document directory name; omitting it yields the unqualified
     `<artifact>#<id>` shorthand, which is only safe for a single-document
     part. Derivation code should always pass `doc` — it has it, and an
     unambiguous reference costs nothing.
+
+    `part` prefixes `parts/<PART>/` and is what a **cross-part** artifact must
+    pass: a comparison's delta cites one record in each of two corpora, and a
+    reference that does not name its part cannot be walked back by anyone who
+    does not already know it.
     """
     prefix = f"{_DOCS_DIR}/{doc}/" if doc else ""
+    if part:
+        prefix = f"{_PARTS_DIR}/{part}/{prefix}"
     return f"{prefix}{artifact}#{record_id}"
 
 
@@ -140,16 +170,19 @@ def parse_source(source: str) -> SourceRef | None:
     path, record_id = text.split("#", 1)
     if not record_id or any(ch.isspace() for ch in record_id):
         return None
-    parts = path.split("/")
-    if len(parts) == 1:
-        doc, artifact = "", parts[0]
-    elif len(parts) == 3 and parts[0] == _DOCS_DIR and parts[1]:
-        doc, artifact = parts[1], parts[2]
+    segments = path.split("/")
+    part = ""
+    if len(segments) == 5 and segments[0] == _PARTS_DIR and segments[1]:
+        part, segments = segments[1], segments[2:]
+    if len(segments) == 1:
+        doc, artifact = "", segments[0]
+    elif len(segments) == 3 and segments[0] == _DOCS_DIR and segments[1]:
+        doc, artifact = segments[1], segments[2]
     else:
         return None
     if artifact not in ARTIFACTS:
         return None
-    return SourceRef(artifact=artifact, record_id=record_id, doc=doc)
+    return SourceRef(artifact=artifact, record_id=record_id, doc=doc, part=part)
 
 
 def resolve_source(part: Path | str | CorpusIndex, source: str) -> ResolvedSource | None:
@@ -171,6 +204,17 @@ def resolve_source(part: Path | str | CorpusIndex, source: str) -> ResolvedSourc
     from datasheet_analyzer.retrieve.index import CorpusIndex
 
     index = part if isinstance(part, CorpusIndex) else CorpusIndex.load(Path(part))
+
+    # A part-qualified reference resolved against a *different* part is refused
+    # rather than searched for: ids are per document, so `rec_1` exists in most
+    # corpora and would resolve to a confident, wrong record (phase 6, ticket 09
+    # — a cross-part comparison is the first artifact that can hold both).
+    if ref.part and index.part_number and ref.part != index.part_number:
+        log.warning(
+            "derived source %r names part %s but was resolved against %s",
+            source, ref.part, index.part_number,
+        )
+        return None
 
     matches: list[tuple[str, SpecRecord | PlotRecord | PinRecord | RegisterRecord]] = []
     for doc in index.docs:

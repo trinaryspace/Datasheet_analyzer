@@ -78,24 +78,40 @@ def _sections() -> list[SectionNode]:
 
 
 def _specs(part: str) -> SpecSet:
+    """The document's spec records, addressable and part-dependent in one cell.
+
+    Every record carries the stable id `structure/specs.py` mints (ADR 0005), so
+    a derived artifact built over this corpus can cite it — a record with no id
+    is honestly unaddressable and no card or comparison may publish it.
+
+    The two built parts print the **same** table except for one value: TEST is
+    rated to 105 °C and OTHER to 125 °C. That one difference is what gives the
+    cross-part comparison (phase 6, ticket 09) something real to subtract, and
+    keeping the rest identical keeps every other test reading the same corpus it
+    always did.
+    """
     return SpecSet(
         schema_version="2",
         part_number=part,
         doc_hash=DOC_HASH,
         records=[
             SpecRecord(
+                id="rec_1",
                 section="4.3", table_index=0, row_index=0, symbol="TJ",
-                name="Operating junction temperature", max="105",
+                name="Operating junction temperature",
+                max="125" if part == "OTHER" else "105",
                 unit=SpecUnit(verbatim="°C", canonical="°C"), page=6,
                 confidence=Confidence.HIGH,
             ),
             SpecRecord(
+                id="rec_2",
                 section="4.3", table_index=0, row_index=1, symbol="VDD1P8",
                 name="1.8V supply", min="1.75", typ="1.8",
                 unit=SpecUnit(verbatim="V", canonical="V"), page=6,
                 confidence=Confidence.MEDIUM,
             ),
             SpecRecord(
+                id="rec_3",
                 section="4.5", table_index=0, row_index=0, symbol="DACRES",
                 name="DAC resolution", typ="14",
                 unit=SpecUnit(verbatim="bits", canonical="bits"), page=7,

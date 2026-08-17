@@ -344,6 +344,82 @@ SEARCH_HIT_SCHEMA = {
     },
 }
 
+#: `DerivedValue.model_dump()` — invariant 8's envelope, as it travels on the
+#: wire. Every derived artifact this server returns is made of these.
+_DERIVED_VALUE_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": [
+        "verbatim", "value_si", "unit_si", "source", "sources", "page", "section",
+        "derivation", "confidence",
+    ],
+    "properties": {
+        "verbatim": _STR, "value_si": _NUM_OR_NULL, "unit_si": _STR,
+        "source": _STR, "sources": {"type": "array", "items": _STR},
+        "page": _INT_OR_NULL, "section": _STR, "derivation": _STR,
+        "confidence": _CONFIDENCE,
+    },
+}
+
+#: `ComparisonCell.model_dump()` (phase 6, ticket 09). `values` is keyed by the
+#: printed column (`min`, `typ`, `max`, `value`, or a card's own roles), which is
+#: data rather than a fixed set, so it is declared as an object of envelopes
+#: rather than enumerated — the same choice `_PART_SCHEMA` makes for a grade mix.
+_COMPARISON_CELL_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": [
+        "part_number", "label", "detail", "section", "section_title",
+        "matched_via", "citation", "values", "delta",
+    ],
+    "properties": {
+        "part_number": _STR, "label": _STR, "detail": _STR, "section": _STR,
+        "section_title": _STR, "matched_via": _STR, "citation": _STR,
+        "values": {"type": "object"},
+        "delta": {"anyOf": [_DERIVED_VALUE_SCHEMA, {"type": "null"}]},
+    },
+}
+
+#: `ComparisonRow.model_dump()`.
+COMPARISON_ROW_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": [
+        "key", "aligned_on", "group", "role", "reference", "cells",
+        "missing_from", "ambiguous_in", "flags", "note", "citation",
+    ],
+    "properties": {
+        "key": _STR, "aligned_on": _STR, "group": _STR, "role": _STR,
+        "reference": _STR,
+        "cells": {"type": "array", "items": _COMPARISON_CELL_SCHEMA},
+        "missing_from": {"type": "array", "items": _STR},
+        "ambiguous_in": {"type": "array", "items": _STR},
+        "flags": {"type": "array", "items": _STR},
+        "note": _STR, "citation": _STR,
+    },
+}
+
+#: `PartComparison.model_dump()` **without its rows**, which are hoisted to the
+#: payload's own `rows` key so the response cap can drop whole rows in order
+#: rather than mangling a nested object. What stays here is the header a reader
+#: needs whatever the cap did: what was asked, of which parts, against which
+#: reference, and everything the comparison refused to compare.
+_COMPARISON_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": [
+        "schema_version", "card_version", "kind", "query", "parts", "reference",
+        "notes", "unparsed", "empty_reason",
+    ],
+    "properties": {
+        "schema_version": _STR, "card_version": _STR, "kind": _STR, "query": _STR,
+        "parts": {"type": "array", "items": _STR}, "reference": _STR,
+        "notes": {"type": "array", "items": _STR},
+        "unparsed": {"type": "array", "items": _STR},
+        "empty_reason": _STR,
+    },
+}
+
 _PART_SCHEMA = {
     "type": "object",
     "additionalProperties": False,
@@ -437,6 +513,16 @@ SCHEMAS: dict[str, dict] = {
         }
     ),
     "get_figure": _schema({"figure": {"anyOf": [_FIGURE_SCHEMA, {"type": "null"}]}}),
+    # The one tool whose scope is neither a part nor a project: an ad-hoc list of
+    # parts. `scope.part` therefore stays empty and the parts are named inside
+    # the comparison, where the reference part is named too.
+    "compare_parts": _schema(
+        {
+            "comparison": {"anyOf": [_COMPARISON_SCHEMA, {"type": "null"}]},
+            "rows": {"type": "array", "items": COMPARISON_ROW_SCHEMA},
+        },
+        listed=True,
+    ),
     "ask": _schema({"pack": {"anyOf": [ANSWER_PACK_SCHEMA, {"type": "null"}]}}),
 }
 

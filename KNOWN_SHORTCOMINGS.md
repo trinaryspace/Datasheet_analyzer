@@ -266,3 +266,89 @@ range filter, which is the same split as item 7 for the same reason.
 holds the rest of it, which is a second axis-title rule (and a way for a
 neighbouring figure's line to become this figure's unit). At 1% of the part, the
 verbatim fragment plus a null unit is the better trade.
+
+---
+
+## Cross-part comparison (phase 6, ticket 09)
+
+`dsa compare` aligns two or more parts by alias-resolved symbol and subtracts
+where both sides parsed the same printed column. It is gated on the four
+layout-floor corpora, where the invariant-8 walk resolves 327 references over 139
+values in 8 comparisons. These are its measured limits.
+
+### 1. Two unrelated parts align on almost nothing, and that is correct
+
+Measured over the four gate corpora, every pair, and all 213 alias phrases the
+lexicon knows: the spec path produces **1 aligned row and 1,468 `only in A`
+rows**, and the one aligned row (`Pdiss`, AD9081 against QPA1003P) carries no
+delta because the two parts state it in different columns. The same walk over two
+parts of one family (AFE7950 against AFE7953) produces **159 aligned rows, all
+159 with a delta** (`Reports/PHASE_6_REPORT.md`; reproduce with
+`scripts/measure_compare_alignment.py`).
+
+Most of the gate number is a fact about the parts — a data converter, an op-amp, a
+mixer and a power amplifier share very little parametric ground. The rest is the
+ambiguity refusal doing its job: AD9081 prints 8 supply-rail rows where LM741
+prints 2 absolute-maximum ones, and pairing 8 rails against 2 ratings is a guess,
+so all 10 are listed instead. The **card** path aligns better because the card
+lexicon has already selected one row per parameter, which is why `--card` is the
+shape to reach for when two parts are not siblings.
+
+**What would change it** is more alias coverage (a YAML edit) and better
+extraction — never a looser pairing rule. A margin between the wrong two rows is
+worse than no margin, and during part selection it is worse still.
+
+### 2. A parameter a part prints many times cannot be paired at all
+
+The pairing rung inside an ambiguous key needs a **printed** cell the two rows
+share. Where a datasheet states one parameter once per operating configuration
+and the layout floor recovers no name and no test-conditions cell for those rows,
+nothing printed distinguishes them. Measured on offline builds of the two
+reference PDFs: `--symbol Pdiss` finds 15 rows on AFE7950 and 20 on AFE7953, all
+of them labelled `Pdiss` with an empty name and empty conditions, so the key is
+refused whole and all 35 are listed with their values and pages.
+
+**What would change it** is *extraction* — recovering the configuration cell
+those rows are printed against — or a new pairing rung on something else the page
+prints, such as the section title both rows sit under. The second is a real
+option and is deliberately not taken here: it is weaker than character-for-
+character identity (it pairs on the *table* rather than on the row), and this
+phase's stance is that a widening ships with a hand-verified pair to gate it,
+not ahead of one.
+
+### 3. The reference parts cannot be compared until they are rebuilt
+
+`dsa compare AFE7950 AFE7953 --symbol Pdiss` is the ticket's own example and it
+produces **no rows** against the corpora committed under `parts/`: both were
+published at `SPECS_SCHEMA_VERSION 1`, before ADR 0005 minted record ids, so
+every row of them is honestly unaddressable. The comparison says so — one line
+per row, naming the build command — rather than quietly comparing values it
+cannot cite, because an uncited value has no place on a derived artifact.
+
+**What would change it** is `dsa build afe7950.pdf --part AFE7950` (and the same
+for AFE7953). The gate exercises the identical code path on corpora built inside
+the test suite.
+
+### 4. `only in A` is a statement about the corpus, not about the datasheet
+
+A row flagged `only-in` says the other part *publishes* no record under that
+parameter — which can mean its datasheet does not print one, or that the
+extraction did not reach it. Measured: `dsa compare AD9081 LM741 QPA1003P --card
+thermal` shows `RθJA` as "only in QPA1003P", although AD9081 prints a
+thermal-resistance table on p.21 (whose rows reconstruct with no value cells —
+Design cards, item 3) and LM741 prints a junction-to-ambient resistance on p.4
+that its corpus publishes no spec record for at all (`Retriever.specs(name=
+"Junction-to-ambient")` returns nothing).
+
+The wording is deliberate — "publishes no record", never "does not state" — and
+every comparison prints each part's unparsed population beside the table. **What
+would change it** is extraction, in the same place the design-card gap lives.
+
+### 5. One delta per row, on one column
+
+A row states its delta on the first column both parts printed and parsed
+(`max` → `typ` → `min` → `value`, then the card roles). Two parts that print both
+a typical and a maximum get one delta, not two, because a table with two
+difference columns per part invites reading across the wrong pair — and the
+per-column numbers are all published verbatim beside it, so the second
+subtraction is a subtraction the reader can do knowing which columns it used.

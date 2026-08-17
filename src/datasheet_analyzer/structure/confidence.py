@@ -273,6 +273,20 @@ def grade_of(record: object) -> Confidence:
         return Confidence.UNKNOWN
 
 
+def weakest(*grades: Confidence) -> Confidence:
+    """The weakest of the grades a computed value rests on.
+
+    A number computed from a `low` row is no better than that row, so grading it
+    by the stronger operand would make the weaker one invisible — and a design
+    card's margin and a cross-part delta (phase 6, tickets 07 and 09) are both
+    exactly that kind of number. Still metadata, never a filter. `UNKNOWN` is the
+    weakest of all: a corpus that never graded a row has not promised anything
+    about it.
+    """
+    order = [*GRADES, Confidence.UNKNOWN]
+    return max(grades, key=order.index) if grades else Confidence.UNKNOWN
+
+
 def mix(records: Iterable[object]) -> dict[str, int]:
     """Counts by grade, e.g. `{"high": 412, "medium": 190, "low": 17}`.
 

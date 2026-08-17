@@ -171,6 +171,31 @@ rails), no margin is computed and the pair is listed as uncomparable with the
 reason, because a margin between the wrong two rows is worse than none.
 _Avoid_: headroom, delta, difference, derating, safety factor
 
+**Comparison**:
+Two or more parts answered as one question — `dsa compare AFE7950 AFE7953
+--symbol Pdiss`. It is a derived artifact like a design card, built live and
+never written to disk, and it owns exactly one number: the **delta**. Rows align
+by alias-resolved symbol, so two datasheets that name a parameter differently
+still line up, and every row records what it aligned on — a mis-alignment must be
+readable rather than invisible. A parameter one part prints and another does not
+is a row flagged `only in A`, because during part selection an absent parameter
+is itself a finding; a part that prints several rows no shared printed name can
+pair holds no column and is named, while the parts that *are* unambiguous still
+compare. Everything it refused is listed with its printed values under one
+heading, beside the unparsed population of each part.
+_Avoid_: diff, matrix, table, benchmark, shortlist
+
+**Delta**:
+The difference between two parts' printed values for one parameter, in the SI
+base both parsed to. The only number a comparison adds, and it exists only where
+both sides parsed the **same printed column**: a typical against a maximum is not
+a delta, two units with different bases are not a delta, and a printed range is
+not reduced to one of its endpoints to make one. Its sign is fixed — the part
+minus the reference, which is the first part named — and it carries no verbatim,
+because no page printed a difference between two datasheets. Where it cannot be
+computed, both values are still shown, still cited, and the reason is stated.
+_Avoid_: diff, margin, gap, difference, delta value
+
 **Axis catalog**:
 What one figure's two axes say, as fields on its plot record: the printed axis
 title, the unit it printed in brackets, the first and last **tick label**, and

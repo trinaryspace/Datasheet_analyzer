@@ -42,14 +42,17 @@ from datasheet_analyzer import cli
 from datasheet_analyzer.config import Settings
 from datasheet_analyzer.mcp_server import responses as R
 from datasheet_analyzer.mcp_server import server as S
-from datasheet_analyzer.retrieve import Retriever, clear_index_cache
+from datasheet_analyzer.retrieve import Comparison, Retriever, clear_index_cache
 from datasheet_analyzer.tokens import count_tokens
 
 # Tools that return corpus content, and therefore must cite it. `list_parts`,
 # `list_projects` and `get_index` are catalog/orientation calls: they make no
 # claim about what a datasheet says, so an empty citation list is the honest
 # answer there rather than a manufactured one.
-CITING_TOOLS = ("search", "find_spec", "find_plots", "read_section", "get_figure", "ask")
+CITING_TOOLS = (
+    "search", "find_spec", "find_plots", "read_section", "get_figure", "ask",
+    "compare_parts",
+)
 
 #: One representative call per tool — the whole surface, in one list, so a cap
 #: assertion cannot quietly skip a tool someone forgot to add.
@@ -63,12 +66,17 @@ ALL_CALLS = [
     ("find_plots", {"part": "TEST"}),
     ("get_figure", {"part": "TEST", "file": FIGURE}),
     ("ask", {"part": "TEST", "question": "max junction temperature"}),
+    ("compare_parts", {"parts": ["TEST", "OTHER"], "name": "junction temperature"}),
 ]
-# Everything except `ask`: a pack carries its own rendered markdown *and* its
-# structured rows, so it has a real serialization floor of a few hundred
-# tokens that no amount of budget-shrinking gets under. That case is asserted
-# separately — and asserted to *announce* itself.
-SHEDDABLE_CALLS = [c for c in ALL_CALLS if c[0] != "ask"]
+# Everything with no floor of its own. `ask` has one: a pack carries its own
+# rendered markdown *and* its structured rows, so it has a real serialization
+# floor of a few hundred tokens that no amount of budget-shrinking gets under.
+# `compare_parts` has one for a different reason — its population sentences and
+# its "not comparable" listing are invariant 8's honesty half, so a cap may drop
+# comparison *rows* and may never drop the record of what could not be compared.
+# Both cases are asserted separately, and asserted to *announce* themselves.
+FLOORED_TOOLS = ("ask", "compare_parts")
+SHEDDABLE_CALLS = [c for c in ALL_CALLS if c[0] not in FLOORED_TOOLS]
 CITING_CALLS = [c for c in ALL_CALLS if c[0] in CITING_TOOLS]
 
 
@@ -114,6 +122,8 @@ class TestEveryToolOverTheMemoryTransport:
         assert names == {
             "list_parts", "list_projects", "get_index", "search", "find_spec",
             "read_section", "find_plots", "get_figure", "ask",
+            # phase 6, ticket 09 — the one tool whose scope is a list of parts
+            "compare_parts",
         }
 
     def test_every_tool_ships_its_declared_response_schema(self, server):
@@ -135,6 +145,10 @@ class TestEveryToolOverTheMemoryTransport:
             ("find_plots", {"part": "TEST", "q": "Fullscale"}),
             ("get_figure", {"part": "TEST", "file": FIGURE}),
             ("ask", {"part": "TEST", "question": "max junction temperature"}),
+            (
+                "compare_parts",
+                {"parts": ["TEST", "OTHER"], "name": "junction temperature"},
+            ),
         ],
     )
     def test_every_response_validates_against_its_declared_schema(
@@ -221,6 +235,49 @@ class TestEveryToolOverTheMemoryTransport:
             "max junction temperature", budget=pack["budget"]
         )
         assert pack["markdown"] == direct.markdown
+
+    def test_compare_parts_returns_the_comparison_the_cli_returns(self, server, settings):
+        """Phase 6, ticket 09 — the part-selection question over the transport.
+
+        The two built parts print the same table except for the junction
+        temperature (105 °C against 125 °C), so the row must carry both printed
+        values, both citations, and the one number the comparison adds.
+        """
+        payload = payload_of(call(server, "compare_parts", parts=["TEST", "OTHER"],
+                                  name="junction temperature"))
+        assert payload["error"] == ""
+        assert payload["comparison"]["parts"] == ["TEST", "OTHER"]
+        assert payload["comparison"]["reference"] == "TEST"
+        row = next(r for r in payload["rows"] if r["key"] == "TJ")
+        assert row["aligned_on"] == "alias:TJ"
+        assert row["role"] == "max"
+        assert [c["values"]["max"]["verbatim"] for c in row["cells"]] == [
+            "105 °C", "125 °C"
+        ]
+        assert [c["citation"] for c in row["cells"]] == ["§4.3, p.6", "§4.3, p.6"]
+        assert row["cells"][1]["delta"]["value_si"] == 20.0
+        assert row["cells"][1]["delta"]["derivation"] == "si_delta:max"
+        # the same comparison the CLI would print, not a second implementation
+        direct = Comparison.for_parts(
+            [settings.parts_dir / "TEST", settings.parts_dir / "OTHER"]
+        ).specs(name="junction temperature")
+        assert payload["rows"] == direct.model_dump(mode="json")["rows"]
+
+    def test_compare_parts_refuses_one_part_and_a_repeated_part(self, server):
+        for parts, needle in (
+            (["TEST"], "at least two parts"),
+            (["TEST", "TEST"], "named twice"),
+        ):
+            payload = payload_of(call(server, "compare_parts", parts=parts, symbol="TJ"))
+            assert needle in payload["error"]
+            assert payload["rows"] == []
+            assert R.validate_response(payload, "compare_parts") == []
+
+    def test_compare_parts_names_an_unbuilt_part_instead_of_dropping_it(self, server):
+        payload = payload_of(call(server, "compare_parts", parts=["TEST", "NOPE"],
+                                  symbol="TJ"))
+        assert "NOPE" in payload["error"] and "dsa build" in payload["error"]
+        assert payload["comparison"] is None
 
     def test_list_parts_reports_revision_counts_and_the_confidence_mix(self, server):
         payload = payload_of(call(server, "list_parts"))

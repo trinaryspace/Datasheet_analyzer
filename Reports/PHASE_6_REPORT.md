@@ -1081,3 +1081,207 @@ a sampled curve is a derived *number*, and under ADR 0005 it needs a gate of its
 own before it may be published beside a printed one.
 
 
+## Ticket 09 — cross-part compare (`dsa compare`, MCP `compare_parts`)
+
+The part-selection question, answered in one call — and the first derived
+artifact in this repo whose values come from **two corpora**. That is also the
+failure mode it is built against: a delta between the wrong two rows during part
+selection looks exactly like a right one, and it costs a board spin rather than a
+re-read.
+
+`compare/build.py` derives it (alignment, deltas, refusals — pure, no I/O),
+`compare/render.py` is the table a choice is made on, `retrieve/compare.py` is
+the third scope beside one part and one design, and `dsa compare` / the MCP
+`compare_parts` tool are the two front ends over it. `PartComparison` is never
+written to disk: it exists for the length of one question, so `COMPARE_SCHEMA_VERSION`
+is a payload shape and **not** a publish cache key, and `CARD_VERSION` rides on it
+as the derivation-rule version it was produced under.
+
+### What a comparison is allowed to contain
+
+ADR 0005, one noun wider than a design card:
+
+| Clause | In a comparison |
+|---|---|
+| (a) a verbatim cell | every printed value, quoted **with its printed unit** (`copy_cell`, `+parse_quantity+si_normalize` when the numeric layer could read it) |
+| (b) a pure function of records | the **delta** — `si_delta:<role>`, one column, both operands cited |
+| (c) a lexicon label | the alignment key: the alias-resolved symbol, recorded on the row as `aligned_on` |
+
+Everything else on a row is provenance: which rung each part matched on, the
+citation of each cell, which parts publish nothing, which publish too much.
+
+### Hand-verified against the printed pages
+
+Read off the committed gate PDFs by hand, and asserted in
+`test_phase4_layout_gate.py::TestCrossPartCompareOnTheGateCorpora`:
+
+| Comparison | AD9081 | LM741 / QPA1003P | Δ |
+|---|---|---|---|
+| `--card thermal`, TJ | `+120 °C` (p.4) | LM741 `150 °C` (§6.1, p.4) | **+30 °C** |
+| `--name "total power dissipation"`, Pdiss | `min 11.2 W`, `typ 14.3 W` (p.4) | QPA1003P `value 30 W` (§2, p.2) | *(none — see below)* |
+
+`dsa compare AD9081 LM741 --card thermal` prints:
+
+```
+| Parameter | AD9081 | LM741 | Δ LM741 − AD9081 | Grade |
+| **TJ** (max) — card-row | OPERATING JUNCTION TEMPERATURE (T: +120 °C (p.4) | Junction temperature: 150 °C (§6.1, p.4) | +30 °C *(derived)* | low |
+| **TA** — card-row **[only-in]** (only in LM741 — AD9081 publishes no record under this parameter) | — | Operating temperature: min -50 °C; max 125 °C (§6.1, p.4) | — | low |
+```
+
+AD9081 p.4 prints `OPERATING JUNCTION TEMPERATURE (TJ)` as −40 to +120 °C;
+LM741 p.4 prints `Junction temperature` 150 °C. 150 − 120 = 30, and no page
+printed that number, which is why it carries no `verbatim` and renders
+`*(derived)*`.
+
+### The refusals are the real ones
+
+The Pdiss row is the ticket's second acceptance criterion met by a *document*
+rather than by a fixture: both parts print a total power dissipation, both
+values parse, and there is **no delta** — AD9081 states a min/typ pair and
+QPA1003P a single value, and two different printed columns are not a difference.
+Both are published, both cited, and the pair is listed under `## Not comparable`
+with what each printed.
+
+| Refusal | Rule |
+|---|---|
+| a `typ` against a `max` | the delta is computed on **one printed column**, chosen once per row and named in the derivation (`si_delta:max`) |
+| `1.8 V` against `1800 mA` | different SI bases; the same refusal `SI_UNITS` makes, for the same reason |
+| `-55 to 150` against a ceiling | a printed **range** states no single number and is never reduced to an endpoint to make a delta possible |
+| a row with no addressable id | a corpus published before ADR 0005 cannot be cited, so it is listed rather than compared |
+| several rows one shared name cannot pair | refused **per part**: that part holds no column and is named in `ambiguous_in`, and every one of its rows is quoted |
+
+That last one is the difference from a design card's ambiguous join. A card
+refuses the whole key; a comparison refuses only the part that is ambiguous, so
+adding QPA1003P (which prints three channel temperatures under `TJ`) to the
+AD9081/LM741 comparison leaves their +30 °C standing, names QPA1003P, and lists
+all three of its rows. A third device's messy table may not erase a clean
+comparison between two others.
+
+### The invariant-8 walk, across corpora
+
+Every `source` and every `sources` entry of every value — including each delta's
+**two operands, which live in different corpora** — resolved back to a real
+record with a printed page: **327 references over 139 values in 8 comparisons, 0
+unresolvable** (`test_every_source_on_every_comparison_resolves_to_a_record_and_a_page`).
+
+This is what forced the one contract change of the ticket. `rec_1` exists in
+nearly every corpus, so `docs/<doc>/specs.json#rec_1` is only walkable by a
+caller who already knows which part it came from — which is not a round trip.
+`provenance.source_ref` therefore gained an additive **part-qualified** form,
+`parts/AFE7950/docs/<doc>/specs.json#rec_412`; `parse_source` reads it, and
+`resolve_source` **refuses** a reference resolved against a different part rather
+than searching for a same-numbered record there. A card comparison re-qualifies
+the values it inherits, because a card (correctly) leaves the part implicit.
+
+### Measured: how often two parts actually align
+
+`scripts/measure_compare_alignment.py` walks all **213** alias phrases the
+lexicon knows against every pair of the parts it is given. Run over the four
+gate corpora, and separately over the two reference parts built offline into a
+scratch directory (the committed `parts/AFE7950` / `parts/AFE7953` predate ADR
+0005 record ids — see `KNOWN_SHORTCOMINGS.md`):
+
+| Parts | Aligned rows | With a delta | `only in A` rows | Keys refused |
+|---|---:|---:|---:|---:|
+| four gate corpora, 6 pairs | 1 | 0 | 1,468 | 61 |
+| AFE7950 vs AFE7953 (one family) | **159** | **159** | 50 | 71 |
+
+(Counts are per *lookup*: a parameter three phrases reach is counted three
+times, because what is measured is how often a question a designer asks comes
+back aligned.)
+
+That contrast is the finding, and neither half of it is about the alignment
+rule being wrong.
+
+**Unrelated parts share almost no parametric ground.** The gate corpora are a
+data converter, an op-amp, a mixer and a power amplifier; the single aligned row
+across all six pairs is `Pdiss` (AD9081 against QPA1003P), and it carries no
+delta because the two state it in different columns. What rows *do* collide
+collide ambiguously — AD9081 prints 8 supply-rail rows where LM741 prints 2
+absolute-maximum ones, and pairing 8 rails against 2 ratings is exactly the guess
+this module refuses; all 10 are listed instead. The **card** path aligns better
+for a structural reason (the card lexicon has already selected one row per
+parameter), which makes `--card` the shape to reach for when two parts are not
+siblings — measured on the same pairs: `--card thermal` on AD9081/LM741 aligns
+`TJ` and subtracts it.
+
+**Two parts of one family align on almost everything they both print**: 159
+aligned rows, every one of them carrying a delta. Their design cards do too —
+`power` 5 of 6 rows aligned, `thermal` 2 of 2, `limits` 1 of 1
+(`measure_compare_alignment.py --cards`).
+
+One honest exception on that family pair is worth stating, because it is the
+ticket's own example: `--symbol Pdiss` is **refused**. Each part prints `Pdiss`
+once per operating configuration — 15 rows on AFE7950 and 20 on AFE7953 — and on
+a layout-floor build those rows carry no name and no test-conditions cell at all,
+so nothing printed distinguishes one configuration from another. All 35 are
+listed with their values and pages; pairing "6027.1 mW on p.21" with "2399 mW on
+p.21" because they happen to be first would be precisely the confident, wrong
+number this artifact exists not to emit.
+
+### Surface
+
+```
+dsa compare AD9081 LM741 --name "junction temperature"   # by a designer's words
+dsa compare AFE7950 AFE7953 --symbol Pdiss               # by symbol
+dsa compare AD9081 LM741 --card thermal                  # a whole card, row by row
+dsa compare AD9081 LM741 QPA1003P --card thermal --json  # three or more, never truncated
+```
+
+`check_parts()` is the refusal both front ends share, so `dsa compare` and the
+MCP tool reject the same lists for the same stated reasons: fewer than two parts
+is not a comparison; a part named twice would give one row two columns and a
+delta of zero against itself; a part with no corpus is **named** with its build
+command rather than dropped from the answer. Three or more parts is supported —
+the first named is the reference, and each other part gets its own `Δ` column.
+
+The MCP `compare_parts` tool is the tenth tool and the only one whose scope is
+neither a part nor a project. Its comparison **rows** are hoisted to the payload
+so the response cap sheds whole rows in retrieval order; the header, the
+population sentences and the whole `unparsed` listing are never what a cap
+removes, which is why the tool sits with `ask` outside the "sheddable" set in
+`tests/unit/test_mcp_server.py` and reports `over_cap` instead.
+
+### Contract points asserted by test
+
+`tests/unit/test_compare.py` (52 tests) plus the gate class above and the MCP
+tests:
+
+- **alignment**: an alias-resolved pair (`OPERATING JUNCTION TEMPERATURE (TJ)`
+  against `Junction temperature`), a printed-symbol pair the lexicon does not
+  know, each cell naming its own rung, and the reference being the first part
+  named;
+- **deltas**: value, unit, `si_delta:<role>`, no `verbatim`, both operands cited
+  and part-qualified, the weaker grade of the two, and the sign convention
+  (candidate − reference) asserted in both directions;
+- **refusals**: an unparsed side, two different columns, two different SI bases,
+  a printed range, and an unaddressable record — each publishing both values and
+  a stated reason;
+- **absences**: an `only in A` row with its value and citation, a three-part
+  comparison naming the one part that is missing the parameter, and the empty
+  comparison's two distinct reasons (nothing resolved the term / rows were found
+  but none could be published);
+- **ambiguity**: a part with two unpairable rows holding no column while the
+  others still compare, every unpaired row listed with what it printed, and the
+  printed-identity rung pairing `commercial`/`industrial` rows across two parts
+  while refusing to pair on the key's own cell;
+- **honesty**: `parse_population`'s sentence per part, the listing lines, and the
+  headline note's counts of deltas, refusals and absences;
+- **rendering**: the banner, both values and both citations in one row, the
+  `Δ B − A` column marked `*(derived)*`, `—` for a part that publishes nothing,
+  the `## Not comparable` heading, and `aligned_on` printed beside every row;
+- **the seam**: `dsa compare` prints what `Comparison` returned (the MCP tool's
+  rows are asserted **equal** to the CLI's model dump), exit 1 on an empty
+  comparison, exit 2 on every refusal, and `--json` carrying every value in its
+  provenance envelope.
+
+### Not built here
+
+A comparison is not published into a corpus. There is no `compare/` directory
+beside `cards/` and no `compare_version` in the publish cache key, because a
+comparison is a question about a *set* of parts and a corpus belongs to one: the
+artifact would have no home that a rebuild of any single part could keep
+current. Deriving it live costs one pass over records the retriever has already
+loaded.
+
+

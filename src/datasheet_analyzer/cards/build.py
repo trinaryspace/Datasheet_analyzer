@@ -60,7 +60,6 @@ from datasheet_analyzer.cards.lexicon import (
 from datasheet_analyzer.config import CARD_VERSION, CARDS_SCHEMA_VERSION
 from datasheet_analyzer.models import (
     CardRow,
-    Confidence,
     DerivedValue,
     DesignCard,
     PinRecord,
@@ -74,6 +73,7 @@ from datasheet_analyzer.provenance import (
     source_ref,
 )
 from datasheet_analyzer.structure.aliases import normalize
+from datasheet_analyzer.structure.confidence import weakest
 from datasheet_analyzer.structure.quantities import (
     Quantity,
     parse_population,
@@ -793,7 +793,7 @@ def _compare(
         page=rec_value.page,
         section=rec_value.section,
         derivation=DERIVATION_MARGIN,
-        confidence=_weaker(abs_value.confidence, rec_value.confidence),
+        confidence=weakest(abs_value.confidence, rec_value.confidence),
     )
     if margin < 0 and not math.isclose(margin, 0.0, rel_tol=MARGIN_EQUAL_REL_TOL,
                                        abs_tol=0.0):
@@ -823,17 +823,6 @@ def _limits_detail(abs_rec: SpecRecord, rec_rec: SpecRecord) -> str:
         if text
     ]
     return " / ".join(names)
-
-
-def _weaker(*grades: Confidence) -> Confidence:
-    """The weakest of the grades a computed value rests on.
-
-    A number computed from a `low` row is no better than that row, and grading it
-    by the stronger operand would make the weaker one invisible. Still metadata,
-    never a filter.
-    """
-    order = [Confidence.HIGH, Confidence.MEDIUM, Confidence.LOW, Confidence.UNKNOWN]
-    return max(grades, key=order.index)
 
 
 # --- empty cards -----------------------------------------------------------

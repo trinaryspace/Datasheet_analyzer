@@ -1835,3 +1835,206 @@ class TestMcpOverTheGateCorpora:
         assert payload["truncated"]
         assert R.CAP_SETTING in payload["notice"]
         assert payload["tokens"] <= 120
+
+
+class TestCrossPartCompareOnTheGateCorpora:
+    """Phase 6, ticket 09 — `dsa compare` over four really different datasheets.
+
+    The part-selection question, gated on real documents rather than on
+    literals. Three claims are proved here and nowhere else.
+
+    **The numbers are the printed ones.** Every value asserted below was read
+    off the committed PDFs by hand: AD9081 p.4 prints `OPERATING JUNCTION
+    TEMPERATURE (TJ)` as −40 to +120 °C and `Total Power Dissipation` as 11.2 /
+    14.3 W; LM741 p.4 prints `Junction temperature` 150 °C; QPA1003P p.2 prints
+    `Power Dissipation (PDISS), 85 °C, CW` as 30 W. The one number the
+    comparison adds — 150 − 120 = +30 °C — is the subtraction of two of them.
+
+    **The refusals are the real ones.** AD9081 and QPA1003P both print a total
+    power dissipation and cannot be subtracted, because one states a min/typ
+    pair and the other a single value: two different printed columns are not a
+    delta. The row is still published with both values and both citations, and
+    the pair is listed under 'not comparable' — which is the ticket's own
+    acceptance criterion, met by a document rather than by a fixture.
+
+    **Nothing is lost to a third part.** QPA1003P prints three channel
+    temperatures under the same alias key; adding it to the AD9081/LM741
+    comparison must leave their delta standing, name QPA1003P as ambiguous, and
+    list all three of its rows verbatim.
+    """
+
+    def _compare(self, gate, *names: str):
+        from datasheet_analyzer.retrieve import Comparison
+
+        return Comparison.for_parts([gate[n].part_dir for n in names])
+
+    def test_two_parts_that_print_one_parameter_differently_line_up(self, gate):
+        """Aligned on the alias-resolved symbol, with both verbatim values and
+        both page cites — hand-verified against p.4 and p.2."""
+        comparison = self._compare(gate, "AD9081", "QPA1003P").specs(
+            name="total power dissipation"
+        )
+        row = next(r for r in comparison.rows if r.key == "Pdiss")
+        assert row.aligned_on == "alias:Pdiss"
+        assert [c.part_number for c in row.cells] == ["AD9081", "QPA1003P"]
+        assert row.cells[0].values["typ"].verbatim == "14.3 W"
+        assert row.cells[0].values["min"].verbatim == "11.2 W"
+        assert row.cells[1].values["value"].verbatim == "30 W"
+        assert [c.citation for c in row.cells] == ["p.4", "§2, p.2"]
+
+    def test_the_symbol_door_reaches_the_same_row_by_two_different_rungs(self, gate):
+        """`--symbol` and `--name` are one code path, and the row records how
+        *each part* got there: AD9081 prints the symbol the caller typed, while
+        QPA1003P is reached through the alias phrase. A row aligned across two
+        different rungs is exactly the case a silent mis-alignment would hide."""
+        comparison = self._compare(gate, "AD9081", "QPA1003P").specs(
+            symbol="Total Power Dissipation"
+        )
+        row = next(r for r in comparison.rows if r.key == "Pdiss")
+        assert comparison.kind == "symbol"
+        assert row.aligned_on == "alias:Pdiss"
+        assert [c.matched_via for c in row.cells] == [
+            "symbol", "alias:total power dissipation"
+        ]
+        assert row.cells[0].values["typ"].verbatim == "14.3 W"
+        assert row.cells[1].values["value"].verbatim == "30 W"
+
+    def test_a_pair_stating_different_columns_is_published_and_refused(self, gate):
+        """A min/typ pair against a single stated value: both shown, no delta,
+        and the reason under the 'not comparable' heading."""
+        from datasheet_analyzer.compare import NOT_COMPARABLE_HEADING, render_comparison
+
+        comparison = self._compare(gate, "AD9081", "QPA1003P").specs(
+            name="total power dissipation"
+        )
+        row = next(r for r in comparison.rows if r.key == "Pdiss")
+        assert row.role == "" and row.n_deltas == 0
+        assert any("one printed column" in line for line in comparison.unparsed)
+        markdown = render_comparison(comparison)
+        assert NOT_COMPARABLE_HEADING in markdown
+        assert "14.3 W" in markdown and "30 W" in markdown
+
+    def test_a_card_comparison_subtracts_two_printed_junction_temperatures(self, gate):
+        """`--card thermal`, the ticket's `--card power` shape: whole cards
+        compared row by row. +120 °C (AD9081 p.4) against 150 °C (LM741 p.4)."""
+        comparison = self._compare(gate, "AD9081", "LM741").card("thermal")
+        row = next(r for r in comparison.rows if r.key == "TJ")
+        assert row.group == "Temperature limits"
+        assert row.aligned_on == "card-row+alias:TJ"
+        assert row.role == "max"
+        assert row.cells[0].values["max"].verbatim == "+120 °C"
+        assert row.cells[1].values["max"].verbatim == "150 °C"
+        assert [c.citation for c in row.cells] == ["p.4", "§6.1, p.4"]
+        delta = row.cells[1].delta
+        assert delta.value_si == pytest.approx(30.0)
+        assert delta.unit_si == "°C"
+        assert delta.derivation == "si_delta:max"
+        assert delta.verbatim == "", "no page printed a difference between datasheets"
+
+    def test_a_parameter_only_one_part_prints_is_reported(self, gate):
+        """LM741 p.4 prints an operating-temperature rating; AD9081's thermal
+        card publishes none. That absence is a row, not a silence."""
+        from datasheet_analyzer.compare import FLAG_ONLY_IN
+
+        comparison = self._compare(gate, "AD9081", "LM741").card("thermal")
+        only = next(r for r in comparison.rows if FLAG_ONLY_IN in r.flags)
+        assert only.missing_from == ["AD9081"]
+        assert only.cells[0].part_number == "LM741"
+        assert "publishes no record" in only.note
+
+    def test_a_third_ambiguous_part_costs_the_others_nothing(self, gate):
+        """QPA1003P prints three channel temperatures under the same key. The
+        AD9081/LM741 delta stands, QPA1003P is named, and all three of its rows
+        are listed with what they printed."""
+        from datasheet_analyzer.compare.build import FLAG_AMBIGUOUS
+
+        comparison = self._compare(gate, "AD9081", "LM741", "QPA1003P").card("thermal")
+        row = next(r for r in comparison.rows if r.key == "TJ")
+        assert [c.part_number for c in row.cells] == ["AD9081", "LM741"]
+        assert row.cells[1].delta.value_si == pytest.approx(30.0)
+        assert row.ambiguous_in == ["QPA1003P"]
+        assert FLAG_AMBIGUOUS in row.flags
+        listing = "\n".join(comparison.unparsed)
+        assert listing.count("uncomparable: TJ / QPA1003P") == 3
+
+    def test_every_source_on_every_comparison_resolves_to_a_record_and_a_page(
+        self, gate, resolve_source, capsys
+    ):
+        """The invariant-8 walk, one noun wider than the design cards' own.
+
+        Every `source` and every `sources` entry of every value — including each
+        delta's two operands, which live in **two different corpora** — is
+        resolved back to a real record with a printed page. The part each
+        reference belongs to is read from the reference itself, which is the
+        whole reason a cross-part value carries a part-qualified one: `rec_1`
+        exists in nearly every corpus, so a reference that did not name its part
+        would resolve to a confident, wrong record.
+        """
+        from datasheet_analyzer.provenance import parse_source
+        queries = [
+            ("AD9081", "QPA1003P", "total power dissipation"),
+            ("AD9081", "LM741", "junction temperature"),
+            ("AD9081", "LM741", "supply voltage"),
+            ("LM741", "QPA1003P", "storage temperature"),
+        ]
+        comparisons = [
+            self._compare(gate, left, right).specs(name=term)
+            for left, right, term in queries
+        ]
+        comparisons += [
+            self._compare(gate, "AD9081", "LM741").card(card)
+            for card in ("power", "thermal", "interface", "limits")
+        ]
+
+        problems: list[str] = []
+        n_refs = n_values = 0
+        for comparison in comparisons:
+            for row in comparison.rows:
+                for cell in row.cells:
+                    values = [*cell.values.items()]
+                    if cell.delta is not None:
+                        values.append(("delta", cell.delta))
+                    for role, value in values:
+                        n_values += 1
+                        where = f"{comparison.query}/{row.key}/{cell.part_number}/{role}"
+                        if not (value.refs and value.derivation):
+                            problems.append(f"{where}: no source or no named rule")
+                        for ref in value.refs:
+                            n_refs += 1
+                            named = parse_source(ref)
+                            if named is None or not named.part:
+                                problems.append(f"{where}: {ref} names no part")
+                                continue
+                            resolved = resolve_source(gate[named.part].part_dir, ref)
+                            if resolved is None:
+                                problems.append(f"{where}: {ref} resolves to no record")
+                            elif resolved.page is None:
+                                problems.append(f"{where}: {ref} has no printed page")
+                            elif ref == value.source and resolved.page != value.page:
+                                problems.append(
+                                    f"{where}: cites p.{value.page}, record is on "
+                                    f"p.{resolved.page}"
+                                )
+        assert not problems, problems
+        assert n_values >= 10 and n_refs > n_values, "the walk must have walked something"
+        with capsys.disabled():
+            print(
+                f"\ncross-part compare, invariant-8 walk: {n_refs} references over "
+                f"{n_values} values in {len(comparisons)} comparisons, all resolved\n"
+            )
+
+    def test_a_delta_is_never_computed_across_two_si_bases(self, gate):
+        """Every delta in every comparison above shares its operands' base —
+        the refusal `SI_UNITS` exists to make, at the artifact level."""
+        comparisons = [
+            self._compare(gate, "AD9081", "LM741").specs(name=term)
+            for term in ("junction temperature", "supply voltage", "storage temperature")
+        ]
+        for comparison in comparisons:
+            for row in comparison.rows:
+                reference = next(c for c in row.cells if c.part_number == row.reference)
+                for cell in row.cells:
+                    if cell.delta is None:
+                        continue
+                    assert cell.delta.unit_si == reference.values[row.role].unit_si
+                    assert cell.values[row.role].unit_si == cell.delta.unit_si

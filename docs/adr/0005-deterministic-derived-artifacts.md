@@ -324,3 +324,45 @@ the ticket's one schema change: a card selects rows by the *table* they were
 printed on, and on the captionless era of datasheets every section number is
 honestly `""`, so `SpecRecord` gains the printed `section_title`. Without it the
 limits and power cards would be empty on exactly the parts that need them most.
+
+### As built (ticket 09)
+
+The **cross-part comparison** is the first derived artifact whose values come
+from more than one corpus, and it forced this decision's one extension so far.
+
+- **A reference must name everything needed to resolve it.** A comparison's
+  delta cites one record in each of two parts, and `rec_1` exists in nearly every
+  corpus — so `docs/<doc>/specs.json#rec_1` is walkable only by a caller who
+  already knows which part it came from, which is not a round trip.
+  `provenance.source_ref` therefore gained an **additive** part-qualified form,
+  `parts/<PART>/docs/<doc>/specs.json#rec_412`; `parse_source` reads it, and
+  `resolve_source` *refuses* a reference resolved against a different part rather
+  than matching a same-numbered record there. A design card's references are
+  unchanged — inside one corpus naming the part is noise — and a card comparison
+  re-qualifies the values it inherits.
+- **"A field that cannot be filled stays null and says so"**, applied to the one
+  number this artifact adds. A delta exists only where both sides parsed the
+  *same printed column* into the same SI base: a `typ` against a `max`, two
+  different bases, and a printed range reduced to an endpoint are all refused
+  with the reason, and both printed values are still published, still cited.
+- **"Any consumer that compares must report its unparsed population."** Every
+  comparison prints `quantities.parse_population`'s sentence per part, one line
+  per row it could not read, and one line per pair it could not compare —
+  under a heading a reader can find (`## Not comparable`).
+- **An ambiguous join is refused, and here it is refused *per part*.** Ticket 07
+  refuses a whole key; a comparison refuses only the part whose rows no shared
+  printed name can pair, names it in `ambiguous_in`, quotes all of its rows, and
+  lets the parts that *are* unambiguous compare. A third device's messy table may
+  not erase a clean comparison between two others.
+- **`only in A` is a row, not a silence** — during part selection an absent
+  parameter is the answer — and its note says the other part "publishes no
+  record", never "does not state": the artifact reports the corpus, and the
+  difference is recorded in `KNOWN_SHORTCOMINGS.md`.
+
+`CARD_VERSION` does **not** move for this ticket, and that is the point: a
+comparison is never written to disk. It is a question about a *set* of parts,
+and a corpus belongs to one, so there is no file for a cache key to invalidate —
+`COMPARE_SCHEMA_VERSION` describes a payload shape instead. Enforcement is the
+same test as ever, one noun wider: 327 references over 139 values in 8
+comparisons, each resolved in the corpus its own reference names
+(`test_phase4_layout_gate.py::TestCrossPartCompareOnTheGateCorpora`).

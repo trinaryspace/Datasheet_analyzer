@@ -10,6 +10,7 @@ Commands:
   pins --part NAME          pin lookup by designator, name or type (--json)
   regs --part NAME          register lookup by address, name, bit field or text (--json)
   card --part NAME          design card: power | thermal | interface | limits (--json)
+  compare A B [C …]         cross-part comparison: --symbol | --name | --card (--json)
   plots --part NAME         deterministic plot lookup (--json)
   project new|add|remove|build|status   the noun above `part`: a design
   serve --mcp               the corpus as MCP tools over local stdio
@@ -19,7 +20,9 @@ Commands:
 `query`, `search`, `ask`, `pins`, `regs` and `plots` each take either `--part NAME` or
 `--project NAME`; a project fans the lookup out across its member parts and
 labels every hit with the part it came from. `card` is part-only: a design card
-is one device's, and the cross-part view is `dsa compare`.
+is one device's, and the cross-part view is `dsa compare`, which takes its parts
+as positional arguments because it is the one command whose scope is an ad-hoc
+list of devices rather than one part or one curated design.
 """
 
 from __future__ import annotations
@@ -516,6 +519,61 @@ def _cmd_card(args: argparse.Namespace) -> int:
     # caller scripting against it should be able to tell that from a card with
     # rows without parsing the text.
     return 1 if not card.rows else 0
+
+
+def _cmd_compare(args: argparse.Namespace) -> int:
+    """Print one cross-part comparison — the corpus's own text, not a re-layout.
+
+    The comparison renders itself (`compare.render_comparison`), for the same
+    reason a design card and an answer pack do. This command chooses the parts,
+    the query and the format, and owns the exit codes.
+    """
+    import json
+
+    from datasheet_analyzer.retrieve import Comparison, check_parts
+
+    parts, error = check_parts(args.parts)
+    if error:
+        print(f"compare error: {error}", file=sys.stderr)
+        return 2
+
+    settings = get_settings()
+    unbuilt = [p for p in parts if not (settings.parts_dir / p / "manifest.json").exists()]
+    if unbuilt:
+        # Named, never silently skipped: a comparison missing one of its parts
+        # would read as a device that states nothing rather than as one that was
+        # never built — the same rule `dsa project` applies to a member.
+        print(
+            f"compare error: no corpus for {', '.join(unbuilt)} under "
+            f"{settings.parts_dir} — build each one first: "
+            f"`dsa build <pdf> --part {unbuilt[0]}`",
+            file=sys.stderr,
+        )
+        return 2
+
+    scope = Comparison.for_parts([settings.parts_dir / p for p in parts])
+    if args.card:
+        comparison = scope.card(args.card)
+        if comparison is None:
+            print(
+                f"compare error: no card named {args.card!r} — these builds "
+                f"declare: {', '.join(scope.card_names()) or '(none)'}",
+                file=sys.stderr,
+            )
+            return 2
+    else:
+        comparison = scope.specs(symbol=args.symbol or "", name=args.name or "")
+
+    if args.json:
+        print(json.dumps(comparison.model_dump(mode="json"), ensure_ascii=False, indent=2))
+    else:
+        from datasheet_analyzer.compare import render_comparison
+
+        print(render_comparison(comparison))
+    # An empty comparison is a valid one and still exits 1: nothing aligned, and
+    # a caller scripting against it should be able to tell that from a table
+    # with rows without parsing the text.
+    return 1 if not comparison.rows else 0
 
 
 def _cmd_plots(args: argparse.Namespace) -> int:
@@ -1017,6 +1075,30 @@ def main(argv: list[str] | None = None) -> int:
         help="emit the card as JSON (every value in its provenance envelope)",
     )
     p_card.set_defaults(func=_cmd_card)
+
+    p_compare = sub.add_parser(
+        "compare",
+        help="compare two or more built parts, row by row, with SI deltas",
+    )
+    # Positional and unbounded: three or more parts is a supported question
+    # during part selection, and truncating a list to the first two silently is
+    # exactly the failure this command exists to avoid. The first part named is
+    # the reference every delta is measured against.
+    p_compare.add_argument(
+        "parts", nargs="+", help="two or more built part numbers, e.g. AFE7950 AFE7953"
+    )
+    what = p_compare.add_mutually_exclusive_group(required=True)
+    what.add_argument("--symbol", default="", help="spec symbol, e.g. Pdiss")
+    what.add_argument("--name", default="", help="a designer's words for a parameter")
+    what.add_argument(
+        "--card", default="", help="a whole design card: power | thermal | interface | limits"
+    )
+    p_compare.add_argument(
+        "--json",
+        action="store_true",
+        help="emit the comparison as JSON (every value in its provenance envelope)",
+    )
+    p_compare.set_defaults(func=_cmd_compare)
 
     p_plots = sub.add_parser("plots", help="deterministic plot lookup")
     _add_scope(p_plots)
