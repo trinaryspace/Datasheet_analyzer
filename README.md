@@ -315,6 +315,56 @@ reset — verified against the text of the page it cites
 (`tests/integration/test_phase6_registers.py`). The seven that publish none are
 recorded in `KNOWN_SHORTCOMINGS.md`.
 
+### Open a design card (`dsa card`)
+
+```bash
+dsa card --part AFE7950                    # which cards this build declares
+dsa card --part AFE7950 --card power       # rails, per-rail current, dissipation
+dsa card --part AFE7950 --card thermal     # RθJA, RθJC(top), ΨJT, ΨJB, TJ, TA, Tstg
+dsa card --part AFE7950 --card interface   # JESD204 / SerDes rates, SPI timing
+dsa card --part AFE7950 --card limits      # abs-max vs recommended, with the margin
+dsa card --part AD9081 --card power --json # every value in its provenance envelope
+```
+
+A **design card** is the datasheet reorganised around a design task instead of
+around the document: four views over records the corpus already published,
+written into the corpus as `cards/<name>.json` + `cards/<name>.md` and printed by
+this command from the same rendering, so the file and the command can never
+disagree.
+
+Nothing on a card is generated. Every value is a cell quoted **with its printed
+unit**, a number computed from quoted cells by a named rule, or a label from
+`registry/cards.yaml` — and each one carries the record it came from, the page it
+was printed on and the rule that produced it (ADR 0005 / invariant 8). A test
+walks every one of those references back to a record and a printed page; a value
+with no resolvable provenance fails the build.
+
+The `limits` card is the one that earns its keep alone. It joins the absolute-
+maximum and recommended-operating tables — pages apart in every datasheet — by
+alias-resolved symbol, and:
+
+- computes a margin **only where both sides parsed** as numbers in the same SI
+  base (a computed value has no verbatim: no page printed it, so it is marked
+  `*(derived)*` and never quoted as printed text);
+- **flags a zero margin**, where the recommended maximum *is* the absolute
+  maximum and any overshoot is out of specification, and the reverse too;
+- **lists every pair it could not compare**, with the reason — printed on one
+  table only, no maximum stated, a value the numeric layer could not read, or an
+  ambiguous join (three ratings against three rails pair only where two rows
+  share a printed identity cell character for character; guessing between them
+  would compute a 0.9 V rail's headroom against a 1.8 V rating).
+
+Measured on AFE7950: `TJ` has 40 °C of headroom — 150 °C absolute maximum on p.4
+against a 110 °C recommended operating maximum on p.6 — and the 0.9 V rail has
+0.25 V. Neither reference part prints a zero-margin parameter; the flag is
+pinned by test instead of by luck.
+
+A card with nothing to show is **honestly empty**: it states what it looked for
+and did not find, is published like any other card, and is recorded in the
+manifest's `derived_warnings` (measured: LM741 is an op-amp, so its interface
+card has no rows and says so). Widening a card is a YAML edit — a table title, a
+unit, a symbol phrase — never a looser rule.
+
 ### Find a plot
 
 ```bash
@@ -336,6 +386,7 @@ page range within its token budget. Then grep/read the section files:
 parts/AFE7950/
 ├── INDEX.md               # always-loadable index (hard budget, 3000 tok)
 ├── AGENT.md               # the retrieval protocol, shipped with the corpus (~1.4k tok)
+├── cards/                 # design cards: power|thermal|interface|limits, as .json + .md
 ├── sources.json           # doc inventory: sha256, type, revision, nda flag
 ├── manifest.json          # machine-readable section map + stats
 └── docs/datasheet-<hash8>/

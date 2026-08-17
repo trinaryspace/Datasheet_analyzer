@@ -1,0 +1,233 @@
+# Design-card lexicon — which printed rows belong on which task-shaped card.
+#
+# Data, not code (same philosophy as the alias lexicon, the pin-type lexicon and
+# the device-table lexicon): teaching the power card that a vendor calls its
+# rails `VEE` or prints its currents as `AVDD2 (IAVDD2)` is an edit here, never
+# a Python change. Nothing in `cards/` hard-codes a symbol, a section title or a
+# rail-naming convention.
+#
+# Shape, one entry per card:
+#
+#   <card>:
+#     title: <human title>
+#     purpose: <one line: what a designer opens this card to answer>
+#     groups:                      # one table per group, in this order
+#       - id: <slug>
+#         title: <human title>
+#         kind: spec | pins        # what the group is built from (default spec)
+#         roles: [min, typ, max, value]   # the printed columns it publishes
+#         section_titles: [phrase, ...]   # restrict to sections whose printed
+#                                         # title contains one of these
+#         unit_bases: [V, A, W]           # restrict to rows whose printed unit
+#                                         # scales to one of these SI bases
+#         alias_symbols: [SYMBOL, ...]    # entries of `registry/aliases.yaml`;
+#                                         # a row is claimed when the lexicon
+#                                         # resolves it to one of them
+#         symbol_contains: [text, ...]    # lowercase substring of the printed
+#                                         # symbol
+#         name_contains: [text, ...]      # lowercase substring of the printed
+#                                         # parameter name
+#         pin_types: [power, ground]      # `kind: pins` only
+#         reduce: max                     # publish one row per (symbol, name):
+#                                         # the one stating the largest value.
+#                                         # Omit to publish every row.
+#     join:                        # `limits` only — the abs-max/recommended pair
+#       role: max
+#       abs_max: {section_titles: [...]}
+#       recommended: {section_titles: [...]}
+#
+# Matching rules, all of them deliberate:
+#
+# - `section_titles` / `symbol_contains` / `name_contains` are **substring**
+#   tests on lowercased printed text, because each of them is already a phrase
+#   and a datasheet glues its own punctuation to it ("AVDD2 (IAVDD2)",
+#   "JESD204B and JESD204C Interface Electrical and Speed Specifications").
+#   `alias_symbols` is the whole-phrase route: it asks the alias lexicon, which
+#   owns that rule.
+# - A group's predicates are OR'd (any one claims the row); `section_titles` and
+#   `unit_bases`, when present, are AND'd on top — they say *which table* and
+#   *which physical quantity*, while every other predicate says *which row*.
+#   Both restrictions exist because printed words are not always enough: AD9081
+#   prints its rails and its rail currents on two tables inside one section, and
+#   every row of both names `AVDD2`. A volt is not an amp.
+# - A row must print something in one of the group's `roles` to be a card row.
+#   The exception is the limits join, where a row printing no `max` is reported
+#   as uncomparable rather than dropped: on that card its silence is the finding.
+
+power:
+  title: Power
+  purpose: >-
+    Every rail this device needs, the most current each one is stated to draw,
+    and what the package has to dissipate.
+  groups:
+    - id: rails
+      title: Supply rails
+      roles: [min, typ, max, value]
+      # The rails are the *recommended operating* table's, never the abs-max
+      # table's: a supply range a designer designs to is not a rating a supply
+      # must never exceed (that pair is the `limits` card's whole subject).
+      section_titles:
+        - recommended operating conditions
+        - operating conditions
+      unit_bases: [V]
+      symbol_contains:
+        # the rail-naming convention itself — one substring covers AVDD1,
+        # DVDD1P8, SVDD2_PLL, VDD1P8TXDAC, VCCA, VEE
+        - vdd
+        - vcc
+        - vee
+      name_contains:
+        - supply voltage
+        - rail voltage
+      alias_symbols: [VDD]
+
+    - id: currents
+      title: Supply current
+      roles: [min, typ, max, value]
+      # No section restriction: a datasheet states its rail currents wherever it
+      # likes (AD9081 prints them on the second table of the section that prints
+      # the rails). The unit is what keeps a rail out of this group.
+      unit_bases: [A]
+      symbol_contains:
+        - ivdd
+        - icc
+        - idd
+        # ADI prints the current beside its rail: "AVDD2 (IAVDD2)"
+        - "(i"
+      name_contains:
+        - supply current
+        - quiescent current
+        - operating current
+      alias_symbols: [IDD]
+      # A datasheet states a rail's current once per operating configuration
+      # (AFE7950 prints 24 of them). What a designer sizing a regulator needs is
+      # the largest, cited to the configuration that states it — and the row
+      # says how many values it was the largest of.
+      reduce: max
+
+    - id: dissipation
+      title: Power dissipation
+      roles: [min, typ, max, value]
+      unit_bases: [W]
+      symbol_contains:
+        - pdiss
+        - power dissipation
+      name_contains:
+        - power dissipation
+        - power consumption
+      alias_symbols: [Pdiss]
+      reduce: max
+
+    - id: pins
+      title: Supply and ground pins
+      kind: pins
+      pin_types: [power, ground]
+
+thermal:
+  title: Thermal
+  purpose: >-
+    The thermal resistances and the temperature limits a heatsink calculation
+    needs, on one page instead of four.
+  groups:
+    - id: resistance
+      title: Thermal resistance
+      roles: [min, typ, max, value]
+      unit_bases: ["°C/W"]
+      symbol_contains:
+        # both theta glyphs a datasheet prints, plus the spelled-out forms
+        - "rθja"
+        - "rθjc"
+        - "rθjb"
+        - "θja"
+        - "θjc"
+        - "θjb"
+        - "ψjt"
+        - "ψjb"
+        - thermal resistance
+      name_contains:
+        - thermal resistance
+        - junction-to
+        - junction to
+        - characterization parameter
+      alias_symbols: [RthJA, RthJC]
+
+    - id: temperature
+      title: Temperature limits
+      roles: [min, typ, max, value]
+      # A temperature is stated in °C, and this is what keeps AFE7950's *other*
+      # `TJ` — Total Jitter, in UI, on the SerDes table — off the thermal card.
+      # One printed symbol, two quantities: only the unit tells them apart.
+      unit_bases: ["°C"]
+      symbol_contains:
+        - junction temperature
+        - ambient temperature
+        - storage temperature
+        - operating temperature
+      name_contains:
+        - junction temperature
+        - ambient temperature
+        - storage temperature
+        - operating temperature
+      alias_symbols: [TJ, TA, Tstg]
+
+interface:
+  title: Interface
+  purpose: >-
+    What the digital interfaces will do: which JESD204 standards, how fast a
+    lane may run, and the SPI timing a driver has to honour.
+  groups:
+    - id: jesd
+      title: JESD204 / SerDes
+      roles: [min, typ, max, value]
+      symbol_contains:
+        - jesd
+        - serdes
+        - lane rate
+        - serial interface rate
+        - unit interval
+      name_contains:
+        - jesd
+        - serdes
+        - lane rate
+        - serial lane
+      alias_symbols: [FSerDes]
+
+    - id: spi
+      title: SPI / serial port timing
+      roles: [min, typ, max, value]
+      symbol_contains:
+        - sclk
+        - sdio
+        - senb
+        - spi
+      name_contains:
+        # deliberately not a bare "spi": the abs-max table's pin-voltage row
+        # lists `SPICLK, SPISDIO, SPISDO, SPISEN` in its name, and a rating for
+        # a pin is not a timing a driver honours
+        - sclk
+        - spi clock
+        - serial clock
+        - serial port
+      alias_symbols: ["t(SCLK)"]
+
+limits:
+  title: Limits
+  purpose: >-
+    Absolute maximum against recommended operating, per parameter, with the
+    margin — and a flag where there is none.
+  join:
+    # The `max` column only. A datasheet's abs-max table states the ceiling a
+    # part must never see, and the recommended table the ceiling a design may
+    # use; the distance between them is the headroom. The `min` side is a real
+    # question too and is deliberately not answered here (see
+    # `KNOWN_SHORTCOMINGS.md`) rather than answered with a sign convention
+    # nobody asked for.
+    role: max
+    abs_max:
+      section_titles:
+        - absolute maximum ratings
+        - absolute maximum
+    recommended:
+      section_titles:
+        - recommended operating conditions
+        - operating conditions

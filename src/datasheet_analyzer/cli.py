@@ -9,6 +9,7 @@ Commands:
   ask --part NAME "..."     one cited answer pack inside a token budget (--json)
   pins --part NAME          pin lookup by designator, name or type (--json)
   regs --part NAME          register lookup by address, name, bit field or text (--json)
+  card --part NAME          design card: power | thermal | interface | limits (--json)
   plots --part NAME         deterministic plot lookup (--json)
   project new|add|remove|build|status   the noun above `part`: a design
   serve --mcp               the corpus as MCP tools over local stdio
@@ -17,7 +18,8 @@ Commands:
 
 `query`, `search`, `ask`, `pins`, `regs` and `plots` each take either `--part NAME` or
 `--project NAME`; a project fans the lookup out across its member parts and
-labels every hit with the part it came from.
+labels every hit with the part it came from. `card` is part-only: a design card
+is one device's, and the cross-part view is `dsa compare`.
 """
 
 from __future__ import annotations
@@ -477,6 +479,45 @@ def _cmd_regs(args: argparse.Namespace) -> int:
     return 0 if hits else 1
 
 
+def _cmd_card(args: argparse.Namespace) -> int:
+    """Print one design card — the corpus's own text, never re-laid-out here.
+
+    The card renders itself (`cards.render_card`), for the same reason an answer
+    pack does: what `cards/power.md` holds and what this prints must be one
+    string. This command only chooses a card and a format.
+    """
+    import json
+
+    scope, _show_part = _scope(args)
+    if scope is None:
+        return 2
+
+    names = scope.card_names()
+    if not args.card:
+        print("cards: " + ", ".join(names) if names else "no cards are declared")
+        return 0 if names else 1
+
+    card = scope.card(args.card)
+    if card is None:
+        print(
+            f"no card named {args.card!r} — this build declares: "
+            f"{', '.join(names) or '(none)'}",
+            file=sys.stderr,
+        )
+        return 2
+
+    if args.json:
+        print(json.dumps(card.model_dump(mode="json"), ensure_ascii=False, indent=2))
+    else:
+        from datasheet_analyzer.cards import render_card
+
+        print(render_card(card))
+    # An empty card is a valid card and still exits 1: nothing was found, and a
+    # caller scripting against it should be able to tell that from a card with
+    # rows without parsing the text.
+    return 1 if not card.rows else 0
+
+
 def _cmd_plots(args: argparse.Namespace) -> int:
     import json
 
@@ -718,6 +759,14 @@ def _part_vendor_info(part: Path) -> tuple[str, str, list[str], list[str]]:
         confidence = _confidence_line(m.stats)
         if confidence:
             doc_lines.append(confidence)
+        # Design cards are derived, so their coverage is a fact worth printing
+        # beside the confidence mix: four cards always, and the row count is
+        # what says whether they found anything (ticket 07).
+        if m.stats.n_cards:
+            doc_lines.append(
+                f"    cards: {m.stats.n_cards} ({m.stats.n_card_rows} rows) — "
+                f"`dsa card --part {part.name}`"
+            )
         # ADR 0005 decided a pin-count mismatch is *recorded*, not logged. It
         # is a fact the corpus carries, so `status` prints it — the auditable
         # surface `dsa audit` (phase 7) will grow out of.
@@ -931,6 +980,24 @@ def main(argv: list[str] | None = None) -> int:
         help="emit hits (parsed address, reset, bit fields, matched_via + confidence) as JSON",
     )
     p_regs.set_defaults(func=_cmd_regs)
+
+    p_card = sub.add_parser(
+        "card", help="design card: power | thermal | interface | limits"
+    )
+    # Part-only, deliberately: a design card is one device's, and the
+    # cross-part view is `dsa compare` (phase 6, ticket 09).
+    p_card.add_argument("--part", required=True, help="part number, e.g. AFE7950")
+    p_card.add_argument(
+        "--card",
+        default="",
+        help="which card (omit to list the cards this build declares)",
+    )
+    p_card.add_argument(
+        "--json",
+        action="store_true",
+        help="emit the card as JSON (every value in its provenance envelope)",
+    )
+    p_card.set_defaults(func=_cmd_card)
 
     p_plots = sub.add_parser("plots", help="deterministic plot lookup")
     _add_scope(p_plots)

@@ -56,6 +56,13 @@ def table_to_records(
             else None
         record = SpecRecord(
             section=section.number,
+            # The section's printed title travels with the row (ticket 07): a
+            # whole era of datasheets numbers no section, so the title is the
+            # only thing that tells an abs-max table from a
+            # recommended-operating one — and a margin computed across the
+            # wrong two tables is the confident-and-wrong artifact ADR 0005
+            # exists to prevent.
+            section_title=section.title,
             table_index=table_index,
             row_index=row_index,
             symbol=normalize_text(_cell_for_role(row, roles, "symbol")),

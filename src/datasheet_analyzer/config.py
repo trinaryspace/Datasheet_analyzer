@@ -37,7 +37,12 @@ PIPELINE_VERSION = "0.5.0"
 # to every published record. A corpus published without them answers every
 # comparison and margin question unparsed, so it republishes once instead of
 # looking like a part whose values simply do not parse.
-SPECS_SCHEMA_VERSION = "4"
+# "5": phase 6, ticket 07 added `section_title` — the printed title of the
+# section a row's table was printed under. It is the only identity a design card
+# can select a table by on the captionless era of datasheets (where `section` is
+# honestly "" for every section), so a corpus published without it yields empty
+# limits and power cards on exactly the parts that need them most.
+SPECS_SCHEMA_VERSION = "5"
 PLOTS_SCHEMA_VERSION = "2"
 SEARCH_SCHEMA_VERSION = "1"
 # "1": phase 6, ticket 04 — `pins.json`, the pin table as individually citable
@@ -55,6 +60,11 @@ PINS_SCHEMA_VERSION = "1"
 # nothing about its source bytes changed, so it republishes once instead of
 # reading as a part whose registers simply have no fields.
 REGISTERS_SCHEMA_VERSION = "2"
+# "1": phase 6, ticket 07 — `cards/<name>.json`, the design cards. New artifact,
+# so version 1. Unlike its siblings it is *not* gated on a missing file reading
+# as current: every published part gets all four cards, an honestly empty one
+# included, so an absent card file really is staleness (`publish.cards_current`).
+CARDS_SCHEMA_VERSION = "1"
 
 # The version of the *derivation rules* (ADR 0005 / invariant 8). Derived
 # artifacts — design cards and anything else computed from records by a named
@@ -84,7 +94,12 @@ REGISTERS_SCHEMA_VERSION = "2"
 # warning (how many registers publish a field set). Same reasoning again: a part
 # built at ticket 05 would skip forever and keep publishing registers with no
 # fields, which reads as a document that prints none.
-CARD_VERSION = "4"
+# "5": phase 6, ticket 07 — the design cards themselves, the artifact this
+# constant was named for. Every value on them is derived (a selected cell, a
+# reduction over rows, a computed margin, a pin count), the selectors live in
+# `registry/cards.yaml`, and none of it is visible to any other gate: a part
+# built at ticket 06 has no `cards/` directory at all and would keep skipping.
+CARD_VERSION = "5"
 
 
 class Settings(BaseSettings):

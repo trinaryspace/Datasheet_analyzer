@@ -18,8 +18,10 @@ import json
 import logging
 from pathlib import Path
 
+from datasheet_analyzer.cards import CardDoc, build_cards, render_card
 from datasheet_analyzer.config import (
     CARD_VERSION,
+    CARDS_SCHEMA_VERSION,
     PINS_SCHEMA_VERSION,
     PLOTS_SCHEMA_VERSION,
     REGISTERS_SCHEMA_VERSION,
@@ -28,6 +30,7 @@ from datasheet_analyzer.config import (
 from datasheet_analyzer.models import (
     CorpusManifest,
     CorpusStats,
+    DesignCard,
     ExtractionStats,
     PinRecord,
     PinSet,
@@ -48,6 +51,12 @@ from datasheet_analyzer.structure.corpus import SectionPlan
 from datasheet_analyzer.tokens import count_tokens
 
 log = logging.getLogger(__name__)
+
+#: Design cards live at the *part* level, beside `INDEX.md`: a card joins rows
+#: from every document of the part (and a limits margin joins two tables that
+#: may not even be in the same one), so a per-document card would be a view of
+#: half a device.
+CARDS_DIRNAME = "cards"
 
 
 def doc_dir_name_for_source(source: SourceDocument) -> str:
@@ -111,6 +120,69 @@ def pins_current(doc_dir: Path) -> bool:
     loop forever.
     """
     return _artifact_schema_current(doc_dir, "pins.json", PINS_SCHEMA_VERSION)
+
+
+def cards_current(part_dir: Path, card_version: str = CARD_VERSION) -> bool:
+    """Whether the part's `cards/` hold current, current-rule design cards.
+
+    The one publish-artifact gate where a **missing** file is staleness rather
+    than a legitimate absence, and the asymmetry follows from what a card is:
+    every published part gets all four, an honestly empty one included (ADR
+    0005: "an empty card is a valid card, not a missing file that reads as *not
+    yet built*"). So no cards means a corpus published before cards existed, and
+    a card stamped with another `card_version` means one derived under rules this
+    build no longer uses — both republish once and then skip again.
+    """
+    cards_dir = part_dir / CARDS_DIRNAME
+    if not cards_dir.is_dir():
+        return False
+    files = sorted(cards_dir.glob("*.json"))
+    if not files:
+        return False
+    for path in files:
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return False
+        if not isinstance(data, dict):
+            return False
+        if data.get("schema_version") != CARDS_SCHEMA_VERSION:
+            return False
+        if data.get("card_version") != card_version:
+            return False
+    return True
+
+
+def write_cards(part_dir: Path, cards: list[DesignCard]) -> list[Path]:
+    """Write `cards/<name>.json` + `cards/<name>.md`; return what was written.
+
+    Both forms, always: the JSON is what a machine walks (every value in its
+    provenance envelope, which is what the invariant-8 test resolves) and the
+    markdown is what a person or an agent reads. The markdown comes from
+    `cards.render`, the same function `dsa card` prints, so the file on disk and
+    the command's output cannot drift.
+
+    A card with no rows is written exactly like one with rows. That is ADR 0005's
+    "an empty card is a valid card": the file states what it looked for and did
+    not find, where a missing file would read as "this part has not been built
+    yet".
+    """
+    cards_dir = part_dir / CARDS_DIRNAME
+    cards_dir.mkdir(parents=True, exist_ok=True)
+    written: list[Path] = []
+    for card in cards:
+        json_path = cards_dir / f"{card.card}.json"
+        json_path.write_text(card.model_dump_json(indent=2), encoding="utf-8")
+        md_path = cards_dir / f"{card.card}.md"
+        md_path.write_text(render_card(card), encoding="utf-8")
+        written += [json_path, md_path]
+    # A card the lexicon no longer declares must not linger: a stale card is a
+    # derived artifact nobody can regenerate, which is the failure `card_version`
+    # exists to prevent.
+    for path in sorted(cards_dir.iterdir()):
+        if path.is_file() and path not in written:
+            path.unlink(missing_ok=True)
+    return written
 
 
 def registers_current(doc_dir: Path) -> bool:
@@ -187,6 +259,9 @@ def write_corpus(
     plotsets_by_hash = {p.doc_hash: p for p in (plotsets or [])}
     pinsets_by_hash = {p.doc_hash: p for p in (pinsets or [])}
     registersets_by_hash = {r.doc_hash: r for r in (registersets or [])}
+    # What the design cards are derived from: the very records written below,
+    # per document, in publication order (ticket 07).
+    card_docs: list[CardDoc] = []
     # Per-part confidence mix, accumulated across the part's documents so the
     # manifest carries one measured number per grade (ticket 04).
     graded_specs: list[SpecRecord] = []
@@ -247,6 +322,17 @@ def write_corpus(
                 graded_registers.extend(registerset.registers)
             else:
                 registers_path.unlink(missing_ok=True)
+
+        # Only records that were actually *written* feed a card: a card cites
+        # `docs/<doc>/specs.json#rec_412`, and a reference into a file the
+        # publisher declined to write would resolve to nothing.
+        card_docs.append(
+            CardDoc.of(
+                doc_dir_name(raw),
+                specset,
+                pinset if pinset is not None and pinset.pins else None,
+            )
+        )
 
         plotset = plotsets_by_hash.get(raw.source.content_hash)
         if plotset is not None:
@@ -317,6 +403,26 @@ def write_corpus(
     (part_dir / "INDEX.md").write_text(index_md, encoding="utf-8")
     stats.index_tokens = count_tokens(index_md)
 
+    # Design cards (ticket 07). Derived here rather than in the structure stage
+    # because a card is a view over *published* records, ids and all — and
+    # written for every part, empty ones included, because an empty card is a
+    # finding and a missing file reads as "not built yet".
+    cards = build_cards(part_dir.name, card_docs, card_version=card_version)
+    write_cards(part_dir, cards)
+    stats.n_cards = len(cards)
+    stats.n_card_rows = sum(card.n_rows for card in cards)
+    for card in cards:
+        if card.empty_reason:
+            # One line, not the card's full reason: the manifest is the audit
+            # trail (`dsa status`, and `dsa audit` in phase 7) and the card file
+            # is where the detail belongs. Recorded at all because "this part
+            # has no power card" is exactly the kind of derived-artifact gap
+            # ADR 0005 decided must be carried by the corpus rather than logged.
+            manifest.derived_warnings.append(
+                f"{card.card} card for {part_dir.name} has no rows — see "
+                f"{CARDS_DIRNAME}/{card.card}.md for what it looked for"
+            )
+
     # The retrieval protocol ships *with* the corpus (ticket 08): INDEX.md is
     # the map, AGENT.md is how to read it. Written here rather than by the
     # enrich stage because it is not enriched — it is fixed text plus the
@@ -350,6 +456,10 @@ def write_corpus(
         "index %d tokens, agent protocol %d tokens)",
         part_dir, stats.n_sections, stats.n_tables, stats.n_specs,
         stats.total_tokens, stats.index_tokens, stats.agent_doc_tokens,
+    )
+    log.info(
+        "design cards: %d written (%d rows) at card_version %s",
+        stats.n_cards, stats.n_card_rows, card_version,
     )
     log.info(
         "confidence mix: specs %s; plots %s; pins %s; registers %s",

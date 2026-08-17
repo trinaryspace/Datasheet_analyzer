@@ -99,3 +99,63 @@ overflow, and the set is refused with a reason.
 column, or a bit-position header row (already used when a diagram provides one).
 Deriving it from the fields themselves is deliberately not done: a width taken
 from the ranges it is supposed to validate makes the validation vacuous.
+
+---
+
+## Design cards (phase 6, ticket 07)
+
+The four cards ship, and every value on them resolves to a record and a printed
+page (377 references, 0 unresolvable — `Reports/PHASE_6_REPORT.md`). These are
+the limits of what they cover.
+
+### 1. The limits card compares the `max` column only
+
+`registry/cards.yaml`'s join declares `role: max`, so the card answers "how much
+headroom does the recommended maximum leave under the absolute maximum?" and says
+nothing about the `min` side. A recommended *minimum* below an absolute-maximum
+minimum is a real hazard too, and it needs the opposite subtraction
+(`recommended_min - abs_min`); a card showing both under one "Margin" column
+would be read wrong by exactly the reader it is for.
+
+**What would change it.** A second declared join role with its own column and its
+own flag, plus a printed pair to gate it on. Neither reference part prints a
+comparable min pair — AFE7950's abs-max minima are pin-voltage ratings stated
+relative to another rail (`VDDRX1P8+0.3`), which do not parse — so it would ship
+untested against a real page, and this phase's stance on that is ticket 06's.
+
+### 2. No zero-margin parameter exists in the built parts
+
+The flag the card exists for is exercised by unit test only, including its
+across-a-unit-prefix twin (1850 mV against 1.85 V must read as zero, which exact
+float equality would miss). Measured: only **two** parameter pairs compare at all
+across the five built corpora, both on AFE7950, both with headroom — because
+joining two tables requires both of them to extract with values, and only one
+part manages that (see 3).
+
+**What would change it.** A part whose recommended maximum really is its absolute
+maximum. It cannot be manufactured honestly: a golden fixture with an invented
+zero-margin row would assert the flag against a datasheet nobody printed.
+
+### 3. AD9081's limits and thermal cards are empty for an extraction reason
+
+Its absolute-maximum and thermal-resistance tables (both on p.21) reconstruct as
+rows with a symbol and **no value cells at all**, so there is nothing to compare
+and nothing to publish: the limits card refuses all 12 candidate parameters by
+name and the thermal card carries only the junction-temperature range from p.4.
+Both tables are also attributed to the *following* section heading (`Thermal
+Resistance`), which is why the limits join finds no abs-max side at all.
+
+**What would change it.** Work in `extract/pdf_layout.py`, not in `cards/`: the
+card reports what the corpus holds, and the fix is to make those two grids
+reconstruct their value columns and anchor under their own heading. Loosening the
+card's selectors would only move the silence.
+
+### 4. A card's coverage is only as wide as its lexicon
+
+HMC520A publishes no card rows at all: its 85 spec records carry no rail, no
+thermal resistance and no interface parameter under wording
+`registry/cards.yaml` knows. QPA1003P publishes a thermal card and nothing else,
+for the same kind of reason. This is the trade ADR 0005 accepted in writing —
+"parts whose tables use unusual header wording will yield empty cards until a
+lexicon entry is added" — and closing a gap is a YAML edit measured against that
+part's printed pages, never a looser match.

@@ -280,6 +280,13 @@ class CorpusStats(BaseModel):
     # does for pins.
     n_registers: int = 0
     n_plot_files: int = 0
+    # Phase 6, ticket 07: how many design cards the part publishes and how many
+    # rows they hold in total. The card count is constant per lexicon (an empty
+    # card is still a card); the row count is the measured one — a part whose
+    # cards hold no rows at all says so in the manifest instead of only in the
+    # files.
+    n_cards: int = 0
+    n_card_rows: int = 0
     total_tokens: int = 0
     index_tokens: int = 0
     boilerplate_tokens_removed: int = 0
@@ -384,6 +391,15 @@ class SpecRecord(BaseModel):
     id: str = ""
     # identity within the document
     section: str = ""
+    # The printed title of the section this row's table was printed under
+    # ("Absolute Maximum Ratings"). Additive, phase 6 ticket 07: it is the only
+    # identity a derived artifact can select a *table* by on the captionless era
+    # of datasheets, where `section` above is honestly "" for every section
+    # (ADR 0004) and a page can be covered by three sections at once. A design
+    # card that cannot tell an abs-max table from a recommended-operating one
+    # cannot compute a margin, so the title travels on the record. "" on a
+    # corpus published before the field existed.
+    section_title: str = ""
     table_index: int = 0
     row_index: int = 0
     # semantic roles (empty string when the role doesn't exist for the table)
@@ -734,7 +750,18 @@ class DerivedValue(BaseModel):
       first-class outcome and never a zero.
     - `source` is the record this value came from
       (`docs/<doc>/specs.json#rec_412`; see `provenance.py`, which mints,
-      parses and resolves it) and `page` is the printed page it was read off.
+      parses and resolves it), `page` is the printed page it was read off and
+      `section` the printed section number it sits in, so a derived artifact can
+      cite it as `§4.1, p.4` — the one citation format this repo has. Two values
+      of one row can come from two sections pages apart, which is the whole
+      point of a limits card, so the citation belongs to the value and not to
+      the row that gathered it.
+    - `sources` (additive, phase 6 ticket 07) names the *other* records that
+      entered a value computed from more than one — a limits card's margin is
+      one number over two rows on two pages, and citing one of them and
+      dropping the other would make the value untraceable by exactly half.
+      `source` stays the primary record, every entry here is a reference of the
+      same form, and the invariant-8 walk resolves all of them.
     - `derivation` names the rule that produced the value
       (`parse_quantity+si_normalize`). A field with no named rule has no
       business being on a derived artifact.
@@ -742,16 +769,101 @@ class DerivedValue(BaseModel):
       the extraction and never a filter.
 
     A field that cannot be filled stays null and says so — it is never
-    interpolated and never defaulted to a plausible value.
+    interpolated and never defaulted to a plausible value. A **computed** value
+    has no `verbatim` at all: no page printed it, and putting a rendered number
+    there would claim a datasheet said something it did not.
     """
 
     verbatim: str = ""
     value_si: float | None = None
     unit_si: str = ""
     source: str = ""
+    sources: list[str] = Field(default_factory=list)
     page: int | None = None
+    section: str = ""
     derivation: str = ""
     confidence: Confidence = Confidence.UNKNOWN
+
+    @property
+    def refs(self) -> list[str]:
+        """Every record reference this value rests on, primary first.
+
+        What an invariant-8 check walks: a value is traceable only if *all* of
+        its references resolve, not just the one that happened to be first.
+        """
+        return [ref for ref in [self.source, *self.sources] if ref]
+
+
+class CardRow(BaseModel):
+    """One row of a design card: what it is about, and its cited values.
+
+    A card row is a *view* of records that already exist, so it owns no value
+    of its own — every entry of `values` is a `DerivedValue` carrying its own
+    source, page and rule (ADR 0005). The keys of `values` are the printed
+    columns the card publishes (`min`, `typ`, `max`, `value`) or, on the limits
+    card, the two sides and their margin (`abs_max`, `recommended_max`,
+    `margin`).
+
+    - `group` is the card table this row belongs to, as the lexicon titles it
+      ("Supply rails"); rows of one group are rendered together.
+    - `label` / `detail` are the row's identity as the datasheet printed it —
+      the symbol and the parameter name, never a rewritten one.
+    - `section` / `section_title` are where it was printed, which is what makes
+      two rows carrying the same symbol on two tables distinguishable.
+    - `selector` is the lexicon rule that put this row on this card — the
+      structural-label evidence ADR 0005 (c) requires, exactly as a pin
+      publishes the phrase that decided its type.
+    - `flags` are the findings a reader must not miss (`zero-margin`).
+    - `note` says what a reader would otherwise have to guess: that this row is
+      the largest of several printed values, or why a margin is absent.
+    """
+
+    group: str = ""
+    label: str = ""
+    detail: str = ""
+    section: str = ""
+    section_title: str = ""
+    selector: str = ""
+    values: dict[str, DerivedValue] = Field(default_factory=dict)
+    flags: list[str] = Field(default_factory=list)
+    note: str = ""
+
+
+class DesignCard(BaseModel):
+    """One task-shaped view over a part's records (phase 6, ticket 07).
+
+    The datasheet reorganised around what a designer needs open while drawing a
+    schematic, and the first artifact in this repo that exists only because a
+    rule selected it. Everything on it is therefore derived under ADR 0005: no
+    value is written here that is not a quote of a record, a documented pure
+    function of records, or a lexicon label, and each one says which.
+
+    - `card_version` is the derivation-rule version the card was produced under
+      (`config.CARD_VERSION`), which is what makes a stale card detectable.
+    - `rows` may be empty, and an empty card is a **valid** card: `empty_reason`
+      then states what was looked for and not found. A part with no interface
+      section gets an interface card that says so, never a fabricated one and
+      never a missing file that reads as "not built yet".
+    - `notes` carries the population sentences invariant 8 requires of any
+      consumer that sorts or compares (`2 of 14 parameters could not be
+      compared`), and `unparsed` the one line per excluded item that makes
+      "listed below" literally true.
+    """
+
+    schema_version: str = ""
+    card: str = ""  # "power" | "thermal" | "interface" | "limits"
+    title: str = ""
+    purpose: str = ""
+    part_number: str = ""
+    card_version: str = ""
+    rows: list[CardRow] = Field(default_factory=list)
+    notes: list[str] = Field(default_factory=list)
+    unparsed: list[str] = Field(default_factory=list)
+    empty_reason: str = ""
+
+    @property
+    def n_rows(self) -> int:
+        return len(self.rows)
 
 
 class SearchSection(BaseModel):

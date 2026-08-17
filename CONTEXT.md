@@ -143,6 +143,34 @@ document printed it — and bits no field claims are listed rather than assumed,
 a field list's coverage of the register is checkable by reading it.
 _Avoid_: bit, flag, mask, bitmask, register bit
 
+**Design card**:
+A task-shaped view over records the corpus already publishes — `power`,
+`thermal`, `interface`, `limits` — written as `cards/<name>.json` and
+`cards/<name>.md` beside a part's index. It is the datasheet reorganised around
+what someone needs open while drawing a schematic, and it owns no value: every
+field is a cell quoted with its printed unit, a number computed from quoted
+cells by a named rule, or a label from `registry/cards.yaml`, and each one
+carries the record it came from, the page it was printed on and the rule that
+produced it. A computed value has no verbatim, because no page printed it. Which
+rows a card selects is data — the table's printed title, the physical quantity
+its unit scales to, the words its symbol or name uses — so a new rail-naming
+convention is a YAML edit. A card with nothing to show is **honestly empty**: it
+states what it looked for and did not find, rather than inventing a row or
+leaving a missing file that reads as "not built yet".
+_Avoid_: summary, dashboard, report, datasheet extract
+
+**Margin**:
+The headroom between a parameter's absolute maximum and its recommended
+operating maximum, computed on the `limits` card only where **both** sides
+parsed as numbers in the same SI base. It is the one number here that exists in
+no datasheet: two tables pages apart, subtracted. A margin of zero is flagged —
+the recommended maximum *is* the rating, so any overshoot is out of
+specification — and so is the reverse, a recommended limit above a rating. Where
+the two tables cannot be paired without guessing (three ratings against three
+rails), no margin is computed and the pair is listed as uncomparable with the
+reason, because a margin between the wrong two rows is worse than none.
+_Avoid_: headroom, delta, difference, derating, safety factor
+
 **Search index**:
 The precomputed inverted index of one document's section files
 (`search_index.json`, written at publish): per section, how often each token

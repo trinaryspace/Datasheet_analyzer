@@ -525,6 +525,51 @@ def test_absent_spec_or_plot_file_does_not_force_a_rebuild(batch_env, artifact):
     assert by_part["PLAIN"].status == STATUS_SKIPPED
 
 
+def test_a_corpus_with_no_design_cards_rebuilds(batch_env):
+    """The file-level half of the ADR 0005 gate (phase 6, ticket 07).
+
+    A part built before design cards existed has a perfectly current manifest
+    *and no `cards/` directory at all*, so the stamped `card_version` cannot see
+    it. Unlike `pins.json`, a missing card is never a legitimate absence: every
+    published part gets all four cards, an honestly empty one included.
+    """
+    from datasheet_analyzer.publish import cards_current
+
+    pdfs, settings = batch_env
+    assert run_batch(pdfs, settings=settings, use_llm=False).ok
+    cards = settings.parts_dir / "PLAIN" / "cards"
+    assert cards_current(cards.parent, settings.card_version)
+    for path in cards.iterdir():
+        path.unlink()
+    cards.rmdir()
+    assert not cards_current(cards.parent, settings.card_version)
+
+    by_part = {j.part: j for j in run_batch(pdfs, settings=settings, use_llm=False).jobs}
+    assert by_part["PLAIN"].status == STATUS_DONE
+    assert by_part["TEST9000"].status == STATUS_SKIPPED
+    # regenerated once, then skipped again — never a permanent rebuild loop
+    again = {j.part: j for j in run_batch(pdfs, settings=settings, use_llm=False).jobs}
+    assert again["PLAIN"].status == STATUS_SKIPPED
+    assert (cards / "power.md").exists()
+
+
+def test_a_card_derived_under_an_older_rule_version_rebuilds(batch_env):
+    """`DSA_CARD_VERSION` regenerates cards rather than leaving stale ones."""
+    pdfs, settings = batch_env
+    assert run_batch(pdfs, settings=settings, use_llm=False).ok
+    path = settings.parts_dir / "PLAIN" / "cards" / "power.json"
+    card = json.loads(path.read_text(encoding="utf-8"))
+    assert card["card_version"] == settings.card_version != "1"
+    card["card_version"] = "1"
+    path.write_text(json.dumps(card), encoding="utf-8")
+
+    by_part = {j.part: j for j in run_batch(pdfs, settings=settings, use_llm=False).jobs}
+    assert by_part["PLAIN"].status == STATUS_DONE
+    assert json.loads(path.read_text(encoding="utf-8"))["card_version"] == (
+        settings.card_version
+    )
+
+
 def test_corrupt_manifest_rebuilds_part(batch_env):
     pdfs, settings = batch_env
     assert run_batch(pdfs, settings=settings, use_llm=False).ok

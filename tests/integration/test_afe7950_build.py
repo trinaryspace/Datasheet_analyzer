@@ -787,3 +787,187 @@ class TestTheReferencePartsPrintNoPinTable:
         titles = [s.title.lower() for s in manifest.sections]
         assert titles, part
         assert not [t for t in titles if "pin" in t], titles
+
+
+@pytest.mark.integration
+class TestDesignCardsOnTheReferenceCorpus:
+    """Phase 6, ticket 07 — the four design cards, on the reference part.
+
+    Two things are proved here and nowhere else. The first is the **invariant-8
+    walk**: every `source` on every value of every card is resolved back through
+    `provenance.resolve_source` to a real record with a printed page, and the
+    primary source's page must be the page the card cites. A card value with no
+    resolvable provenance fails the build, which is what ADR 0005 means by
+    "enforcement is a test, not a convention".
+
+    The second is that the cards say what the printed pages say. The values
+    below were read off `afe7950.pdf` by hand — the recommended supply rails and
+    the thermal resistances on p.6, the junction-temperature rating on p.4, the
+    SerDes bit rate on p.20 — and the limits card's one computed margin is the
+    subtraction of two of them.
+    """
+
+    CARDS: ClassVar[tuple[str, ...]] = ("power", "thermal", "interface", "limits")
+
+    def _cards_dir(self, built) -> Path:
+        result, _ = built
+        return result.part_dir / "cards"
+
+    def test_all_four_cards_are_published_in_both_forms(self, built):
+        cards_dir = self._cards_dir(built)
+        for name in self.CARDS:
+            assert (cards_dir / f"{name}.json").exists(), name
+            assert (cards_dir / f"{name}.md").exists(), name
+
+    def test_every_card_carries_the_derived_banner(self, built):
+        from datasheet_analyzer.config import CARD_VERSION
+
+        cards_dir = self._cards_dir(built)
+        for name in self.CARDS:
+            text = (cards_dir / f"{name}.md").read_text(encoding="utf-8")
+            assert text.startswith(f"<!-- derived: card_version {CARD_VERSION} -->")
+
+    def test_every_source_on_every_card_resolves_to_a_record_and_a_page(
+        self, built, resolve_source
+    ):
+        """The phase's most important test: no orphan values, no value without
+        provenance. Every reference is collected before anything is asserted, so
+        a failure names *all* of them rather than dying on the first."""
+        from datasheet_analyzer.models import DesignCard
+
+        result, _ = built
+        cards_dir = self._cards_dir(built)
+        problems: list[str] = []
+        n_values = n_refs = 0
+        for name in self.CARDS:
+            card = DesignCard.model_validate_json(
+                (cards_dir / f"{name}.json").read_text(encoding="utf-8")
+            )
+            for row in card.rows:
+                for role, value in row.values.items():
+                    n_values += 1
+                    where = f"{name}/{row.label}/{role}"
+                    if not value.refs:
+                        problems.append(f"{where}: no source at all")
+                    if not value.derivation:
+                        problems.append(f"{where}: no named derivation rule")
+                    for ref in value.refs:
+                        n_refs += 1
+                        resolved = resolve_source(result.part_dir, ref)
+                        if resolved is None:
+                            problems.append(f"{where}: {ref} resolves to no record")
+                        elif resolved.page is None:
+                            problems.append(f"{where}: {ref} has no printed page")
+                        elif ref == value.source and resolved.page != value.page:
+                            problems.append(
+                                f"{where}: cites p.{value.page}, record is on "
+                                f"p.{resolved.page}"
+                            )
+        assert not problems, problems
+        assert n_values >= 40 and n_refs >= n_values
+
+    def test_the_power_card_lists_the_recommended_rails_as_printed(self, built):
+        """Hand-read off p.6: three rails, each with min/typ/max in volts."""
+        from datasheet_analyzer.retrieve import Retriever
+
+        result, _ = built
+        card = Retriever.for_part(result.part_dir).card("power")
+        rails = [r for r in card.rows if r.group == "Supply rails"]
+        assert [(r.values["min"].verbatim, r.values["typ"].verbatim,
+                 r.values["max"].verbatim) for r in rails] == [
+            ("0.9 V", "0.925 V", "0.95 V"),
+            ("1.15 V", "1.2 V", "1.25 V"),
+            ("1.75 V", "1.8 V", "1.85 V"),
+        ]
+        assert {v.page for r in rails for v in r.values.values()} == {6}
+        assert rails[0].values["typ"].value_si == pytest.approx(0.925)
+
+    def test_the_power_card_reduces_the_supply_currents_and_says_so(self, built):
+        """§4.9 states each rail once per operating mode; the card takes the
+        largest and reports the population it compared."""
+        from datasheet_analyzer.retrieve import Retriever
+
+        result, _ = built
+        card = Retriever.for_part(result.part_dir).card("power")
+        currents = [r for r in card.rows if r.group == "Supply current"]
+        assert len(currents) == 7  # three 1.8 V groups, three 1.2 V groups, one 0.9 V
+        assert all("largest of" in r.note for r in currents)
+        assert any("7 parameters from 112 printed rows" in note for note in card.notes)
+        # the worst-case 0.9 V rail draw, read off p.21
+        worst = next(r for r in currents if r.label == "IVDD0P9")
+        assert worst.values["typ"].verbatim == "4200 mA"
+        assert worst.values["typ"].value_si == pytest.approx(4.2)
+
+    def test_the_thermal_card_carries_the_printed_resistances(self, built):
+        from datasheet_analyzer.retrieve import Retriever
+
+        result, _ = built
+        card = Retriever.for_part(result.part_dir).card("thermal")
+        printed = {r.label: r.values["value"].verbatim for r in card.rows
+                   if "value" in r.values}
+        assert printed["RθJA"] == "16.2 °C/W"
+        assert printed["RθJC(top)"] == "0.42 °C/W"
+        assert printed["ΨJB"] == "4.6 °C/W"
+
+    def test_the_interface_card_carries_the_serdes_rate(self, built):
+        from datasheet_analyzer.retrieve import Retriever
+
+        result, _ = built
+        card = Retriever.for_part(result.part_dir).card("interface")
+        rates = [r for r in card.rows if r.label == "FSerDes"]
+        assert ("19 Gbps", "29.5 Gbps") in [
+            (r.values["min"].verbatim, r.values["max"].verbatim) for r in rates
+        ]
+        assert {v.page for r in rates for v in r.values.values()} == {20}
+
+    def test_the_limits_card_computes_the_junction_temperature_margin(self, built):
+        """Hand-verified: 150 °C absolute maximum (p.4) against a 110 °C
+        recommended operating maximum (p.6) — 40 °C of headroom, and both
+        citations are the printed pages."""
+        from datasheet_analyzer.cards import ROLE_ABS_MAX, ROLE_MARGIN, ROLE_RECOMMENDED_MAX
+        from datasheet_analyzer.retrieve import Retriever
+
+        result, _ = built
+        card = Retriever.for_part(result.part_dir).card("limits")
+        row = next(r for r in card.rows if r.label == "TJ")
+        assert row.values[ROLE_ABS_MAX].verbatim == "150 °C"
+        assert row.values[ROLE_ABS_MAX].page == 4
+        assert row.values[ROLE_RECOMMENDED_MAX].verbatim == "110(1) °C"
+        assert row.values[ROLE_RECOMMENDED_MAX].page == 6
+        margin = row.values[ROLE_MARGIN]
+        assert margin.value_si == pytest.approx(40.0)
+        assert margin.unit_si == "°C"
+        assert margin.verbatim == ""  # no page printed a margin
+        assert not row.flags  # 40 °C of headroom is not a hazard
+
+    def test_the_limits_card_refuses_the_ambiguous_supply_join_and_lists_it(self, built):
+        """Three supply ratings against three rails: the two that share a printed
+        rail list pair, and what is left over is refused with the counts."""
+        from datasheet_analyzer.retrieve import Retriever
+
+        result, _ = built
+        card = Retriever.for_part(result.part_dir).card("limits")
+        assert any("ambiguous join" in line for line in card.unparsed)
+        assert any("printed only on the absolute maximum table" in line
+                   for line in card.unparsed)
+        assert any(note.startswith("absolute maximum max:") for note in card.notes)
+        # the pair that *is* unambiguous: the 0.9 V rail, named identically on
+        # both tables (p.4 "DVDD0P9, VDDT0P9" / p.6 the same string as symbol)
+        rail = next(r for r in card.rows if "DVDD0P9" in r.label)
+        assert rail.values["margin"].value_si == pytest.approx(0.25)
+
+    def test_the_published_markdown_is_what_the_command_prints(self, built):
+        """The file in the corpus and `dsa card` are one string, by construction."""
+        from datasheet_analyzer.cards import render_card
+        from datasheet_analyzer.retrieve import Retriever
+
+        result, _ = built
+        retriever = Retriever.for_part(result.part_dir)
+        for name in self.CARDS:
+            on_disk = (self._cards_dir(built) / f"{name}.md").read_text(encoding="utf-8")
+            assert on_disk == render_card(retriever.card(name))
+
+    def test_the_manifest_counts_the_cards_it_published(self, built):
+        result, _ = built
+        assert result.manifest.stats.n_cards == len(self.CARDS)
+        assert result.manifest.stats.n_card_rows >= 20

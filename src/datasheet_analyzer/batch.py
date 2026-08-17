@@ -66,6 +66,7 @@ from datasheet_analyzer.models import CorpusManifest, CorpusStats
 from datasheet_analyzer.pipeline import build_part
 from datasheet_analyzer.protocol import agent_doc_current
 from datasheet_analyzer.publish import (
+    cards_current,
     doc_dir_name_for_source,
     pins_current,
     plots_current,
@@ -310,8 +311,17 @@ def _publish_artifacts_stale(
     input, so changing one moves no source byte and neither the content hash
     nor the extractor version notices. A corpus derived under a different rule
     set therefore republishes once rather than serving stale cards forever.
+    `cards_current` is its file-level half (ticket 07): the design cards
+    themselves must be present and stamped with that same version, because a
+    corpus published before they existed has a perfectly current manifest and no
+    `cards/` directory at all.
     """
     if manifest.card_version != card_version:
+        return True
+    # The manifest stamp above catches a rule change; this catches the files
+    # themselves — a corpus published before design cards existed carries no
+    # `cards/` at all, and its manifest says nothing about that (ticket 07).
+    if not cards_current(part_dir, card_version):
         return True
     if not agent_doc_current(part_dir):
         return True

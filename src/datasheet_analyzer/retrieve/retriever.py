@@ -31,6 +31,10 @@ error — and `pin_gap()` is its honest-absence half, the twin of
 manifest. A corpus built before the index existed does not crash and does not
 silently answer nothing — `search_unavailable()` says to rebuild.
 
+`card()` (phase 6, ticket 07) is the design cards, derived live from the same
+records by `cards/` — the corpus's `cards/*.json` are that function's output too,
+so a front end and a file can never disagree about what a card says.
+
 `ask()` (ticket 05) composes all of it: one question in, one cited,
 budget-bounded `AnswerPack` out. The routing and the budget arithmetic live in
 `retrieve/pack.py`; this class stays the place lookups happen.
@@ -50,6 +54,7 @@ from typing import TYPE_CHECKING
 
 from datasheet_analyzer.config import SEARCH_SCHEMA_VERSION
 from datasheet_analyzer.models import (
+    DesignCard,
     PlotRecord,
     RegisterRecord,
     SearchIndex,
@@ -517,6 +522,39 @@ class Retriever:
             replace(hit, matched_via="caption-terms")
             for _matched, _id, hit in (scored[:limit] if limit > 0 else scored)
         ]
+
+    def card(self, name: str) -> DesignCard | None:
+        """One design card for this part, or `None` when no such card exists.
+
+        Derived **live** from the records this index already holds, by the same
+        `cards.build_card` the publisher calls — so `dsa card` can never print a
+        card the corpus does not contain, and a corpus published under older
+        derivation rules is re-derived under today's rather than served stale.
+        The `cards/*.json` on disk are the same function's output for machines
+        that read files instead of calling this.
+
+        `None` means "there is no card by that name" — a caller must be able to
+        tell a typo from an empty card, which is a `DesignCard` carrying an
+        `empty_reason`.
+
+        Imported at call time: `cards.render` imports `retrieve.results` for the
+        one citation format, so a module-level import here would be a cycle.
+        """
+        from datasheet_analyzer.cards import build_card, card_docs
+
+        return build_card(name, self.part, card_docs(self.index))
+
+    def cards(self) -> list[DesignCard]:
+        """Every declared design card for this part, in lexicon order."""
+        from datasheet_analyzer.cards import build_cards, card_docs
+
+        return build_cards(self.part, card_docs(self.index))
+
+    def card_names(self) -> list[str]:
+        """The cards this build declares — what a front end may offer."""
+        from datasheet_analyzer.cards import load_card_lexicon
+
+        return list(load_card_lexicon().names)
 
     def ask(self, question: str, *, budget: int = 0) -> AnswerPack:
         """One cited, budget-bounded answer pack (ticket 05; see `pack.py`).

@@ -706,3 +706,169 @@ majority, or the widest — would be a derived value **no page states**, which i
 precisely what ADR 0005 forbids. The fields' own access codes are published
 verbatim beside their bit ranges, which is where the document puts them.
 
+---
+
+## Ticket 07 — design cards (`cards/*.json` + `cards/*.md`, `dsa card`)
+
+Four task-shaped views over records the corpus already publishes — the datasheet
+reorganised around what a designer needs open while drawing a schematic, rather
+than around the document. They are the first artifact here that exists *only*
+because a rule selected it, which is why ADR 0005 was written before them.
+
+`cards/build.py` derives them, `cards/lexicon.py` loads the selectors from
+`registry/cards.yaml`, `cards/render.py` renders the markdown, `publish/writer.py`
+writes both forms into `parts/<PART>/cards/`, and `Retriever.card()` derives the
+same card live from the same records — so `dsa card` and the file on disk are one
+string, asserted per card on five corpora.
+
+### What a card is allowed to contain
+
+Nothing that is not (a) a cell copied verbatim **with its printed unit**, (b) a
+number computed from such cells by a named pure function, or (c) a label from the
+checked-in lexicon. Every value carries `source`, `page`, `section`, `derivation`
+and the record's own `confidence`; a value computed from two records carries the
+second in `sources`.
+
+| Rule name | What it produces |
+|---|---|
+| `copy_cell` | the printed cell + its printed unit (`"1350 mA"`), no number |
+| `copy_cell+parse_quantity+si_normalize` | the same, plus `value_si` / `unit_si` |
+| `max_over_rows` | the row stating the largest value for one parameter |
+| `abs_max-recommended_max` | the limits margin, from two records on two pages |
+| `pins_by_name+count` | how many pins share a name, citing every one of them |
+
+A **computed value has no `verbatim`**: no page printed a margin, so the field
+stays empty and the markdown marks the number `*(derived)*`.
+
+### Measured, five built corpora
+
+Rows published per card, and the provenance references the invariant-8 walk
+resolved (`.md` + `.json` written for every card of every part, empty ones
+included):
+
+| Part | power | thermal | interface | limits | values | source refs |
+|---|---:|---:|---:|---:|---:|---:|
+| AFE7950 | 11 | 10 | 29 | 2 | 73 | 75 |
+| AD9081 | 47 | 1 | 22 | 0 | 104 | 291 |
+| LM741 | 2 | 2 | 0 | 0 | 5 | 5 |
+| QPA1003P | 0 | 6 | 0 | 0 | 6 | 6 |
+| HMC520A | 0 | 0 | 0 | 0 | 0 | 0 |
+
+**377 references, 0 unresolvable.** The walk takes every `source` and every
+`sources` entry of every value of every card, resolves it through
+`provenance.resolve_source`, and requires a real record with a printed page —
+and, for the primary reference, that the record's page *is* the page the card
+cites. That is the phase's most important test
+(`test_afe7950_build.py::TestDesignCardsOnTheReferenceCorpus`,
+`test_phase4_layout_gate.py::TestDesignCardsOnTheGateCorpora`).
+
+AFE7950's power card is the reduction at work: §4.9 states each supply rail once
+per operating mode — 112 printed rows — and the card publishes **7**, the largest
+value stated for each rail, each saying it was "the largest of 16 printed values
+for this parameter"
+and citing the mode that states it. Worst case measured: `IVDD0P9` 4200 mA and
+`Pdiss` 10640 mW, both on p.21.
+
+AD9081's power card is the widest, because it is the one gate part that also
+publishes pins: 6 rails, 14 rail currents, 3 dissipation rows and 24 pin groups —
+`GND` alone is one row citing **126** pin records.
+
+### The limits card, hand-verified
+
+AFE7950, read off the printed pages:
+
+| Parameter | Abs max (p.4) | Recommended max (p.6) | Margin |
+|---|---|---|---|
+| `TJ` — Junction temperature | 150 °C | 110(1) °C | **40 °C** |
+| `VDD` — DVDD0P9, VDDT0P9 | 1.2 V | 0.95 V | **0.25 V** |
+
+Six more parameters are **listed as uncomparable, by name and with the reason**:
+`Pin Volatge Range` (nine rows, abs-max table only), `PMAX` (seven), `II`,
+`Tstg`, `TA` (recommended only), and the two remaining supply pairs — refused as
+an *ambiguous join*, because two ratings and two rails share no printed name and
+pairing them would compute a rail's headroom against another rail's rating. The
+pair that *is* unambiguous is paired for a reason that is a fact about the page:
+p.4 prints `DVDD0P9, VDDT0P9` in the abs-max table's name column and p.6 prints
+that same string as the recommended table's symbol.
+
+Both sides also publish their unparsed population: "6 of 22 rows could not be
+parsed" on the abs-max side (`VDDRX1P8+0.3` and friends — a rating stated
+relative to another rail is not a number), "1 of 6" on the recommended side.
+
+**No zero-margin parameter exists in the built parts.** Only two pairs compare at
+all on the only part whose two tables both extract with values, and both have
+headroom. The flag is therefore pinned by test rather than by luck
+(`tests/unit/test_cards.py::TestLimits::test_zero_margin_is_flagged`, and its
+twin across a unit prefix: 1850 mV against 1.85 V must still read as zero, which
+exact float equality would miss). The reverse hazard — a recommended limit *above*
+a rating — is flagged the same way.
+
+### Honestly empty cards
+
+| Part | Card | Why |
+|---|---|---|
+| LM741 | interface | an op-amp: no JESD204, no SerDes, no SPI |
+| AD9081 | limits | its abs-max table reconstructs with **no value cells** — nothing to compare |
+| QPA1003P | power, interface, limits | no recommended-operating table, no digital interface |
+| HMC520A | all four | its spec rows carry no rail, thermal or interface parameters the lexicon knows |
+
+Each of those files is written, states what it looked for and did not find, and
+puts a one-line version of that in `CorpusManifest.derived_warnings`, which
+`dsa status` prints. A missing file would read as "not built yet"; a fabricated
+row would be the failure invariant 8 exists to prevent.
+
+### What is data and what is code
+
+`registry/cards.yaml` decides everything about *which rows*: the table
+(`section_titles`), the physical quantity (`unit_bases`), the alias families
+(`alias_symbols`) and the printed words (`symbol_contains` / `name_contains`),
+plus `roles`, `reduce: max` and the pin types a pin group counts. Adding a
+vendor's rail-naming convention is an edit there.
+
+Two of those predicates exist because printed words are not always enough, and
+both were found on real documents:
+
+- **`unit_bases`.** AD9081 prints its rails and its rail currents on two tables
+  *inside one section*, and every row of both names `AVDD2`. A volt is not an
+  amp, and `SI_UNITS` already knows which base a printed unit scales to. The same
+  rule keeps AFE7950's other `TJ` — Total Jitter, in UI — off the thermal card.
+- **`section_titles`,** which needed `SpecRecord.section_title` to exist
+  (`SPECS_SCHEMA_VERSION` 4 → 5). A card must be able to tell an abs-max table
+  from a recommended-operating one, and on the captionless era of datasheets
+  every section *number* is honestly `""` while three sections can cover one page.
+
+### Contract points asserted by test
+
+`tests/unit/test_cards.py` (74 tests) plus the two integration gates:
+
+- the envelope: verbatim + unit, the SI pair, `source` / `page` / `section` /
+  `derivation` / `confidence`, and a computed value with no verbatim;
+- the refusals: a row on the wrong table, a row with no `section_title` (an
+  unknown table is not the right one), a spanning heading row, a record with no
+  addressable id (listed, never silently dropped);
+- the reduction: one row per parameter, the largest wins, the population is
+  reported, an unparsed row is listed, and a parameter whose rows *all* fail to
+  parse is still published — unranked, and saying so;
+- the join: margin only where both parsed and in the same SI base, the
+  zero-margin and over-rating flags, the ambiguous-join refusal, the printed-
+  identity pairing and the case where a shared cell matches two rows and is
+  therefore *not* a pairing;
+- the honesty: an empty card is a valid card, an unknown card name is `None`
+  rather than an empty card, and a card with rows publishes a source for every
+  single value;
+- determinism: building the same records twice is byte-identical, and the
+  published `.md` is exactly `render_card()`;
+- the gate: `cards_current` reads a missing `cards/` as **stale** (unlike
+  `pins.json`), so a corpus published before ticket 07 republishes once, and a
+  card stamped with another `DSA_CARD_VERSION` does the same
+  (`tests/unit/test_batch.py`).
+
+### Not built here
+
+The MCP `get_card` tool. Phase 6's plan puts the MCP surface in ticket 10 with
+the rest of the phase's tools, and tickets 04 and 05 set the same precedent
+(`find_pin` / `find_register` are not in the server yet either). Everything
+`get_card` needs already exists behind the seam: `Retriever.card()` returns the
+card and `DesignCard.model_dump(mode="json")` is its declared shape.
+
+

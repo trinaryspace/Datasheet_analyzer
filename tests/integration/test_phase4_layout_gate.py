@@ -940,6 +940,160 @@ class TestPinsOnTheGateCorpora:
         assert {rec.page for rec in self._pins(gate["AD9081"])} <= table_pages
 
 
+class TestDesignCardsOnTheGateCorpora:
+    """Phase 6, ticket 07 — the design cards on four layout-floor datasheets.
+
+    AFE7950 is the ticket's other named part and is gated in
+    `test_afe7950_build.py`; this is the harder half. AD9081 is where the power
+    card is at its most complete — rails, per-rail currents, dissipation *and*
+    the pin groups, because it is the one gate part that publishes pins — and
+    LM741 is the part the ticket asks for by name: an op-amp with no interface
+    section at all, whose interface card must be honestly empty with a stated
+    reason rather than fabricated or absent.
+
+    Two limits are measured rather than hidden (they are in
+    `KNOWN_SHORTCOMINGS.md`): AD9081's own absolute-maximum and thermal-
+    resistance tables reconstruct as rows with **no values at all**, so its
+    limits card has nothing to compare and its thermal card carries only the
+    junction-temperature range. That is an extraction finding about p.21, and
+    the card says so instead of inventing a margin.
+    """
+
+    CARDS: ClassVar[tuple[str, ...]] = ("power", "thermal", "interface", "limits")
+
+    def _card(self, gate, part: str, name: str):
+        from datasheet_analyzer.retrieve import Retriever
+
+        return Retriever.for_part(gate[part].part_dir).card(name)
+
+    def test_every_gate_part_publishes_all_four_cards(self, gate, capsys):
+        rows: list[str] = []
+        for name in GATE:
+            part_dir = gate[name].part_dir
+            for card in self.CARDS:
+                assert (part_dir / "cards" / f"{card}.json").exists(), f"{name}/{card}"
+                assert (part_dir / "cards" / f"{card}.md").exists(), f"{name}/{card}"
+            counts = {c: len(self._card(gate, name, c).rows) for c in self.CARDS}
+            assert gate[name].manifest.stats.n_cards == len(self.CARDS)
+            assert gate[name].manifest.stats.n_card_rows == sum(counts.values())
+            rows.append(f"  {name:<9} " + "  ".join(f"{c}={n:<3}" for c, n in counts.items()))
+        with capsys.disabled():
+            print("\ndesign-card rows, four gate corpora\n" + "\n".join(rows) + "\n")
+
+    def test_every_source_on_every_card_resolves_to_a_record_and_a_page(
+        self, gate, resolve_source
+    ):
+        """The invariant-8 walk on the layout-floor corpora — the phase's most
+        important test, over the parts whose extraction is hardest."""
+        from datasheet_analyzer.models import DesignCard
+
+        problems: list[str] = []
+        n_refs = 0
+        for name in GATE:
+            part_dir = gate[name].part_dir
+            for card_name in self.CARDS:
+                card = DesignCard.model_validate_json(
+                    (part_dir / "cards" / f"{card_name}.json").read_text(encoding="utf-8")
+                )
+                for row in card.rows:
+                    for role, value in row.values.items():
+                        where = f"{name}/{card_name}/{row.label}/{role}"
+                        if not (value.refs and value.derivation):
+                            problems.append(f"{where}: no source or no named rule")
+                        for ref in value.refs:
+                            n_refs += 1
+                            resolved = resolve_source(part_dir, ref)
+                            if resolved is None:
+                                problems.append(f"{where}: {ref} resolves to no record")
+                            elif resolved.page is None:
+                                problems.append(f"{where}: {ref} has no printed page")
+                            elif ref == value.source and resolved.page != value.page:
+                                problems.append(
+                                    f"{where}: cites p.{value.page}, record is on "
+                                    f"p.{resolved.page}"
+                                )
+        assert not problems, problems
+        assert n_refs >= 200, "the walk must actually have walked something"
+
+    def test_the_ad9081_power_card_carries_rails_currents_and_pin_counts(self, gate):
+        """Hand-read off p.4 (rails and currents) and pp.22-23 (the BGA)."""
+        card = self._card(gate, "AD9081", "power")
+        by_group: dict[str, list] = {}
+        for row in card.rows:
+            by_group.setdefault(row.group, []).append(row)
+
+        rails = {r.label: r.values for r in by_group["Supply rails"]}
+        assert rails["DVDD1P8"]["min"].verbatim == "1.7 V"
+        assert rails["DVDD1P8"]["max"].verbatim == "2.1 V"
+        assert rails["DVDD1P8"]["typ"].page == 4
+
+        currents = {r.label: r.values for r in by_group["Supply current"]}
+        assert currents["AVDD1_ADC (IAVDD1_ADC)"]["max"].verbatim == "2155 mA"
+        assert currents["AVDD1_ADC (IAVDD1_ADC)"]["max"].value_si == pytest.approx(2.155)
+
+        # p.4 prints the total as a min/typ pair (11.2 / 14.3 W) and no maximum;
+        # the card publishes exactly the columns the page printed.
+        dissipation = {r.label: r.values for r in by_group["Power dissipation"]}
+        assert dissipation["Total Power Dissipation"]["typ"].verbatim == "14.3 W"
+        assert "max" not in dissipation["Total Power Dissipation"]
+
+        pins = {r.label: r for r in by_group["Supply and ground pins"]}
+        assert pins["GND"].values["pins"].value_si == 126.0
+        assert pins["GND"].detail == "ground"
+        # every counted pin is cited, not just the first
+        assert len(pins["GND"].values["pins"].refs) == 126
+        assert "in pins.json" in pins["GND"].note
+
+    def test_a_part_with_no_interface_section_gets_an_honestly_empty_card(self, gate):
+        """The ticket's own example: LM741 is an op-amp — no JESD204, no SPI."""
+        card = self._card(gate, "LM741", "interface")
+        assert card.rows == []
+        assert card.card == "interface" and card.part_number == "LM741"
+        assert "no interface card" in card.empty_reason
+        assert "jesd" in card.empty_reason and "registry/cards.yaml" in card.empty_reason
+        text = (gate["LM741"].part_dir / "cards" / "interface.md").read_text(
+            encoding="utf-8"
+        )
+        assert "**No rows.**" in text and card.empty_reason in text
+        # ...and the gap is carried by the corpus, not just by the file
+        assert any(
+            "interface card for LM741 has no rows" in w
+            for w in gate["LM741"].manifest.derived_warnings
+        )
+
+    def test_an_empty_card_never_invents_a_value(self, gate):
+        """Across every gate part: a card with no rows publishes no values at
+        all, and one with rows publishes a source for every single one."""
+        for name in GATE:
+            for card_name in self.CARDS:
+                card = self._card(gate, name, card_name)
+                assert bool(card.empty_reason) == (not card.rows), f"{name}/{card_name}"
+                for row in card.rows:
+                    assert row.values, f"{name}/{card_name}/{row.label}"
+                    assert all(v.source for v in row.values.values())
+
+    def test_the_ad9081_limits_card_says_why_it_can_compare_nothing(self, gate):
+        """Measured: AD9081's absolute-maximum table reconstructs with no value
+        cells, so there is nothing to subtract. The card reports that as a
+        population, refuses every pair by name, and computes no margin — which
+        is the whole point of the refusal."""
+        card = self._card(gate, "AD9081", "limits")
+        assert card.rows == []
+        assert any("0 rows to compare" in note for note in card.notes)
+        assert any("uncomparable:" in line for line in card.unparsed)
+        assert card.empty_reason
+
+    def test_the_published_markdown_is_what_the_command_prints(self, gate):
+        from datasheet_analyzer.cards import render_card
+
+        for name in GATE:
+            for card_name in self.CARDS:
+                on_disk = (gate[name].part_dir / "cards" / f"{card_name}.md").read_text(
+                    encoding="utf-8"
+                )
+                assert on_disk == render_card(self._card(gate, name, card_name))
+
+
 class TestAnswerPacks:
     """Phase 5, ticket 05: `dsa ask` measured on four real corpora.
 

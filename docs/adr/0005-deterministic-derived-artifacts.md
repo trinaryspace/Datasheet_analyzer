@@ -260,3 +260,67 @@ gate can see. The limits that came with the ship are recorded in
 `KNOWN_SHORTCOMINGS.md`, including the one this ADR would otherwise hide — the
 geometric bit-diagram route has no real document to gate it, because neither
 reference document prints that shape.
+
+### As built (ticket 07)
+
+The **design cards** are the artifact this decision was written for: the "power
+card's max current for VDD1P8" of the Context section, now a file. `cards/`
+derives four of them (`power`, `thermal`, `interface`, `limits`) from published
+records, and each clause above turned into a rule with a test.
+
+- **(a), (b) and (c), named per field.** A copied cell records
+  `copy_cell` — with `+parse_quantity+si_normalize` when the numeric layer could
+  read it — and carries the printed unit inside `verbatim` (`"1350 mA"`, exactly
+  the envelope this ADR sketched). A computed value records the function that
+  produced it: `max_over_rows` (the largest current a rail is stated to draw, out
+  of 16 printed operating configurations), `abs_max-recommended_max`, and
+  `pins_by_name+count`. The lexicon label is the group a row is in, recorded as
+  the row's `selector`, exactly as a pin publishes the phrase that typed it.
+- **A computed value has no `verbatim`.** The envelope above shows a `verbatim`
+  because it describes a *copied* value; a margin was printed on no page, so its
+  `verbatim` stays empty and its number lives in `value_si` / `unit_si`,
+  rendered `*(derived)*`. Filling that field with a rendered number would be a
+  quotation of something no datasheet says.
+- **One value, two operands.** A margin joins two records on two pages, so
+  `DerivedValue` gains an additive `sources` beside `source`: the primary
+  reference stays the row whose headroom it is, the rating it was measured
+  against is cited beside it, and the invariant-8 walk resolves both. Citing one
+  and dropping the other would make the value untraceable by exactly half.
+- **"An empty card is a valid card"**, taken literally. A part with no interface
+  section gets an interface card that names what it looked for and did not find,
+  written like any other and recorded in `CorpusManifest.derived_warnings`
+  (measured: LM741, an op-amp). Nothing about that file reads as "not yet built".
+- **"Enforcement is a test, not a convention."** The invariant-8 walk runs on
+  five real corpora: every `source` and every `sources` entry of every value of
+  every card is resolved back through `provenance.resolve_source` to a record and
+  a printed page, and the primary reference's page must be the page the card
+  cites. 377 references, 0 unresolvable
+  (`test_afe7950_build.py::TestDesignCardsOnTheReferenceCorpus`,
+  `test_phase4_layout_gate.py::TestDesignCardsOnTheGateCorpora`).
+- **"Any consumer that sorts or compares must report its unparsed population."**
+  The two places a card does arithmetic — the `reduce: max` groups and the limits
+  join — run `quantities.parse_population` and publish its sentence plus one line
+  per row they could not read.
+
+Two decisions this ticket had to make explicit, both refusals:
+
+- **An ambiguous join is refused, not resolved.** AFE7950 prints three supply
+  ratings on its absolute-maximum table and three rails on its recommended
+  table, and the alias lexicon resolves all six to `VDD`. The only pairing the
+  card will make is between two rows that share a printed identity cell
+  *character for character* — a fact about the page, not an inference about it —
+  and everything left over is listed as uncomparable with the counts. A margin
+  computed between a 0.9 V rail and a 1.8 V rating would be worse than no margin,
+  because it would look exactly like a good one.
+- **A card selects by data, and one predicate had to be physical.** AD9081 prints
+  its rails and its rail *currents* on two tables inside one section, and every
+  row of both names `AVDD2`; no printed word separates them. `unit_bases` does:
+  a rail is stated in volts and a current in amps, and `SI_UNITS` already knows
+  which base a printed unit scales to. The same rule keeps AFE7950's *other*
+  `TJ` — Total Jitter, in UI — off the thermal card.
+
+`CARD_VERSION` moves to `5` and `SPECS_SCHEMA_VERSION` to `5`. The second bump is
+the ticket's one schema change: a card selects rows by the *table* they were
+printed on, and on the captionless era of datasheets every section number is
+honestly `""`, so `SpecRecord` gains the printed `section_title`. Without it the
+limits and power cards would be empty on exactly the parts that need them most.
