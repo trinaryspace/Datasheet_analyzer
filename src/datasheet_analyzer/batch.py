@@ -277,7 +277,9 @@ def _extractor_stale(manifest: CorpusManifest) -> bool:
     return False
 
 
-def _publish_artifacts_stale(part_dir: Path, manifest: CorpusManifest) -> bool:
+def _publish_artifacts_stale(
+    part_dir: Path, manifest: CorpusManifest, card_version: str
+) -> bool:
     """True when a published document is missing a current publish artifact.
 
     Extraction is not the only thing that can go out of date: the publish
@@ -299,7 +301,15 @@ def _publish_artifacts_stale(part_dir: Path, manifest: CorpusManifest) -> bool:
     `AGENT.md` (ticket 08) is gated the same way, on its own embedded
     protocol marker: a corpus published before the protocol existed would
     otherwise skip forever and ship no protocol beside its index.
+
+    `card_version` (ADR 0005) is the same rule for *derived* artifacts, and it
+    is the only gate that can catch them: a derivation rule is code, not
+    input, so changing one moves no source byte and neither the content hash
+    nor the extractor version notices. A corpus derived under a different rule
+    set therefore republishes once rather than serving stale cards forever.
     """
+    if manifest.card_version != card_version:
+        return True
     if not agent_doc_current(part_dir):
         return True
     for doc in manifest.documents:
@@ -319,8 +329,9 @@ def skip_reason(job: BatchJob, *, settings: Settings, force: bool = False) -> st
     ``extractor_version`` still matches what its backend produces today,
     every published document carries current-schema publish artifacts —
     ``search_index.json``, a ``specs.json`` / ``plots.json`` of the
-    current schema wherever one was written, and the part's ``AGENT.md`` at
-    the current protocol version (``_publish_artifacts_stale``) —
+    current schema wherever one was written, the part's ``AGENT.md`` at
+    the current protocol version, and a manifest stamped with the current
+    ``card_version`` (``_publish_artifacts_stale``) —
     and
     the PDF's sha256 matches the hash of the document recorded for this file
     in the part's inventory AND the manifest's published documents
@@ -353,7 +364,7 @@ def skip_reason(job: BatchJob, *, settings: Settings, force: bool = False) -> st
             return ""
         if _extractor_stale(manifest):
             return ""
-        if _publish_artifacts_stale(part_dir, manifest):
+        if _publish_artifacts_stale(part_dir, manifest, settings.card_version):
             return ""
         pdf_hash = compute_content_hash(job.pdf_path)
         published = {s.content_hash for s in manifest.documents}

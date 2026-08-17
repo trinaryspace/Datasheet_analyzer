@@ -10,6 +10,7 @@ import re
 
 from datasheet_analyzer.config import SPECS_SCHEMA_VERSION
 from datasheet_analyzer.models import RawDocument, SectionNode, SpecRecord, SpecSet, SpecTableInfo
+from datasheet_analyzer.provenance import spec_record_id
 from datasheet_analyzer.structure.aliases import load_lexicon
 from datasheet_analyzer.structure.confidence import grade_spec_record
 from datasheet_analyzer.structure.roles import assign_roles, classify_table
@@ -99,6 +100,16 @@ def build_specset(raw: RawDocument, part_number: str) -> SpecSet | None:
             recs, info = table_to_records(section, table, i)
             records.extend(recs)
             tables.append(info)
+
+    # Stable, addressable ids (ADR 0005): a derived value's `source` is
+    # `docs/<doc>/specs.json#rec_N`, so every published record needs a name a
+    # card can point at. The ordinal is the id because emission order above is
+    # fully determined by the document — section order, then table order, then
+    # row order — so a rebuild of identical input reproduces every id exactly.
+    # Minted here rather than in `table_to_records` because the id is
+    # document-scoped: a table does not know its own offset in the set.
+    for ordinal, record in enumerate(records):
+        record.id = spec_record_id(ordinal)
 
     return SpecSet(
         schema_version=SPECS_SCHEMA_VERSION,

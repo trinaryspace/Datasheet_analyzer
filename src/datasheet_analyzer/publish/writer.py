@@ -17,7 +17,7 @@ import json
 import logging
 from pathlib import Path
 
-from datasheet_analyzer.config import PLOTS_SCHEMA_VERSION, SPECS_SCHEMA_VERSION
+from datasheet_analyzer.config import CARD_VERSION, PLOTS_SCHEMA_VERSION, SPECS_SCHEMA_VERSION
 from datasheet_analyzer.models import (
     CorpusManifest,
     CorpusStats,
@@ -100,6 +100,7 @@ def write_corpus(
     vendor: str = "",
     specsets: list[SpecSet] | None = None,
     plotsets: list[PlotSet] | None = None,
+    card_version: str = CARD_VERSION,
 ) -> CorpusManifest:
     """Write all corpus artifacts; return the manifest.
 
@@ -111,13 +112,22 @@ def write_corpus(
     Every document also gets `docs/<doc>/search_index.json` — the BM25 index
     over the section markdown written here, so what is searchable is exactly
     what is readable.
+
+    `card_version` is the derivation-rule version this corpus's derived
+    artifacts were produced under (ADR 0005). It is stamped into the manifest
+    because nothing else can carry it: derived values are computed from
+    records, so a rule change moves no source byte and the extraction cache
+    cannot see it. `batch.skip_reason` reads it back.
     """
     part_dir = Path(part_dir)
     part_dir.mkdir(parents=True, exist_ok=True)
 
     stats = CorpusStats(n_documents=len(docs))
     manifest = CorpusManifest(
-        part_number=part_dir.name, pipeline_version=pipeline_version, vendor=vendor
+        part_number=part_dir.name,
+        pipeline_version=pipeline_version,
+        card_version=card_version,
+        vendor=vendor,
     )
     specsets_by_hash = {s.doc_hash: s for s in (specsets or [])}
     plotsets_by_hash = {p.doc_hash: p for p in (plotsets or [])}

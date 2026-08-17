@@ -44,6 +44,26 @@ def fresh_retrieval_cache():
 
 
 @pytest.fixture
+def resolve_source():
+    """Resolve a derived value's `source` back to the record and page it names.
+
+    The invariant-8 helper (ADR 0005, phase 6 ticket 01). Later tickets walk
+    every `source` on every derived artifact through this and assert it lands
+    on a real record with a printed page — that walk is what makes the derived
+    layer provably traceable instead of asserted to be. Call it as
+    `resolve_source(part_dir, value.source)`.
+
+    It returns `None` rather than raising for anything unresolvable (a
+    malformed reference, an unknown document, a missing record, an ambiguous
+    shorthand), so a test can collect and name *every* untraceable value
+    instead of dying on the first one.
+    """
+    from datasheet_analyzer.provenance import resolve_source as _resolve
+
+    return _resolve
+
+
+@pytest.fixture
 def make_synthetic_pdf():
     """Factory for the shared synthetic part PDF: 2 pages, TOC with
     Features (p.1) + Absolute Maximum Ratings (p.2). One fixture so every

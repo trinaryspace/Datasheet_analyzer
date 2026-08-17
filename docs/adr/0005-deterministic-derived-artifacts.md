@@ -1,6 +1,6 @@
 # ADR 0005 — Deterministic derived artifacts
 
-**Status:** proposed (drafted for review before Phase 6 ticket 01 lands)
+**Status:** accepted (Phase 6, ticket 01)
 **Date:** 2026-08-16
 **Supersedes:** nothing. **Amends:** invariant 1 in `AGENTS.md` by adding a
 sibling invariant that governs a category invariant 1 did not anticipate.
@@ -88,6 +88,25 @@ This becomes **invariant 8** in `AGENTS.md`.
   field on every card and asserts it resolves to a real record and a printed
   page. A card value with no resolvable provenance fails the build.
 
+### As built (ticket 01)
+
+The contract above lands as code before any derived artifact exists:
+
+- `models.DerivedValue` is the envelope, field for field.
+- `provenance.py` owns both ends of the round trip: `spec_record_id` mints the
+  stable record ids (`rec_412`) that `structure/specs.py` stamps on every
+  published spec record, `source_ref` spells the reference, and
+  `resolve_source` walks it back to the record and its page through
+  `CorpusIndex`. The `specs.json#rec_412` shorthand above is accepted and
+  resolves whenever exactly one document of the part carries that record;
+  derivation code writes the fully qualified
+  `docs/<doc>/specs.json#rec_412`, because an ambiguous reference resolves to
+  nothing rather than to a guess.
+- `SPECS_SCHEMA_VERSION` moves to `3`, so a corpus published before record ids
+  existed republishes once instead of serving unaddressable records.
+- `config.CARD_VERSION` (`DSA_CARD_VERSION`) is stamped into `manifest.json`
+  and read by `batch.skip_reason` — the publish-cache-key half of this ADR.
+
 ## Consequences
 
 **Positive.** Every number a designer sees can be traced back to a printed
@@ -105,22 +124,25 @@ change, which keeps the cost of closing those gaps low.
 new vendor, *and* a verification harness exists that can prove an LLM-proposed
 derivation against verbatim records. Until both are true, this decision holds.
 
-## Open question for the repo owner
+## Decided: a pin-count mismatch warns, and is recorded
 
-Ticket 04 (pins) proposes a package cross-check: compare the extracted pin
-count against a pin count parsed from the package/ordering section, and warn
-on mismatch. That warning is honest, but a *warning* is weaker than this ADR's
-usual stance. Should a pin-count mismatch instead **reject** `pins.json`
-entirely, the way a failed reconstruction gate rejects a table?
+Ticket 04 (pins) cross-checks the extracted pin count against a pin count
+parsed from the package/ordering section. The question was whether a mismatch
+should merely warn, or **reject** `pins.json` entirely the way a failed
+reconstruction gate rejects a table.
 
-Argument for rejecting: a partial pin table is exactly the "confident but
-incomplete" failure this ADR exists to prevent, and a designer who greps for a
-pin and gets no hit may conclude it does not exist.
+The case for rejecting is that a partial pin table is exactly the "confident
+but incomplete" failure this ADR exists to prevent: a designer who greps for a
+pin, gets no hit, and concludes it does not exist has been misled. The case
+for warning is that the stated pin count is itself parsed from prose and is
+therefore no more reliable than the table it would suppress — rejecting on it
+lets a bad count throw away a perfectly good pin table.
 
-Argument for warning: pin counts are parsed from prose and are themselves
-unreliable, so a bad count could suppress a perfectly good pin table.
-
-**Recommendation: warn, but record the mismatch in the manifest and surface it
-in `dsa audit` (Phase 7), so it cannot be ignored at scale.** Flagged here
-rather than decided unilaterally, because it trades completeness against
-caution and that is the repo owner's call.
+**Decision: warn, record the mismatch in the manifest, and surface it in
+`dsa audit` (Phase 7).** A warning is only weaker than a rejection when it can
+be ignored, and recording it in the manifest is what stops that: the mismatch
+becomes a fact the corpus carries, auditable across every part at once,
+instead of a line someone did or did not read in a build log. This keeps a
+usable pin table available while making its uncertainty impossible to lose,
+which is the same stance the per-record confidence grade already takes — the
+`low` record is still returned, and it still says it is `low`.

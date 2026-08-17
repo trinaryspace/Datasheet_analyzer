@@ -398,6 +398,30 @@ def test_stale_spec_or_plot_schema_rebuilds_part(batch_env, artifact):
     assert again["PLAIN"].status == STATUS_SKIPPED
 
 
+def test_changed_card_version_rebuilds_part(batch_env):
+    """`DSA_CARD_VERSION` is part of the publish cache key (ADR 0005).
+
+    A derivation rule is code, not input: changing one moves no source byte,
+    so neither the PDF's sha256 nor the extractor version notices, and every
+    part would keep serving cards derived under the old rule forever. The
+    manifest's stamped `card_version` is the only thing that can catch it.
+    """
+    pdfs, settings = batch_env
+    assert run_batch(pdfs, settings=settings, use_llm=False).ok
+
+    rederived = settings.model_copy(update={"card_version": "99"})
+    by_part = {j.part: j for j in run_batch(pdfs, settings=rederived, use_llm=False).jobs}
+    assert [j.status for j in by_part.values()] == [STATUS_DONE] * 3
+
+    # ...and the republished corpus skips again under the new rule version:
+    # one regeneration, not a permanent rebuild loop.
+    again = {j.part: j for j in run_batch(pdfs, settings=rederived, use_llm=False).jobs}
+    assert [j.status for j in again.values()] == [STATUS_SKIPPED] * 3
+    # while the old rule version still sees the corpus as stale
+    old = {j.part: j for j in run_batch(pdfs, settings=settings, use_llm=False).jobs}
+    assert [j.status for j in old.values()] == [STATUS_DONE] * 3
+
+
 @pytest.mark.parametrize("artifact", ["specs.json", "plots.json"])
 def test_absent_spec_or_plot_file_does_not_force_a_rebuild(batch_env, artifact):
     """A document with no trusted tables writes neither file (a `pdf_text`

@@ -378,6 +378,7 @@ def build_part(
         vendor=part_vendor,
         specsets=specsets,
         plotsets=plotsets,
+        card_version=settings.card_version,
     )
     return BuildResult(
         part_dir=part_dir, manifest=manifest, index_md=index_md,

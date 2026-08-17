@@ -21,9 +21,24 @@ PIPELINE_VERSION = "0.4.0"
 # ungraded, so the version bump is what makes `batch.skip_reason` republish it
 # once instead of skipping it forever — the same publish-cache-key rule
 # `SEARCH_SCHEMA_VERSION` already carries for `search_index.json`.
-SPECS_SCHEMA_VERSION = "2"
+# "3": phase 6, ticket 01 gave every published spec record a stable, addressable
+# `id` (`rec_1`, `rec_2`, ...) so a derived value's `source` has something to
+# point at (ADR 0005). A corpus published without ids answers every provenance
+# lookup with nothing, so it republishes once rather than serving unaddressable
+# records forever.
+SPECS_SCHEMA_VERSION = "3"
 PLOTS_SCHEMA_VERSION = "2"
 SEARCH_SCHEMA_VERSION = "1"
+
+# The version of the *derivation rules* (ADR 0005 / invariant 8). Derived
+# artifacts — design cards and anything else computed from records by a named
+# pure function — are not extracted, so nothing about the source bytes changes
+# when a rule does: the extraction cache is keyed on (content_hash, backend)
+# and cannot notice. This constant is therefore stamped into `manifest.json`
+# and read by `batch.skip_reason`, so changing a derivation rule regenerates
+# the derived artifacts instead of leaving stale ones behind. Bump it whenever
+# a derivation rule changes what it produces.
+CARD_VERSION = "1"
 
 
 class Settings(BaseSettings):
@@ -79,6 +94,12 @@ class Settings(BaseSettings):
     # `dsa batch` worker pool: --workers flag overrides; this env-backed
     # value is the default; 4 is the fallback.
     batch_workers: int = Field(default=4, ge=1)
+
+    # Derived-artifact rule version (`DSA_CARD_VERSION`), stamped into every
+    # manifest and part of the publish cache key. `CARD_VERSION` above is the
+    # value this build ships; the env var exists so a derivation can be pinned
+    # while a rule is in flight, exactly as `--force` exists for the hash gate.
+    card_version: str = Field(default=CARD_VERSION, min_length=1)
 
     def resolve(self) -> Settings:
         self.parts_dir = self.parts_dir.resolve()

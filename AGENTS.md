@@ -90,8 +90,9 @@ codes, not colors.
 
 | Module | Role | Key exports |
 |---|---|---|
-| `models.py` | **The contract.** Pydantic v2 models shared by all stages. Change deliberately. | `SourceDocument`, `TOCEntry`, `Footnote`, `TableBlock`, `FigureRef`, `SectionNode`, `RawDocument`, `SectionFile`, `CorpusManifest`, `CorpusStats`, `ExtractionStats`, `GoldenQuestion`, `Project`, `ProjectMember`, `DocType`, `Confidence`, `RECONSTRUCTION_HEADER`/`RECONSTRUCTION_RESCUED`, `SpecUnit`, `SpecRecord`, `SpecTableInfo`, `SpecSet`, `PlotRecord`, `PlotSet` |
-| `config.py` | pydantic-settings, `DSA_` prefix; `ANTHROPIC_API_KEY` plain. No filesystem side effects at import. `PIPELINE_VERSION`, `SPECS_SCHEMA_VERSION`, `PLOTS_SCHEMA_VERSION`, `SEARCH_SCHEMA_VERSION` live here, as does `ask_budget` (`DSA_ASK_BUDGET`, default 4000 — the `dsa ask` pack budget when `--budget` is not given), `projects_dir` (`DSA_PROJECTS_DIR`, default `projects`), `project_index_token_budget` (`DSA_PROJECT_INDEX_TOKEN_BUDGET`, default 4000 — the hard `PROJECT_INDEX.md` budget) and `mcp_max_tokens` (`DSA_MCP_MAX_TOKENS`, default 6000 — the hard cap on every MCP response). | `Settings`, `get_settings()` (lru_cached; `reset_settings_cache()` for tests) |
+| `models.py` | **The contract.** Pydantic v2 models shared by all stages. Change deliberately. | `SourceDocument`, `TOCEntry`, `Footnote`, `TableBlock`, `FigureRef`, `SectionNode`, `RawDocument`, `SectionFile`, `CorpusManifest`, `CorpusStats`, `ExtractionStats`, `GoldenQuestion`, `Project`, `ProjectMember`, `DocType`, `Confidence`, `RECONSTRUCTION_HEADER`/`RECONSTRUCTION_RESCUED`, `SpecUnit`, `SpecRecord`, `SpecTableInfo`, `SpecSet`, `PlotRecord`, `PlotSet`, `DerivedValue` |
+| `provenance.py` | **The invariant-8 round trip** (phase 6, ticket 01): the id format a derived value's `source` points at, and the resolver that walks it back. `spec_record_id` mints the stable, document-scoped ids (`rec_1`, `rec_2`, …) that `structure/specs.py` stamps on every published spec record — the ordinal is the id because emission order is fully determined by the document, so a rebuild of identical input reproduces every id exactly. `source_ref` spells the reference (`docs/<doc>/specs.json#rec_412`), `parse_source` refuses rather than repairs a malformed one, and `resolve_source` reads the record + its printed page through `CorpusIndex` (imported at call time, so the structure stage does not drag the retrieval core in). The ADR's unqualified `specs.json#rec_412` shorthand resolves only when exactly one document of the part carries that record: an ambiguous reference warns and resolves to nothing, because a coin flip here puts an unverified number on a card. | `DerivedValue` (in `models.py`), `spec_record_id`, `source_ref`, `parse_source`, `resolve_source`, `SourceRef`, `ResolvedSource`, `SPECS_ARTIFACT`, `PLOTS_ARTIFACT` |
+| `config.py` | pydantic-settings, `DSA_` prefix; `ANTHROPIC_API_KEY` plain. No filesystem side effects at import. `PIPELINE_VERSION`, `SPECS_SCHEMA_VERSION`, `PLOTS_SCHEMA_VERSION`, `SEARCH_SCHEMA_VERSION` and `CARD_VERSION` (the derivation-rule version of ADR 0005, overridable as `DSA_CARD_VERSION`, stamped into every manifest and read back by the batch skip gate) live here, as does `ask_budget` (`DSA_ASK_BUDGET`, default 4000 — the `dsa ask` pack budget when `--budget` is not given), `projects_dir` (`DSA_PROJECTS_DIR`, default `projects`), `project_index_token_budget` (`DSA_PROJECT_INDEX_TOKEN_BUDGET`, default 4000 — the hard `PROJECT_INDEX.md` budget) and `mcp_max_tokens` (`DSA_MCP_MAX_TOKENS`, default 6000 — the hard cap on every MCP response). | `Settings`, `get_settings()` (lru_cached; `reset_settings_cache()` for tests) |
 | `tokens.py` | THE token counter (chars/4). Every reported token number flows through it. | `count_tokens`, `truncate_to_tokens` (budget ≤ 0 → `""`) |
 | `acquire/inventory.py` | Part = folder of docs. `sources.json` per part; identity = sha256 of bytes; evidence-pinned vendor at acquire (detection or `--vendor` override). Doc-type shared lexicon in `_HINTS`: errata → register/regmap → app-note (sbaa/slaa/swra, `ug-`-prefix companions) → datasheet, so register words always beat a `ug-` prefix. | `register_source`, `save_inventory`, `load_inventory`, `detect_doc_type`, `pin_vendor` |
 | `vendor.py` | **Vendor routing record, not a rulebook**: profile registry (brand lexicon + backend preference chain), evidence-pinned detection on page-1 text/filename, drift warnings. Default `ti`; no layout behavior hangs off the vendor string. | `VENDOR_PROFILES`, `detect_vendor`, `select_backend`, `warn_vendor_drift`, `is_known_vendor` |
@@ -200,6 +201,21 @@ The protocol also ships in-repo as the Claude Code skill
 7. **Honest degradation.** Missing container → empty section + warning, not a
    crash. Missing key → deterministic descriptions. Unmappable → reported,
    not forced.
+8. **Deterministic derived artifacts** (ADR 0005). A derived artifact — one
+   that is not verbatim-extracted text: a design card, a comparison row, a
+   normalized number — may contain only **(a)** values copied verbatim from a
+   spec, table or pin record, **(b)** values computed from those by a
+   documented pure function, or **(c)** structural labels drawn from a
+   checked-in lexicon. Every field carries `source` (record id + page) and
+   `derivation` (the named rule that produced it); `models.DerivedValue` is
+   that envelope and `provenance.py` mints and resolves the ids. **No model
+   call may appear anywhere in the derivation path.** A field that cannot be
+   filled stays null and says so — never interpolated, never a plausible
+   default, never quietly omitted in a way that makes the artifact look
+   complete. Verbatim stays authoritative: the numeric layer is additive, and
+   where the two disagree the printed string is correct by definition. Any
+   consumer that sorts, compares or computes margins must report its unparsed
+   population explicitly rather than dropping those rows from the decision.
 
 ## Conventions & gotchas
 
@@ -384,10 +400,15 @@ The protocol also ships in-repo as the Claude Code skill
   and answering nothing. Bump `SEARCH_SCHEMA_VERSION` /
   `SPECS_SCHEMA_VERSION` / `PLOTS_SCHEMA_VERSION` in `config.py` whenever the
   corresponding format changes; that is the invalidation, not
-  `PIPELINE_VERSION`. `SPECS_`/`PLOTS_` are at **"2"** (phase 5, ticket 04
-  added `confidence`) — the extractor-version gate cannot cover this, because
+  `PIPELINE_VERSION`. `SPECS_` is at **"3"** (phase 5, ticket 04 added
+  `confidence`; phase 6, ticket 01 added the stable record `id`) and `PLOTS_`
+  at **"2"** — the extractor-version gate cannot cover this, because
   a `ti_html` part's `output_version` never moves when the layout engine's
-  does. A *missing* `specs.json`/`plots.json` reads as current, unlike a
+  does. `CARD_VERSION` joins them for *derived* artifacts and is the only gate
+  that can catch a changed derivation rule: a rule is code, not input, so
+  nothing about the source bytes — and therefore nothing the content hash or
+  the extractor version sees — moves when it changes. It is stamped into
+  `manifest.json` at publish. A *missing* `specs.json`/`plots.json` reads as current, unlike a
   missing search index: a `pdf_text` document legitimately publishes neither,
   and demanding one would put that part in a rebuild loop.
 - **The search tokenizer is shared, and deliberately lossy in one direction.**

@@ -269,6 +269,13 @@ class CorpusManifest(BaseModel):
 
     part_number: str
     pipeline_version: str = ""
+    # Derivation-rule version this corpus's derived artifacts were produced
+    # under (`config.CARD_VERSION`, overridable as `DSA_CARD_VERSION`). Part of
+    # the publish cache key: `batch.skip_reason` refuses to skip a corpus
+    # derived under a different rule set, so changing a rule regenerates rather
+    # than leaving stale cards behind. Additive — "" on corpora published
+    # before ADR 0005, which reads as stale and republishes once.
+    card_version: str = ""
     # Part-level vendor record: the datasheet's pinned vendor.
     vendor: str = ""
     # Per-document extraction stats keyed by content_hash.
@@ -289,6 +296,13 @@ class SpecUnit(BaseModel):
 class SpecRecord(BaseModel):
     """One normalized row from a parametric table — deterministic lookup unit."""
 
+    # Stable, addressable id within the document's `specs.json` ("rec_412"),
+    # minted by `provenance.spec_record_id` at structure time. It is what a
+    # derived value's `source` points at (ADR 0005 / invariant 8), so it must
+    # be reproduced exactly by a rebuild of identical input. Additive: a corpus
+    # published before ids existed carries "" and resolves to nothing —
+    # honestly unaddressable rather than pointing at the wrong row.
+    id: str = ""
     # identity within the document
     section: str = ""
     table_index: int = 0
@@ -359,6 +373,41 @@ class PlotSet(BaseModel):
     part_number: str = ""
     doc_hash: str = ""
     plots: list[PlotRecord] = Field(default_factory=list)
+
+
+class DerivedValue(BaseModel):
+    """One value on a derived artifact, in its provenance envelope (ADR 0005).
+
+    Invariant 8's unit of currency. A derived artifact (a design card, a
+    comparison row) is not verbatim corpus text, so it may only exist as a
+    quote of a record, a documented pure function of records, or a label from
+    a checked-in lexicon — and it must say which, for every single field:
+
+    - `verbatim` is the string as the datasheet printed it. It is authoritative
+      and is never mutated; where it and the parsed number disagree, it wins.
+    - `value_si` / `unit_si` are the additive numeric layer and are allowed to
+      fail: `None` / `""` means "this could not be parsed", which is a
+      first-class outcome and never a zero.
+    - `source` is the record this value came from
+      (`docs/<doc>/specs.json#rec_412`; see `provenance.py`, which mints,
+      parses and resolves it) and `page` is the printed page it was read off.
+    - `derivation` names the rule that produced the value
+      (`parse_quantity+si_normalize`). A field with no named rule has no
+      business being on a derived artifact.
+    - `confidence` is carried over from the source record; it is metadata about
+      the extraction and never a filter.
+
+    A field that cannot be filled stays null and says so — it is never
+    interpolated and never defaulted to a plausible value.
+    """
+
+    verbatim: str = ""
+    value_si: float | None = None
+    unit_si: str = ""
+    source: str = ""
+    page: int | None = None
+    derivation: str = ""
+    confidence: Confidence = Confidence.UNKNOWN
 
 
 class SearchSection(BaseModel):
