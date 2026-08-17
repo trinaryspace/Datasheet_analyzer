@@ -52,7 +52,18 @@ def record_confidence(record: object) -> str:
     unwraps the `Confidence` enum so every hit, every `as_dict()` and every
     front end sees the same plain `"high"` / `"medium"` / `"low"` string.
     """
-    value = getattr(record, "confidence", "")
+    return record_confidence_of(record, "confidence")
+
+
+def record_confidence_of(record: object, field: str) -> str:
+    """One named grade on a record, unwrapped the same defensive way.
+
+    A record can carry more than one grade — a plot's own `confidence` says how
+    precisely it can be cited, its `axis_confidence` how far its axis catalog can
+    be trusted — and both reach a front end through this, so a corpus published
+    before either existed degrades to `unknown` rather than failing to load.
+    """
+    value = getattr(record, field, "")
     return str(getattr(value, "value", value) or "") or CONFIDENCE_UNKNOWN
 
 
@@ -354,6 +365,36 @@ class PlotHit:
             "tags": list(rec.tags),
             "matched_via": self.matched_via,
             "confidence": self.confidence,
+            # The axis catalog (phase 6, ticket 08). The **grade is always
+            # here** — an agent choosing between 514 figures must be able to see
+            # that a figure's axes are unavailable — while the block itself is
+            # `null` when nothing was read, rather than fifteen null fields. That
+            # is not tidiness: this shape is also an MCP response, and a corpus
+            # of raster plots would otherwise spend 66 tokens per figure saying
+            # nothing, inside a cap whose whole job is to buy room for citations.
+            "axis_confidence": record_confidence_of(rec, "axis_confidence"),
+            "axes": self._axes(),
+        }
+
+    def _axes(self) -> dict | None:
+        """The axis block, or `None` when neither axis was read."""
+        rec = self.record
+        if not (rec.x_label or rec.x_min is not None
+                or rec.y_label or rec.y_min is not None):
+            return None
+        return {
+            "x": {
+                "label": rec.x_label, "unit": rec.x_unit,
+                "min": rec.x_min, "max": rec.x_max,
+                "scale": rec.x_scale.value if rec.x_scale else None,
+            },
+            "y": {
+                "label": rec.y_label, "unit": rec.y_unit,
+                "min": rec.y_min, "max": rec.y_max,
+                "scale": rec.y_scale.value if rec.y_scale else None,
+            },
+            "page": rec.axis_page,
+            "derivation": rec.axis_derivation,
         }
 
 

@@ -372,10 +372,30 @@ dsa plots --part AFE7950 --q "Output Fullscale"
 dsa plots --part AFE7950 --q "Gain Error" --section 4.12.1
 dsa plots --part AFE7950 --tag "tx,800mhz"
 dsa plots --part AFE7950 --q "Output Fullscale" --json
+# the axis catalog: pick the figure before spending a vision call on it
+dsa plots --part AFE7950 --y-label "Phase Noise" --near-x 1MHz
+dsa plots --part AFE7950 --x-label "Temperature"
 ```
 
 Returns matching `plots.json` records (caption, conditions, section, page,
 confidence, and the image file path under `figures/`) for an agent to open.
+
+Every record also carries an **axis catalog** — what each axis is titled, in what
+printed unit, over what printed tick range, on what scale — read off the page
+geometrically, so 514 figures narrow to a handful from text alone (measured:
+`--y-label "Phase Noise"` leaves 30, `+ --near-x 1MHz` leaves 14). `--near-x`
+scales the question to the axis's own printed unit, so `1.35GHz` matches an axis
+printed in MHz.
+
+An axis that could not be read is **null and says so** (`axis_confidence: low`)
+rather than approximate, and the figure keeps its caption, conditions, page and
+image regardless — no plot is lost to a failed axis reading. Because the axis
+filters select on a derived value, they print the population they could not
+consider, so an empty result on a part whose plots are raster images can never
+read as "no such figure exists". Measured `high` axis coverage: AFE7950 89%,
+AFE7953 75%, HMC520A 50%, LMX1204 43%, and AD9081 / LM741 / QPA1003P 0% — all
+three of those draw their plots as images, which is a fact about the documents
+(`Reports/PHASE_6_REPORT.md`, `KNOWN_SHORTCOMINGS.md`).
 
 ### Read content by section
 
@@ -394,7 +414,7 @@ parts/AFE7950/
     ├── tables/*.csv       # machine-readable twins of each section table
     ├── figures/           # plot image files referenced by plots.json
     ├── specs.json         # parametric spec records (symbol/name/conditions/min/typ/max/unit/page)
-    ├── plots.json         # searchable plot catalog + file map
+    ├── plots.json         # searchable plot catalog + file map + per-figure axis catalog
     └── search_index.json  # BM25 index over sections/*.md (what `dsa search` ranks)
 ```
 

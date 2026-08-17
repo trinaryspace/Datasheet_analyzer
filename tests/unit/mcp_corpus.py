@@ -18,6 +18,7 @@ from pathlib import Path
 
 from datasheet_analyzer.config import PIPELINE_VERSION, Settings
 from datasheet_analyzer.models import (
+    AxisScale,
     Confidence,
     DocType,
     PlotRecord,
@@ -34,6 +35,7 @@ from datasheet_analyzer.models import (
 from datasheet_analyzer.projects import save_project, write_project_index
 from datasheet_analyzer.publish import write_corpus
 from datasheet_analyzer.structure.corpus import build_section_plans
+from datasheet_analyzer.structure.plot_axes import DERIVATION as AXIS_DERIVATION
 
 DOC_HASH = "a1b2c3d4" + "0" * 56
 DOC = f"datasheet-{DOC_HASH[:8]}"
@@ -109,17 +111,33 @@ def _plots(part: str) -> PlotSet:
         part_number=part,
         doc_hash=DOC_HASH,
         plots=[
+            # One figure carries an axis catalog and one does not (phase 6,
+            # ticket 08), which is the pair every axis filter must separate and
+            # the pair that exercises both branches of
+            # `PlotHit.as_dict()["axes"]` — the block and the honest `null`.
+            # Figure 4-1 is the raster case: a precisely cited figure whose plot
+            # is pixels, so its own grade stays `high` while its axis grade is
+            # `low`. The two grades are independent on purpose.
             PlotRecord(
                 id="4.12.1-f001", section="4.12.1",
                 caption="Figure 4-1 TX Output Fullscale vs Output Frequency",
                 conditions="DSA = 0", page_start=29, page_end=29, file=FIGURE,
                 tags=["tx", "fullscale"], confidence=Confidence.HIGH,
+                axis_confidence=Confidence.LOW,
             ),
+            # Figure 4-2's axes are AFE7950's own p.29 vocabulary: the DSA sweep
+            # printed `DSA (dB)` 0…40 against a gain-error axis in dB.
             PlotRecord(
                 id="4.12.1-f002", section="4.12.1",
                 caption="Figure 4-2 TX Calibrated Gain Error vs DSA Setting",
                 page_start=30, page_end=30, tags=["tx"],
                 confidence=Confidence.MEDIUM,
+                x_label="DSA", x_unit="dB",
+                x_min=0.0, x_max=40.0, x_scale=AxisScale.LINEAR,
+                y_label="Gain Error", y_unit="dB",
+                y_min=-0.5, y_max=0.5, y_scale=AxisScale.LINEAR,
+                axis_confidence=Confidence.HIGH, axis_page=30,
+                axis_derivation=AXIS_DERIVATION,
             ),
         ],
     )

@@ -109,6 +109,25 @@ class TestMcpServerIsFormatOnly:
         hit["confidence"] = "excellent"
         assert R.validate_response(payload, "find_spec")
 
+    def test_a_real_axis_block_validates_and_a_bogus_scale_does_not(self, settings):
+        """The axis catalog's declared sub-schema, against the hit's own dict.
+
+        Phase 6, ticket 08 added a nested object to `PlotHit.as_dict()`, and a
+        nested contract nothing validates is a contract that has already drifted.
+        The corpus carries one figure with axes and one without, so both branches
+        of `axes` — the block and the honest `null` — are checked here.
+        """
+        hits = [h.as_dict() for h in Retriever.for_part(settings.parts_dir / "TEST").plots()]
+        payload = R.error_response(
+            "find_plots", "", max_tokens=6000, part="TEST",
+            hits=hits, count=len(hits), total=len(hits),
+        )
+        assert R.validate_response(payload, "find_plots") == []
+        assert hits[0]["axes"] is None
+        assert hits[1]["axes"]["x"]["scale"] == "linear"
+        hits[1]["axes"]["x"]["scale"] = "semilog"
+        assert R.validate_response(payload, "find_plots")
+
 
 class TestTheImageTypeIsDataNotHostConfiguration:
     """The MIME type a client sees must not depend on the host machine.

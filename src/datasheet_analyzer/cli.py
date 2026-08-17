@@ -528,22 +528,41 @@ def _cmd_plots(args: argparse.Namespace) -> int:
         return 2
 
     tags = [t.strip() for t in args.tag.split(",") if t.strip()] if args.tag else []
+    x_label = getattr(args, "x_label", "") or ""
+    y_label = getattr(args, "y_label", "") or ""
+    near_x = getattr(args, "near_x", "") or ""
     hits = scope.plots(
         q=args.q or "",
         section=args.section or "",
         tags=tags,
+        x_label=x_label,
+        y_label=y_label,
+        near_x=near_x,
+    )
+    # An axis filter selects on a derived value, so the population it could not
+    # consider travels with the result (invariant 8). Which population that is
+    # is `retrieve/`'s decision, not this front end's — the MCP `find_plots`
+    # tool asks the same question and must get the same answer.
+    axis_gap = scope.plot_axis_gap_for(
+        x_label=x_label, y_label=y_label, near_x=near_x
     )
     if args.json:
         # Shape owned by PlotHit.as_dict(), like every other JSON surface.
         payload = {
             "part": args.part,
             "project": args.project,
-            "query": {"q": args.q, "section": args.section, "tags": tags},
+            "query": {
+                "q": args.q, "section": args.section, "tags": tags,
+                "x_label": x_label, "y_label": y_label, "near_x": near_x,
+            },
             "hits": [h.as_dict() for h in hits],
+            "axis_gap": axis_gap,
         }
         print(json.dumps(payload, ensure_ascii=False, indent=2))
         return 0 if hits else 1
     print(format_plot_hits(hits, show_part=show_part))
+    if axis_gap:
+        print(f"\nnote: {axis_gap}")
     return 0 if hits else 1
 
 
@@ -1005,6 +1024,18 @@ def main(argv: list[str] | None = None) -> int:
     p_plots.add_argument("--section", default="", help="exact section number")
     p_plots.add_argument(
         "--tag", default="", help="comma-separated tags (all must match)"
+    )
+    p_plots.add_argument(
+        "--x-label", dest="x_label", default="",
+        help="substring of the printed x-axis title (e.g. 'Frequency')",
+    )
+    p_plots.add_argument(
+        "--y-label", dest="y_label", default="",
+        help="substring of the printed y-axis title (e.g. 'Gain')",
+    )
+    p_plots.add_argument(
+        "--near-x", dest="near_x", default="",
+        help="a printed value the x axis must cover (e.g. '3.5GHz')",
     )
     p_plots.add_argument(
         "--json",

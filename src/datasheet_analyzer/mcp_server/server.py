@@ -220,12 +220,26 @@ def build_server(settings: Settings | None = None) -> MCPServer:
         q: str = "",
         section: str = "",
         tags: list[str] | None = None,
+        x_label: str = "",
+        y_label: str = "",
+        near_x: str = "",
     ) -> dict[str, Any]:
-        """Filter the plot catalog by caption/conditions text, section or tags.
+        """Filter the plot catalog by caption/conditions text, section, tags or axes.
 
         The narrowing step before `get_figure`: each hit carries the figure's
         caption, its citation, its grade and the corpus-relative image path to
         pass to `get_figure`.
+
+        `x_label` / `y_label` / `near_x` filter on the figure's **axis catalog**
+        (phase 6, ticket 08) — the printed axis titles, and "the x axis covers
+        this printed value" for `near_x` ("3.5GHz"), scaled to the axis's own
+        printed unit. Every hit also reports its `axis_confidence` and, when a
+        reading exists, its `axes` block, so a client can spend one vision call
+        on the right figure instead of five on the wrong ones. Because those
+        three select on a *derived* value, a corpus whose figures print their
+        axes as pixels answers with a `warning` naming the population that could
+        not be considered — an empty axis-filtered list is never evidence that no
+        such figure exists.
         """
         scope, error = _scope(part, project)
         if scope is None:
@@ -235,8 +249,19 @@ def build_server(settings: Settings | None = None) -> MCPServer:
             )
         payload = envelope("find_plots", max_tokens=cap, part=part, project=project)
         payload["hits"] = [
-            hit.as_dict() for hit in scope.plots(q=q, section=section, tags=list(tags or []))
+            hit.as_dict()
+            for hit in scope.plots(
+                q=q, section=section, tags=list(tags or []),
+                x_label=x_label, y_label=y_label, near_x=near_x,
+            )
         ]
+        # `warning` rather than `error`: the call was answered, and what is
+        # incomplete is the population it could filter — the same distinction a
+        # project member with no search index gets. Empty for a lookup that
+        # filtered on no axis at all.
+        payload["warning"] = scope.plot_axis_gap_for(
+            x_label=x_label, y_label=y_label, near_x=near_x
+        )
         return fit_list(payload, "hits", cap)
 
     @server.tool(name="read_section", meta=declared("read_section"))

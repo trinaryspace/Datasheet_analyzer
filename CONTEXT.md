@@ -171,6 +171,24 @@ rails), no margin is computed and the pair is listed as uncomparable with the
 reason, because a margin between the wrong two rows is worse than none.
 _Avoid_: headroom, delta, difference, derating, safety factor
 
+**Axis catalog**:
+What one figure's two axes say, as fields on its plot record: the printed axis
+title, the unit it printed in brackets, the first and last **tick label**, and
+whether those ticks are spaced linearly or logarithmically. It exists so a figure
+can be chosen from text — 514 of them narrow to a handful before an agent spends a
+vision call on one — and it is read geometrically off the text inside the figure's
+own caption-anchored region, never inferred from the caption. Each half stands
+alone: a figure may publish a readable y axis and no x axis, and says so with its
+own grade beside the plot's. An axis that could not be read is **null with a
+stated reason**, not approximate: a range nobody named is not published, a tick
+sequence that is neither linear nor logarithmic has no scale rather than a
+plausible one, and a y column paired with the neighbouring plot's x row is refused
+outright, because a wrong axis pair looks exactly like a right one. A figure is
+never lost to a failed axis reading — its caption, conditions, page and image are
+untouched — and any lookup that filters on an axis says how many figures it could
+not consider.
+_Avoid_: axes, scale, calibration, plot data, digitization
+
 **Search index**:
 The precomputed inverted index of one document's section files
 (`search_index.json`, written at publish): per section, how often each token

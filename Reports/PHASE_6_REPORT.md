@@ -872,3 +872,212 @@ the rest of the phase's tools, and tickets 04 and 05 set the same precedent
 card and `DesignCard.model_dump(mode="json")` is its declared shape.
 
 
+## Ticket 08 — plot axis catalog (`plots.json` axis fields, `dsa plots --near-x`)
+
+AFE7950 catalogs **514** figures by caption and test conditions, which is enough
+to grep and not enough to *choose*: an agent that wants "phase noise at a 1 MHz
+offset" opens one, spends a vision call discovering it was the wrong one, and
+opens another. Ticket 08 reads each figure's two axes off the page — title, unit,
+printed tick range, spacing rule — so that choice is made from text before a
+single vision token is spent.
+
+`extract/pdf_layout.figure_text_regions` hands back every caption-anchored figure
+region with the text runs inside it (the same geometry `render_figure_regions`
+clips an image from, plus PyMuPDF's own line direction, which is how a rotated
+y-axis title is recognised); `structure/plot_axes.py` is the pure reader over
+that; `pipeline.build_part` annotates the plot set between structure and publish;
+`retrieve/` gains the three filters and the population report; `dsa plots` and the
+MCP `find_plots` tool expose them. `PLOTS_SCHEMA_VERSION` 2 → 3.
+
+### Measured coverage, seven built corpora
+
+`axis_confidence` is graded per figure: **high** = both axes state a title, a
+printed tick range and a spacing rule; **medium** = one does; **low** = neither,
+with every axis field null. Reproduce with `scripts/measure_axis_coverage.py`.
+
+| Part | Backend | Figures | high | high % | medium | low |
+|---|---|---:|---:|---:|---:|---:|
+| AFE7950 | ti_html | 514 | **458** | **89%** | 33 | 23 |
+| AFE7953 | ti_html | 492 | 368 | 75% | 44 | 80 |
+| HMC520A | pdf_layout | 107 | 53 | 50% | 31 | 23 |
+| LMX1204 | pdf_layout | 54 | 23 | 43% | 5 | 26 |
+| AD9081 | pdf_layout | 100 | 0 | 0% | 0 | 100 |
+| LM741 | pdf_layout | 3 | 0 | 0% | 0 | 3 |
+| QPA1003P | pdf_layout | 4 | 0 | 0% | 0 | 4 |
+
+**AFE7950 clears the ticket's ≥60% floor at 89%**, and the assertion in the gate
+is the *floor*, not the measurement, so improving the reader can never fail it
+while a regression below 60% does
+(`test_phase3_plots.py::TestPlotAxisCatalogOnTheReferencePart`). 934 linear and 15
+log axes are read on that part, 766 linear and 14 log on AFE7953 — the document
+prints both kinds, so `log` is not a label this build hands out to everything.
+
+The spread is the finding, and most of it is not about this reader:
+
+- **AD9081's 0% is honest.** All 100 of its plots are raster images; there is no
+  axis text inside a figure region to read, so every field is null and every
+  figure says `low`. Its `Figure 100.` is the case that made "no title, no axis" a
+  rule — a 324-ball package outline whose dimension callouts form a perfectly
+  monotone right-aligned column that reads as a y axis from 1.44 upward. Nothing
+  names it, so nothing is published.
+- **QPA1003P and LM741 catalog title-anchored bands** from the captionless era,
+  which get no region by design: one band can hold several plots, and one axis
+  pair could not be attributed to it honestly.
+- **AFE7950's 33 `medium` records are all y-only** — 458 figures publish a
+  readable x axis and 491 a readable y axis. A figure findable by `--y-label`
+  whose x tick labels the PDF laid out unreadably is a real and useful state,
+  which is why `medium` exists rather than being folded into `low`.
+
+### The accuracy walk
+
+Ticket 06's field walk applied to this artifact, and the reason the coverage
+number can be trusted: take every axis string the corpus published — both titles
+and both printed units — and require it to appear in the text of the page that
+record's own `axis_page` cites. **491 of 514 records cite an axis page, and 0 of
+their strings are absent from it**
+(`test_every_published_axis_string_is_on_the_page_it_cites`). A reading that
+drifted a page, matched a caption instead of an axis, or invented a unit fails
+this walk.
+
+Two figures are hand-verified off the printed pages:
+
+| Figure | Page | x axis | y axis |
+|---|---:|---|---|
+| 4-1 | 29 | `Output Frequency (MHz)` 600…1500, linear | `Output Full Scale (dBm)` −2…7, linear |
+| 4-492 | 129 | `Offset Frequency (Hz)` 1E+3…1E+8, **log** | `Phase Noise (dBc/Hz)` −160…−80, linear |
+
+### The narrowing this was built for
+
+514 figures in, a shortlist out — on the hand-checked example:
+
+```
+dsa plots --part AFE7950 --y-label "Phase Noise" --near-x 1MHz
+```
+
+| Filter | Figures left |
+|---|---:|
+| none | 514 |
+| `--y-label "Phase Noise"` | 30 |
+| `+ --near-x 1MHz` | **14** |
+
+Every one of those 14 prints an x axis in `Hz` whose printed tick range covers
+1 MHz, asserted row by row in the gate. `--near-x` scales the caller's question
+through the numeric layer's own `SI_UNITS` (`1.35GHz` against an axis printed in
+`MHz`), and an axis unit that lexicon cannot scale makes the figure
+**unmatchable** rather than compared at face value — the same refusal
+`quantities._si` makes, because a dropped factor of 1000 here hands back the
+wrong figure with a valid-looking citation. AFE7950's own temperature axes print
+`Cq` (a degree glyph its font mangled) and are therefore findable by
+`--x-label Temperature` and not by range, which is the honest split.
+
+### Every rule is a refusal
+
+| Rule | What it refuses |
+|---|---|
+| three ticks minimum | two numbers state a range but say nothing about the spacing, and the spacing is what makes the scale checkable |
+| anchored tick grammar | a run is ticks only when *every* token of it is a number, so `Tone = -8.4dBm` is a legend and `D095` is a drawing label |
+| the two must form an **L** | a y column on the left paired with an x row 300 pt to its right is two figures' axes, and a wrong pair looks exactly like a right one |
+| **no title, no axis** | a monotone column nobody named is not published — `--near-x` needs the unit, which lives in the title |
+| a scale is read, never assumed | uniform differences are `linear`, uniform ratios `log`, and a sequence that is neither has **no** scale rather than a plausible one |
+| the scale is checked against the tick **positions** | a log axis labelled at its minor ticks (`10 20 30 … 100`) prints uniform differences, so the values alone would read it as linear — the range right and every interpolation across it wrong; where the ticks were laid out individually, a rule the geometry contradicts refuses the tick set |
+| the title is bounded to tick size | a figure's 8 pt test-conditions sentence a dozen points lower is not an `x_label` |
+
+That last check is measured inert and kept anyway: all **446** of AFE7950's
+individually laid-out tick rows agree with their own geometry, and coverage is
+byte-identical with and without it on all seven corpora — it exists for the
+document that has not been read yet. A *merged* tick run states no positions and
+is therefore trusted from its values alone (`KNOWN_SHORTCOMINGS.md`).
+
+The log bar (`_LOG_TOLERANCE` 1.05) is far tighter than the linear one (1.35) on
+purpose: taking logarithms compresses everything, so 1.35 in log space would call
+an arbitrary rising sequence logarithmic (1, 2, 4, 9 comes out at 1.17). A real
+log axis prints exact decades or exact octaves.
+
+### No figure is lost to a failed axis parse
+
+Every record is visited, including the ones that read nothing — which is what
+turns "no axes" from an absent field into a stated finding. A `low` figure keeps
+its caption, its conditions, its page and its rendered image, and cites no
+`axis_page` and names no `axis_derivation` rather than pointing at a page that
+printed nothing usable. Asserted on the reference part and on all four gate
+corpora.
+
+Because `--x-label` / `--y-label` / `--near-x` are the first filters over a
+figure catalog that select on a **derived** value, they carry
+`plot_axis_gap()` — the population they could not consider — as a note beside the
+result (`dsa plots` prints it, the MCP tool returns it as `warning`), so
+AD9081's empty axis-filtered list can never read as "this part prints no such
+figure". The choice of which population to report lives in
+`Retriever.plot_axis_gap_for`, not in either front end, so the two surfaces
+cannot answer the same query differently.
+
+### Room for digitization, without a migration
+
+The axis fields are per axis and independent, and they are the coordinate frame a
+later curve-digitization pass would place samples in — `x_scale` is precisely why
+samples *may* be placed at all. That pass lands as its own list beside this
+block; nothing here changes shape, and both directions are asserted: a
+`plots.json` written before the catalog still loads with `axis_confidence:
+unknown` (never graded, rather than optimistically graded), and one carrying a
+future `curves` field loads too.
+
+### Contract points asserted by test
+
+`tests/unit/test_plot_axes.py` (47 tests) plus the two integration gates and the
+filter/CLI/MCP tests in `tests/unit/test_plots_query.py`,
+`tests/unit/test_mcp_server.py` and `tests/unit/test_mcp_responses.py`:
+
+- the grammar: a tick is a number and nothing else, a merged run
+  (`"1200 1350 1500"`) is a whole tick row, a letter run is never a number;
+- the scale: linear, log, octaves, a truncated last step (AFE7950's temperature
+  axis prints −40 … 85, **105**), "neither" for an irregular sequence, and the
+  positional cross-check — a minor-tick-labelled log axis publishes no x axis
+  rather than a linear one, while a merged run is trusted because it states no
+  positions;
+- the rotated y title, synthetic (inserted at `rotate=90`) and real (figure 4-1
+  off `afe7950.pdf`);
+- the refusals: an empty region, a legend of numbers, an unnamed monotone column,
+  a neighbour's tick row, side-by-side figures reading their *own* axes;
+- the envelope: `axis_page` + `axis_derivation` where a value exists and neither
+  where none does, and `annotate_record` idempotent over a record that already
+  carries the block;
+- the region match: on the printed figure number, resolving outside a record's
+  page range when the number is document-unique and to **nothing** when it occurs
+  twice;
+- the filters: label substrings, `near_x` scaled across unit prefixes, refused
+  across physical quantities, refused on an unscalable unit, AND-composed with
+  the caption filters, and never returning a figure with no axes — over one part
+  *and* over a project, where the fan-out labels every hit with its part and the
+  gap stays one line per member (a design-wide count would hide which device's
+  figures cannot be filtered);
+- the honesty: `axis_population`'s counts and sentence, the gap line on both
+  front ends, and the JSON shape carrying the grade always and the block only
+  when it was read;
+- the title split: a parenthesized unit off a title verbatim, a long
+  parenthetical that is **not** a unit, and a bracket the page's own text stream
+  never closes — the label keeps the printed fragment and the unit stays empty
+  rather than being guessed (`KNOWN_SHORTCOMINGS.md` item 8, 5 of 514 figures).
+
+### Independent re-measurement
+
+Every number in this section was reproduced from scratch during the ticket's
+audit rather than carried over: `scripts/measure_axis_coverage.py` against
+`parts/AFE7950` + `afe7950.pdf` (458/514, 89%, 934 linear / 15 log) and
+`parts/AFE7953` + `afe7953.pdf` (368/492, 75%); the four gate rows off the gate
+build's own printed table (`TestPlotAxesOnTheGateCorpora`); LMX1204 off a fresh
+offline build into a scratch parts dir. The accuracy walk was re-run outside
+pytest — **491 of 514 records cite an axis page and 0 published axis strings are
+absent from it** — figures 4-1 (p.29) and 4-492 (p.129) were re-read off the
+printed pages' own text runs, and the narrowing table was recomputed
+(514 → 30 → **14**). The coverage floor was confirmed to *bite*: raising
+`MIN_TICKS` to 9 as a deliberate mutation drops AFE7950 to 203/514 and fails
+five of the eight gate assertions, including the ≥60% floor itself.
+
+### Not built here
+
+Image analysis of the rendered PNG — curve digitization. The ticket puts it out
+of scope and the schema is shaped for it (above); the reason it stays out is that
+a sampled curve is a derived *number*, and under ADR 0005 it needs a gate of its
+own before it may be published beside a printed one.
+
+

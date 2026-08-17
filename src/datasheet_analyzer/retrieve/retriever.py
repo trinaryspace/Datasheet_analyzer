@@ -84,7 +84,10 @@ from datasheet_analyzer.structure.aliases import (
     token_overlap,
     tokens,
 )
+from datasheet_analyzer.structure.plot_axes import axis_population
+from datasheet_analyzer.structure.quantities import SI_UNITS, Quantity, parse_quantity
 from datasheet_analyzer.structure.registers import parse_register_word
+from datasheet_analyzer.structure.units import canonical_unit
 
 if TYPE_CHECKING:  # pragma: no cover - import cycle guard, typing only
     from datasheet_analyzer.retrieve.pack import AnswerPack
@@ -460,13 +463,27 @@ class Retriever:
         conditions: str = "",
         section: str = "",
         tags: list[str] | None = None,
+        x_label: str = "",
+        y_label: str = "",
+        near_x: str = "",
     ) -> list[PlotHit]:
         """AND-match caption/conditions text, exact section number, and tags.
 
         `q` searches the combined caption + conditions text; `caption` and
         `conditions` restrict those fields independently.
+
+        `x_label` / `y_label` / `near_x` (phase 6, ticket 08) filter on the
+        **axis catalog** — substring over the printed axis title, and "the x axis
+        covers this quantity" for `near_x`, which is a printed value the numeric
+        layer parses ("3.5GHz") compared against the axis's printed tick range in
+        the same SI base. They are AND clauses like every other filter here, and
+        they are deliberately *narrowing only*: a figure whose axes could not be
+        read is excluded from an axis-filtered result and counted by
+        `plot_axis_gap()`, because a filter on a derived value owes its caller
+        the population it could not consider (invariant 8).
         """
         tags = tags or []
+        want = parse_quantity(near_x) if near_x.strip() else None
         hits: list[PlotHit] = []
         for doc in self.index.docs:
             for rec in doc.plots:
@@ -481,17 +498,61 @@ class Retriever:
                     continue
                 if tags and not all(t.lower() in (rec.tags or []) for t in tags):
                     continue
+                if x_label and x_label.lower() not in rec.x_label.lower():
+                    continue
+                if y_label and y_label.lower() not in rec.y_label.lower():
+                    continue
+                if near_x.strip() and not _axis_covers(rec, want):
+                    continue
                 hits.append(
                     PlotHit(
                         record=rec,
                         citation=Citation.for_plot(
                             rec, doc=doc.name, doc_hash=doc.doc_hash, part=self.part
                         ),
-                        matched_via=_plot_matched_via(rec, q, caption, conditions, section, tags),
+                        matched_via=_plot_matched_via(
+                            rec, q, caption, conditions, section, tags,
+                            x_label, y_label, near_x,
+                        ),
                         confidence=record_confidence(rec),
                     )
                 )
         return hits
+
+    def plot_axis_gap(self, *, axis: str = "x") -> str:
+        """What an axis-filtered figure lookup could not consider, in one line.
+
+        `register_field_gap()`'s twin, for the same reason and with the same
+        force: `--x-label` / `--near-x` select on a **derived** value, so an
+        empty result must never read as "this part prints no such figure" when
+        the truth is "these figures print their axes as pixels" (measured:
+        AD9081's 100 plots are raster images and publish no axes at all). It is a
+        note, not a refusal — the caption and conditions paths still answer.
+        """
+        records = [rec for doc in self.index.docs for rec in doc.plots]
+        population = axis_population(records, axis=axis)
+        if not population.total or not population.unreadable:
+            return ""
+        return (
+            f"{population.describe()} in the corpus for part {self.part}; each "
+            f"says so with `axis_confidence` and null axis fields. An "
+            f"axis-filtered figure lookup here cannot establish that no such "
+            f"figure exists."
+        )
+
+    def plot_axis_gap_for(
+        self, *, x_label: str = "", y_label: str = "", near_x: str = ""
+    ) -> str:
+        """The gap one `plots()` call owes its caller — `""` when it filtered on
+        no axis at all.
+
+        Which axis to report is a decision, so it lives here and not in a front
+        end: `dsa plots` and the MCP `find_plots` tool must never print different
+        populations for the same query. `--near-x` asks about the x axis; a bare
+        `--y-label` asks about the y one.
+        """
+        axis = gap_axis(x_label=x_label, y_label=y_label, near_x=near_x)
+        return self.plot_axis_gap(axis=axis) if axis else ""
 
     def plots_for_terms(self, text: str, *, limit: int = 5) -> list[PlotHit]:
         """Rank the plot catalog by how much of `text`'s vocabulary it uses.
@@ -860,6 +921,49 @@ def _pin_matched_via(pin: str, name: str, pin_type: str, q: str) -> str:
     return "all"
 
 
+def gap_axis(*, x_label: str = "", y_label: str = "", near_x: str = "") -> str:
+    """Which axis population an axis-filtered figure lookup must report.
+
+    `"x"`, `"y"`, or `""` for a lookup that filtered on no axis and therefore
+    owes no gap. One place decides, because two front ends ask (see
+    `Retriever.plot_axis_gap_for`).
+    """
+    if not (x_label or y_label or near_x):
+        return ""
+    return "y" if (y_label and not (x_label or near_x)) else "x"
+
+
+def _axis_covers(rec: PlotRecord, want: Quantity | None) -> bool:
+    """True when the figure's printed x-tick range covers `want`.
+
+    Both sides are taken to their SI base before they are compared — the caller
+    types `3.5GHz` and the axis printed `MHz` — through the very lexicon the
+    numeric layer scales spec values with, so an axis unit that lexicon cannot
+    scale makes the figure *unmatchable* rather than matched at face value. That
+    is the same refusal `quantities._si` makes, for the same reason: a dropped
+    factor of 1000 here would hand back the wrong figure with a valid citation.
+
+    A `None` want (the caller's value did not parse) matches nothing; the caller
+    is told by the filter's own gap line rather than handed the whole catalog.
+    """
+    if want is None:
+        return False
+    if rec.x_min is None or rec.x_max is None:
+        return False
+    scale = SI_UNITS.get(canonical_unit(rec.x_unit).canonical)
+    if scale is None:
+        return False
+    base, factor = scale
+    if base != want.unit_si:
+        return False
+    low, high = want.span
+    target = want.value_si if want.value_si is not None else low if low is not None else high
+    if target is None:
+        return False
+    lo, hi = sorted((rec.x_min * factor, rec.x_max * factor))
+    return lo <= target <= hi
+
+
 def _plot_matched_via(
     rec: PlotRecord,
     q: str,
@@ -867,6 +971,9 @@ def _plot_matched_via(
     conditions: str,
     section: str,
     tags: list[str],
+    x_label: str = "",
+    y_label: str = "",
+    near_x: str = "",
 ) -> str:
     if caption or (q and q.lower() in rec.caption.lower()):
         return "caption"
@@ -876,6 +983,12 @@ def _plot_matched_via(
         return "section"
     if tags:
         return "tag"
+    # Axis rungs name themselves like every other rung, so a caller can tell a
+    # figure found by its printed axis from one found by its caption.
+    if near_x.strip():
+        return "axis-range"
+    if x_label or y_label:
+        return "axis-label"
     return "all"
 
 

@@ -28,7 +28,7 @@ from datasheet_analyzer.retrieve.results import (
     SectionHit,
     SpecHit,
 )
-from datasheet_analyzer.retrieve.retriever import PLOT_VOCABULARY, Retriever
+from datasheet_analyzer.retrieve.retriever import PLOT_VOCABULARY, Retriever, gap_axis
 from datasheet_analyzer.retrieve.search import ScoredSection, score_sections
 
 # Imported after `retriever`: `pack` composes `Retriever`, which reaches back
@@ -79,6 +79,7 @@ __all__ = [
     "build_project_pack",
     "clear_index_cache",
     "discover_parts",
+    "gap_axis",
     "score_sections",
     "validate_pack",
 ]

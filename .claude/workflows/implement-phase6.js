@@ -98,7 +98,28 @@ const TICKETS = [
     ].join('\n'),
   },
   { id: '07', phase: '07 Design cards', file: '07-design-cards.md', title: 'Design cards' },
-  { id: '08', phase: '08 Plot axis catalog', file: '08-plot-axis-catalog.md', title: 'Plot axis catalog' },
+  {
+    id: '08', phase: '08 Plot axis catalog', file: '08-plot-axis-catalog.md', title: 'Plot axis catalog',
+    notes: [
+      'A PREVIOUS ATTEMPT AT THIS TICKET ALREADY RAN and got most of the way before its',
+      'agent died on a transient API error (a 529, nothing to do with the work). Its edits are',
+      'still in the working tree, UNCOMMITTED. At the time it died the full suite passed:',
+      '1492 passed / 1 skipped, ruff clean.',
+      '',
+      'So START BY READING WHAT IS ALREADY THERE, not by starting over:',
+      '  git status --short          # uncommitted files',
+      '  git diff                    # what was changed',
+      'New files it added: src/datasheet_analyzer/structure/plot_axes.py,',
+      'tests/unit/test_plot_axes.py, scripts/measure_axis_coverage.py.',
+      '',
+      'Your job is to AUDIT that work against the ticket, finish whatever is incomplete, and',
+      'own the result as if you wrote it. Do NOT assume it is correct because the suite is',
+      'green - walk the checkbox list yourself and verify each box, especially the >=60%',
+      'high-confidence axis coverage measurement on AFE7950 and the rotated y-axis assertion.',
+      'If something in it is wrong, fix it. If it is sound, say so and complete the rest.',
+      'Re-run the suite and ruff yourself before reporting either way.',
+    ].join('\n'),
+  },
   { id: '09', phase: '09 Cross-part compare', file: '09-compare.md', title: 'Cross-part compare' },
   { id: '10', phase: '10 MCP surface + gate', file: '10-mcp-surface-and-gate.md', title: 'MCP surface + phase gate' },
 ]
@@ -399,8 +420,29 @@ function blockedBy(gate, reviews) {
   return live.filter((r) => r.blocking).length >= 2
 }
 
+// agent() returns null when a subagent dies on a terminal API error (e.g. a 529
+// Overloaded). That is transient and says nothing about the work, but the first
+// run of this phase treated it as a hard stop and lost the tail of the night
+// after ticket 08's implementer had already finished its edits. Retry instead.
+// The FIRST call inside the thunk is byte-identical to the un-wrapped call, so
+// resuming still replays every completed agent from cache.
+async function withRetry(fn, label, attempts = 3) {
+  for (let i = 1; i <= attempts; i += 1) {
+    const r = await fn()
+    if (r) return r
+    if (i < attempts) {
+      log(`${label}: attempt ${i} returned nothing (likely a transient API error) - retrying`)
+    }
+  }
+  log(`${label}: still nothing after ${attempts} attempts - treating as a real failure`)
+  return null
+}
+
 async function runGate(t) {
-  return await agent(gatePrompt(t), { label: `gate:${t.id}`, phase: t.phase, schema: GATE_SCHEMA, effort: 'low' })
+  return await withRetry(
+    () => agent(gatePrompt(t), { label: `gate:${t.id}`, phase: t.phase, schema: GATE_SCHEMA, effort: 'low' }),
+    `gate:${t.id}`
+  )
 }
 
 async function runReviews(t, implSummary) {
@@ -425,7 +467,10 @@ for (const t of TICKETS) {
   phase(t.phase)
   log(`Ticket ${t.id} - ${t.title}: implementing`)
 
-  const impl = await agent(implPrompt(t, priorSummaries), { label: `impl:${t.id}`, phase: t.phase, schema: IMPL_SCHEMA })
+  const impl = await withRetry(
+    () => agent(implPrompt(t, priorSummaries), { label: `impl:${t.id}`, phase: t.phase, schema: IMPL_SCHEMA }),
+    `impl:${t.id}`
+  )
 
   if (!impl) {
     stoppedAt = t.id

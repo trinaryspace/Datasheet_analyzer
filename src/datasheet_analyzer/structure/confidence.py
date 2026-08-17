@@ -41,6 +41,14 @@ figure can be cited and identified: an exact printed page and a caption is
 all is `low` — there is nothing to open, and unlike a spec row a plot has no
 printed value that could stand on its own without one.
 
+A plot's **axis catalog** (phase 6, ticket 08) is graded separately from the
+plot, because it is read off different evidence: the plot's grade is citation
+precision, the axis grade is how much of the axis pair the page's own text
+stated. An axis is complete when it states a title, a printed tick range and a
+spacing rule; both axes complete is `high`, one is `medium`, neither is `low` —
+which is the honest reading of a plot drawn as a raster image, where the axes
+exist only as pixels. `UNKNOWN` there means no reading was attempted at all.
+
 Pins (phase 6, ticket 04) are read off a grid, so their rule is the spec rule
 with the pin's own "did the row say anything" clause: a **rescued** grid is
 `low`, because the columns a pin table is entirely made of were not the ones
@@ -170,6 +178,31 @@ def grade_plot_record(record: PlotRecord) -> Confidence:
     if (record.page_end or record.page_start) != record.page_start:
         return Confidence.MEDIUM
     return Confidence.HIGH
+
+
+def grade_plot_axes(record: PlotRecord) -> Confidence:
+    """Grade a plot's **axis catalog**, separately from the plot (ticket 08).
+
+    Deliberately its own grade: the record's `confidence` says how precisely the
+    figure can be cited, which is true of a raster plot whose axes are pixels
+    just as much as of a vector one. This grade says how far the *axis block* can
+    be trusted, and its rule is the one in the docstring above.
+
+    An axis is complete when it states a title, a printed tick range and a
+    spacing rule — a range with no title cannot be filtered on by name, and a
+    range with no scale may not be interpolated across. Both complete is `high`;
+    one complete is `medium`, which is a real and useful state (a figure whose y
+    axis reads and whose x tick labels the PDF laid out unreadably is still
+    findable by `--y-label`); neither is `low`, with every field null, which is
+    what a raster plot and a figure that is not a plot at all both honestly are.
+    """
+    x_complete = bool(record.x_label) and record.x_min is not None and record.x_scale
+    y_complete = bool(record.y_label) and record.y_min is not None and record.y_scale
+    if x_complete and y_complete:
+        return Confidence.HIGH
+    if x_complete or y_complete:
+        return Confidence.MEDIUM
+    return Confidence.LOW
 
 
 def page_is_exact(

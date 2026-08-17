@@ -159,3 +159,110 @@ for the same kind of reason. This is the trade ADR 0005 accepted in writing —
 "parts whose tables use unusual header wording will yield empty cards until a
 lexicon entry is added" — and closing a gap is a YAML edit measured against that
 part's printed pages, never a looser match.
+
+---
+
+## Plot axis catalog (phase 6, ticket 08)
+
+The catalog reads a figure's axes off the text the page prints inside the
+figure's own region. AFE7950 publishes 458 of 514 figures at
+`axis_confidence: high` (89%, against the ticket's 60% floor) and every published
+axis string appears on the page its record cites. What follows is what it does
+**not** read, and why each one is null rather than approximate.
+
+### 1. A figure drawn as a raster image publishes no axes at all
+
+Measured: **all 100 of AD9081's plots**, all 3 of LM741's, all 4 of QPA1003P's
+(`Reports/PHASE_6_REPORT.md`). There is no text inside those regions — the axis
+titles and tick labels are pixels in a bitmap — so every field is null and the
+figure grades `low`. The figure itself is untouched: caption, conditions, page and
+rendered PNG all still publish, and `dsa plots --near-x` reports the population it
+could not consider rather than answering "no such figure".
+
+**What would change it.** Reading pixels, which is image analysis of the rendered
+PNG — deliberately out of ticket 08's scope, and under ADR 0005 a digitized number
+needs an accuracy gate of its own before it may be published beside a printed one.
+The schema is shaped so that pass lands additively.
+
+### 2. A captionless-era figure gets no region, so no axes
+
+QPA1003P's and LM741's cataloged figures come from ticket 09's *title-anchored*
+route, and regions here are **caption-anchored only**. That is a refusal, not an
+oversight: a title band may hold several plots, and one axis pair could not be
+attributed to one of them honestly. A wrong axis pair looks exactly like a right
+one, which is the failure invariant 8 exists to prevent.
+
+### 3. 33 of AFE7950's figures read one axis and not the other
+
+All 33 are y-only (458 figures publish a readable x axis, 491 a readable y axis).
+They grade `medium` and are still findable by `--y-label`; what they cannot do is
+answer `--near-x`. Three measured causes, one per figure inspected:
+
+| Figure | What the region holds | Why the x axis is null |
+|---|---|---|
+| 4-117 | the y column (70…80) and no numeric row at all | the x tick labels are not text on that page — nothing to read |
+| 4-175 | an x row `-32 -29 -26 -23 -20 -17 -14 -12` | the truncated last step is 2 against 3, a spacing ratio of 1.50 over the 1.35 bar, so the sequence has **no** scale and is refused whole |
+| 4-192 | an x row `0 4 8 … 40`, uniform | no title run is printed under it, and "no title, no axis" refuses a range nobody named |
+
+**What would change it.** Only case 4-175 is a threshold, and raising
+`_SPACING_TOLERANCE` past 1.5 is not a bigger safety margin — it is a wider
+definition of "linear" that starts admitting legends and mis-clustered columns
+(1, 2, 4, 8 is 2.0 today and stays unread). Case 4-192 would need a title-run
+search that reaches outside the region, which is how a neighbouring figure's title
+becomes this figure's axis. Case 4-117 is not readable from text at all.
+
+### 4. A second y axis on the right is not read
+
+A figure printing two y scales publishes the **left** one only; the right-hand
+column is deliberately not read rather than read as the first. Nothing in the
+record says a second axis existed, which is the honest gap here: a consumer
+filtering on `y_label` sees the left axis and no claim about the right.
+
+### 5. `x_min`/`x_max` are the first and last **tick label**, not the axis line
+
+No text states where the drawn axis line ends, so the published range is the
+printed tick span — usually a hair narrower than the plotted extent. A `--near-x`
+value between the last tick and the end of the line is therefore excluded. That is
+the conservative direction: the range published is one the page actually prints.
+
+### 6. A merged tick row's scale is trusted from its values alone
+
+The spacing rule is normally cross-checked against **where** the ticks are
+printed, which is what stops a log axis labelled at its minor ticks
+(`10 20 30 … 100`, uniform differences, logarithmic positions) from reading as
+linear. That check needs one position per tick, and PyMuPDF sometimes lays a whole
+tick row out as a single text run (`"1200 1350 1500 1650"`): measured, **15 of the
+458** AFE7950 figures that publish an x axis got theirs that way. Those 15 keep the
+value-derived rule; a minor-tick-labelled log axis that happened to arrive merged
+would be published as `linear`.
+
+No such axis exists in the seven built corpora: all 446 of AFE7950's individually
+laid-out x tick rows agree with their own geometry, and every log axis in it
+is printed as decades (`1E+3 … 1E+8`). **What would change it** is splitting a
+merged run back into its tokens' own boxes, which PyMuPDF can do at span level —
+worth doing when a document that needs it turns up, and not before, because a
+split guessed from character widths would put the check on invented geometry.
+
+### 7. A unit the SI lexicon cannot scale is unmatchable by range
+
+AFE7950's temperature axes print `Cq` — a degree glyph its font mangled — and
+`SI_UNITS` cannot scale it, so those figures answer `--x-label Temperature` and
+never `--near-x`. Comparing at face value would be the dropped-factor-of-1000
+failure the numeric layer refuses; closing the gap means an entry in
+`units.CANONICAL_UNITS` **and** `SI_UNITS`, never a looser comparison.
+
+### 8. A title whose bracket the page never closes publishes no unit
+
+Measured: **5 of AFE7950's 514 figures** (4-187, 4-189, 4-192, 4-236, 4-238).
+PyMuPDF hands their rotated y title back as
+`Uncalibrated Amplitude Differential Nonlinearity (dB` — the closing bracket is
+not in the page's text stream at all. The label is published exactly as the page
+printed it, fragment included, and the unit stays `""`: inferring `dB` from an
+unclosed bracket is a guess, and a guessed unit is what `--near-x` would then
+scale a comparison by. So those figures answer `--y-label` and honestly never a
+range filter, which is the same split as item 7 for the same reason.
+
+**What would change it** is joining a title run to the continuation line that
+holds the rest of it, which is a second axis-title rule (and a way for a
+neighbouring figure's line to become this figure's unit). At 1% of the part, the
+verbatim fragment plus a null unit is the better trade.

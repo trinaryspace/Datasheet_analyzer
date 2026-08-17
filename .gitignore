@@ -16,3 +16,9 @@
 # Python bytecode
 __pycache__/
 *.pyc
+
+# Agent/implementer scratch space. Issue files live in .scratch/<feature>/ and
+# ARE tracked; this is the throwaway sibling for pytest dumps, junit xml and
+# throwaway prototypes, so an automated `git add -A` cannot sweep them into a
+# commit.
+.scratch/tmp/

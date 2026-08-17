@@ -93,6 +93,24 @@ class PinType(str, Enum):
     UNKNOWN = "unknown"
 
 
+class AxisScale(str, Enum):
+    """How a plot axis spaces its printed ticks (phase 6, ticket 08).
+
+    Read from the tick sequence itself: uniform differences are `LINEAR`,
+    uniform ratios are `LOG`. It exists so nothing downstream may assume linear
+    — a log axis interpolated linearly is the confidently-wrong number
+    invariant 8 exists to prevent, and a future digitization pass needs this
+    field before it may place a sample between two ticks.
+
+    A sequence that is neither has **no** scale (`None` on the record), which is
+    the honest outcome: the axis's printed range is still `x_min`/`x_max`, and
+    nothing may be interpolated across it.
+    """
+
+    LINEAR = "linear"
+    LOG = "log"
+
+
 class ParseConfidence(str, Enum):
     """Whether the numeric layer could read a record's printed value.
 
@@ -461,7 +479,26 @@ class SpecSet(BaseModel):
 
 
 class PlotRecord(BaseModel):
-    """One cataloged figure/plot, with optional on-disk pixel file."""
+    """One cataloged figure/plot, with optional on-disk pixel file.
+
+    The **axis catalog** (phase 6, ticket 08) is the block at the bottom: what
+    the figure's two axes are labelled, in what unit, over what printed range,
+    on what scale. It exists so an agent can pick the right figure out of 514
+    before it spends a vision call on one, and it is derived — geometrically,
+    from the text the page prints inside the figure's own caption-anchored
+    region (`structure/plot_axes.py`) — so it obeys invariant 8: `axis_page` and
+    `axis_derivation` are its `source` and its rule, and **an axis that could
+    not be read is null rather than approximate**. Everything above it is
+    unchanged and authoritative: a figure whose axes were unreadable still
+    carries its caption, its conditions, its page and its image.
+
+    The fields are per axis and independent, which is what leaves room for a
+    later digitization pass to land additively: sampled curves would arrive as
+    their own list beside these, using this block as the coordinate frame they
+    are placed in (`x_scale` is why they may be placed at all). Nothing here
+    would have to change shape for that, and nothing that reads today's file
+    breaks when it does.
+    """
 
     id: str = ""  # section number + sequence, e.g. "4.12.1-f007"
     section: str = ""  # e.g. "4.12.1"
@@ -476,6 +513,35 @@ class PlotRecord(BaseModel):
     # Per-record extraction confidence, same contract as `SpecRecord`: a plot
     # is graded on how precisely it can be cited and identified.
     confidence: Confidence = Confidence.UNKNOWN
+    # --- the axis catalog (additive; all of it stays empty when unread) ---
+    # The axis title as printed, with its parenthesized unit split off into
+    # `x_unit` / `y_unit`. Both are verbatim: "Output Frequency" + "MHz".
+    x_label: str = ""
+    x_unit: str = ""
+    # The printed tick range — the first and last tick label of the axis, in the
+    # printed unit. Deliberately not the drawn axis line's endpoints (which no
+    # text states) and never scaled: a consumer comparing "3.5 GHz" against this
+    # scales its own question through `quantities.SI_UNITS`.
+    x_min: float | None = None
+    x_max: float | None = None
+    x_scale: AxisScale | None = None
+    y_label: str = ""
+    y_unit: str = ""
+    y_min: float | None = None
+    y_max: float | None = None
+    y_scale: AxisScale | None = None
+    # How far the axis reading can be trusted (`structure/confidence.py` owns
+    # the rule). `UNKNOWN` means no reading was ever attempted — a corpus
+    # published before this catalog existed, or a document with no page geometry
+    # to read; `LOW` means it was attempted and the axes could not be read,
+    # which is a finding about the figure rather than a gap in the corpus.
+    axis_confidence: Confidence = Confidence.UNKNOWN
+    # Invariant 8's envelope for this block. A plot record *is* its own source
+    # record, so the reference it needs is the page the axes were printed on —
+    # the figure's own exact page, which is narrower than `page_start`/
+    # `page_end` — plus the named rule that read them.
+    axis_page: int | None = None
+    axis_derivation: str = ""
 
 
 class PlotSet(BaseModel):

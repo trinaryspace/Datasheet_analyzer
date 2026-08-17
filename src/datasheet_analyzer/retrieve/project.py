@@ -37,7 +37,7 @@ from datasheet_analyzer.retrieve.results import (
     SectionHit,
     SpecHit,
 )
-from datasheet_analyzer.retrieve.retriever import Retriever
+from datasheet_analyzer.retrieve.retriever import Retriever, gap_axis
 
 if TYPE_CHECKING:  # pragma: no cover - import cycle guard, typing only
     from datasheet_analyzer.retrieve.pack import AnswerPack
@@ -164,14 +164,37 @@ class ProjectRetriever:
         conditions: str = "",
         section: str = "",
         tags: list[str] | None = None,
+        x_label: str = "",
+        y_label: str = "",
+        near_x: str = "",
     ) -> list[PlotHit]:
         return [
             hit
             for member in self.members
             for hit in member.plots(
-                q=q, caption=caption, conditions=conditions, section=section, tags=tags
+                q=q, caption=caption, conditions=conditions, section=section,
+                tags=tags, x_label=x_label, y_label=y_label, near_x=near_x,
             )
         ]
+
+    def plot_axis_gap(self, *, axis: str = "x") -> str:
+        """Every member's axis-catalog gap, one line each, in membership order.
+
+        Per part, like `register_field_gap()`: "100 of 100 figures" is a fact
+        about AD9081, and merging it into a design-wide count would hide which
+        device's figures cannot be filtered by axis.
+        """
+        return "\n".join(
+            gap for gap in (m.plot_axis_gap(axis=axis) for m in self.members) if gap
+        )
+
+    def plot_axis_gap_for(
+        self, *, x_label: str = "", y_label: str = "", near_x: str = ""
+    ) -> str:
+        """`Retriever.plot_axis_gap_for`'s twin, so a front end asks one question
+        of either scope."""
+        axis = gap_axis(x_label=x_label, y_label=y_label, near_x=near_x)
+        return self.plot_axis_gap(axis=axis) if axis else ""
 
     def sections(
         self, *, number: str = "", title: str = "", page: int | None = None

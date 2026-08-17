@@ -281,6 +281,60 @@ class TestEveryToolOverTheMemoryTransport:
         assert R.validate_response(payload, "find_spec")
 
 
+# --- the axis catalog over the wire ------------------------------------------
+
+
+class TestFindPlotsAxisFilters:
+    """Phase 6, ticket 08: `find_plots` narrows by axis before a vision call.
+
+    The corpus prints figure 4-2's axes (`DSA (dB)` 0…40 against a gain-error
+    axis in dB) and figure 4-1 with none — a precisely cited figure whose plot is
+    a raster image. That is the pair every axis filter must separate.
+    """
+
+    def test_x_label_narrows_to_the_figure_whose_axis_says_so(self, server):
+        payload = payload_of(call(server, "find_plots", part="TEST", x_label="DSA"))
+        assert [h["id"] for h in payload["hits"]] == ["4.12.1-f002"]
+        assert payload["hits"][0]["matched_via"] == "axis-label"
+        assert R.validate_response(payload, "find_plots") == []
+
+    def test_near_x_selects_by_the_printed_tick_range(self, server):
+        payload = payload_of(call(server, "find_plots", part="TEST", near_x="20dB"))
+        assert len(payload["hits"]) == 1
+        hit = payload["hits"][0]
+        assert hit["matched_via"] == "axis-range"
+        assert hit["axes"]["x"] == {
+            "label": "DSA", "unit": "dB", "min": 0.0, "max": 40.0, "scale": "linear",
+        }
+        assert hit["axes"]["page"] == 30
+        assert R.validate_response(payload, "find_plots") == []
+
+    def test_a_value_outside_every_printed_range_matches_nothing(self, server):
+        payload = payload_of(call(server, "find_plots", part="TEST", near_x="90dB"))
+        assert payload["hits"] == []
+        # …and it says so as a *gap*, not as an absence: the corpus holds a
+        # figure whose axes are unreadable, so nothing was established about it.
+        assert "cannot establish that no such figure exists" in payload["warning"]
+        assert payload["error"] == ""
+        assert R.validate_response(payload, "find_plots") == []
+
+    def test_the_axis_gap_names_the_population_it_could_not_consider(self, server):
+        payload = payload_of(call(server, "find_plots", part="TEST", y_label="Gain Error"))
+        assert [h["id"] for h in payload["hits"]] == ["4.12.1-f002"]
+        assert "no readable y axis" in payload["warning"]
+
+    def test_a_caption_lookup_carries_no_axis_warning(self, server):
+        payload = payload_of(call(server, "find_plots", part="TEST", q="Fullscale"))
+        assert payload["warning"] == ""
+
+    def test_every_hit_carries_the_grade_and_a_null_block_when_unread(self, server):
+        payload = payload_of(call(server, "find_plots", part="TEST"))
+        by_id = {h["id"]: h for h in payload["hits"]}
+        assert by_id["4.12.1-f002"]["axis_confidence"] == "high"
+        assert by_id["4.12.1-f001"]["axis_confidence"] == "low"
+        assert by_id["4.12.1-f001"]["axes"] is None
+
+
 # --- the image path ----------------------------------------------------------
 
 

@@ -67,6 +67,7 @@ import itertools
 import logging
 import math
 import re
+from dataclasses import dataclass
 from pathlib import Path
 
 import fitz  # PyMuPDF
@@ -163,15 +164,19 @@ class _Span:
 
 
 class _Line:
-    __slots__ = ("block", "spans", "text", "x", "y")
+    __slots__ = ("block", "rotated", "spans", "text", "x", "y")
 
     def __init__(self, block: int, y: float, x: float, text: str,
-                 spans: list[_Span] | None = None):
+                 spans: list[_Span] | None = None, rotated: bool = False):
         self.block = block
         self.y = y
         self.x = x
         self.text = text
         self.spans = spans or []    # in reading order
+        # PyMuPDF reports the line's writing direction; a quarter-turn line
+        # (`dir` ≈ (0, ±1)) is how a plot prints its y-axis title, and phase 6
+        # ticket 08 reads that. Additive: nothing else in the engine consults it.
+        self.rotated = rotated
 
 
 class _Page:
@@ -248,7 +253,8 @@ def _load_pages(path: Path) -> list[_Page]:
                     if not text.strip():
                         continue
                     lines.append(_Line(bi, raw["bbox"][1], raw["bbox"][0],
-                                       text, spans))
+                                       text, spans,
+                                       abs(raw.get("dir", (1.0, 0.0))[1]) > 0.7))
             lines.sort(key=lambda ln: (ln.y, ln.x))
             pages.append(_Page(pi + 1, lines, page.get_text(), path))
     return pages
@@ -619,6 +625,13 @@ _FIGURE_CAPTION_RE = re.compile(
 # Region-above geometry: the next figure's clip starts below the previous
 # caption's text box (caption line box + descender room).
 _FIGURE_MARGIN = 12.0
+# A figure region's outer x edge, for the leftmost/rightmost figure of a band:
+# far outside any page, so "inside this region" is a pure center comparison and
+# no page width has to be threaded through (`figure_text_regions`).
+_INF_X = 1.0e4
+# Float slack on a region's y edges — a tick label's glyph box may sit a hair
+# outside the caption band it belongs to.
+_REGION_SLACK = 0.5
 
 # Column anchors: the header row's words are clustered at this tolerance,
 # which merges the words of one multi-word header cell ("Test Conditions/
@@ -1935,6 +1948,119 @@ def figure_title_anchor_map(path: Path
             out[(page.index, figure_caption_key(next(
                 ln.text.strip() for ln in page.lines if ln.y == y)))] = (
                 band[1], bottom)
+    return out
+
+
+@dataclass(frozen=True)
+class TextRun:
+    """One laid-out text line of a figure region, with its own geometry.
+
+    The unit `structure/plot_axes.py` reads an axis out of (phase 6, ticket 08).
+    `rotated` is PyMuPDF's own line direction rather than an inference from the
+    box shape: a quarter-turn line is how a plot prints its y-axis title, and a
+    single-character label would be indistinguishable by aspect ratio alone.
+
+    `text` is the line as `_span_line_text` glues it, which matters here: a plot
+    whose tick labels PyMuPDF lays out as one line ("1200 1350 1500 …") arrives
+    as one run holding the whole sequence, and the axis reader treats it as the
+    tick row it is instead of losing it.
+    """
+
+    text: str
+    x0: float
+    y0: float
+    x1: float
+    y1: float
+    size: float
+    rotated: bool
+
+    @property
+    def x_center(self) -> float:
+        return (self.x0 + self.x1) / 2.0
+
+
+@dataclass(frozen=True)
+class FigureRegion:
+    """The page area one cataloged figure occupies, plus the text inside it.
+
+    Caption-anchored only, and deliberately so: the region above a `Figure N.`
+    caption belongs to exactly that figure, and side-by-side captions split the
+    band at the midpoint between their centers (measured on AFE7950: two plots
+    to a row, each caption centered under its own). A captionless-era title
+    band may hold several plots under one title, so it gets no region here —
+    one axis pair could not be attributed to it honestly.
+    """
+
+    page: int
+    caption: str
+    figure_number: str
+    x0: float
+    y0: float
+    x1: float
+    y1: float
+    runs: tuple[TextRun, ...] = ()
+
+
+def _text_run(line: _Line) -> TextRun:
+    """One `_Line` as a public run, its box taken from its own spans."""
+    return TextRun(
+        text=line.text,
+        x0=min(s.x0 for s in line.spans),
+        y0=min(s.y0 for s in line.spans),
+        x1=max(s.x1 for s in line.spans),
+        y1=max(s.y1 for s in line.spans),
+        size=max(s.size for s in line.spans),
+        rotated=line.rotated,
+    )
+
+
+def figure_text_regions(path: Path) -> list[FigureRegion]:
+    """Every caption-anchored figure region of a PDF, with its text runs.
+
+    The y geometry is `figure_anchor_map`'s — the band above the caption, shared
+    when two captions sit on one baseline — and the x geometry is the half of
+    that band the caption is centered in, which is what makes a side-by-side
+    pair two regions instead of one. Recomputed deterministically from the same
+    caption scan the extractor cataloged with, exactly as the clip geometry is.
+    """
+    pages = _load_pages(path)
+    out: list[FigureRegion] = []
+    for page in pages:
+        runs = [_text_run(ln) for ln in page.lines if ln.spans]
+        captions = [
+            (ln, m.group(1))
+            for ln in page.lines
+            if ln.spans and not ln.rotated
+            for m in [_FIGURE_CAPTION_RE.match(ln.text.strip())]
+            if m
+        ]
+        captions.sort(key=lambda c: (c[0].y, c[0].x))
+        bands: list[list[tuple[_Line, str]]] = []
+        for cap in captions:
+            if bands and cap[0].y - bands[-1][-1][0].y <= _FIGURE_MARGIN:
+                bands[-1].append(cap)
+            else:
+                bands.append([cap])
+        prev_bottom = 0.0
+        for band in bands:
+            top = prev_bottom
+            bottom = min(ln.y for ln, _ in band)
+            band = sorted(band, key=lambda c: _text_run(c[0]).x_center)
+            centers = [_text_run(ln).x_center for ln, _ in band]
+            for i, (line, number) in enumerate(band):
+                x0 = -_INF_X if i == 0 else (centers[i - 1] + centers[i]) / 2.0
+                x1 = _INF_X if i == len(band) - 1 else (centers[i] + centers[i + 1]) / 2.0
+                inside = tuple(
+                    r for r in runs
+                    if r.y0 >= top - _REGION_SLACK and r.y1 <= bottom + _REGION_SLACK
+                    and x0 <= r.x_center <= x1
+                )
+                out.append(FigureRegion(
+                    page=page.index, caption=line.text.strip(),
+                    figure_number=number, x0=x0, y0=top, x1=x1, y1=bottom,
+                    runs=inside,
+                ))
+            prev_bottom = max(ln.y for ln, _ in band) + _FIGURE_MARGIN
     return out
 
 

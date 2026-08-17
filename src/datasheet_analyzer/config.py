@@ -43,7 +43,12 @@ PIPELINE_VERSION = "0.5.0"
 # honestly "" for every section), so a corpus published without it yields empty
 # limits and power cards on exactly the parts that need them most.
 SPECS_SCHEMA_VERSION = "5"
-PLOTS_SCHEMA_VERSION = "2"
+# "3": phase 6, ticket 08 added the **axis catalog** to every plot record
+# (`x_label` … `y_scale`, `axis_confidence`, `axis_page`, `axis_derivation`).
+# A corpus published at version 2 answers every axis-filtered figure lookup with
+# nothing, and nothing about its source bytes or its extractor version moved, so
+# it republishes once instead of reading as a part whose figures print no axes.
+PLOTS_SCHEMA_VERSION = "3"
 SEARCH_SCHEMA_VERSION = "1"
 # "1": phase 6, ticket 04 — `pins.json`, the pin table as individually citable
 # records. New artifact, so version 1; it joins the publish cache key for the

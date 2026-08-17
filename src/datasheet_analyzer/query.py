@@ -270,6 +270,35 @@ def find_plots(
     return [h.record for h in hits]
 
 
+def format_axes(rec: PlotRecord) -> str:
+    """The figure's axis catalog as one line, or `""` when it has none.
+
+    `x: Output Frequency 600–1500 MHz (linear) · y: Output Full Scale −2–7 dBm`
+    — the printed titles, the printed tick range and the printed unit, so a
+    reader can tell from the listing whether this is the figure to open. An axis
+    that was not read prints nothing at all rather than a placeholder range.
+    """
+    parts: list[str] = []
+    for name in ("x", "y"):
+        label = getattr(rec, f"{name}_label")
+        lo, hi = getattr(rec, f"{name}_min"), getattr(rec, f"{name}_max")
+        if not label and lo is None:
+            continue
+        span = f" {_num(lo)}–{_num(hi)}" if lo is not None and hi is not None else ""
+        unit = f" {getattr(rec, f'{name}_unit')}" if getattr(rec, f"{name}_unit") else ""
+        scale = getattr(rec, f"{name}_scale")
+        tail = f" ({scale.value})" if scale is not None else ""
+        parts.append(f"{name}: {label or '?'}{span}{unit}{tail}")
+    return " · ".join(parts)
+
+
+def _num(value: float | None) -> str:
+    """A tick value the way the axis printed it — no trailing `.0`."""
+    if value is None:
+        return "?"
+    return str(int(value)) if float(value).is_integer() else str(value)
+
+
 def format_plot_hits(hits: list[PlotHit], limit: int = 8, *, show_part: bool = False) -> str:
     """Render typed plot hits — same line as `format_plot_answer` plus the
     `[via <rung> · <confidence>]` tail every graded answer path carries."""
@@ -285,6 +314,9 @@ def format_plot_hits(hits: list[PlotHit], limit: int = 8, *, show_part: bool = F
             f"{rec.caption} — §{rec.section} ({hit.citation.pages})"
             f"{cond}{file_str} [via {hit.matched_via} · {hit.confidence}]"
         )
+        axes = format_axes(rec)
+        if axes:
+            lines.append(f"    axes — {axes} [{rec.axis_confidence.value}]")
     if len(hits) > limit:
         lines.append(f"... and {len(hits) - limit} more matches")
     return "\n".join(lines)

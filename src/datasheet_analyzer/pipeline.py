@@ -33,6 +33,7 @@ from datasheet_analyzer.enrich import (
 )
 from datasheet_analyzer.extract import get_backend
 from datasheet_analyzer.extract.http import CachingBinaryFetcher, CachingFetcher
+from datasheet_analyzer.extract.pdf_layout import figure_text_regions
 from datasheet_analyzer.extract.pdf_structure import page_texts, read_toc
 from datasheet_analyzer.models import (
     CorpusManifest,
@@ -53,6 +54,7 @@ from datasheet_analyzer.publish.writer import doc_dir_name
 from datasheet_analyzer.structure.corpus import SectionPlan, build_section_plans
 from datasheet_analyzer.structure.pagemap import pin_table_pages
 from datasheet_analyzer.structure.pins import build_pinset
+from datasheet_analyzer.structure.plot_axes import annotate_plots
 from datasheet_analyzer.structure.plots import build_plotset
 from datasheet_analyzer.structure.registers import build_registerset
 from datasheet_analyzer.structure.specs import build_specset
@@ -315,6 +317,19 @@ def build_part(
         if specset is not None:
             specsets.append(specset)
         plotset = build_plotset(raw, part_number)
+        # The axis catalog (phase 6, ticket 08) is read from the PDF's own text
+        # geometry, so it lives here rather than in `build_plotset`: it needs the
+        # printed page, which a RawDocument does not carry, and it is the same
+        # need `pin_table_pages` and `render_figure_regions` already have. It
+        # runs for *both* content paths — a TI part's figures are downloaded
+        # images, but the axes beside them are printed in the same PDF — and not
+        # at all for `pdf_text`, which catalogs no figures.
+        if raw.extractor != "pdf_text" and plotset.plots:
+            graded_high = annotate_plots(
+                plotset, figure_text_regions(Path(raw.source.path))
+            )
+            log.info("plot axes: %d/%d figures graded high",
+                     graded_high, len(plotset.plots))
         plotsets.append(plotset)
         # Always appended, even when it holds no pins: a set with none still
         # carries the package cross-check and the rejection reasons, and the

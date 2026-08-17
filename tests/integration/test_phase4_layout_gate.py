@@ -694,6 +694,94 @@ class TestNumericLayerParseRate:
             assert len(population.listing()) == population.n_unparsed, name
 
 
+class TestPlotAxesOnTheGateCorpora:
+    """Phase 6, ticket 08 — the axis catalog measured on four real datasheets.
+
+    Recorded here because the four corpora are already built: the per-part
+    coverage the phase report carries costs no second build. The spread is the
+    finding, and most of it is not about this reader at all. HMC520A draws its
+    plots as vector graphics with real text, so its axes read; **AD9081 draws
+    every one of its 100 plots as a raster image**, so there is no text inside a
+    figure region to read and the honest coverage is zero. QPA1003P's cataloged
+    figures are title-anchored bands from the captionless era, which get no
+    region by design — a band may hold several plots, and one axis pair could not
+    be attributed to it.
+
+    What is asserted is the floor (so a reader regression fails), that a part
+    that reads nothing says so rather than half-filling anything, and that no
+    figure anywhere lost its caption, its page or its image to a failed parse.
+    """
+
+    # Measured; floors sit a little under, so an honest improvement raises them
+    # and a regression fails. Zero is a floor too — and the assertion below is
+    # what makes it mean "null and graded low", not "silently empty".
+    FLOORS: ClassVar[dict[str, float]] = {
+        "AD9081": 0.0, "LM741": 0.0, "QPA1003P": 0.0, "HMC520A": 0.45,
+    }
+
+    def _plots(self, result) -> list:
+        from datasheet_analyzer.retrieve import CorpusIndex
+
+        return [rec for doc in CorpusIndex.load(result.part_dir).docs for rec in doc.plots]
+
+    def test_coverage_holds_its_floor_per_part(self, gate, capsys):
+        from collections import Counter
+
+        rows: list[str] = []
+        for name in GATE:
+            plots = self._plots(gate[name])
+            grades = Counter(p.axis_confidence.value for p in plots)
+            high = grades["high"]
+            share = high / len(plots) if plots else 0.0
+            assert share >= self.FLOORS[name], f"{name} fell to {share:.0%}: {grades}"
+            assert grades["unknown"] == 0, f"{name}: a figure was never read"
+            rows.append(
+                f"| {name} | {len(plots)} | {high} | {share:.0%} "
+                f"| {grades['medium']} | {grades['low']} |"
+            )
+        with capsys.disabled():
+            print("\nplot axis coverage, four gate corpora\n")
+            print("| Part | Figures | high | high % | medium | low |")
+            print("|---|---:|---:|---:|---:|---:|")
+            print("\n".join(rows) + "\n")
+
+    def test_a_part_whose_plots_are_pixels_publishes_nothing_rather_than_a_guess(
+        self, gate
+    ):
+        """AD9081's 100 plots are raster images: no axis text exists to read, so
+        every axis field is null and every figure says `low`.
+
+        Its `Figure 100.` is the case that made "no title, no axis" a rule — a
+        324-ball package outline whose dimension callouts form a monotone
+        right-aligned column that reads as a y axis from 1.44 upward. Nothing
+        names it, so nothing is published.
+        """
+        plots = self._plots(gate["AD9081"])
+        assert len(plots) >= 100
+        for rec in plots:
+            assert rec.axis_confidence.value == "low", rec.id
+            assert (rec.x_label, rec.x_unit, rec.y_label, rec.y_unit) == ("", "", "", "")
+            assert rec.x_min is None and rec.y_min is None
+            assert rec.axis_derivation == "" and rec.axis_page is None
+
+    def test_no_figure_on_any_part_was_lost_to_a_failed_axis_parse(self, gate):
+        for name in GATE:
+            for rec in self._plots(gate[name]):
+                assert rec.caption, f"{name}/{rec.id} lost its caption"
+                assert rec.page_start is not None, f"{name}/{rec.id} lost its page"
+
+    def test_an_axis_filter_says_what_it_could_not_consider(self, gate):
+        """Invariant 8 applied to a filter on a derived value: AD9081 must never
+        answer an axis question with an empty list that reads as absence."""
+        from datasheet_analyzer.retrieve import Retriever
+
+        retriever = Retriever.for_part(gate["AD9081"].part_dir)
+        assert retriever.plots(x_label="Frequency") == []
+        gap = retriever.plot_axis_gap()
+        assert "publish no readable x axis" in gap
+        assert "cannot establish that no such figure exists" in gap
+
+
 class TestPinsOnTheGateCorpora:
     """Phase 6, ticket 04 — pins measured on four real datasheets.
 

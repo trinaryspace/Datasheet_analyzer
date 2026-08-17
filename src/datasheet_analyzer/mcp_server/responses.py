@@ -241,6 +241,8 @@ def citations_of(items: list) -> list[str]:
 _CONFIDENCE = {"enum": ["high", "medium", "low", "unknown"]}
 _STR = {"type": "string"}
 _INT_OR_NULL = {"type": ["integer", "null"]}
+#: A printed number or nothing — a plot axis min/max the page never stated.
+_NUM_OR_NULL = {"type": ["number", "null"]}
 
 _ENVELOPE_PROPS: dict[str, dict] = {
     "tool": _STR,
@@ -280,13 +282,37 @@ SPEC_HIT_SCHEMA = {
 }
 
 #: `PlotHit.as_dict()`.
+#: One axis of `PlotHit.as_dict()["axes"]` — every field nullable, because an
+#: axis the page did not state is null rather than absent (phase 6, ticket 08).
+_AXIS_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["label", "unit", "min", "max", "scale"],
+    "properties": {
+        "label": _STR, "unit": _STR,
+        "min": _NUM_OR_NULL, "max": _NUM_OR_NULL,
+        "scale": {"enum": ["linear", "log", None]},
+    },
+}
+
+#: `PlotHit.as_dict()["axes"]` when a reading exists.
+_AXES_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["x", "y", "page", "derivation"],
+    "properties": {
+        "x": _AXIS_SCHEMA, "y": _AXIS_SCHEMA,
+        "page": _INT_OR_NULL, "derivation": _STR,
+    },
+}
+
 PLOT_HIT_SCHEMA = {
     "type": "object",
     "additionalProperties": False,
     "required": [
         "id", "caption", "figure_number", "conditions", "section", "page_start",
         "page_end", "part", "doc", "citation", "file", "tags", "matched_via",
-        "confidence",
+        "confidence", "axis_confidence", "axes",
     ],
     "properties": {
         "id": _STR, "caption": _STR, "figure_number": _STR, "conditions": _STR,
@@ -294,6 +320,10 @@ PLOT_HIT_SCHEMA = {
         "part": _STR, "doc": _STR, "citation": _STR, "file": _STR,
         "tags": {"type": "array", "items": _STR}, "matched_via": _STR,
         "confidence": _CONFIDENCE,
+        # The grade is always present; the block is `null` when neither axis was
+        # read, so a raster-plot catalog costs the cap almost nothing.
+        "axis_confidence": _CONFIDENCE,
+        "axes": {"anyOf": [_AXES_SCHEMA, {"type": "null"}]},
     },
 }
 
