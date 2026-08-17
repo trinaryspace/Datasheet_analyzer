@@ -113,6 +113,18 @@ questions:
       table), so the pack routes to full text and its cited row must still be
       the section that starts on the printed page the question cites.
 
+  # --- the ask path over the register map (phase 6, ticket 10) -------------
+  - id: a2-ask-r12-reset
+    question: What does register R12 come up as after a reset?
+    expected_substrings: ["R12", "0xFFFF"]
+    pages: [2, 11]
+    kind: ask
+    ask_query: {route: register}
+    notes: the designer's-words twin of r3. One `dsa ask` call must reach
+      `registers.json` rather than the section text — the reset is not printed
+      in the summary row at all, so a paragraph-quoting answer would cite the
+      right page and still not carry the value.
+
   - id: k1-search-undocumented-addresses
     question: Where does the document warn about undocumented register addresses?
     expected_substrings:

@@ -32,6 +32,7 @@ JSON-Schema subset, and having two of them is how two shapes start to drift.
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from typing import Any
 
 from datasheet_analyzer.retrieve import ANSWER_PACK_SCHEMA, validate_pack
@@ -121,20 +122,35 @@ def finalize(payload: dict, max_tokens: int) -> dict:
     return payload
 
 
-def fit_list(payload: dict, key: str, max_tokens: int) -> dict:
+def fit_list(
+    payload: dict,
+    key: str,
+    max_tokens: int,
+    *,
+    cite: Callable[[list], list[str]] | None = None,
+) -> dict:
     """Fill `payload[key]` greedily in retrieval order until the cap bites.
 
     Retrieval order *is* score order everywhere in this project, so filling
     from the front and stopping at the first item that does not fit keeps the
     best hits and drops the weakest — and each surviving hit keeps its own
     citation, because a hit is dropped whole or not at all.
+
+    `cite` is how a body whose items do not carry a `citation` key of their own
+    still fills the envelope: a design card's rows cite through their values, so
+    `get_card` passes `cards.row_citations`. It is a *function of the kept
+    items* rather than a fixed list, because a response that shed rows must shed
+    their citations with them rather than advertise pages it no longer returned.
     """
     items = list(payload.get(key) or [])
 
     def fill(notice: str) -> list:
         kept: list = []
         for item in items:
-            if response_tokens(_shaped(payload, key, items, [*kept, item], notice)) <= max_tokens:
+            if (
+                response_tokens(_shaped(payload, key, items, [*kept, item], notice, cite))
+                <= max_tokens
+            ):
                 kept.append(item)
             else:
                 break  # retrieval order is score order: after a miss, stop
@@ -147,7 +163,7 @@ def fit_list(payload: dict, key: str, max_tokens: int) -> dict:
         # adding it can shrink the fill but can never change its own text.
         notice = _CAP_NOTICE.format(cap=max_tokens, setting=CAP_SETTING)
         kept = fill(notice)
-    return finalize(_shaped(payload, key, items, kept, notice), max_tokens)
+    return finalize(_shaped(payload, key, items, kept, notice, cite), max_tokens)
 
 
 def fit_text(payload: dict, key: str, max_tokens: int, *, requested: int = 0) -> dict:
@@ -208,13 +224,20 @@ def capped_markdown(text: str, max_tokens: int) -> str:
     return truncate_to_tokens(text, max_tokens - count_tokens(notice)) + notice
 
 
-def _shaped(payload: dict, key: str, items: list, kept: list, notice: str) -> dict:
+def _shaped(
+    payload: dict,
+    key: str,
+    items: list,
+    kept: list,
+    notice: str,
+    cite: Callable[[list], list[str]] | None = None,
+) -> dict:
     """The payload as it would look carrying `kept` — the unit the cap measures."""
     out = dict(payload)
     out[key] = kept
     out["total"] = len(items)
     out["count"] = len(kept)
-    out["citations"] = citations_of(kept)
+    out["citations"] = (cite or citations_of)(kept)
     out["notice"] = notice
     out["truncated"] = bool(notice)
     return out
@@ -327,6 +350,98 @@ PLOT_HIT_SCHEMA = {
     },
 }
 
+#: `PinHit.as_dict()` (phase 6, tickets 04 + 10). `type` is the one derived
+#: field a pin has, so `type_evidence` is declared beside it: invariant 8 says a
+#: derived value names the rule that produced it, and a contract that let the
+#: label travel without its evidence would let that rule go missing on the wire.
+PIN_HIT_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": [
+        "id", "pin", "pin_verbatim", "name", "type", "type_evidence", "direction",
+        "description", "section", "page", "part", "doc", "citation", "matched_via",
+        "confidence",
+    ],
+    "properties": {
+        "id": _STR, "pin": _STR, "pin_verbatim": _STR, "name": _STR,
+        "type": {
+            "enum": [
+                "power", "ground", "analog", "digital", "clock", "rf", "nc",
+                "reserved", "unknown",
+            ]
+        },
+        "type_evidence": _STR, "direction": _STR, "description": _STR,
+        "section": _STR, "page": _INT_OR_NULL, "part": _STR, "doc": _STR,
+        "citation": _STR, "matched_via": _STR, "confidence": _CONFIDENCE,
+    },
+}
+
+#: One published bit field of `RegisterHit.as_dict()["fields"]` (ticket 06).
+#: `hi` / `lo` are nullable because a range the anchored grammar could not read
+#: publishes neither — and a field set holding one is refused whole, so the null
+#: is what a caller sees only in a record it was handed for another reason.
+_REGISTER_FIELD_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["name", "bits", "access", "reset", "description", "page"],
+    "properties": {
+        "name": _STR,
+        "bits": {
+            "type": "object",
+            "additionalProperties": False,
+            "required": ["verbatim", "hi", "lo", "derivation"],
+            "properties": {
+                "verbatim": _STR, "hi": _INT_OR_NULL, "lo": _INT_OR_NULL,
+                "derivation": _STR,
+            },
+        },
+        "access": _STR, "reset": _STR, "description": _STR, "page": _INT_OR_NULL,
+    },
+}
+
+#: `RegisterHit.as_dict()` (phase 6, tickets 05–06 + 10). Three fields are
+#: nullable on purpose and are the artifact's honesty: `address_value` (a cell
+#: the anchored grammar could not read keeps its string), `reset` (a register the
+#: document states none for has none — never a zero) and `width` (no printed
+#: width means no checkable field list). `fields_reason` says which it is.
+REGISTER_HIT_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": [
+        "id", "address", "address_value", "name", "access", "description", "reset",
+        "width", "fields", "fields_unaccounted_for", "fields_reason",
+        "fields_confidence", "section", "page", "part", "doc", "citation",
+        "matched_via", "confidence",
+    ],
+    "properties": {
+        "id": _STR, "address": _STR, "address_value": _INT_OR_NULL, "name": _STR,
+        "access": _STR, "description": _STR,
+        "reset": {
+            "anyOf": [
+                {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "required": ["verbatim", "value", "page", "evidence", "derivation"],
+                    "properties": {
+                        "verbatim": _STR, "value": _INT_OR_NULL, "page": _INT_OR_NULL,
+                        "evidence": _STR, "derivation": _STR,
+                    },
+                },
+                {"type": "null"},
+            ]
+        },
+        "width": _INT_OR_NULL,
+        "fields": {"type": "array", "items": _REGISTER_FIELD_SCHEMA},
+        # The bits no field claims, printed the way a bit range is printed
+        # (`15:8`, `3`) rather than as integers — a coverage gap is quoted in the
+        # document's own notation, not re-expressed in one it never used.
+        "fields_unaccounted_for": {"type": "array", "items": _STR},
+        "fields_reason": _STR, "fields_confidence": _CONFIDENCE,
+        "section": _STR, "page": _INT_OR_NULL, "part": _STR, "doc": _STR,
+        "citation": _STR, "matched_via": _STR, "confidence": _CONFIDENCE,
+    },
+}
+
 #: `SearchHit.as_dict()`.
 SEARCH_HIT_SCHEMA = {
     "type": "object",
@@ -358,6 +473,47 @@ _DERIVED_VALUE_SCHEMA = {
         "source": _STR, "sources": {"type": "array", "items": _STR},
         "page": _INT_OR_NULL, "section": _STR, "derivation": _STR,
         "confidence": _CONFIDENCE,
+    },
+}
+
+#: `CardRow.model_dump()` (phase 6, ticket 07). `values` is keyed by the columns
+#: the card publishes (`min`/`typ`/`max`/`value`, or `abs_max`/`recommended_max`/
+#: `margin` on the limits card), which is lexicon data rather than a fixed set,
+#: so it is declared as an object of envelopes exactly as a comparison cell's is.
+CARD_ROW_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": [
+        "group", "label", "detail", "section", "section_title", "selector",
+        "values", "flags", "note",
+    ],
+    "properties": {
+        "group": _STR, "label": _STR, "detail": _STR, "section": _STR,
+        "section_title": _STR, "selector": _STR,
+        "values": {"type": "object"},
+        "flags": {"type": "array", "items": _STR},
+        "note": _STR,
+    },
+}
+
+#: `DesignCard.model_dump()` **without its rows**, hoisted to the payload's own
+#: `rows` key for the same reason a comparison's are: the cap must shed whole
+#: rows in order rather than mangle a nested object, and what stays behind is
+#: what a reader needs whatever the cap did — including `empty_reason`, because
+#: an empty card is a valid card and must never read as "not built yet".
+_CARD_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": [
+        "schema_version", "card", "title", "purpose", "part_number", "card_version",
+        "notes", "unparsed", "empty_reason",
+    ],
+    "properties": {
+        "schema_version": _STR, "card": _STR, "title": _STR, "purpose": _STR,
+        "part_number": _STR, "card_version": _STR,
+        "notes": {"type": "array", "items": _STR},
+        "unparsed": {"type": "array", "items": _STR},
+        "empty_reason": _STR,
     },
 }
 
@@ -505,6 +661,34 @@ SCHEMAS: dict[str, dict] = {
         listed=True,
     ),
     "find_plots": _schema({"hits": {"type": "array", "items": PLOT_HIT_SCHEMA}}, listed=True),
+    # The two device-table tools (phase 6, ticket 10). `find_register` declares
+    # `field_gap` of its own: filtering on a bit-field name selects on a derived
+    # value, and the population that publishes none is what stops an empty result
+    # reading as "this device has no such field". It is a body key rather than
+    # the envelope's `warning` because it is owed even when the call *did*
+    # answer — the same reason `find_plots` reports its axis gap.
+    "find_pin": _schema({"hits": {"type": "array", "items": PIN_HIT_SCHEMA}}, listed=True),
+    "find_register": _schema(
+        {
+            "hits": {"type": "array", "items": REGISTER_HIT_SCHEMA},
+            "field_gap": _STR,
+        },
+        listed=True,
+    ),
+    # One design card, rows hoisted like a comparison's — see `_CARD_SCHEMA`.
+    # `names` travels on every response so a caller that guessed a card name
+    # wrong is told what this build declares without a second call. The rendered
+    # markdown is deliberately *not* here: it is the same rows again, it cannot
+    # be shed row by row, and a body a cap cannot trim is a body that pushes a
+    # response over it.
+    "get_card": _schema(
+        {
+            "card": {"anyOf": [_CARD_SCHEMA, {"type": "null"}]},
+            "rows": {"type": "array", "items": CARD_ROW_SCHEMA},
+            "names": {"type": "array", "items": _STR},
+        },
+        listed=True,
+    ),
     "read_section": _schema(
         {
             "section": _STR, "title": _STR, "file": _STR,

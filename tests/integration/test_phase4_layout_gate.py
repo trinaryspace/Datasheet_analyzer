@@ -1258,7 +1258,12 @@ class TestAnswerPacks:
                 pack = retriever.ask(q.question, budget=self.BUDGET)
                 assert pack.tokens <= self.BUDGET, f"{name}/{q.id} blew its budget"
                 assert not pack.over_budget, f"{name}/{q.id}"
-                assert pack.route in ("spec", "plot", "search", ROUTE_NONE)
+                # "pin" and "register" joined the enumeration in ticket 10:
+                # AD9081's `What signal is on ball A2?` is a pin question and
+                # `pins.json` is where its answer lives.
+                assert pack.route in (
+                    "spec", "plot", "pin", "register", "search", ROUTE_NONE
+                )
                 if pack.route != ROUTE_NONE:
                     assert pack.citations, f"{name}/{q.id}: an answer with no citation"
                     assert all(line.citation for line in pack.answers), f"{name}/{q.id}"
@@ -1800,6 +1805,81 @@ class TestMcpOverTheGateCorpora:
             if hit["file"] and (part_dir / hit["file"]).exists():
                 return hit["file"]
         raise AssertionError(f"{part_dir.name}: no cataloged figure has pixels on disk")
+
+    def test_the_device_table_and_card_tools_answer_the_real_corpora(
+        self, servers, gate, capsys
+    ):
+        """Phase 6, ticket 10 — `find_pin`, `find_register` and `get_card` over
+        four real datasheets, driven exactly as a client drives them.
+
+        The gate is where the three tools meet the parts they were written for
+        *and* the parts they must refuse: AD9081 is the one gate datasheet whose
+        pin table reconstructs, none of the four prints a register map, and every
+        one of them publishes all four cards — including the honestly empty ones.
+        A refusal that reads as an empty result is the failure being guarded
+        against, so both halves are asserted per part.
+        """
+        from mcp_session import call, payload_of
+
+        from datasheet_analyzer.mcp_server import responses as R
+
+        rows: list[str] = []
+        for name, server in servers.items():
+            pins = payload_of(call(server, "find_pin", part=name, type="power"))
+            assert R.validate_response(pins, "find_pin") == [], name
+            if name == "AD9081":
+                assert pins["error"] == "", name
+                # 85 power balls of 321. The response cap sheds the tail of a
+                # list this long, so the *total* is what the corpus holds and
+                # `count` is what fitted — and a shed list says `truncated`.
+                assert pins["total"] == 85, name
+                assert 0 < pins["count"] <= pins["total"]
+                assert pins["truncated"] == (pins["count"] < pins["total"])
+                assert all(hit["citation"].count("p.") == 1 for hit in pins["hits"])
+                assert all(hit["type"] == "power" for hit in pins["hits"])
+                assert all(hit["type_evidence"] for hit in pins["hits"])
+            else:
+                # No pin table: a *refusal*, never an empty list. "This corpus
+                # has no such pin" is a claim the retrieval never earned.
+                assert "establishes nothing" in pins["error"], name
+                assert pins["hits"] == [], name
+
+            # None of the four gate datasheets ships a register map, so all four
+            # must refuse a register lookup for the same reason.
+            regs = payload_of(call(server, "find_register", part=name, addr="0x00"))
+            assert R.validate_response(regs, "find_register") == [], name
+            assert "establishes nothing" in regs["error"], name
+
+            declared = payload_of(call(server, "get_card", part=name))
+            assert declared["names"] == ["power", "thermal", "interface", "limits"], name
+            carried = 0
+            for card in declared["names"]:
+                payload = payload_of(call(server, "get_card", part=name, card=card))
+                assert R.validate_response(payload, "get_card") == [], f"{name}/{card}"
+                assert payload["error"] == "", f"{name}/{card}"
+                assert payload["card"]["card"] == card
+                if payload["rows"]:
+                    carried += 1
+                    # every value on every returned row is in its envelope, with
+                    # the page it was printed on and the rule that produced it
+                    for row in payload["rows"]:
+                        for value in row["values"].values():
+                            assert value["derivation"], f"{name}/{card}"
+                            assert value["source"], f"{name}/{card}"
+                    assert payload["citations"], f"{name}/{card}: rows but no citation"
+                else:
+                    # an empty card is a valid card and states what it looked for
+                    assert payload["card"]["empty_reason"], f"{name}/{card}"
+                    assert payload["citations"] == [], f"{name}/{card}"
+            rows.append(
+                f"  {name:<9} {pins['total']:>3} power pins "
+                f"({pins['count']} under the cap)   {carried}/4 cards with rows"
+            )
+        with capsys.disabled():
+            print(
+                "\nfind_pin / find_register / get_card over four gate corpora\n"
+                + "\n".join(rows) + "\n"
+            )
 
     def test_a_traversal_attempt_is_refused_for_that_reason(self, servers):
         """The one refusal that must hold on a real corpus too: a caller's

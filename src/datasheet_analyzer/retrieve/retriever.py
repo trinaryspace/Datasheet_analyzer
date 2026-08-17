@@ -47,7 +47,7 @@ reorder a hit. Grading is metadata; retrieval order stays the ladder's.
 from __future__ import annotations
 
 import re
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -55,6 +55,7 @@ from typing import TYPE_CHECKING
 from datasheet_analyzer.config import SEARCH_SCHEMA_VERSION
 from datasheet_analyzer.models import (
     DesignCard,
+    PinRecord,
     PlotRecord,
     RegisterRecord,
     SearchIndex,
@@ -79,6 +80,7 @@ from datasheet_analyzer.structure.aliases import (
     AliasEntry,
     AliasLexicon,
     load_lexicon,
+    normalize,
     padded,
     similarity,
     token_overlap,
@@ -109,6 +111,36 @@ _PLOT_WORDS = frozenset(
     {"plot", "plots", "curve", "curves", "vs", "versus", "graph", "graphs",
      "figure", "figures", "show", "shows", "showing"}
 )
+
+# The words a designer uses to say "I am asking about the pin table", and the
+# words a firmware engineer uses to say "I am asking about the register map".
+# Same contract as `PLOT_VOCABULARY`: `retrieve.pack` routes on these constants
+# and the two `*_for_terms` lookups below read with them, so the router and the
+# lookup cannot disagree about what a pin question or a register question is.
+PIN_VOCABULARY = re.compile(r"\b(pins?|balls?|pinouts?|terminals?)\b", re.IGNORECASE)
+REGISTER_VOCABULARY = re.compile(
+    r"\b(registers?|regmap|bit ?fields?|address(?:es)?|offsets?|resets?)\b",
+    re.IGNORECASE,
+)
+# The subset of each that is *dead weight when looking up*: every pin record in
+# a pin table is a pin and every register in a register map has an address, so
+# matching on those words would return the whole table rather than the entry the
+# question named. Dropped before the rungs run, exactly as `_PLOT_WORDS` is.
+_PIN_WORDS = frozenset(
+    {"pin", "pins", "ball", "balls", "pinout", "pinouts", "terminal", "terminals",
+     "list", "lists", "name", "named"}
+)
+_REGISTER_WORDS = frozenset(
+    {"register", "registers", "regmap", "bit", "bits", "bitfield", "bitfields",
+     "field", "fields", "address", "addresses", "offset", "offsets", "reset",
+     "resets", "value", "values", "default", "defaults", "list", "lists"}
+)
+#: A token a document would print *as an address*: an explicit `0x` prefix or an
+#: `h` suffix, the same two markers `parse_register_word` recognises. A bare
+#: number in a sentence is a number — `dsa regs --addr 6660` may declare one
+#: because the caller said so, but a question may not, or "what resets to 0?"
+#: would silently become a lookup of register 0.
+_ADDRESS_LITERAL = re.compile(r"(?:0x[0-9a-f]+|[0-9a-f]+h)\Z", re.IGNORECASE)
 
 # One candidate record on its way to becoming a hit: the document it came
 # from, the record, the alias entry (if any) that vouched for it — the entry
@@ -357,6 +389,102 @@ class Retriever:
             f"prints none, or the one it prints was rejected (see `dsa status` "
             f"for the recorded reason). A pin lookup here establishes nothing."
         )
+
+    def pins_for_terms(self, text: str, *, limit: int = 6) -> list[PinHit]:
+        """Pins a question *names*, by exact rungs — never by resemblance.
+
+        `plots_for_terms` ranks a catalog by overlap because a caption is prose.
+        A pin is not prose: `A1` is not a near-miss for `A10`, and a designer
+        handed the wrong pin has a wiring error rather than a disappointing
+        search result. So this is a ladder of **exact token** rungs over the
+        question's own words, first non-empty rung winning, and nothing at all
+        when the question names no pin:
+
+        | # | Rung | `matched_via` |
+        |---|---|---|
+        | 1 | a token that is a printed designator (`A1`) | `designator-terms` |
+        | 2 | a token that is a printed pin name (`CLKIN`) | `name-terms` |
+        | 3 | a token that is a lexicon pin type (`ground`) | `type-terms` |
+
+        Rung 3 is what answers "which pins are ground?". It selects on a
+        **derived** label, which is legitimate under ADR 0005 (c) precisely
+        because the label is a checked-in lexicon one and every record publishes
+        the phrase that decided it — an agent can check the classification
+        instead of trusting it.
+
+        Deterministic throughout (rung, then the pin table's printed order), and
+        `[]` is an honest outcome the caller answers with `pin_gap()` rather
+        than reading absence into.
+        """
+        terms = {t for t in tokens(text) if t not in _PIN_WORDS}
+        if not terms:
+            return []
+        pool = self.pins()
+        rungs: tuple[tuple[str, Callable[[PinRecord], set[str]]], ...] = (
+            ("designator-terms", lambda rec: {normalize(rec.pin)}),
+            ("name-terms", lambda rec: {normalize(rec.name)}),
+            ("type-terms", lambda rec: {rec.type.value}),
+        )
+        for label, key in rungs:
+            hits = [hit for hit in pool if key(hit.record) & terms]
+            if hits:
+                return [
+                    replace(hit, matched_via=label)
+                    for hit in (hits[:limit] if limit > 0 else hits)
+                ]
+        return []
+
+    def registers_for_terms(self, text: str, *, limit: int = 4) -> list[RegisterHit]:
+        """Registers a question *names*, by exact rungs — `pins_for_terms`' twin.
+
+        Same reasoning one noun over, and with more at stake: a firmware
+        engineer handed the neighbouring register writes the wrong word to
+        silicon. The rungs, first non-empty one winning:
+
+        | # | Rung | `matched_via` |
+        |---|---|---|
+        | 1 | a token printed *as an address* (`0x19`, `19h`) | `address-terms` |
+        | 2 | a token that is a printed acronym (`R25`) | `name-terms` |
+        | 3 | a token that is a published bit-field name (`CLK_MUX`) | `field-terms` |
+
+        Rung 1 deliberately requires the document's own hex marker
+        (`_ADDRESS_LITERAL`): `dsa regs --addr 6660` may declare a bare number to
+        be an address because the caller said so, but a bare number inside a
+        sentence is a number, and reading it as one would turn "what resets to 0?"
+        into a lookup of register 0. Rung 3 selects on a *published* field set,
+        which is why a caller reports `register_field_gap()` beside it.
+        """
+        terms = {t for t in tokens(text) if t not in _REGISTER_WORDS}
+        if not terms:
+            return []
+        addresses = {t: parse_register_word(t) for t in terms if _ADDRESS_LITERAL.match(t)}
+        pool = self.registers()
+        by_address = [
+            hit
+            for hit in pool
+            if any(
+                _register_addr_matches(hit.record, value, printed)
+                for printed, value in addresses.items()
+            )
+        ]
+        rungs: tuple[tuple[str, list[RegisterHit]], ...] = (
+            ("address-terms", by_address),
+            ("name-terms", [h for h in pool if normalize(h.record.name) in terms]),
+            (
+                "field-terms",
+                [
+                    h for h in pool
+                    if any(normalize(f.name) in terms for f in h.record.fields)
+                ],
+            ),
+        )
+        for label, hits in rungs:
+            if hits:
+                return [
+                    replace(hit, matched_via=label)
+                    for hit in (hits[:limit] if limit > 0 else hits)
+                ]
+        return []
 
     def registers(
         self,

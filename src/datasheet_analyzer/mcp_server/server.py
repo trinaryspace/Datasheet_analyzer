@@ -1,4 +1,4 @@
-"""The MCP server itself: ten tools, two resources, local stdio only.
+"""The MCP server itself: thirteen tools, two resources, local stdio only.
 
 **This is a front end.** It holds no retrieval logic — no corpus walk, no
 parsing of corpus artifacts, no hand-built citation string. Every lookup goes
@@ -18,6 +18,9 @@ the moment retrieval creeps back in here.
 | `find_spec` | part or project | spec records through the alias ladder |
 | `read_section` | part | one section's verbatim markdown, budgeted |
 | `find_plots` | part or project | the plot catalog, filtered |
+| `find_pin` | part or project | pins by designator, name or lexicon type |
+| `find_register` | part or project | registers by address, acronym or bit field |
+| `get_card` | part | one design card, every value in its provenance envelope |
 | `get_figure` | part | one figure **as an image content block** |
 | `compare_parts` | a list of parts | one parameter or one card, side by side, with SI deltas |
 | `ask` | part or project | one cited, budget-bounded answer pack |
@@ -46,6 +49,7 @@ from mcp.server import MCPServer
 from mcp.server.mcpserver.resources import FunctionResource
 from mcp.types import CallToolResult, ImageContent, TextContent
 
+from datasheet_analyzer.cards import row_citations
 from datasheet_analyzer.config import PIPELINE_VERSION, Settings, get_settings
 from datasheet_analyzer.mcp_server.responses import (
     ASK_BUDGET_FLOOR,
@@ -266,6 +270,147 @@ def build_server(settings: Settings | None = None) -> MCPServer:
             x_label=x_label, y_label=y_label, near_x=near_x
         )
         return fit_list(payload, "hits", cap)
+
+    @server.tool(name="find_pin", meta=declared("find_pin"))
+    def find_pin(
+        part: str = "",
+        project: str = "",
+        pin: str = "",
+        name: str = "",
+        type: str = "",
+        q: str = "",
+    ) -> dict[str, Any]:
+        """Look up pins: by designator, by printed name, or by what they are for.
+
+        The table a designer lives inside during schematic capture. `pin` is an
+        **exact** designator (`A1` means ball A1, never A10 as well — a near-miss
+        on a pin is a wiring error, not a disappointing search result); `name`
+        and `q` are substrings; `type` is the lexicon label (`power`, `ground`,
+        `analog`, `digital`, `clock`, `rf`, `nc`, `reserved`, `unknown`).
+
+        Every hit carries its page citation, its grade, and — because `type` is
+        the one **derived** field a pin has — the `type_evidence` phrase that
+        decided it, so a classification can be checked rather than trusted.
+
+        A corpus with no pin table is an **error**, not an empty list: this
+        datasheet prints none or the one it prints was rejected, so a pin lookup
+        here establishes nothing and must never read as "no such pin".
+        """
+        scope, error = _scope(part, project)
+        if scope is None:
+            return error_response(
+                "find_pin", error, max_tokens=cap, part=part, project=project,
+                hits=[], count=0, total=0,
+            )
+        gap = scope.pin_gap()
+        if gap:
+            return error_response(
+                "find_pin", gap, max_tokens=cap, part=part, project=project,
+                hits=[], count=0, total=0,
+            )
+        payload = envelope("find_pin", max_tokens=cap, part=part, project=project)
+        payload["hits"] = [
+            hit.as_dict()
+            for hit in scope.pins(pin=pin, name=name, type=type, q=q)
+        ]
+        return fit_list(payload, "hits", cap)
+
+    @server.tool(name="find_register", meta=declared("find_register"))
+    def find_register(
+        part: str = "",
+        project: str = "",
+        addr: str = "",
+        name: str = "",
+        field: str = "",
+        q: str = "",
+    ) -> dict[str, Any]:
+        """Look up registers: by address, by acronym, or by a bit field they hold.
+
+        The map a firmware engineer lives inside during bring-up. `addr` resolves
+        by **parsed value**, so `0x1A04`, `0x1a04` and `6660` are one question;
+        `name` is an exact acronym; `field` finds the register that holds a named
+        bit field; `q` is a loose substring over name and description.
+
+        Each hit publishes the address both ways, the reset **where the document
+        states one** (never a plausible zero), the register's bit fields with the
+        width they were validated against, and the bits no field claims. A
+        register whose field table could not be trusted carries `fields: []` and
+        says why in `fields_reason`.
+
+        `field_gap` is what a bit-field filter owes its caller: how many
+        registers publish no fields at all. Without it an empty `field` result
+        would read as "this device has no such bit field", which is a claim about
+        the silicon rather than about the extraction. A corpus with no register
+        map at all is an error, for the same reason `find_pin` refuses.
+        """
+        scope, error = _scope(part, project)
+        if scope is None:
+            return error_response(
+                "find_register", error, max_tokens=cap, part=part, project=project,
+                hits=[], field_gap="", count=0, total=0,
+            )
+        gap = scope.register_gap()
+        if gap:
+            return error_response(
+                "find_register", gap, max_tokens=cap, part=part, project=project,
+                hits=[], field_gap="", count=0, total=0,
+            )
+        payload = envelope("find_register", max_tokens=cap, part=part, project=project)
+        payload["hits"] = [
+            hit.as_dict()
+            for hit in scope.registers(addr=addr, name=name, field=field, q=q)
+        ]
+        payload["field_gap"] = scope.register_field_gap() if field else ""
+        return fit_list(payload, "hits", cap)
+
+    @server.tool(name="get_card", meta=declared("get_card"))
+    def get_card(part: str, card: str = "") -> dict[str, Any]:
+        """One design card: the datasheet reorganised around a design task.
+
+        `power`, `thermal`, `interface` or `limits`, derived from the records
+        this corpus already publishes — a cell quoted with its printed unit, a
+        number computed from quoted cells by a named rule, or a lexicon label,
+        and every one of them carrying `source`, `page`, `section` and
+        `derivation`. A computed value (a limits margin) has **no** `verbatim`,
+        because no page printed it.
+
+        Call with no `card` to list the cards this build declares. An **empty
+        card is a valid card**: it states in `empty_reason` what it looked for
+        and did not find, which is a finding about the part rather than a
+        missing file. Deliberately part-scoped — a design card is one device's,
+        and the cross-part view is `compare_parts`.
+        """
+        scope, error = _part_scope(part)
+        if scope is None:
+            return error_response(
+                "get_card", error, max_tokens=cap, part=part,
+                card=None, rows=[], names=[], count=0, total=0,
+            )
+        names = scope.card_names()
+        if not card:
+            payload = envelope("get_card", max_tokens=cap, part=scope.part)
+            payload.update({"card": None, "rows": [], "names": names})
+            return fit_list(payload, "rows", cap)
+        doc = scope.card(card)
+        if doc is None:
+            return error_response(
+                "get_card",
+                f"no card named {card!r} — this build declares: "
+                f"{', '.join(names) or '(none)'}",
+                max_tokens=cap, part=scope.part,
+                card=None, rows=[], names=names, count=0, total=0,
+            )
+        payload = envelope("get_card", max_tokens=cap, part=scope.part)
+        body = doc.model_dump(mode="json")
+        payload["rows"] = body.pop("rows")
+        payload["card"] = body
+        payload["names"] = names
+        # A card row carries no citation of its own — its *values* do, each with
+        # the page it was printed on — so the envelope's citation list is
+        # computed by the module that renders the card. Passing the function
+        # rather than a list keeps it honest under the cap: rows the cap sheds
+        # take their citations with them.
+        return fit_list(payload, "rows", cap, cite=row_citations)
 
     @server.tool(name="read_section", meta=declared("read_section"))
     def read_section(part: str, ref: str, max_tokens: int = 0) -> dict[str, Any]:

@@ -183,14 +183,55 @@ def _grade(row: CardRow) -> str:
 
 def _sources(row: CardRow) -> str:
     """Every distinct citation the row rests on, in value order."""
-    labels: list[str] = []
-    for value in row.values.values():
-        # The value's own section and page, never the row's: a limits row holds
-        # two values from two tables, and citing both to one of them would be a
-        # citation that does not survive being checked.
-        label = Citation(
-            section=value.section, page_start=value.page, page_end=value.page
-        ).label
-        if label not in labels:
-            labels.append(label)
+    labels = _citations(row.values.values())
     return " / ".join(labels) if labels else "p.?"
+
+
+def _cite_of(value: DerivedValue | dict) -> str:
+    """One value's own citation — from the model, or from its serialized twin.
+
+    A card's values reach this module in two forms: as models while the card is
+    being rendered, and as the JSON a second front end hands back. They are the
+    same card, so they must cite the same page, which is why one function reads
+    both instead of each caller building a label of its own.
+    """
+    if isinstance(value, dict):
+        section, page = value.get("section", ""), value.get("page")
+    else:
+        section, page = value.section, value.page
+    return Citation(section=section or "", page_start=page, page_end=page).label
+
+
+def _citations(values) -> list[str]:
+    """The distinct citation of each value, in value order.
+
+    The value's own section and page, never the row's: a limits row holds two
+    values from two tables, and citing both to one of them would be a citation
+    that does not survive being checked.
+    """
+    labels: list[str] = []
+    for value in values:
+        label = _cite_of(value)
+        if label and label not in labels:
+            labels.append(label)
+    return labels
+
+
+def row_citations(rows) -> list[str]:
+    """Every distinct citation a card's rows rest on, in row order.
+
+    What a second front end hoists into its response envelope, over rows in
+    either form (`CardRow` or `CardRow.model_dump()`). It lives here rather than
+    in that front end for the reason the whole seam exists: a card must not cite
+    one page in its markdown and another in its JSON, so both labels come from
+    this module and from `Citation`. Recomputed over whichever rows a caller
+    still holds, so a response cap that shed rows sheds their citations with
+    them instead of advertising pages it no longer returned.
+    """
+    labels: list[str] = []
+    for row in rows:
+        values = row.values if isinstance(row, CardRow) else (row.get("values") or {})
+        for label in _citations(values.values()):
+            if label not in labels:
+                labels.append(label)
+    return labels

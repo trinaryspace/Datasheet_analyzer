@@ -10,25 +10,33 @@ classified by feature hits, in the plan's order:
 
 | # | Feature | Route |
 |---|---|---|
-| 1 | the spec ladder resolves the question (symbol / alias / prefix / fuzzy) | `spec` |
-| 2 | plot vocabulary (`plot`, `curve`, `vs`, `versus`, `graph`, `figure`) **and** a figure whose caption uses the question's words | `plot` |
-| 3 | anything the full-text index ranks | `search` |
-| 4 | nothing, and the corpus has no current full-text index | `unavailable` — rebuild to enable search |
-| 5 | nothing at all | `none` — an explicit no-match plus nearest candidates |
+| 1 | pin vocabulary (`pin`, `ball`, `pinout`, `terminal`) **and** a pin the question names | `pin` |
+| 2 | register vocabulary (`register`, `address`, `offset`, `reset`, `bit field`) **and** a register the question names | `register` |
+| 3 | plot vocabulary (`plot`, `curve`, `vs`, `versus`, `graph`, `figure`) **and** a figure whose caption uses the question's words | `plot` |
+| 4 | the spec ladder resolves the question (symbol / alias / prefix / fuzzy) | `spec` |
+| 5 | anything the full-text index ranks | `search` |
+| 6 | nothing, and a path the question needed could not run | `unavailable` — no index / no pin table / no register map |
+| 7 | nothing at all | `none` — an explicit no-match plus nearest candidates |
 
-Route 4 exists because an empty full-text result means "nothing matched" only
-when there was an index to match against. A corpus published before
-`search_index.json` existed (or against an older schema) hands back the same
-empty list, and reading that as absence would put a claim in the pack that the
-retrieval never earned — `Retriever.search_unavailable()` is asked before
-`none` is ever reported, exactly as `dsa search` asks it.
+Route 6 exists because an empty result means "nothing matched" only when there
+was something to match against. A corpus published before `search_index.json`
+existed (or against an older schema) hands back the same empty list as one
+where nothing matched, and so does a pin lookup on a part whose pin table was
+rejected; reading either as absence would put a claim in the pack that the
+retrieval never earned. `search_unavailable()`, and (phase 6, ticket 10)
+`pin_gap()` / `register_gap()` for a question that asked for those paths, are
+consulted before `none` is ever reported.
 
 One refinement of that order is load-bearing and deliberate: a question that
 *names a figure* and finds one is a plot question even when the quantity it
 names also has an alias entry ("which figure shows the **gain error** vs DSA
-setting?"). Plot vocabulary therefore disqualifies the spec route — but only
-when the plot lookup actually found something, so a routing technicality can
-never cost an answer that exists.
+setting?"). Artifact vocabulary therefore disqualifies the spec route — but
+only when that artifact's lookup actually found something, so a routing
+technicality can never cost an answer that exists. The pin and register routes
+(ticket 10) join on exactly those terms, ahead of the figure route because they
+are the more specific claim: a question that names `A1` or `0x19` named the
+entry it wants, and the row that answers it is in `pins.json` /
+`registers.json` with its own citation.
 
 **The budget is enforced here, not in a front end.** A front end cannot honour
 a token budget on text it did not produce, so the pack renders itself
@@ -66,11 +74,18 @@ from datasheet_analyzer.retrieve.project import ProjectRetriever
 from datasheet_analyzer.retrieve.results import (
     CONFIDENCE_UNKNOWN,
     Citation,
+    PinHit,
     PlotHit,
+    RegisterHit,
     SearchHit,
     SpecHit,
 )
-from datasheet_analyzer.retrieve.retriever import PLOT_VOCABULARY, Retriever
+from datasheet_analyzer.retrieve.retriever import (
+    PIN_VOCABULARY,
+    PLOT_VOCABULARY,
+    REGISTER_VOCABULARY,
+    Retriever,
+)
 from datasheet_analyzer.retrieve.search import snippet
 from datasheet_analyzer.structure.aliases import padded, tokens
 from datasheet_analyzer.structure.search import tokenize
@@ -78,18 +93,34 @@ from datasheet_analyzer.tokens import count_tokens, truncate_to_tokens
 
 ROUTE_SPEC = "spec"
 ROUTE_PLOT = "plot"
+#: Phase 6, ticket 10 — the two device-table routes. A pin question and a
+#: register question have their own artifact, and answering one out of the
+#: section text when `pins.json` holds the row is a worse answer with the same
+#: citation.
+ROUTE_PIN = "pin"
+ROUTE_REGISTER = "register"
 ROUTE_SEARCH = "search"
 ROUTE_NONE = "none"
-#: No route could run: the spec and figure paths found nothing and this corpus
-#: has no current full-text index, so absence was never established.
+#: No route could run: every path that could have answered found nothing and at
+#: least one of them could not run at all (no full-text index; no pin table for a
+#: pin question; no register map for a register question), so absence was never
+#: established.
 ROUTE_UNAVAILABLE = "unavailable"
-ROUTES = (ROUTE_SPEC, ROUTE_PLOT, ROUTE_SEARCH, ROUTE_NONE, ROUTE_UNAVAILABLE)
+ROUTES = (
+    ROUTE_SPEC, ROUTE_PLOT, ROUTE_PIN, ROUTE_REGISTER, ROUTE_SEARCH,
+    ROUTE_NONE, ROUTE_UNAVAILABLE,
+)
 
 # How many candidates each route offers the budget. The budget is the real
 # limit; these caps only stop a prefix-family query from rendering two hundred
 # lines just to trim them again.
 MAX_SPEC_ANSWERS = 6
 MAX_PLOT_ANSWERS = 5
+# A pin question is often about a *set* ("which pins are ground?"), so its cap is
+# the widest; a register question names one register and its fields are the
+# answer beside it, so its cap is the narrowest.
+MAX_PIN_ANSWERS = 8
+MAX_REGISTER_ANSWERS = 4
 MAX_SEARCH_ANSWERS = 3
 MAX_SUGGESTIONS = 5
 # A project pack answers from several parts at once; the cap is on the union,
@@ -99,7 +130,9 @@ MAX_PROJECT_ANSWERS = 8
 _HEADER_PARTS = 6
 # Which route leads a project pack when two parts answer by different paths:
 # a parametric row is a stronger answer than a quoted paragraph.
-_ROUTE_STRENGTH = {ROUTE_SPEC: 0, ROUTE_PLOT: 1, ROUTE_SEARCH: 2}
+_ROUTE_STRENGTH = {
+    ROUTE_SPEC: 0, ROUTE_PIN: 1, ROUTE_REGISTER: 2, ROUTE_PLOT: 3, ROUTE_SEARCH: 4,
+}
 
 _TRUNCATION_NOTICE = (
     "_Truncated to fit a {budget}-token budget — raise it with `--budget N` "
@@ -515,27 +548,49 @@ def _route(
         return ROUTE_NONE, [_no_match_line(question)], None, _verify_none(), [], False
 
     spec_hits = retriever.specs(name=question)
-    # The plot lookup runs only when the question actually names a figure, and
-    # its result is what allows it to override the spec route (module docs).
+    # Each artifact lookup runs only when the question actually speaks that
+    # artifact's vocabulary, and its *result* is what allows it to override the
+    # spec route (module docs). A routing technicality can never cost an answer
+    # that exists, because a vocabulary match with no hits changes nothing.
     plot_hits = (
         retriever.plots_for_terms(question, limit=MAX_PLOT_ANSWERS)
         if PLOT_VOCABULARY.search(question)
         else []
     )
+    pin_hits = (
+        retriever.pins_for_terms(question, limit=MAX_PIN_ANSWERS)
+        if PIN_VOCABULARY.search(question)
+        else []
+    )
+    register_hits = (
+        retriever.registers_for_terms(question, limit=MAX_REGISTER_ANSWERS)
+        if REGISTER_VOCABULARY.search(question)
+        else []
+    )
 
-    if spec_hits and not plot_hits:
-        return _spec_route(retriever, question, spec_hits)
+    # Order is specificity, not preference. A question that names a pin or a
+    # register named the entry it wants, and `pins.json` / `registers.json` hold
+    # that entry with its own citation — answering it from a spec row that
+    # happens to share a word would cite a different table than the one the
+    # question was about.
+    if pin_hits:
+        return _pin_route(retriever, question, pin_hits)
+    if register_hits:
+        return _register_route(retriever, question, register_hits)
     if plot_hits:
         return _plot_route(retriever, question, plot_hits)
+    if spec_hits:
+        return _spec_route(retriever, question, spec_hits)
 
     search_hits = retriever.search(question, limit=MAX_SEARCH_ANSWERS)
     if search_hits:
         return _search_route(retriever, search_hits)
 
     # `search()` returns `[]` both for "nothing matched" and for "there was
-    # nothing to match against". Only the first of those licenses a no-match,
-    # so the reason is asked for before absence is ever asserted.
-    unavailable = retriever.search_unavailable()
+    # nothing to match against", and so does a pin or register lookup on a
+    # corpus that holds no such table. Only the first of those licenses a
+    # no-match, so the reasons are asked for before absence is ever asserted.
+    unavailable = _paths_that_never_ran(retriever, question)
     if unavailable:
         return (
             ROUTE_UNAVAILABLE,
@@ -556,6 +611,27 @@ def _route(
     )
 
 
+def _paths_that_never_ran(retriever: Retriever, question: str) -> str:
+    """Every retrieval path this question needed that could not run at all.
+
+    `Retriever.search_unavailable()` has drawn this line since phase 5: an empty
+    result means "nothing matched" only when there was something to match
+    against. Phase 6's device tables draw exactly the same line — `pin_gap()`
+    and `register_gap()` are its twins, and `dsa pins` / `dsa regs` already exit
+    2 on them — so a question that *names a pin*, asked of a corpus with no pin
+    table, must not come back as "this datasheet has no such pin".
+
+    Only the paths the question actually asked for are reported: a thermal
+    question is not degraded by a part that prints no register map.
+    """
+    reasons = [
+        retriever.pin_gap() if PIN_VOCABULARY.search(question) else "",
+        retriever.register_gap() if REGISTER_VOCABULARY.search(question) else "",
+        retriever.search_unavailable(),
+    ]
+    return " ".join(reason for reason in reasons if reason)
+
+
 def _spec_route(retriever: Retriever, question: str, hits: list[SpecHit]):
     hits = _by_relevance(question, hits)
     lines = [_spec_line(h) for h in hits[:MAX_SPEC_ANSWERS]]
@@ -571,6 +647,35 @@ def _plot_route(retriever: Retriever, question: str, hits: list[PlotHit]):
     excerpt = _excerpt_for(retriever, question, top.citation)
     verify = _verify_record(retriever, top.citation, top.confidence)
     return ROUTE_PLOT, lines, excerpt, verify, [], len(hits) > MAX_PLOT_ANSWERS
+
+
+def _pin_route(retriever: Retriever, question: str, hits: list[PinHit]):
+    """The pin table answers, and the section covering it supplies the excerpt."""
+    lines = [_pin_line(h) for h in hits[:MAX_PIN_ANSWERS]]
+    top = hits[0]
+    excerpt = _excerpt_for(retriever, question, top.citation)
+    verify = _verify_record(retriever, top.citation, top.confidence)
+    return ROUTE_PIN, lines, excerpt, verify, [], len(hits) > MAX_PIN_ANSWERS
+
+
+def _register_route(retriever: Retriever, question: str, hits: list[RegisterHit]):
+    """The register map answers; the gap note rides along when fields decided it.
+
+    A `field-terms` hit selects on a **published** bit-field set, so the pack
+    carries `register_field_gap()`'s sentence in its **verify footer**: a
+    register whose field table was refused matches no field name, and an agent
+    must be able to tell that from "this device has no such field". The footer
+    is reserved tail, so a budget can never be what removes that admission.
+    """
+    lines = [_register_line(h) for h in hits[:MAX_REGISTER_ANSWERS]]
+    top = hits[0]
+    excerpt = _excerpt_for(retriever, question, top.citation)
+    verify = _verify_record(retriever, top.citation, top.confidence)
+    if any(h.matched_via == "field-terms" for h in hits):
+        gap = retriever.register_field_gap()
+        if gap:
+            verify = f"{verify}  {gap}"
+    return ROUTE_REGISTER, lines, excerpt, verify, [], len(hits) > MAX_REGISTER_ANSWERS
 
 
 def _search_route(retriever: Retriever, hits: list[SearchHit]):
@@ -671,6 +776,72 @@ def _plot_line(hit: PlotHit) -> PackLine:
         page_start=hit.citation.page_start,
         page_end=hit.citation.page_end,
         file=rec.file,
+    )
+
+
+def _pin_line(hit: PinHit) -> PackLine:
+    """`A1  VSSA — ground (lexicon: "ground"); I; Analog ground`.
+
+    Every printed cell of the row, plus the one **derived** field a pin has —
+    and that one names the phrase that produced it inline, because invariant 8
+    says a derived value carries its rule and a pack is where a reader meets it
+    first. A pin the lexicon did not understand prints `unknown` with no
+    evidence rather than a plausible category.
+    """
+    rec = hit.record
+    text = f"{rec.pin}  {rec.name}".strip() or rec.pin_verbatim
+    label = rec.type.value
+    if rec.type_evidence:
+        label += f' (lexicon: "{rec.type_evidence}")'
+    text = f"{text} — {label}"
+    for extra in (rec.direction, rec.description):
+        if extra:
+            text = f"{text}; {extra}"
+    return PackLine(
+        text=text,
+        citation=hit.citation.label,
+        confidence=hit.confidence,
+        matched_via=hit.matched_via,
+        doc=hit.citation.doc,
+        section=hit.citation.section,
+        page_start=hit.citation.page_start,
+        page_end=hit.citation.page_end,
+    )
+
+
+def _register_line(hit: RegisterHit) -> PackLine:
+    """`0x19  R25: reset 0x0211; CLK_MUX [2:0] R/W; …` — printed address first.
+
+    The reset is on the line because "what does R25 come up as?" is the register
+    question a firmware engineer actually asks, and a register the document
+    states no reset for prints `reset ?` — never `0x0`, which is the plausible
+    default ADR 0005 forbids. The bit fields follow for the same reason: a
+    register's fields *are* the answer to most register questions, and a
+    register whose field set was refused simply has none to print here.
+    """
+    rec = hit.record
+    text = f"{rec.address.verbatim}  {rec.name}".strip()
+    reset = rec.reset
+    text += f": reset {reset.verbatim}" if (reset and reset.verbatim) else ": reset ?"
+    if rec.access:
+        text += f"; {rec.access}"
+    if rec.description:
+        text += f"; {rec.description}"
+    if rec.fields:
+        fields = "; ".join(
+            f"{f.name} [{f.bits.verbatim}]{(' ' + f.access) if f.access else ''}"
+            for f in rec.fields
+        )
+        text += f"; {fields}"
+    return PackLine(
+        text=text,
+        citation=hit.citation.label,
+        confidence=hit.confidence,
+        matched_via=hit.matched_via,
+        doc=hit.citation.doc,
+        section=hit.citation.section,
+        page_start=hit.citation.page_start,
+        page_end=hit.citation.page_end,
     )
 
 

@@ -32,11 +32,19 @@ import pytest
 from datasheet_analyzer import cli
 from datasheet_analyzer.config import PIPELINE_VERSION, Settings
 from datasheet_analyzer.models import (
+    BitRange,
     Confidence,
     DocType,
+    PinRecord,
+    PinSet,
+    PinType,
     PlotRecord,
     PlotSet,
     RawDocument,
+    RegisterField,
+    RegisterRecord,
+    RegisterSet,
+    RegisterWord,
     SectionNode,
     SourceDocument,
     SpecRecord,
@@ -47,14 +55,20 @@ from datasheet_analyzer.publish import write_corpus
 from datasheet_analyzer.retrieve import (
     ANSWER_PACK_SCHEMA,
     ROUTE_NONE,
+    ROUTE_PIN,
     ROUTE_PLOT,
+    ROUTE_REGISTER,
     ROUTE_SEARCH,
     ROUTE_SPEC,
     ROUTE_UNAVAILABLE,
     Retriever,
     validate_pack,
 )
-from datasheet_analyzer.retrieve.pack import PLOT_VOCABULARY
+from datasheet_analyzer.retrieve.pack import (
+    PIN_VOCABULARY,
+    PLOT_VOCABULARY,
+    REGISTER_VOCABULARY,
+)
 from datasheet_analyzer.structure.corpus import build_section_plans
 from datasheet_analyzer.tokens import count_tokens
 
@@ -203,7 +217,86 @@ def _plots() -> PlotSet:
     )
 
 
-def _build_part(part_dir: Path, sections: list[SectionNode] | None = None) -> Path:
+def _pins() -> PinSet:
+    """Two ground balls and one supply ball (phase 6, ticket 10).
+
+    `A1` and `A10` exist together on purpose: an exact designator rung must
+    return one of them and never both, because a near-miss on a pin is a wiring
+    error rather than a disappointing search result.
+    """
+    return PinSet(
+        schema_version="1",
+        part_number="TEST",
+        doc_hash=DOC_HASH,
+        pins=[
+            PinRecord(
+                id="pin_1", pin="A1", pin_verbatim="A1, A10", name="VSSA",
+                type=PinType.GROUND, type_evidence="ground", direction="—",
+                description="Analog ground", section="4.3", page=6,
+                confidence=Confidence.HIGH,
+            ),
+            PinRecord(
+                id="pin_2", pin="A10", pin_verbatim="A1, A10", name="VSSA",
+                type=PinType.GROUND, type_evidence="ground", direction="—",
+                description="Analog ground", section="4.3", page=6,
+                confidence=Confidence.HIGH,
+            ),
+            PinRecord(
+                id="pin_3", pin="B1", pin_verbatim="B1", name="CLKINP",
+                type=PinType.CLOCK, type_evidence="clkin", direction="I",
+                description="Device clock input", section="4.3", page=6,
+                confidence=Confidence.HIGH,
+            ),
+        ],
+    )
+
+
+def _registers() -> RegisterSet:
+    """One register that states a reset and publishes a field, one that does not."""
+    return RegisterSet(
+        schema_version="2",
+        part_number="TEST",
+        doc_hash=DOC_HASH,
+        registers=[
+            RegisterRecord(
+                id="reg_1", address=RegisterWord(verbatim="0x00", value=0), name="R0",
+                description="Soft reset", section="4.3", page=6,
+                confidence=Confidence.HIGH,
+                fields_reason="no field table is printed for this register",
+            ),
+            RegisterRecord(
+                id="reg_2", address=RegisterWord(verbatim="0x19", value=25), name="R25",
+                description="Clock mux control", section="4.3", page=6,
+                confidence=Confidence.HIGH,
+                reset=RegisterWord(
+                    verbatim="0x0211", value=529, page=6,
+                    evidence="R25 Register (Offset = 0x19) [Reset = 0x0211]",
+                    derivation="declaration_heading",
+                ),
+                width=16,
+                fields=[
+                    RegisterField(
+                        name="CLK_MUX",
+                        bits=BitRange(verbatim="2:0", hi=2, lo=0,
+                                      derivation="parse_bit_range"),
+                        access="R/W", reset="0x1", description="Clock mux select",
+                        page=6,
+                    )
+                ],
+                fields_confidence=Confidence.MEDIUM,
+            ),
+        ],
+        n_reset_stated=1,
+        n_field_sets=1,
+    )
+
+
+def _build_part(
+    part_dir: Path,
+    sections: list[SectionNode] | None = None,
+    *,
+    device_tables: bool = True,
+) -> Path:
     source = SourceDocument(
         content_hash=DOC_HASH,
         path="pdfs/afe7950.pdf",
@@ -226,6 +319,8 @@ def _build_part(part_dir: Path, sections: list[SectionNode] | None = None) -> Pa
         vendor="ti",
         specsets=[_specs()],
         plotsets=[_plots()],
+        pinsets=[_pins()] if device_tables else None,
+        registersets=[_registers()] if device_tables else None,
     )
     return part_dir
 
@@ -378,6 +473,115 @@ class TestRoutingIsDeterministic:
             "VDD1P2",
             "VDD3P3",
         ]
+
+
+class TestTheDeviceTableRoutes:
+    """Phase 6, ticket 10: a pin question and a register question have their
+    own artifact, and `dsa ask` must reach it.
+
+    Answering "which pins are ground?" out of a paragraph would cite a real
+    page and still not be the pin table; answering "what does R25 reset to?"
+    out of the section text would miss the value entirely, because the reset is
+    printed in the register's declaration heading and not in its summary row.
+    Each route is asserted by name, and each refusal by its reason.
+    """
+
+    def test_pin_route_fires_on_pin_vocabulary_plus_a_named_pin(self, retriever):
+        pack = retriever.ask("which pins are ground?", budget=3000)
+        assert pack.route == ROUTE_PIN
+        assert [line.text.split(" ")[0] for line in pack.answers] == ["A1", "A10"]
+        assert all(line.citation == "§4.3, p.6" for line in pack.answers)
+        assert all(line.confidence == "high" for line in pack.answers)
+
+    def test_a_pin_answer_names_the_lexicon_phrase_that_typed_it(self, retriever):
+        """`type` is derived, so invariant 8 wants its rule on the same line."""
+        pack = retriever.ask("which pins are ground?", budget=3000)
+        assert 'ground (lexicon: "ground")' in pack.answers[0].text
+        assert pack.answers[0].matched_via == "type-terms"
+
+    def test_a_designator_is_exact_and_never_its_longer_neighbour(self, retriever):
+        pack = retriever.ask("what is on ball A1?", budget=3000)
+        assert pack.route == ROUTE_PIN
+        assert [line.text.split(" ")[0] for line in pack.answers] == ["A1"]
+        assert pack.answers[0].matched_via == "designator-terms"
+
+    def test_register_route_fires_on_a_named_register(self, retriever):
+        pack = retriever.ask("what does register R25 reset to?", budget=3000)
+        assert pack.route == ROUTE_REGISTER
+        assert pack.answers[0].text.startswith("0x19  R25: reset 0x0211")
+        assert pack.answers[0].citation == "§4.3, p.6"
+
+    def test_a_register_with_no_stated_reset_says_so_rather_than_zero(self, retriever):
+        pack = retriever.ask("what does register R0 reset to?", budget=3000)
+        assert pack.route == ROUTE_REGISTER
+        assert pack.answers[0].text.startswith("0x00  R0: reset ?")
+        assert "0x0000" not in pack.answers[0].text, "a plausible default is not a reading"
+
+    def test_a_printed_address_reaches_its_register(self, retriever):
+        pack = retriever.ask("which register is at address 0x19?", budget=3000)
+        assert pack.route == ROUTE_REGISTER
+        assert pack.answers[0].matched_via == "address-terms"
+
+    def test_a_bare_number_in_a_sentence_is_not_an_address(self, retriever):
+        """`dsa regs --addr 25` may declare a bare number to be an address
+        because the caller said so; a number inside a question may not, or
+        "what resets to 0?" becomes a lookup of register 0."""
+        pack = retriever.ask("which register resets to 0?", budget=3000)
+        assert pack.route != ROUTE_REGISTER
+
+    def test_a_bit_field_name_finds_its_register_and_reports_the_gap(self, retriever):
+        """Filtering on a published field set is a filter on a *derived* value,
+        so the pack must say how many registers publish none — otherwise the
+        answer reads as a complete survey of the device's bit fields."""
+        pack = retriever.ask("which register holds the CLK_MUX bit field?", budget=3000)
+        assert pack.route == ROUTE_REGISTER
+        assert pack.answers[0].matched_via == "field-terms"
+        assert "CLK_MUX [2:0] R/W" in pack.answers[0].text
+        assert "1 of 2 registers" in pack.verify
+
+    def test_vocabulary_without_a_named_entry_keeps_the_answer_it_had(self, retriever):
+        """The plot route's rule, one noun over: the override applies only when
+        the artifact lookup actually found something."""
+        pack = retriever.ask(
+            "what is the maximum junction temperature at every pin?", budget=3000
+        )
+        assert pack.route == ROUTE_SPEC
+        assert pack.answers[0].text.startswith("TJ")
+
+    def test_the_router_and_the_lookups_share_one_vocabulary(self):
+        for word in ("pin", "pins", "ball", "balls", "pinout", "terminals"):
+            assert PIN_VOCABULARY.search(f"which {word} is this")
+        for word in ("register", "registers", "address", "offset", "reset",
+                     "bit field", "bitfields"):
+            assert REGISTER_VOCABULARY.search(f"which {word} is this")
+
+    def test_a_corpus_with_no_pin_table_is_unavailable_not_a_no_match(self, tmp_path):
+        """`pin_gap()` is `search_unavailable()`'s twin: a pin question asked of
+        a corpus with no pin table established nothing, so reporting "this
+        datasheet has no such pin" would be a claim the retrieval never earned.
+        """
+        part = _build_part(tmp_path / "parts" / "BARE", device_tables=False)
+        pack = Retriever.for_part(part).ask("which pins are ground?", budget=3000)
+        assert pack.route == ROUTE_UNAVAILABLE
+        assert "no pin table in the corpus" in pack.answers[0].text
+        assert "establishes nothing" in pack.answers[0].text
+
+    def test_a_corpus_with_no_register_map_is_unavailable_too(self, tmp_path):
+        part = _build_part(tmp_path / "parts" / "BARE2", device_tables=False)
+        pack = Retriever.for_part(part).ask(
+            "what does register R25 reset to?", budget=3000
+        )
+        assert pack.route == ROUTE_UNAVAILABLE
+        assert "no register summary in the corpus" in pack.answers[0].text
+
+    def test_a_question_that_asked_for_neither_reports_neither(self, tmp_path):
+        """Only the paths the question needed are reported degraded: a thermal
+        question is not made unavailable by a part that prints no register map.
+        """
+        part = _build_part(tmp_path / "parts" / "BARE3", device_tables=False)
+        pack = Retriever.for_part(part).ask("flux capacitor rating", budget=3000)
+        assert pack.route == ROUTE_NONE
+        assert "pin table" not in pack.answers[0].text
 
 
 class TestBudgetIsHard:

@@ -1,7 +1,37 @@
 # PHASE 6 REPORT — Design-Time Content
 
-**Status: in progress.** Measured results accumulate here per ticket, and this
-file supersedes `Reports/PHASE_6_PLAN.md` when the phase lands.
+**Status: shipped.** This file supersedes `Reports/PHASE_6_PLAN.md`. Measured
+results accumulate per ticket below; ticket 10 is the phase gate.
+
+## What is parked, up front
+
+Nothing in this phase was parked. The one ticket that carried explicit
+permission to ship nothing — **ticket 06, register bit fields** — shipped
+against a real document's accuracy gate rather than taking the plan's
+"park with a `KNOWN_SHORTCOMINGS.md` entry" branch. Ticket 05's register
+summary shipped too, so the phase closes **with** the register work rather than
+without it.
+
+What *is* recorded, and belongs at the top rather than buried, are the measured
+limits that came with those ships. Every one of them is an entry in
+`KNOWN_SHORTCOMINGS.md` with the reason it stands:
+
+| Area | The limit, in one line |
+|---|---|
+| Bit fields | 7 of LMX1204's 35 registers publish **no** field set (each says why in `fields_reason`); the geometric bit-diagram route has no real-document gate, because neither reference document prints that shape |
+| Design cards | the limits card compares the `max` column only; AD9081's limits and thermal cards are empty for an *extraction* reason (its abs-max table reconstructs with no value cells); coverage is only as wide as `registry/cards.yaml` |
+| Axis catalog | a figure drawn as a raster image publishes no axes at all; 33 of AFE7950's 514 figures read one axis and not the other; a second right-hand y axis is not read |
+| Comparison | two unrelated parts align on almost nothing, and that is the correct outcome; the two reference parts cannot be compared until they are rebuilt |
+| Numeric layer | measured parse rate spans 95% (AFE7950) to 2% (LMX1204) — an *extraction* finding, not a grammar one |
+| MCP surface | a pin-**type** lookup reports no unconsidered population (unlike the bit-field and axis filters); `AGENT.md` still lists the phase-5 nine tools and not the four this phase added |
+
+Three phase-level caveats are worth the same treatment. **`PIPELINE_VERSION`
+moved to 0.5.0**, not the plan's 0.4.0. **The two reference parts' committed
+corpora under `parts/` predate this phase**, so their design cards are empty
+until they are rebuilt — every card measurement here is taken on a fresh build.
+And among the built parts **only AD9081 and LMX1204 publish pins, and only
+LMX1204 publishes registers**, which is why the pin, register and card golden
+questions live where they do rather than on all seven sets.
 
 ## Ticket 02 — the numeric layer
 
@@ -289,8 +319,10 @@ substrings must appear on records sitting on a page the question cites — plus
 the table rather than about one page.
 
 AD9081's benchmark carries the ticket's three shapes and verifies **3/3 with
-page cites** (`dsa verify --part AD9081` now reports 9/9 text, 1/1 spec, 1/1
-plot, 3/3 pin, 1/1 ask, 1/1 search):
+page cites** (`dsa verify --part AD9081` reported 9/9 text, 1/1 spec, 1/1
+plot, 3/3 pin, 1/1 ask, 1/1 search at this ticket; ticket 10 added two card
+questions and a second ask question, so the set is 12 today — see that
+section):
 
 | id | shape | query | cited |
 |---|---|---|---|
@@ -1283,5 +1315,283 @@ comparison is a question about a *set* of parts and a corpus belongs to one: the
 artifact would have no home that a rebuild of any single part could keep
 current. Deriving it live costs one pass over records the retriever has already
 loaded.
+
+## Ticket 10 — MCP surface, goldens, and the phase gate
+
+The phase's artifacts existed; two of its front-end tools and one of its answer
+paths did not. Ticket 10 closes that, and closes the phase.
+
+### The surface, as it now stands
+
+`dsa serve --mcp` registers **thirteen** tools, up from ten. Everything phase 6
+added to that surface, and where it landed:
+
+| Tool or filter | Scope | Landed in |
+|---|---|---|
+| `find_plots` axis filters (`x_label` / `y_label` / `near_x`) | part or project | ticket 08 |
+| `compare_parts` | an ad-hoc list of parts | ticket 09 |
+| `find_pin` | part or project | ticket 10 (deferred here by 04) |
+| `find_register` | part or project | ticket 10 (deferred here by 05) |
+| `get_card` | part | ticket 10 |
+
+The two deferrals were deliberate: each device table shipped its retrieval seam
+and its CLI first, so the second front end had a proven lookup to adapt rather
+than a lookup and a transport to debug at once.
+
+None of the three new tools implements a lookup. `find_pin` is `Retriever.pins`,
+`find_register` is `Retriever.registers`, `get_card` is `Retriever.card` — the
+same seams `dsa pins`, `dsa regs` and `dsa card` call — and every hit shape is
+that hit's own `as_dict()`. The grep-shaped seam guard over `server.py`
+(`test_mcp_responses.py::TestMcpServerIsFormatOnly`) is unchanged and still
+passes, which is the mechanical statement that no retrieval logic arrived with
+the three new tools.
+
+Two shapes needed a decision rather than a translation.
+
+**A card row carries no citation of its own.** Its *values* do — each with the
+page it was printed on, and a limits row's two values come from two tables pages
+apart. Hoisting a single row-level citation would have been a fourth citation
+format, so `cards.row_citations` computes the envelope's list from the values,
+and `responses.fit_list` gained a `cite=` hook so it is recomputed over
+**whichever rows survived the cap**. A response that shed rows sheds their
+citations with them rather than advertising pages it no longer returned.
+
+**`find_register`'s `field_gap` is a body key, not the envelope's `warning`.**
+Filtering by bit-field name selects on a derived value, so the call is owed the
+population it could not consider even when it *did* answer — the same rule
+`find_plots` follows for its axis gap.
+
+### Refusal, not an empty list
+
+The rule both device-table tools inherit is `pin_gap()` / `register_gap()`, and
+it is the reason they are `error` responses rather than empty ones: a corpus
+that publishes no pin table never looked, so "no hits" would read as "this
+device has no such pin". Measured across the gate:
+
+| Part | `find_pin` | `find_register` | cards with rows |
+|---|---|---|---|
+| AD9081 | **85** power balls of 321 (49 fit the 6000-token cap; the rest are shed, announced) | refused (no register map) | 3 of 4 |
+| LM741 | refused (no pin table) | refused | 2 of 4 |
+| QPA1003P | refused | refused | 1 of 4 |
+| HMC520A | refused (its printed table was rejected whole) | refused | 0 of 4 |
+| LMX1204 | **41** pins, 2 of them power | **70** registers over two documents | 2 of 4 |
+
+Every one of those refusals carries the sentence "A pin lookup here establishes
+nothing" (or its register twin) rather than an empty `hits` list, and every
+`get_card` response with no rows carries the card's `empty_reason` — an empty
+card is a valid card, and the tool must not let it read as "not built yet".
+`find_register --field CLK_MUX` on LMX1204 returns the register from **both** of
+its documents and reports `14 of 70 registers publish no bit fields` beside the
+answer.
+
+LMX1204 turned out to be the second built part whose pin table reconstructs —
+41 pins off its datasheet, which the pin ticket's own coverage table did not
+record because LMX1204 joined the built set one ticket later. It is therefore
+the one corpus where **both** device-table tools answer at once, and it is where
+the `unknown` type earns its keep: its `BIAS01` / `BIAS23` pins match no lexicon
+phrase and are published `unknown` with no evidence rather than guessed into a
+category (`test_phase6_registers.py::TestFindRegisterOverMcp`).
+
+### `dsa ask` learns two routes
+
+The plan asked for pin and register questions to reach the right artifact.
+Answering "which pins are ground?" out of a paragraph would cite a real page and
+still not be the pin table; answering "what does R12 reset to?" out of section
+text would miss the value entirely, because that reset is printed in the
+register's declaration heading and not in its summary row.
+
+The routing order is now specificity, not preference:
+
+| # | Feature | Route |
+|---|---|---|
+| 1 | pin vocabulary **and** a pin the question names | `pin` |
+| 2 | register vocabulary **and** a register the question names | `register` |
+| 3 | plot vocabulary **and** a matching figure | `plot` |
+| 4 | the spec ladder resolves it | `spec` |
+| 5 | anything BM25 ranks | `search` |
+| 6 | nothing, and a path the question needed could not run | `unavailable` |
+| 7 | nothing | `none` |
+
+Three rules there are load-bearing, and each is the older rule applied one noun
+over.
+
+**Vocabulary alone routes nothing.** The lookup must also find something, which
+is the plot route's own rule and is what stops a routing technicality costing an
+answer that exists: "what is the maximum junction temperature at every pin?"
+still routes `spec`.
+
+**The two lookups are exact, not ranked.** `plots_for_terms` ranks a caption by
+overlap because a caption is prose. `A1` is not a near-miss for `A10` and `0x19`
+is not a near-miss for `0x18`, so `pins_for_terms` and `registers_for_terms` are
+ladders of exact-token rungs — designator → printed name → lexicon type, and
+printed address → acronym → published field name. An address token must carry
+the document's own hex marker (`0x…` / `…h`): `dsa regs --addr 6660` may declare
+a bare number to be an address because the caller said so, but a bare number
+inside a sentence is a number, and reading it as one would turn "which register
+resets to 0?" into a lookup of register 0.
+
+**A path that never ran routes `unavailable`, not `none`.** `pin_gap()` and
+`register_gap()` join `search_unavailable()` in `_paths_that_never_ran()`, and
+only the paths the question actually asked for are consulted — a thermal
+question is not degraded by a part that prints no register map.
+
+Measured over the four phase-4 gate corpora, every golden question asked in its
+own natural-language wording at a 3000-token budget:
+
+```
+  AD9081    12 questions   mean  280 tok   max 626 tok
+  LM741     17 questions   mean  222 tok   max 291 tok
+  QPA1003P  16 questions   mean  202 tok   max 269 tok
+  HMC520A   15 questions   mean  206 tok   max 445 tok
+  TOTAL     60 questions   60 answered   pin: 3  plot: 7  search: 18  spec: 32
+```
+
+All three `pin` packs are AD9081's, and they are the whole point of the route.
+Two name ball `A2` (`n1-pin-a2-name` and its ticket-10 ask twin) and one names
+the lexicon type `clock` (`n2-clkin-balls`), so both the designator rung and the
+type rung fire on a real datasheet; each is answered out of `pins.json` with
+that pin's own citation rather than out of whatever else shared a word. The
+`register`
+route does not appear in this table because none of the four phase-4 corpora
+publishes a register map — it is measured on LMX1204 instead, by that part's own
+`a2-ask-r12-reset` golden.
+
+Twin agreement over the same corpora is unchanged at **15/16**, with the one
+known miss (`LM741/s1-spec-supply-absmax`, an extraction limit recorded in the
+gate's own `KNOWN_ASK_MISSES`) still the only one — which is the statement that
+the new routes cost no existing answer.
+
+Two smaller honesty details ride on the answer lines themselves. A pin line
+prints its lexicon label **with the phrase that decided it**
+(`A1  VSSA — ground (lexicon: "ground")`), because `type` is the one derived
+field a pin has and invariant 8 says a derived value names its rule where a
+reader meets it. A register line prints `reset ?` for a register the document
+states none for, never a plausible `0x0`; and when a `field-terms` hit answered,
+the register's coverage gap is appended to the **verify footer**, which is
+reserved tail — so a budget can never be what removes that admission.
+
+### Goldens
+
+`card_query` joins the path markers, and it is the first one whose answer is a
+**derived** artifact. It is judged by the record rule deliberately: a row of the
+named card must carry a value printed on a page the question cites. A selector
+that quietly picked the wrong row would otherwise pass a benchmark with a
+plausible number and a valid-looking citation, which is the failure ADR 0005
+exists to prevent. Because a *computed* value has no `verbatim`, the rule reads
+values as the card renders them, so a margin or a pin count can be held to
+account at all.
+
+Four questions were added, all read off the printed pages they cite. The other
+five sets are untouched:
+
+| Part | id | Marker | Ground truth |
+|---|---|---|---|
+| AD9081 | `d1-card-power-1p8-rail` | `card_query {power, Supply rails}` | `DVDD1P8` 1.7 / 1.8 / 2.1 V, p.4 |
+| AD9081 | `d2-card-interface-jesd204c-rate` | `card_query {interface}` | JESD204C lane rate 6.0-24.75 Gbps, p.11 |
+| AD9081 | `a2-ask-ball-a2` | `ask_query {route: pin}` | the twin of `n1`: p.22 → `AVDD2` |
+| LMX1204 | `a2-ask-r12-reset` | `ask_query {route: register}` | the twin of `r3`: `R12` → `0xFFFF`, p.2 + p.11 |
+
+The two ask twins are the phase's own proof that the new routes are not a
+formatting change: each reuses an *existing* question's cited pages and verbatim
+substrings, so the designer's wording has to land the same verbatim answer on
+the same printed page, by the recorded route, inside the pack's budget.
+
+Set sizes after the ticket, all verifying at 100%:
+
+| Part | Questions | Composition |
+|---|---:|---|
+| AFE7950 | 21 | 4 text + 12 spec + 3 plot + 2 path (unchanged) |
+| AFE7953 | 13 | 3 text + 7 spec + 1 plot + 2 path (unchanged) |
+| AD9081 | 12 | 2 text + 1 spec + 3 pin + **2 card** + 1 plot + 3 path |
+| LM741 | 17 | unchanged |
+| QPA1003P | 16 | unchanged |
+| HMC520A | 15 | unchanged |
+| LMX1204 | 12 | 5 text + 4 register + 3 path |
+| **total** | **106** | |
+
+No existing question's expected answer or cited page was changed. The one
+pre-existing assertion that moved is an *enumeration*: the gate's answer-pack
+test listed the routes a golden question may take, and `pin` and `register`
+joined that list — AD9081's `What signal is on ball A2?` now routes `pin`, which
+is the ticket's point.
+
+### Contract points asserted by test
+
+- **the tool surface**: the declared tool set is exactly thirteen names; every
+  tool ships its declared response schema in `_meta`; every response validates
+  against it; every content-returning tool carries citations *and* a grade
+  (`tests/unit/test_mcp_server.py`);
+- **the declared shapes are the hits' own shapes**: `PIN_HIT_SCHEMA`,
+  `REGISTER_HIT_SCHEMA` and `CARD_ROW_SCHEMA` are asserted against a real
+  `PinHit.as_dict()`, `RegisterHit.as_dict()` and `CardRow.model_dump()`, in the
+  **SDK-free** module so the check survives a core install
+  (`tests/unit/test_mcp_responses.py`); the nested bit-range contract is proven
+  to bite on a wrong type;
+- **refusals**: a corpus with no pin table and one with no register map are
+  errors naming "establishes nothing", on the synthetic corpus and on all five
+  real ones;
+- **honesty clauses**: `field_gap` present on a field-filtered call and absent
+  otherwise; an empty card returning its `empty_reason`; `get_card` with no card
+  name listing what the build declares;
+- **the seam**: `get_card`'s rows are asserted **equal** to `Retriever.card`'s
+  own model dump, as `compare_parts`' rows are to the CLI's;
+- **routing**: each new route asserted by name, plus the four refusals — a bare
+  number is not an address, vocabulary without a hit keeps the spec answer, and
+  a corpus with no pin table (or no register map) routes `unavailable`
+  (`tests/unit/test_ask.py::TestTheDeviceTableRoutes`);
+- **the card path rule**: passes only on a cited row, fails on a wrong page, a
+  missing substring, an undeclared card, an empty card and a group that matches
+  nothing; a computed value is matchable
+  (`tests/unit/test_golden_paths.py::TestCardPathRule`);
+- **the gate**: `find_pin` / `find_register` / `get_card` driven over a real
+  in-process session against all four phase-4 corpora
+  (`test_phase4_layout_gate.py::TestMcpOverTheGateCorpora`) and against LMX1204
+  (`test_phase6_registers.py::TestFindRegisterOverMcp`), with every returned
+  card value required to carry a `derivation` and a resolvable `source`.
+
+### The phase acceptance gate, item by item
+
+The claim the plan set out to earn was *"the corpus answers schematic-capture
+and bring-up questions, and every derived number traces to a printed page."*
+
+| # | Plan's gate | Outcome |
+|---|---|---|
+| 1 | pin tables extract for all built parts **or** are honestly rejected; pin goldens at 100% | **met, with the shape the plan did not predict**: 2 of 7 parts print a machine-readable pin table (AD9081 321, LMX1204 41), HMC520A's is rejected whole with a recorded reason, and the other four print none. 3/3 pin goldens |
+| 2 | the package cross-check runs on every part, mismatches warn, at least one asserted | **met**: AD9081 states 324 and publishes 321 (asserted); LMX1204 states 40 and publishes 41, and HMC520A states 24 with nothing published — all three recorded in `derived_warnings`, none suppressing a table |
+| 3 | register summary extracts with a golden set; bit fields pass their gate or park | **met, not parked**: 35 registers per document, 4 register goldens, 232 of 232 published fields verified against the page they cite |
+| 4 | all four cards build for AFE7950 and AD9081; **every** card value resolves to a record and a printed page | **met**: 377 references over five corpora, 0 unresolvable |
+| 5 | `parse_quantity` unit tests cover every shape, including the `None` cases | **met** |
+| 6 | `dsa compare` produces a delta table and reports its unparsed population | **met**: 327 references over 139 values in 8 comparisons |
+| 7 | axis metadata `high` for ≥60% of AFE7950's 514 figures | **met**: 458/514 = **89%**, against a 60% floor |
+| 8 | all phase-5 goldens still at 100%; `pytest` offline, `ruff` clean | **met**: 106 golden questions over seven parts, none of their expected answers or cited pages changed; **1663 passing, 1 skipped**, `ruff` clean |
+
+The two items the plan got *wrong about the world* rather than about the work
+are worth naming: it assumed every built part would print a pin table (four of
+seven do not, and that is a fact about datasheets), and it assumed the register
+work might have to park (it did not).
+
+### Not built here
+
+`get_card` returns the structured card and **not** its rendered markdown. The
+markdown is the same rows a second time, and — unlike a row — it cannot be shed
+row by row, so a body the cap cannot trim would push a response over the cap
+instead of fitting inside it. A client that wants the table renders the rows, or
+reads `cards/<name>.md` from the corpus.
+
+There is no `get_pin_map` or `dump_registers` tool. Both would be the whole
+artifact in one response, which is the token bill this project exists to avoid;
+`find_pin` with no filters already returns the table, bounded and announced.
+
+And the pin route does **not** report a "pins the lexicon could not type"
+population the way the register route reports its field gap. It selects on
+`type`, which is derived, so the clause applies in principle — but `unknown` is
+itself a queryable type (`find_pin --type unknown` is how "which pins does this
+corpus not understand?" is asked), so the population is reachable rather than
+invisible. Making it a note beside every type-filtered answer is a smaller,
+later change than pretending it is not owed; it is recorded in
+`KNOWN_SHORTCOMINGS.md` with what would close it, beside the other gap this
+ticket did not close — `AGENT.md`'s tool list still names the phase-5 nine, and
+extending it means moving `PROTOCOL_VERSION`, which republishes every corpus's
+`AGENT.md` and belongs in its own ticket rather than in a phase gate.
 
 

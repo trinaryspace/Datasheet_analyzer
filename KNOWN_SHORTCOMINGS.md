@@ -352,3 +352,47 @@ a typical and a maximum get one delta, not two, because a table with two
 difference columns per part invites reading across the wrong pair — and the
 per-column numbers are all published verbatim beside it, so the second
 subtraction is a subtraction the reader can do knowing which columns it used.
+
+---
+
+## MCP surface (phase 6, ticket 10)
+
+### 1. A pin-type lookup reports no unconsidered population
+
+`find_register --field NCO_EN` and `find_plots --near-x 3.5GHz` both select on a
+**derived** value, and both say how much of the corpus they could not consider
+(`register_field_gap()`, `plot_axis_gap()`). `find_pin --type power` selects on
+a derived value too — the lexicon label — and says nothing of the kind.
+
+The reason it is a smaller gap than its two siblings is that the unconsidered
+population is *queryable*: `unknown` is a first-class pin type, so
+`find_pin --type unknown` (or `dsa pins --type unknown`) returns exactly the
+pins the lexicon could not label, each publishing an empty `type_evidence`.
+Measured: AD9081 has **10** of 321 (`TDP`/`TDN` and eight `ADCx_FDy` fast-detect
+outputs); LMX1204 leaves `BIAS01`, `BIAS23`, `MUXOUT` and `SCK` unlabelled for
+the same reason. Nothing is hidden — it is just not volunteered beside a
+filtered answer.
+
+**What would change it** is a `pin_type_gap()` beside `register_field_gap()`,
+returned as a body key on `find_pin` and printed as a `note:` line by
+`dsa pins --type`. It is a small change and was left out of the phase gate
+deliberately rather than rushed into it.
+
+### 2. `AGENT.md` does not list the tools this phase added
+
+`protocol.py` is the one place the retrieval protocol is written, and its
+"Access path 2 — MCP tools" block still names the phase-5 nine
+(`list_parts` … `ask`). `compare_parts` (ticket 09) and `find_pin` /
+`find_register` / `get_card` (ticket 10) are absent from it, so an agent working
+only from a part's `AGENT.md` or from the `datasheet-corpus` skill will not
+learn that the device tables and the design cards have tools at all. Every other
+surface — `README.md`, `AGENTS.md`, each tool's own description and its declared
+`_meta.response_schema` — does list them.
+
+**What would change it** is four names in `_mcp_block()` plus
+`scripts/write_skill.py` to regenerate the checked-in `SKILL.md`. It was held
+back because the emitted file carries `PROTOCOL_MARKER` (`v1`) as a
+publish-cache key: editing the rule text without bumping the version leaves the
+staleness undetectable, and bumping it republishes the `AGENT.md` of every
+corpus on the next build — a behaviour change to the skip gate that belongs in
+its own ticket rather than in a phase gate.

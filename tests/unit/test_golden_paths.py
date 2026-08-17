@@ -26,10 +26,15 @@ import pytest
 import yaml
 from mcp_corpus import DOC, build_part
 
-from datasheet_analyzer.evalh.citations import verify_ask_queries, verify_search_queries
+from datasheet_analyzer.evalh.citations import (
+    verify_ask_queries,
+    verify_card_queries,
+    verify_search_queries,
+)
 from datasheet_analyzer.evalh.golden import (
     load_golden,
     render_ask_query_report,
+    render_card_query_report,
     render_search_query_report,
 )
 from datasheet_analyzer.models import GoldenQuestion
@@ -60,6 +65,20 @@ def _ask(qid: str = "a1", **kwargs) -> GoldenQuestion:
         "pages": [6],
         "kind": "ask",
         "ask_query": {"route": "spec"},
+    }
+    payload.update(kwargs)
+    return GoldenQuestion.model_validate(payload)
+
+
+def _card(qid: str = "d1", **kwargs) -> GoldenQuestion:
+    """The power card's "Supply and ground pins" group: `VSSA`, two balls, p.6."""
+    payload = {
+        "id": qid,
+        "question": "Which balls are the analog ground?",
+        "expected_substrings": ["VSSA", "A1, A10"],
+        "pages": [6],
+        "kind": "derived",
+        "card_query": {"card": "power", "group": "Supply and ground pins"},
     }
     payload.update(kwargs)
     return GoldenQuestion.model_validate(payload)
@@ -206,6 +225,77 @@ class TestSearchPathRule:
         assert "Search-path verification" in text
 
 
+class TestCardPathRule:
+    """Phase 6, ticket 10: `card_query`, the first golden path whose answer is a
+    **derived** artifact.
+
+    It is judged by the record paths' own rule, deliberately: a card row must
+    carry a value printed on a page the question cites. Without that, a selector
+    that quietly picked the wrong row would pass a benchmark with a plausible
+    number and a valid-looking citation — the exact failure ADR 0005 exists to
+    prevent. What must also hold is that a card which cannot answer *says why*
+    rather than being skipped: a benchmark that silently drops its own question
+    proves nothing.
+    """
+
+    def test_a_cited_card_row_carries_the_answer(self, part):
+        (res,) = verify_card_queries([_card()], part)
+        assert res.ok
+        assert res.n_verified == res.n_records == 2
+        assert "card 'power'" in res.detail
+
+    def test_questions_without_the_marker_are_not_card_questions(self, part):
+        plain = GoldenQuestion(
+            id="q1", question="Which pins are ground?",
+            expected_substrings=["VSSA"], pages=[6],
+        )
+        assert verify_card_queries([plain], part) == []
+
+    def test_a_value_printed_on_another_page_does_not_answer(self, part):
+        (res,) = verify_card_queries([_card(pages=[99])], part)
+        assert not res.ok
+        assert res.n_records and res.n_verified == 0
+
+    def test_a_substring_no_cited_row_carries_fails(self, part):
+        (res,) = verify_card_queries(
+            [_card(expected_substrings=["VSSA", "a phrase no card prints"])], part
+        )
+        assert not res.ok
+
+    def test_a_group_narrows_to_one_card_table(self, part):
+        (res,) = verify_card_queries(
+            [_card(card_query={"card": "power", "group": "Nothing goes here"})], part
+        )
+        assert not res.ok
+        assert res.n_records == 0
+
+    def test_a_card_the_build_does_not_declare_fails_with_that_reason(self, part):
+        (res,) = verify_card_queries([_card(card_query={"card": "nope"})], part)
+        assert not res.ok
+        assert res.detail == "no card named 'nope' in this build"
+
+    def test_an_empty_card_fails_and_says_what_it_looked_for(self, part):
+        """An empty card is a valid *card* and still a failed *question*: the
+        benchmark asked for a value the corpus does not have."""
+        (res,) = verify_card_queries([_card(card_query={"card": "limits"})], part)
+        assert not res.ok
+        assert res.detail.startswith("card 'limits' is empty:")
+
+    def test_a_computed_value_is_matchable_even_though_no_page_printed_it(self, part):
+        """The pin count on the power card has no `verbatim` — it is
+        `pins_by_name+count` over two records — so a benchmark that could only
+        read verbatim cells could never hold a derived number to account."""
+        (res,) = verify_card_queries([_card(expected_substrings=["VSSA", "2"])], part)
+        assert res.ok
+
+    def test_the_report_names_every_question_and_counts_only_passes(self, part):
+        results = verify_card_queries([_card(), _card("d2", pages=[99])], part)
+        text = render_card_query_report(results)
+        assert "**1/2 passed**" in text
+        assert "Design card verification" in text
+        assert text.count("✅") == 1 and text.count("❌") == 1
+
+
 class TestShippedBenchmarks:
     """The benchmarks themselves, as data. Ticket 09 requires the two new
     paths on *every* built part; a set that ships without them would leave
@@ -233,6 +323,28 @@ class TestShippedBenchmarks:
                 assert set(q.ask_query) <= {"route"}, f"{name}/{q.id}"
             if q.search_query is not None:
                 assert set(q.search_query) <= {"query", "rank"}, f"{name}/{q.id}"
+
+    @pytest.mark.parametrize("name", BUILT_PARTS)
+    def test_every_card_question_carries_the_ground_truth_it_is_judged_by(self, name):
+        """Ticket 10's marker, checked the same way: a key the verifier does not
+        know would silently narrow the question to nothing."""
+        for q in load_golden(FIXTURES / f"golden_qa_{name}.yaml"):
+            if q.card_query is None:
+                continue
+            assert q.pages, f"{name}/{q.id}: a card question needs a cited page"
+            assert q.expected_substrings, f"{name}/{q.id}: nothing to verify"
+            assert set(q.card_query) <= {"card", "group"}, f"{name}/{q.id}"
+            assert q.card_query.get("card"), f"{name}/{q.id}: name the card"
+
+    def test_the_phase_ships_at_least_one_card_question(self):
+        """A design card is the phase's headline derived artifact; shipping it
+        with no benchmark question anywhere would leave that claim unproven."""
+        carried = {
+            name
+            for name in BUILT_PARTS
+            if any(q.card_query for q in load_golden(FIXTURES / f"golden_qa_{name}.yaml"))
+        }
+        assert carried, "no built part carries a card_query golden"
 
     @pytest.mark.parametrize("name", BUILT_PARTS)
     def test_the_yaml_on_disk_is_what_the_loader_sees(self, name):

@@ -98,6 +98,26 @@ class ProjectRetriever:
             for hit in member.pins(pin=pin, name=name, type=type, q=q)
         ]
 
+    def pins_for_terms(self, text: str, *, limit: int = 6) -> list[PinHit]:
+        """Every member's named-pin ladder, run independently, in member order.
+
+        Each part resolves the question's words against its *own* pin table, for
+        the same reason `specs()` runs each part's own ladder: a rung is a
+        statement about one corpus's vocabulary, and `A1` on one device is not
+        `A1` on another. The caller sees both, each hit naming its part.
+        """
+        return [
+            hit for member in self.members for hit in member.pins_for_terms(text, limit=limit)
+        ]
+
+    def registers_for_terms(self, text: str, *, limit: int = 4) -> list[RegisterHit]:
+        """Every member's named-register ladder, run independently, in member order."""
+        return [
+            hit
+            for member in self.members
+            for hit in member.registers_for_terms(text, limit=limit)
+        ]
+
     def pin_gap(self) -> str:
         """`""` when some member has a pin table, else why none has.
 

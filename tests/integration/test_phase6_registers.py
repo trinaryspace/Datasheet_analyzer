@@ -498,6 +498,94 @@ class TestBitFieldLookup:
         assert payload["fields_unaccounted_for"] == []
 
 
+class TestFindRegisterOverMcp:
+    """Phase 6, ticket 10: the register map over the MCP transport.
+
+    LMX1204 is the only built part that publishes one, so this is where the
+    `find_register` tool meets a real register map — driven over the same
+    in-process session a client uses, with no subprocess and no port. What is
+    asserted is the artifact, not the plumbing: the address resolving by parsed
+    value, the reset citing the page it was read off, the bit fields arriving
+    with the width they were checked against, and the coverage gap travelling
+    with a field-filtered call.
+    """
+
+    @pytest.fixture
+    def server(self, gate, tmp_path_factory):
+        pytest.importorskip("mcp", reason="the MCP surface needs the [mcp] extra")
+        from datasheet_analyzer.mcp_server import server as S
+
+        settings = Settings(
+            parts_dir=gate.part_dir.parent,
+            cache_dir=gate.part_dir.parent / ".cache",
+            projects_dir=tmp_path_factory.mktemp("mcp-projects-lmx1204"),
+        ).resolve()
+        return S.build_server(settings)
+
+    def test_an_address_resolves_by_value_and_the_hit_is_cited(self, server):
+        from mcp_session import call, payload_of
+
+        from datasheet_analyzer.mcp_server import responses as R
+
+        for addr in ("0x19", "0x19".lower(), "25"):
+            payload = payload_of(call(server, "find_register", part=PART, addr=addr))
+            assert R.validate_response(payload, "find_register") == [], addr
+            assert payload["error"] == "", addr
+            # both documents of this part print the same register map
+            assert {hit["name"] for hit in payload["hits"]} == {"R25"}, addr
+            assert all("p." in hit["citation"] for hit in payload["hits"]), addr
+
+    def test_the_bit_fields_arrive_with_what_makes_them_checkable(self, server):
+        from mcp_session import call, payload_of
+
+        payload = payload_of(call(server, "find_register", part=PART, name="R25"))
+        hit = payload["hits"][0]
+        assert hit["width"] == 16
+        field = next(f for f in hit["fields"] if f["name"] == "CLK_MUX")
+        assert field["bits"]["hi"] == 2 and field["bits"]["lo"] == 0
+        assert field["access"] and field["page"]
+        assert hit["reset"]["verbatim"] and hit["reset"]["page"]
+
+    def test_a_field_filtered_call_reports_the_registers_publishing_none(self, server):
+        from mcp_session import call, payload_of
+
+        payload = payload_of(call(server, "find_register", part=PART, field="CLK_MUX"))
+        assert [hit["name"] for hit in payload["hits"]] == ["R25", "R25"]
+        assert "cannot establish that a field does not exist" in payload["field_gap"]
+
+    def test_the_pin_tool_answers_this_part_too_and_cites_every_hit(self, server):
+        """LMX1204 is the *second* built part whose pin table reconstructs — 41
+        pins off the datasheet, beside the 70 registers off both documents — so
+        it is the one corpus where both device-table tools answer at once.
+
+        `unknown` is asserted deliberately: this part's `BIASxx` pins match no
+        lexicon phrase, and a pin the corpus does not understand must read as
+        `unknown` with no evidence rather than as a supply.
+        """
+        from mcp_session import call, payload_of
+
+        from datasheet_analyzer.mcp_server import responses as R
+
+        payload = payload_of(call(server, "find_pin", part=PART))
+        assert R.validate_response(payload, "find_pin") == []
+        assert payload["error"] == ""
+        assert payload["total"] == 41
+        assert all("p." in hit["citation"] for hit in payload["hits"])
+        clock = payload_of(call(server, "find_pin", part=PART, name="CLKIN"))
+        # the differential clock input pair, plus its own supply pin — `name` is
+        # a substring filter, so `VCC_CLKIN` legitimately comes back too and the
+        # lexicon labels all three on the phrase `clkin`
+        assert {hit["pin"] for hit in clock["hits"]} == {"4", "6", "7"}
+        assert {hit["name"] for hit in clock["hits"]} == {
+            "CLKIN_P", "CLKIN_N", "VCC_CLKIN"
+        }
+        assert all(hit["type"] == "clock" for hit in clock["hits"])
+        assert all(hit["type_evidence"] == 'name:"clkin"' for hit in clock["hits"])
+        unknown = payload_of(call(server, "find_pin", part=PART, type="unknown"))
+        assert unknown["hits"], "a pin the lexicon cannot type must stay unknown"
+        assert all(hit["type_evidence"] == "" for hit in unknown["hits"])
+
+
 class TestGoldenSet:
     """The ticket's own gate: the golden questions verify at 100%."""
 

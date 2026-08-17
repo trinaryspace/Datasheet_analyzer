@@ -145,6 +145,7 @@ def _cmd_verify(args: argparse.Namespace) -> int:
     from datasheet_analyzer.evalh.citations import (
         summarize,
         verify_ask_queries,
+        verify_card_queries,
         verify_pin_queries,
         verify_plot_queries,
         verify_questions,
@@ -156,6 +157,7 @@ def _cmd_verify(args: argparse.Namespace) -> int:
         estimate_lookup_tokens,
         load_golden,
         render_ask_query_report,
+        render_card_query_report,
         render_pin_query_report,
         render_plot_query_report,
         render_reg_query_report,
@@ -234,6 +236,17 @@ def _cmd_verify(args: argparse.Namespace) -> int:
         print()
         print(render_reg_query_report(reg_results))
         if any(not r.ok for r in reg_results):
+            failed = True
+
+    # Design-card verification (Phase 6, ticket 10) on the same terms again —
+    # and it is the one table whose subject is a *derived* artifact, which is
+    # why it is judged by the record rule: a card value must sit on a page the
+    # question cites, or a wrong selector would pass with a plausible number.
+    card_results = verify_card_queries(questions, part_dir)
+    if card_results:
+        print()
+        print(render_card_query_report(card_results))
+        if any(not r.ok for r in card_results):
             failed = True
 
     # Ask- and search-path verification (Phase 5, ticket 09) run on the same

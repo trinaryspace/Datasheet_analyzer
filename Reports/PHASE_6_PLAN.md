@@ -1,7 +1,19 @@
 # PHASE 6 PLAN — Design-Time Content
 
-**Status: planned.** Execution contract for `.scratch/design-time-content/`.
-Superseded on landing by `Reports/PHASE_6_REPORT.md`.
+**Status: superseded by `Reports/PHASE_6_REPORT.md`** (ticket 10, the phase
+gate). This file is kept as the completed execution contract — what was
+planned, and what was deliberately kept out — exactly as the phase 2–5 plans
+are. Everything measured lives in the report; where the two disagree, the
+report is what shipped.
+
+Two departures from the plan below are worth naming here rather than leaving
+the reader to diff: `PIPELINE_VERSION` moved to **0.5.0** rather than 0.4.0
+(the register-map routing change landed alongside another cache-invalidating
+change), and the register work was **not** parked — ticket 05 shipped the
+summary table and ticket 06 shipped bit fields against a real document's
+accuracy gate, so the "park with a `KNOWN_SHORTCOMINGS.md` entry" branch of
+§4(b) was not taken. What *is* recorded in `KNOWN_SHORTCOMINGS.md` are the
+measured limits of what shipped.
 
 **Depends on Phase 5** (retrieval core, confidence, MCP surface, alias
 lexicon). New artifacts here are surfaced through the seams Phase 5 built.

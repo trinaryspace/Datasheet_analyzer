@@ -30,7 +30,12 @@ from datasheet_analyzer.cards.lexicon import (
     clear_card_lexicon_cache,
     load_card_lexicon,
 )
-from datasheet_analyzer.cards.render import BANNER_PREFIX, banner, render_card
+from datasheet_analyzer.cards.render import (
+    BANNER_PREFIX,
+    banner,
+    render_card,
+    row_citations,
+)
 
 __all__ = [
     "BANNER_PREFIX",
@@ -56,4 +61,5 @@ __all__ = [
     "clear_card_lexicon_cache",
     "load_card_lexicon",
     "render_card",
+    "row_citations",
 ]

@@ -139,11 +139,19 @@ the path** — classified by feature hits in order:
 
 | Feature in the question | Route |
 |---|---|
-| the alias ladder resolves it to spec records | `spec` |
+| pin vocabulary (`pin`, `ball`, `pinout`, `terminal`) **and** a pin the question names — a designator, a printed pin name, or a lexicon type (`ground`) | `pin` |
+| register vocabulary (`register`, `address`, `offset`, `reset`, `bit field`) **and** a register the question names — a printed address (`0x19`), an acronym (`R25`), or a bit-field name | `register` |
 | plot vocabulary (`plot`, `curve`, `vs`, `versus`, `graph`, `figure`, `diagram`) **and** a figure whose caption uses the question's words | `plot` |
+| the alias ladder resolves it to spec records | `spec` |
 | anything the full-text index ranks | `search` |
-| nothing, and this corpus has no current full-text index | `unavailable` — rebuild to enable search (exit 2, as `dsa search` does) |
+| nothing, and a path this question needed could not run (no full-text index, no pin table, no register map) | `unavailable` — rebuild or accept that nothing was established (exit 2, as `dsa search` does) |
 | nothing | `none` — an explicit no-match plus nearest candidates, never a guess |
+
+The device-table routes exist because "which pins are ground?" has an
+*artifact* answer: `pins.json` holds the rows with their own citations, and
+answering out of a paragraph would cite a real page and still not be the pin
+table. They fire only when the question names an entry the corpus actually
+publishes, so vocabulary alone never costs an answer that exists.
 
 The `unavailable` route is why an empty full-text result is never reported as
 an answer: `search()` returns nothing both when nothing matched and when there
@@ -567,7 +575,10 @@ On macOS/Linux the command is `/path/to/repo/.venv/bin/dsa`.
 | `search` | part or project | BM25 hits, each cited by construction |
 | `find_spec` | part or project | spec records through the alias ladder |
 | `read_section` | part | one section verbatim, bounded by `max_tokens` |
-| `find_plots` | part or project | the plot catalog, filtered |
+| `find_plots` | part or project | the plot catalog, filtered (caption, section, tags, axes) |
+| `find_pin` | part or project | pins by designator, printed name or lexicon type |
+| `find_register` | part or project | registers by address, acronym or bit-field name |
+| `get_card` | part | one design card, every value in its provenance envelope |
 | `get_figure` | part | one figure **as an image content block** |
 | `compare_parts` | a list of parts | one parameter or one card, side by side, with SI deltas |
 | `ask` | part or project | one cited, budget-bounded answer pack |
@@ -582,6 +593,12 @@ Every response carries citations and confidence, declares its own JSON schema
 names the setting. `get_figure`'s image block is atomic and is not trimmed:
 truncating base64 makes a corrupt PNG, not a shorter one, so the cap governs
 the JSON that cites it and the payload reports the image's byte size.
+
+`find_pin` and `find_register` **refuse** rather than answer nothing on a
+corpus that publishes no pin table or no register map: an empty list there
+would read as "this device has no such pin", which is a claim the retrieval
+never earned. `find_register` filtered by `field` also reports how many
+registers publish no bit fields at all, for the same reason.
 
 ### Add companion documents
 
@@ -628,8 +645,9 @@ Token counts everywhere are `chars/4` (see `tokens.py`).
 ## Development
 
 ```bash
-python -m pytest tests/ -q    # 868 tests, ~90 s, fully offline (the
-                              # phase-4 gate builds four real PDFs)
+python -m pytest tests/ -q    # 1664 tests, ~6 min, fully offline (the
+                              # phase-4 gate builds four real PDFs and the
+                              # phase-6 register gate builds two more)
 python -m ruff check src tests
 ```
 
@@ -677,6 +695,22 @@ for either, and fails the command when one fails. An ask-path question also
 fails when its pack goes over budget, and a search-path question fails with
 `search unavailable` on a corpus with no current index — a path that never
 ran establishes nothing.
+
+Phase 6 added three more markers on the same terms: `pin_query` (`dsa pins`),
+`reg_query` (`dsa regs`) and `card_query` (`dsa card`). The last is the first
+whose answer is a **derived** artifact, and it is judged by exactly the rule
+the record markers use — a card row must carry a value printed on a page the
+question cites — so a selector that quietly picked the wrong row fails the
+benchmark instead of passing it with a plausible number:
+
+```yaml
+- id: d1-card-power-1p8-rail
+  question: What voltage range does the 1.8 V supply rail accept?
+  expected_substrings: ["DVDD1P8", "1.7", "1.8", "2.1"]
+  pages: [4]
+  kind: derived
+  card_query: {card: "power", group: "Supply rails"}
+```
 
 ## Caveats
 
@@ -735,10 +769,17 @@ ran establishes nothing.
 
 - `AGENTS.md` — architecture contract, invariants, module map
 - `PHASE_1_REPORT.md` / `PHASE_2_REPORT.md` / `PHASE_3_REPORT.md` /
-  `PHASE_4_REPORT.md` / `PHASE_5_REPORT.md` — measured results per phase (all
-  five phases are shipped; PHASE 4 covers the vendor-neutral layout core +
-  four-part gate, PHASE 5 the agent-native access surface: retrieval core,
-  aliases, search, confidence, `ask`, projects, MCP, `AGENT.md`)
+  `PHASE_4_REPORT.md` / `PHASE_5_REPORT.md` / `Reports/PHASE_6_REPORT.md` —
+  measured results per phase (all six phases are shipped; PHASE 4 covers the
+  vendor-neutral layout core + four-part gate, PHASE 5 the agent-native access
+  surface: retrieval core, aliases, search, confidence, `ask`, projects, MCP,
+  `AGENT.md`, and PHASE 6 the design-time content: the numeric layer, pins,
+  registers and bit fields, design cards, the plot axis catalog and cross-part
+  compare — its report opens with what is parked and what is not)
 - `PHASE_2_PLAN.md` / `PHASE_3_PLAN.md` / `PHASE_4_PLAN.md` /
-  `PHASE_5_PLAN.md` — completed execution contracts, superseded by their
-  reports
+  `PHASE_5_PLAN.md` / `Reports/PHASE_6_PLAN.md` — completed execution
+  contracts, superseded by their reports
+- `KNOWN_SHORTCOMINGS.md` — the other side of that ledger: measured limits of
+  what ships, each with the reason it stands
+- `docs/adr/` — the decisions, including ADR 0005 (deterministic derived
+  artifacts), which is invariant 8

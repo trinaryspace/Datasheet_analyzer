@@ -29,7 +29,13 @@ from datasheet_analyzer.retrieve.results import (
     SectionHit,
     SpecHit,
 )
-from datasheet_analyzer.retrieve.retriever import PLOT_VOCABULARY, Retriever, gap_axis
+from datasheet_analyzer.retrieve.retriever import (
+    PIN_VOCABULARY,
+    PLOT_VOCABULARY,
+    REGISTER_VOCABULARY,
+    Retriever,
+    gap_axis,
+)
 from datasheet_analyzer.retrieve.search import ScoredSection, score_sections
 
 # Imported after `retriever`: `pack` composes `Retriever`, which reaches back
@@ -37,7 +43,9 @@ from datasheet_analyzer.retrieve.search import ScoredSection, score_sections
 from datasheet_analyzer.retrieve.pack import (  # isort: skip
     ANSWER_PACK_SCHEMA,
     ROUTE_NONE,
+    ROUTE_PIN,
     ROUTE_PLOT,
+    ROUTE_REGISTER,
     ROUTE_SEARCH,
     ROUTE_SPEC,
     ROUTE_UNAVAILABLE,
@@ -54,10 +62,14 @@ __all__ = [
     "ANSWER_PACK_SCHEMA",
     "CONFIDENCE_UNKNOWN",
     "INDEX_FILENAME",
+    "PIN_VOCABULARY",
     "PLOT_VOCABULARY",
+    "REGISTER_VOCABULARY",
     "ROUTES",
     "ROUTE_NONE",
+    "ROUTE_PIN",
     "ROUTE_PLOT",
+    "ROUTE_REGISTER",
     "ROUTE_SEARCH",
     "ROUTE_SPEC",
     "ROUTE_UNAVAILABLE",

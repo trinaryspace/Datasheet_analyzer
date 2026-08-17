@@ -50,8 +50,8 @@ from datasheet_analyzer.tokens import count_tokens
 # claim about what a datasheet says, so an empty citation list is the honest
 # answer there rather than a manufactured one.
 CITING_TOOLS = (
-    "search", "find_spec", "find_plots", "read_section", "get_figure", "ask",
-    "compare_parts",
+    "search", "find_spec", "find_plots", "find_pin", "find_register", "get_card",
+    "read_section", "get_figure", "ask", "compare_parts",
 )
 
 #: One representative call per tool — the whole surface, in one list, so a cap
@@ -64,6 +64,9 @@ ALL_CALLS = [
     ("find_spec", {"part": "TEST", "name": "supply"}),
     ("read_section", {"part": "TEST", "ref": "4.3"}),
     ("find_plots", {"part": "TEST"}),
+    ("find_pin", {"part": "TEST", "type": "ground"}),
+    ("find_register", {"part": "TEST", "addr": "0x19"}),
+    ("get_card", {"part": "TEST", "card": "power"}),
     ("get_figure", {"part": "TEST", "file": FIGURE}),
     ("ask", {"part": "TEST", "question": "max junction temperature"}),
     ("compare_parts", {"parts": ["TEST", "OTHER"], "name": "junction temperature"}),
@@ -124,6 +127,8 @@ class TestEveryToolOverTheMemoryTransport:
             "read_section", "find_plots", "get_figure", "ask",
             # phase 6, ticket 09 — the one tool whose scope is a list of parts
             "compare_parts",
+            # phase 6, ticket 10 — the two device tables and the design card
+            "find_pin", "find_register", "get_card",
         }
 
     def test_every_tool_ships_its_declared_response_schema(self, server):
@@ -143,6 +148,10 @@ class TestEveryToolOverTheMemoryTransport:
             ("find_spec", {"part": "TEST", "name": "junction temperature"}),
             ("read_section", {"part": "TEST", "ref": "4.3"}),
             ("find_plots", {"part": "TEST", "q": "Fullscale"}),
+            ("find_pin", {"part": "TEST", "type": "ground"}),
+            ("find_register", {"part": "TEST", "field": "CLK_MUX"}),
+            ("get_card", {"part": "TEST", "card": "power"}),
+            ("get_card", {"part": "TEST"}),
             ("get_figure", {"part": "TEST", "file": FIGURE}),
             ("ask", {"part": "TEST", "question": "max junction temperature"}),
             (
@@ -171,6 +180,8 @@ class TestEveryToolOverTheMemoryTransport:
             ("find_spec", {"part": "TEST", "name": "junction temperature"}, "hits"),
             ("find_plots", {"part": "TEST", "q": "Fullscale"}, "hits"),
             ("search", {"part": "TEST", "query": "sysref setup"}, "hits"),
+            ("find_pin", {"part": "TEST", "type": "ground"}, "hits"),
+            ("find_register", {"part": "TEST", "addr": "0x19"}, "hits"),
         ],
     )
     def test_every_hit_carries_a_confidence_grade(self, server, tool, arguments, where):
@@ -390,6 +401,134 @@ class TestFindPlotsAxisFilters:
         assert by_id["4.12.1-f002"]["axis_confidence"] == "high"
         assert by_id["4.12.1-f001"]["axis_confidence"] == "low"
         assert by_id["4.12.1-f001"]["axes"] is None
+
+
+# --- the device tables and the design card over the wire ----------------------
+
+
+class TestDeviceTableAndCardTools:
+    """Phase 6, ticket 10: `find_pin`, `find_register`, `get_card`.
+
+    Three tools whose whole point is that they hand back an *artifact* rather
+    than prose, so what is asserted here is the artifact's honesty: the exact
+    designator rule, the derived label travelling with the evidence that decided
+    it, the address resolving by parsed value, the absent reset staying absent,
+    the bit-field gap being reported, and a card value arriving in its
+    provenance envelope with the page it was printed on.
+    """
+
+    def test_find_pin_is_exact_on_a_designator(self, server):
+        """`A1` is ball A1 and never A10 as well — a near-miss on a pin is a
+        wiring error, not a disappointing search result."""
+        payload = payload_of(call(server, "find_pin", part="TEST", pin="A1"))
+        assert [hit["pin"] for hit in payload["hits"]] == ["A1"]
+        assert payload["hits"][0]["citation"] == "§4.3, p.6"
+        assert payload["hits"][0]["matched_via"] == "pin"
+
+    def test_a_pin_type_travels_with_the_phrase_that_decided_it(self, server):
+        """`type` is the one derived field a pin has, so invariant 8 says the
+        rule that produced it must be readable in the same object."""
+        payload = payload_of(call(server, "find_pin", part="TEST", type="ground"))
+        assert [hit["pin"] for hit in payload["hits"]] == ["A1", "A10"]
+        assert all(hit["type"] == "ground" for hit in payload["hits"])
+        assert all(hit["type_evidence"] == "ground" for hit in payload["hits"])
+
+    def test_a_corpus_with_no_pin_table_refuses_instead_of_answering_nothing(
+        self, tmp_path
+    ):
+        """An empty list would read as "this datasheet has no such pin"; the
+        corpus never looked, so the call is an error that says so."""
+        build_part(tmp_path / "parts" / "BARE", with_device_tables=False)
+        server = S.build_server(empty_settings(tmp_path))
+        pins = payload_of(call(server, "find_pin", part="BARE", pin="A1"))
+        assert pins["hits"] == []
+        assert "establishes nothing" in pins["error"]
+        assert R.validate_response(pins, "find_pin") == []
+        # …and its register twin, which refuses for the same reason.
+        regs = payload_of(call(server, "find_register", part="BARE", addr="0x19"))
+        assert regs["hits"] == []
+        assert "establishes nothing" in regs["error"]
+        assert R.validate_response(regs, "find_register") == []
+
+    def test_find_register_resolves_an_address_by_its_parsed_value(self, server):
+        """`0x19`, `0x19` in lower case and `25` are one question."""
+        seen = []
+        for addr in ("0x19", "0x19".lower(), "25"):
+            payload = payload_of(call(server, "find_register", part="TEST", addr=addr))
+            assert len(payload["hits"]) == 1, addr
+            seen.append(payload["hits"][0]["id"])
+        assert seen == ["reg_2", "reg_2", "reg_2"]
+
+    def test_a_register_the_document_states_no_reset_for_publishes_none(self, server):
+        """`null`, never a plausible `0x0` — the absence is the reading."""
+        payload = payload_of(call(server, "find_register", part="TEST", name="R0"))
+        hit = payload["hits"][0]
+        assert hit["reset"] is None
+        assert hit["fields"] == []
+        assert hit["fields_reason"]
+
+    def test_a_published_field_set_carries_what_makes_it_checkable(self, server):
+        payload = payload_of(call(server, "find_register", part="TEST", name="R25"))
+        hit = payload["hits"][0]
+        assert hit["reset"]["verbatim"] == "0x0211"
+        assert hit["reset"]["page"] == 6
+        assert hit["width"] == 16
+        assert hit["fields"][0]["name"] == "CLK_MUX"
+        assert hit["fields"][0]["bits"] == {
+            "verbatim": "2:0", "hi": 2, "lo": 0, "derivation": "parse_bit_range"
+        }
+        assert hit["fields_unaccounted_for"] == ["15:3"]
+
+    def test_a_bit_field_filter_reports_the_registers_that_publish_none(self, server):
+        """The honesty clause for a filter on a derived value: without it, an
+        empty `field` result would read as "this device has no such bit field"."""
+        payload = payload_of(call(server, "find_register", part="TEST", field="CLK_MUX"))
+        assert [hit["name"] for hit in payload["hits"]] == ["R25"]
+        assert "1 of 2 registers" in payload["field_gap"]
+        assert "cannot establish that a field does not exist" in payload["field_gap"]
+
+    def test_a_lookup_that_filters_on_no_field_owes_no_gap(self, server):
+        payload = payload_of(call(server, "find_register", part="TEST", name="R25"))
+        assert payload["field_gap"] == ""
+
+    def test_get_card_returns_the_card_the_cli_returns(self, server, settings):
+        payload = payload_of(call(server, "get_card", part="TEST", card="power"))
+        direct = Retriever.for_part(settings.parts_dir / "TEST").card("power")
+        assert payload["rows"] == direct.model_dump(mode="json")["rows"]
+        assert payload["card"]["card"] == "power"
+        assert "rows" not in payload["card"], "rows are hoisted, never duplicated"
+
+    def test_every_card_value_arrives_in_its_provenance_envelope(self, server):
+        payload = payload_of(call(server, "get_card", part="TEST", card="power"))
+        value = payload["rows"][0]["values"]["pins"]
+        assert value["page"] == 6
+        assert value["derivation"] == "pins_by_name+count"
+        assert value["source"], "a derived value with no source is untraceable"
+        assert payload["citations"] == ["§4.3, p.6"]
+
+    def test_an_empty_card_is_a_valid_card_and_says_what_it_looked_for(self, server):
+        payload = payload_of(call(server, "get_card", part="TEST", card="limits"))
+        assert payload["error"] == ""
+        assert payload["rows"] == []
+        assert payload["card"]["empty_reason"]
+        assert R.validate_response(payload, "get_card") == []
+
+    def test_no_card_named_lists_the_cards_this_build_declares(self, server):
+        payload = payload_of(call(server, "get_card", part="TEST"))
+        assert payload["card"] is None
+        assert payload["names"] == ["power", "thermal", "interface", "limits"]
+        assert payload["error"] == ""
+
+    def test_a_card_name_that_does_not_exist_is_an_error_that_lists_them(self, server):
+        payload = payload_of(call(server, "get_card", part="TEST", card="nope"))
+        assert "no card named" in payload["error"]
+        assert payload["names"], "a typo must be answerable without a second call"
+
+    def test_a_project_scoped_pin_lookup_names_the_part_each_hit_came_from(self, server):
+        payload = payload_of(
+            call(server, "find_pin", project="rf-frontend", type="ground")
+        )
+        assert {hit["part"] for hit in payload["hits"]} == {"TEST", "OTHER"}
 
 
 # --- the image path ----------------------------------------------------------

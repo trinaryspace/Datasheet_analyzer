@@ -11,9 +11,10 @@ comparison that is immune to dash/space/ligature differences between the
 HTML source and PDF text layer.
 
 Golden questions carrying a `spec_query` / `plot_query` / `pin_query` /
-`reg_query` are verified here too (`verify_spec_queries` /
+`reg_query` / `card_query` are verified here too (`verify_spec_queries` /
 `verify_plot_queries` / `verify_pin_queries`, phase 6 ticket 04 /
-`verify_reg_queries`, ticket 05), against the retrieval core.
+`verify_reg_queries`, ticket 05 / `verify_card_queries`, ticket 10), against
+the retrieval core.
 That work used to sit inline in `cli.py`; retrieval and its pass/fail rules
 belong behind the seam, and the CLI now only renders the results.
 
@@ -35,6 +36,7 @@ from pathlib import Path
 import yaml
 
 from datasheet_analyzer.models import (
+    CardRow,
     GoldenQuestion,
     PinRecord,
     RegisterRecord,
@@ -368,6 +370,92 @@ def _register_fields(record: RegisterRecord) -> str:
         f"{record.address.verbatim} {record.address.value} {record.name} "
         f"{record.access} {record.description} "
         f"{reset.verbatim if reset else ''} {reset.value if reset else ''} {bits}"
+    )
+
+
+def verify_card_queries(
+    questions: list[GoldenQuestion], part_dir: Path
+) -> list[QueryResult]:
+    """Design-card verification for every `card_query` golden (ticket 10).
+
+    The first golden path whose answer is a **derived** artifact rather than an
+    extracted record, and it is deliberately judged by the *same* rule the
+    record paths are judged by: at least one row of the named card must hold a
+    value printed on a page the question cites, and every expected substring
+    must appear on one of those *cited* rows. That is what makes a card
+    benchmark meaningful — a selector that quietly picked the wrong row would
+    otherwise ship a plausible number with a valid-looking citation, which is
+    the failure ADR 0005 exists to prevent.
+
+    A value is matched on the text it *publishes*: the row's printed identity
+    and note, each value's verbatim cell, and — for a **computed** value, which
+    has no verbatim because no page printed it — the number and SI unit the card
+    renders. `{group: …}` narrows to one card table, for a card whose groups
+    print on different pages.
+
+    A card the build does not declare fails with that reason rather than being
+    skipped: a benchmark that silently drops its own question proves nothing.
+    """
+    retriever = Retriever.for_part(part_dir)
+    results: list[QueryResult] = []
+    for q in questions:
+        if not q.card_query:
+            continue
+        name = (q.card_query.get("card") or "").strip()
+        group = (q.card_query.get("group") or "").strip()
+        card = retriever.card(name)
+        if card is None:
+            results.append(
+                QueryResult(
+                    question=q, ok=False,
+                    detail=f"no card named {name!r} in this build",
+                )
+            )
+            continue
+        rows = [r for r in card.rows if not group or r.group == group]
+        cited = [r for r in rows if _card_row_pages(r) & set(q.pages)]
+        ok = bool(cited) and all(
+            any(contains(_card_row_text(r), sub) for r in cited)
+            for sub in q.expected_substrings
+        )
+        detail = f"{len(cited)} cited row(s) of {len(rows)} on card {card.card!r}"
+        if not rows:
+            detail = f"card {card.card!r} is empty: {card.empty_reason}"
+        results.append(
+            QueryResult(
+                question=q, ok=ok, n_records=len(rows), n_verified=len(cited),
+                detail=detail,
+            )
+        )
+    return results
+
+
+def _card_row_pages(row: CardRow) -> set[int]:
+    """The printed pages a row's values were read off — never the row's own.
+
+    A limits row holds two values from two tables pages apart, so "the page this
+    row cites" is not a single number and a golden may cite either of them.
+    """
+    return {value.page for value in row.values.values() if value.page is not None}
+
+
+def _card_row_text(row: CardRow) -> str:
+    """Everything one card row publishes that a golden substring may match.
+
+    The printed identity, the lexicon selector that put the row on the card, its
+    flags and note, and every value — as the page printed it, or, for a value
+    computed by a named rule, as the card renders it (`24.7 V *(derived)*` is
+    rendered `24.7 V` here). A computed value has no verbatim by design, and a
+    benchmark that could not see one could not hold a margin to account.
+    """
+    printed = []
+    for value in row.values.values():
+        if value.verbatim:
+            printed.append(value.verbatim)
+        elif value.value_si is not None:
+            printed.append(f"{value.value_si:g} {value.unit_si}".strip())
+    return " ".join(
+        [row.label, row.detail, row.group, row.selector, row.note, *row.flags, *printed]
     )
 
 

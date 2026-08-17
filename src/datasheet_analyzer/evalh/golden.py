@@ -124,6 +124,16 @@ def render_reg_query_report(results: list[QueryResult]) -> str:
     )
 
 
+def render_card_query_report(results: list[QueryResult]) -> str:
+    """Design-card verification table (phase 6, ticket 10; runs whenever a golden
+    set carries `card_query` questions). The detail column is the verifier's own
+    sentence — how many of the card's rows the question actually cites — for the
+    same reason the pin and register tables use one."""
+    return _query_report(
+        "Design card verification", results, "card_query", lambda r: r.detail
+    )
+
+
 def render_ask_query_report(results: list[QueryResult]) -> str:
     """Ask-path verification table (ticket 09; runs whenever a golden set
     carries `ask_query` questions). The detail column is the verifier's own

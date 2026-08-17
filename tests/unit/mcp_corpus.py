@@ -19,13 +19,21 @@ from pathlib import Path
 from datasheet_analyzer.config import PIPELINE_VERSION, Settings
 from datasheet_analyzer.models import (
     AxisScale,
+    BitRange,
     Confidence,
     DocType,
+    PinRecord,
+    PinSet,
+    PinType,
     PlotRecord,
     PlotSet,
     Project,
     ProjectMember,
     RawDocument,
+    RegisterField,
+    RegisterRecord,
+    RegisterSet,
+    RegisterWord,
     SectionNode,
     SourceDocument,
     SpecRecord,
@@ -159,8 +167,105 @@ def _plots(part: str) -> PlotSet:
     )
 
 
-def build_part(part_dir: Path, *, with_figure: bool = True) -> Path:
-    """A structurally real corpus: sections, specs, plots, search index."""
+def _pins(part: str) -> PinSet:
+    """A three-pin table: one ground, one supply, one clock (ticket 10).
+
+    Small on purpose and shaped for the two things a pin lookup must separate —
+    an exact designator (`A1` is not `A10`) and a lexicon **type** (`ground`) —
+    with `type_evidence` on every classified record, because `type` is the one
+    derived field a pin has and invariant 8 says a derived value names its rule.
+    `B1` is deliberately typed `unknown` with no evidence: a pin the lexicon did
+    not understand must never read as a supply.
+    """
+    return PinSet(
+        schema_version="1",
+        part_number=part,
+        doc_hash=DOC_HASH,
+        pins=[
+            PinRecord(
+                id="pin_1", pin="A1", pin_verbatim="A1, A10", name="VSSA",
+                type=PinType.GROUND, type_evidence="ground", direction="—",
+                description="Analog ground", section="4.3", page=6,
+                row_verbatim=["A1, A10", "VSSA", "—", "Analog ground"],
+                confidence=Confidence.HIGH,
+            ),
+            PinRecord(
+                id="pin_2", pin="A10", pin_verbatim="A1, A10", name="VSSA",
+                type=PinType.GROUND, type_evidence="ground", direction="—",
+                description="Analog ground", section="4.3", page=6,
+                row_verbatim=["A1, A10", "VSSA", "—", "Analog ground"],
+                confidence=Confidence.HIGH,
+            ),
+            PinRecord(
+                id="pin_3", pin="B1", pin_verbatim="B1", name="VDD1P8",
+                type=PinType.POWER, type_evidence="1.8v supply", direction="I",
+                description="1.8 V supply input", section="4.3", page=6,
+                row_verbatim=["B1", "VDD1P8", "I", "1.8 V supply input"],
+                confidence=Confidence.MEDIUM,
+            ),
+        ],
+        stated_count=3,
+    )
+
+
+def _registers(part: str) -> RegisterSet:
+    """A two-register map, one of them carrying a validated bit-field set.
+
+    R25 states a reset and publishes fields; R0 states neither, which is the
+    pair every honesty rule here needs: `reset: null` rather than a plausible
+    zero, and a `fields_reason` a caller can tell apart from "this device has no
+    such field".
+    """
+    return RegisterSet(
+        schema_version="2",
+        part_number=part,
+        doc_hash=DOC_HASH,
+        registers=[
+            RegisterRecord(
+                id="reg_1", address=RegisterWord(verbatim="0x00", value=0),
+                name="R0", description="Soft reset", section="4.3", page=6,
+                confidence=Confidence.HIGH,
+                fields_reason="no field table is printed for this register",
+                fields_confidence=Confidence.UNKNOWN,
+            ),
+            RegisterRecord(
+                id="reg_2", address=RegisterWord(verbatim="0x19", value=25),
+                name="R25", description="Clock mux control", section="4.3", page=6,
+                confidence=Confidence.HIGH,
+                reset=RegisterWord(
+                    verbatim="0x0211", value=529, page=6,
+                    evidence="R25 Register (Offset = 0x19) [Reset = 0x0211]",
+                    derivation="declaration_heading",
+                ),
+                width=16, width_evidence="0x0211", width_derivation="register_width",
+                fields=[
+                    RegisterField(
+                        name="CLK_MUX",
+                        bits=BitRange(verbatim="2:0", hi=2, lo=0,
+                                      derivation="parse_bit_range"),
+                        access="R/W", reset="0x1", description="Clock mux select",
+                        page=6,
+                    )
+                ],
+                unaccounted_bits=["15:3"],
+                fields_route="column",
+                fields_confidence=Confidence.MEDIUM,
+            ),
+        ],
+        n_reset_stated=1,
+        n_field_sets=1,
+    )
+
+
+def build_part(
+    part_dir: Path, *, with_figure: bool = True, with_device_tables: bool = True
+) -> Path:
+    """A structurally real corpus: sections, specs, plots, pins, registers, index.
+
+    `with_device_tables=False` is the part whose datasheet prints no pin table
+    and no register map — the case a pin or register lookup must refuse rather
+    than answer with an empty list, since the corpus never looked.
+    """
     part = part_dir.name
     source = SourceDocument(
         content_hash=DOC_HASH, path="pdfs/afe7950.pdf", part_number=part,
@@ -179,6 +284,8 @@ def build_part(part_dir: Path, *, with_figure: bool = True) -> Path:
         vendor="ti",
         specsets=[_specs(part)],
         plotsets=[_plots(part)],
+        pinsets=[_pins(part)] if with_device_tables else None,
+        registersets=[_registers(part)] if with_device_tables else None,
     )
     if with_figure:
         figures = part_dir / "docs" / DOC / "figures"

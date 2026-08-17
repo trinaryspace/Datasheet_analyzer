@@ -1122,6 +1122,7 @@ class GoldenQuestion(BaseModel):
     | `plot_query` | `dsa plots` | a cataloged figure on a cited page has real pixels |
     | `pin_query` | `dsa pins` | pin records on a cited page carry them; `count` must match exactly |
     | `reg_query` | `dsa regs` | register records on a cited page carry them; `count` must match exactly |
+    | `card_query` | `dsa card` | a card row whose values cite a cited page carries them |
     | `ask_query` | `dsa ask` | the pack's rows on a cited page carry them, inside its budget |
     | `search_query` | `dsa search` | the **top-1** hit is a section covering a cited page, and that section holds them |
 
@@ -1153,6 +1154,13 @@ class GoldenQuestion(BaseModel):
     # that matters most: it is checked by *parsed* value, so `0x1A04`,
     # `0x1a04` and `6660` are the same question.
     reg_query: dict[str, str] | None = None
+    # Phase 6, ticket 10 design-card lookup ({card}, plus an optional `group`
+    # narrowing to one card table). The first marker whose answer is a *derived*
+    # artifact rather than an extracted record, which is why it is judged
+    # exactly as the record markers are: a card value must sit on a page the
+    # question cites, so a selector that quietly picked the wrong row fails the
+    # benchmark instead of passing it with a plausible number.
+    card_query: dict[str, str] | None = None
     ask_query: dict[str, str] | None = None  # Phase 5 answer pack ({route})
     search_query: dict[str, str] | None = None  # Phase 5 full text ({query, rank})
     notes: str = ""

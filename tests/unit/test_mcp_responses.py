@@ -89,6 +89,38 @@ class TestMcpServerIsFormatOnly:
         hit = Retriever.for_part(settings.parts_dir / "TEST").plots()[0]
         assert set(hit.as_dict()) == set(R.PLOT_HIT_SCHEMA["required"])
 
+    def test_the_declared_pin_shape_is_the_hit_s_own_shape(self, settings):
+        hit = Retriever.for_part(settings.parts_dir / "TEST").pins(pin="A1")[0]
+        assert set(hit.as_dict()) == set(R.PIN_HIT_SCHEMA["required"])
+
+    def test_the_declared_register_shape_is_the_hit_s_own_shape(self, settings):
+        hit = Retriever.for_part(settings.parts_dir / "TEST").registers(name="R25")[0]
+        assert set(hit.as_dict()) == set(R.REGISTER_HIT_SCHEMA["required"])
+
+    def test_the_declared_card_row_shape_is_the_model_s_own_shape(self, settings):
+        card = Retriever.for_part(settings.parts_dir / "TEST").card("power")
+        row = card.rows[0].model_dump(mode="json")
+        assert set(row) == set(R.CARD_ROW_SCHEMA["required"])
+
+    def test_a_real_register_hit_validates_and_a_bogus_bit_range_does_not(self, settings):
+        """The nested contract this phase's most dangerous artifact travels
+        under. A bit range is what a driver is written against, so the shape it
+        arrives in is checked against a real hit rather than declared and
+        trusted — including the honest nulls (`reset`, `width`, `hi`/`lo`)."""
+        hits = [
+            hit.as_dict()
+            for hit in Retriever.for_part(settings.parts_dir / "TEST").registers()
+        ]
+        payload = R.error_response(
+            "find_register", "", max_tokens=6000, part="TEST",
+            hits=hits, field_gap="", count=len(hits), total=len(hits),
+        )
+        assert R.validate_response(payload, "find_register") == []
+        assert hits[0]["reset"] is None, "R0 states none, and says so"
+        assert hits[1]["fields"][0]["bits"]["hi"] == 2
+        hits[1]["fields"][0]["bits"]["hi"] = "2"
+        assert R.validate_response(payload, "find_register")
+
     def test_the_declared_search_shape_is_the_hit_s_own_shape(self, settings):
         hit = Retriever.for_part(settings.parts_dir / "TEST").search("sysref")[0]
         assert set(hit.as_dict()) == set(R.SEARCH_HIT_SCHEMA["required"])

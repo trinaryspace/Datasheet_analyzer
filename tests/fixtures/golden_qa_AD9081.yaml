@@ -94,6 +94,39 @@ questions:
       p.26; the type label comes from registry/pin_types.yaml, and the count
       is the whole result set rather than the cited subset.
 
+  # Phase 6, ticket 10 — the design-card path. A card is the first golden
+  # answer that is a *derived* artifact, so it is judged by exactly the rule the
+  # record paths are judged by: a card row must carry a value printed on a page
+  # the question cites. Both values below were read off the printed pages.
+  - id: d1-card-power-1p8-rail
+    question: What voltage range does the 1.8 V supply rail accept?
+    expected_substrings: ["DVDD1P8", "1.7", "1.8", "2.1"]
+    pages: [4]
+    kind: derived
+    card_query: {card: "power", group: "Supply rails"}
+    notes: the power card's "Supply rails" group, quoting Table 2's min/typ/max
+      cells verbatim with their printed unit — every one of them citing p.4.
+
+  - id: d2-card-interface-jesd204c-rate
+    question: How fast can the JESD204C serial lanes run?
+    expected_substrings: ["JESD204C SERIAL INTERFACE RATE", "6.0", "24.75", "Gbps"]
+    pages: [11]
+    kind: derived
+    card_query: {card: "interface"}
+    notes: the interface card's JESD204 group. The lane-rate row is the reason
+      the card exists — it is printed pages away from the supply and thermal
+      rows a designer reads it beside.
+
+  # Phase 6, ticket 10 — the ask path over the pin table. The designer's-words
+  # twin of n1: the same ball, the same printed page, the same verbatim answer,
+  # routed to `pins.json` rather than to a spec row that happens to share a word.
+  - id: a2-ask-ball-a2
+    question: Which supply does ball A2 connect to?
+    expected_substrings: ["AVDD2", "Analog 2.0 V Supply Inputs for DAC"]
+    pages: [22]
+    kind: ask
+    ask_query: {route: pin}
+
   - id: p1-hd2-6gsps
     question: Which figure shows HD2 vs fOUT over digital scale at a 6 GSPS DAC sample rate?
     expected_substrings: ["HD2 vs. fOUT over Digital Scale, 6 GSPS"]

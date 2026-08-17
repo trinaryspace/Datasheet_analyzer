@@ -240,13 +240,19 @@ that instead of guessing.
 _Avoid_: response, result, summary, report, completion
 
 **Route**:
-Which retrieval path an answer pack took — `spec`, `plot`, `search`,
-`unavailable`, or `none`. Chosen by feature hits in a fixed order, with no
-model in the decision, and reported back in the pack so a caller can tell a
-parametric answer from a quoted paragraph. `none` is a finding about the
-datasheet (nothing in this corpus answers it); `unavailable` is a finding
-about the *corpus* (the full-text path could not run because there is no
-current search index) — an answer pack must never spend one for the other.
+Which retrieval path an answer pack took — `pin`, `register`, `plot`, `spec`,
+`search`, `unavailable`, or `none`. Chosen by feature hits in a fixed order,
+with no model in the decision, and reported back in the pack so a caller can
+tell a parametric answer from a quoted paragraph. The order is *specificity*,
+not preference: a question that names a pin or a register named the entry it
+wants, and the row that answers it lives in that artifact with its own
+citation, so answering it from a paragraph that shares a word would cite the
+wrong table. An artifact's vocabulary alone never routes anything — the lookup
+must also find something — so a routing rule can never cost an answer that
+exists. `none` is a finding about the datasheet (nothing in this corpus answers
+it); `unavailable` is a finding about the *corpus* (a path the question needed
+could not run at all: no search index, no pin table, no register map) — an
+answer pack must never spend one for the other.
 _Avoid_: intent, classification, dispatch, mode
 
 **Response cap**:
@@ -281,12 +287,17 @@ _Avoid_: test case, sample, example, prompt
 
 **Path marker**:
 The field on a golden question that says which retrieval path must answer it
-— `spec_query`, `plot_query`, `ask_query`, `search_query`. A marker adds a
-path, never a standard: each one is judged against that question's existing
-cited page and verbatim substrings, so an ask-path question is the
-designer's-words *twin* of a symbol-path question rather than a second
-objective function. A path that cannot run (no search index) fails and says
-why; it never passes quietly.
+— `spec_query`, `plot_query`, `pin_query`, `reg_query`, `card_query`,
+`ask_query`, `search_query`. A marker adds a path, never a standard: each one
+is judged against that question's existing cited page and verbatim substrings,
+so an ask-path question is the designer's-words *twin* of a symbol-path
+question rather than a second objective function. `card_query` is the first
+whose answer is a **derived** artifact and it is held to the same rule for that
+very reason — a row of the named card must carry a value printed on a page the
+question cites, so a selector that picked the wrong row fails the benchmark
+instead of passing it with a plausible number. A path that cannot run (no
+search index, no pin table, no register map) fails and says why; it never
+passes quietly.
 _Avoid_: tag, mode, category, test type
 
 **Part**:
