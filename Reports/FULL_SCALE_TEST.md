@@ -231,29 +231,87 @@ Then ask the model, in its own words:
 
 ---
 
-## Stage 7+ — Phase 7 and 8 capabilities
+## Stage 7 — Revision awareness (20 min, VERIFIED live 2026-08-18)
 
-**Status at the time of writing: Phase 7 ticket 01 landed** (document registry
-+ `dsa fetch`, 45 new tests). Tickets 02–08 and all of Phase 8 were still
-running. **Check `git log --oneline` and `Reports/PHASE_7_REPORT.md` before
-running anything here** — a command whose ticket has not landed will simply not
-exist.
+**Landed and verified:** tickets 01–04 — `39b5af5` document registry + `dsa
+fetch`, `f32d9a9` revision awareness + staleness, `2d5a43b` `dsa diff-rev`,
+`e6a6649` errata cross-linking. **Still running when this was written:**
+tickets 05–08 and all of Phase 8. **Run `git log --oneline` first** — a command
+whose ticket has not landed simply will not exist.
 
-When Phase 7 has landed, the network steps are consolidated in
-`Reports/PHASE_7_LIVE_RUN.md`. The important ones:
+Everything below was observed against live TI on 2026-08-18, not copied from
+`--help`.
 
 ```bash
-dsa fetch AFE7950                      # expect a sha256 mismatch — see F4
-dsa fetch AFE7950 --accept-new-revision
 dsa check-revisions --all
-dsa audit --all
 ```
 
-**Expect the first fetch of every TI part to report a hash mismatch.** That is
-correct, not a bug: TI regenerates a datasheet's "PACKAGE MATERIALS
-INFORMATION" page with the current date on every download, so the bytes differ
-daily while the revision identifier does not (**F4**). The warning is written
-to say so explicitly.
+Observed across a 6-part fleet:
+
+```
+STALE   LMX1204 (datasheet): upstream reports SNAS800B; this corpus is built from SYSREFOUT0
+current AFE7950 (datasheet): upstream reports SBASA41E, unchanged — but the bytes
+        differ: the document was regenerated, not revised
+unchecked AD9081 (datasheet): no registry URL for this datasheet — nothing to check
+        against. Record one with `dsa fetch --url <URL> --part AD9081 --doc-type datasheet`
+3 checked, 1 stale, 2 content-drift, 4 could not be checked      # exit 1
+```
+
+Three things to look at, because they are the point of the phase:
+
+1. **Content drift is worded "regenerated, not revised."** This is the fix for
+   **F4** — TI re-stamps a dated package-materials page daily, so sha256 churns
+   on an unchanged document. A hash difference alone must never read as a new
+   revision.
+2. **`unchecked` is loud and prints the command that fixes it.** It is not
+   folded into a pass count (invariant 7).
+3. **Exit is 1 when anything is stale**, 0 when clean — usable as a gate.
+
+`check-revisions` **writes** to `parts/<PART>/sources.json` (`staleness`,
+`revision_checked_at`, `upstream_revision`, `upstream_sha256`, `content_drift`,
+`revision_check_note`). It is not read-only.
+
+### Corpora built before `f32d9a9` must be rebuilt
+
+The `STALE LMX1204 … built from SYSREFOUT0` line above is **not** an outdated
+corpus. `SYSREFOUT0` is a real pin name in the LMX1204, and the pre-fix doc-ID
+regex grabbed the first token that looked like a TI literature number anywhere
+in the text. That wrong value was baked into `sources.json` at build time, so
+the part reports STALE forever until rebuilt. Verified fix:
+
+```bash
+dsa build tests/fixtures/pdf/lmx1204.pdf --part LMX1204 --vendor unknown
+dsa check-revisions --all
+# current LMX1204 (datasheet): upstream reports SNAS800B, unchanged
+# 1 checked, 0 stale, 0 content-drift, 0 could not be checked      exit 0
+```
+
+After the rebuild `sources.json` holds `"revision": "SNAS800B"`,
+`"content_drift": false`, and an `upstream_sha256` matching the local build
+byte for byte.
+
+### Also landed
+
+```bash
+dsa fetch --url <URL> --part <P> --doc-type errata   # register a companion doc
+dsa diff-rev --part <P> --from <REV> --to <REV>      # writes REVISION_DIFF.md
+```
+
+`diff-rev` needs a part holding two revisions, so it is exercised by the live
+steps in `Reports/PHASE_7_LIVE_RUN.md`, not offline.
+
+**Errata cross-linking (`e6a6649`) is the one feature you cannot fully exercise
+today.** No real vendor errata PDF exists in this repo, so its gate used a real
+datasheet with synthetic errata prose. To try it live, register a real errata
+PDF with `dsa fetch --url … --doc-type errata`, rebuild, then read `ERRATA.md`
+and `errata_links.json`. Two caveats the implementer recorded honestly:
+
+- The errata banner is inserted **into the section body**, so an answer pack's
+  "Supporting excerpt" can quote errata prose under the datasheet's page
+  citation and displace the verbatim text it was meant to support. Watch for
+  this if you use `dsa ask` on a part with errata.
+- An erratum's page is a **range**, not a point (`pdf_text` carries no per-line
+  page). Exact for a one-page errata sheet, `p.3-5` for a TOC'd one.
 
 ---
 
@@ -267,7 +325,8 @@ Full evidence in `Reports/FINDINGS_2026-08-18.md`.
 | F12 | HIGH | Multi-document part scores 2/12 with the wrong `--pdf` | Real defect — resolve PDF per record |
 | F2 | HIGH | TI build dies with a raw traceback on a 404 | Real defect — breaches invariant 7 |
 | F4 | HIGH | TI sha256 changes daily | Upstream behaviour — design must not read it as a new revision |
-| F8 | HIGH | `sniff_revision` → `SYSREFOUT0` for LMX1204 | Real defect — regex too loose |
+| F8 | HIGH | `sniff_revision` → `SYSREFOUT0` for LMX1204 | **FIXED** in `f32d9a9` — verified live, see Stage 7 |
+| F13 | MED-HIGH | `check-revisions --all` on a missing parts dir prints `0 checked, 0 stale, 0 content-drift, 0 could not be checked` and exits 0 | Real defect — a typo'd `DSA_PARTS_DIR` reads as "fleet current" |
 | F3 | MED | `dsa batch` has no `--vendor` override | Gap — blocks offline batch of TI parts |
 | F6 | MED | LM741 pin table not extracted, no reason recorded | Real defect — and the message points at a `dsa status` that carries nothing |
 | F10 | MED | Two revision parsers disagree | Duplication — should share one |
@@ -275,9 +334,15 @@ Full evidence in `Reports/FINDINGS_2026-08-18.md`.
 | F7 | INFO | Every `pdf_layout` spec grades `low` | Confidence tracks backend, as designed |
 | F9 | INFO | ADI unreachable; TI fetchable by part number | Environment constraint |
 
-F4 and F8 are already written into `.scratch/reach-and-trust/issues/02-revision-awareness.md`
-as blocking criteria with the measured evidence, so the Phase 7 workflow fixes
-them rather than you.
+F4 and F8 were written into `.scratch/reach-and-trust/issues/02-revision-awareness.md`
+as blocking criteria with the measured evidence. **Both are now fixed and
+verified against live TI** — see Stage 7. F13 was found on 2026-08-18 while
+verifying that fix and is not yet ticketed; the suggested remedy is for
+`check-revisions` to exit non-zero, or print `no parts found under <resolved
+path>`, when the scan set is empty.
+
+Before trusting any clean `check-revisions` result, confirm your parts
+directory resolves — `dsa status` prints it.
 
 ---
 
