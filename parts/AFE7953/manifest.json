@@ -1,541 +1,487 @@
 {
   "part_number": "AFE7953",
-  "pipeline_version": "0.4.0",
-  "vendor": "ti",
-  "library_root": "../../library",
-  "extraction_stats": {
-    "52d435c0095ec0b002e36dcbc56711ecc7c909945cc756768ed168907be3b131": {
-      "backend": "ti_html",
-      "extractor_version": "",
-      "tables_detected": 0,
-      "tables_accepted": 0,
-      "tables_rejected": 0,
-      "rejection_reasons": [],
-      "mean_fidelity": 0.0
-    }
-  },
-  "generated_at": "2026-08-18T17:03:29.803757Z",
+  "pipeline_version": "0.1.0",
+  "generated_at": "2026-08-02T05:54:07.425112Z",
   "documents": [
     {
       "content_hash": "52d435c0095ec0b002e36dcbc56711ecc7c909945cc756768ed168907be3b131",
-      "path": "C:\\Users\\afpim\\Repos\\datasheet_analyzer\\afe7953.pdf",
+      "path": "afe7953.pdf",
       "part_number": "AFE7953",
       "doc_type": "datasheet",
       "revision": "SBASAN1A",
       "page_count": 134,
       "nda": false,
-      "vendor": "ti",
-      "vendor_evidence": "",
-      "registered_at": "2026-08-18T16:48:29.685133Z"
+      "registered_at": "2026-08-02T05:36:59.614615Z"
     }
   ],
   "sections": [
     {
       "number": "1",
       "title": "Features",
-      "file": "@library/docs/datasheet-52d435c0/sections/1-features.md",
+      "file": "docs/datasheet-52d435c0/sections/1-features.md",
       "doc_hash": "52d435c0095ec0b002e36dcbc56711ecc7c909945cc756768ed168907be3b131",
       "page_start": 1,
       "page_end": 1,
       "token_count": 183,
-      "description": "Dual RF sampling 12GSPS transmit DACs",
+      "description": "Dual 12GSPS TX DAC, dual 3GSPS RX ADC, 400MHz bandwidth, 600MHz-12GHz RF, 40dB TX/25dB RX DSA, JESD204B/C, 29.5Gbps SerDes",
       "n_tables": 0,
-      "n_figures": 0,
-      "search_tokens": 98
+      "n_figures": 0
     },
     {
       "number": "2",
       "title": "Applications",
-      "file": "@library/docs/datasheet-52d435c0/sections/2-applications.md",
+      "file": "docs/datasheet-52d435c0/sections/2-applications.md",
       "doc_hash": "52d435c0095ec0b002e36dcbc56711ecc7c909945cc756768ed168907be3b131",
       "page_start": 1,
       "page_end": 1,
       "token_count": 42,
-      "description": "(no content)",
+      "description": "Radar, seeker front-end, defense radio, tactical communications, wireless test applications",
       "n_tables": 0,
-      "n_figures": 0,
-      "search_tokens": 13
+      "n_figures": 0
     },
     {
       "number": "3",
       "title": "Description",
-      "file": "@library/docs/datasheet-52d435c0/sections/3-description.md",
+      "file": "docs/datasheet-52d435c0/sections/3-description.md",
       "doc_hash": "52d435c0095ec0b002e36dcbc56711ecc7c909945cc756768ed168907be3b131",
       "page_start": 1,
       "page_end": 3,
       "token_count": 433,
-      "description": "The AFE7953 is a high performance, wide bandwidth multi-channel transceiver, integrating two RF sampling transmitter chains and two RF sampling receiver chains. Parameters: AFE7953.",
+      "description": "AFE7953 multi-channel transceiver, RF sampling TX/RX chains, L/S/C/X-band direct sampling, 12GHz operation, 400MHz signal bandwidth",
       "n_tables": 1,
-      "n_figures": 0,
-      "search_tokens": 207
+      "n_figures": 0
     },
     {
       "number": "4",
       "title": "Specifications",
-      "file": "@library/docs/datasheet-52d435c0/sections/4-specifications.md",
+      "file": "docs/datasheet-52d435c0/sections/4-specifications.md",
       "doc_hash": "52d435c0095ec0b002e36dcbc56711ecc7c909945cc756768ed168907be3b131",
       "page_start": 4,
       "page_end": 124,
       "token_count": 14,
-      "description": "(no content)",
+      "description": "Specifications section index",
       "n_tables": 0,
-      "n_figures": 0,
-      "search_tokens": 1
+      "n_figures": 0
     },
     {
       "number": "4.1",
       "title": "Absolute Maximum Ratings",
-      "file": "@library/docs/datasheet-52d435c0/sections/4-1-absolute-maximum-ratings.md",
+      "file": "docs/datasheet-52d435c0/sections/4-1-absolute-maximum-ratings.md",
       "doc_hash": "52d435c0095ec0b002e36dcbc56711ecc7c909945cc756768ed168907be3b131",
       "page_start": 4,
       "page_end": 4,
-      "token_count": 641,
-      "description": "Parameters: PMAX(xRXIN+/-), TJ, Tstg.",
+      "token_count": 639,
+      "description": "Absolute maximum ratings: max RF input power, junction temperature, storage temperature",
       "n_tables": 1,
-      "n_figures": 0,
-      "search_tokens": 278
+      "n_figures": 0
     },
     {
       "number": "4.2",
       "title": "ESD Ratings",
-      "file": "@library/docs/datasheet-52d435c0/sections/4-2-esd-ratings.md",
+      "file": "docs/datasheet-52d435c0/sections/4-2-esd-ratings.md",
       "doc_hash": "52d435c0095ec0b002e36dcbc56711ecc7c909945cc756768ed168907be3b131",
       "page_start": 5,
       "page_end": 5,
-      "token_count": 136,
-      "description": "Parameters: V(ESD).",
+      "token_count": 133,
+      "description": "ESD ratings and voltage parameters",
       "n_tables": 1,
-      "n_figures": 0,
-      "search_tokens": 66
+      "n_figures": 0
     },
     {
       "number": "4.3",
       "title": "Recommended Operating Conditions",
-      "file": "@library/docs/datasheet-52d435c0/sections/4-3-recommended-operating-conditions.md",
+      "file": "docs/datasheet-52d435c0/sections/4-3-recommended-operating-conditions.md",
       "doc_hash": "52d435c0095ec0b002e36dcbc56711ecc7c909945cc756768ed168907be3b131",
       "page_start": 6,
       "page_end": 6,
-      "token_count": 243,
-      "description": "Parameters: TA, TJ.",
+      "token_count": 241,
+      "description": "Operating conditions: ambient and junction temperature limits",
       "n_tables": 1,
-      "n_figures": 0,
-      "search_tokens": 107
+      "n_figures": 0
     },
     {
       "number": "4.4",
       "title": "Thermal Information AFE79xx",
-      "file": "@library/docs/datasheet-52d435c0/sections/4-4-thermal-information-afe79xx.md",
+      "file": "docs/datasheet-52d435c0/sections/4-4-thermal-information-afe79xx.md",
       "doc_hash": "52d435c0095ec0b002e36dcbc56711ecc7c909945cc756768ed168907be3b131",
       "page_start": 6,
       "page_end": 6,
-      "token_count": 189,
-      "description": "Parameters: R\u03b8JA, R\u03b8JC(top), R\u03b8JB, \u03a8JT, \u03a8JB.",
+      "token_count": 186,
+      "description": "Thermal information: junction-to-ambient/case resistance, transient thermal impedance",
       "n_tables": 1,
-      "n_figures": 0,
-      "search_tokens": 78
+      "n_figures": 0
     },
     {
       "number": "4.5",
       "title": "Transmitter Electrical Characteristics",
-      "file": "@library/docs/datasheet-52d435c0/sections/4-5-transmitter-electrical-characteristics.md",
+      "file": "docs/datasheet-52d435c0/sections/4-5-transmitter-electrical-characteristics.md",
       "doc_hash": "52d435c0095ec0b002e36dcbc56711ecc7c909945cc756768ed168907be3b131",
       "page_start": 7,
       "page_end": 12,
-      "token_count": 5549,
-      "description": "Parameters: DACRES, fRFout, Pmax_FS, RTERM, ATTrange, ATTstep, ATTphase-err, Gflat.",
+      "token_count": 5547,
+      "description": "TX DAC resolution, RF output frequency, full-scale power, 50\u03a9 termination, attenuator range/step/phase error, gain flatness",
       "n_tables": 1,
-      "n_figures": 0,
-      "search_tokens": 2712
+      "n_figures": 0
     },
     {
       "number": "4.6",
       "title": "RF ADC Electrical Characteristics",
-      "file": "@library/docs/datasheet-52d435c0/sections/4-6-rf-adc-electrical-characteristics.md",
+      "file": "docs/datasheet-52d435c0/sections/4-6-rf-adc-electrical-characteristics.md",
       "doc_hash": "52d435c0095ec0b002e36dcbc56711ecc7c909945cc756768ed168907be3b131",
       "page_start": 13,
       "page_end": 16,
-      "token_count": 2997,
-      "description": "Parameters: ADCRES, FRFin, PFS_CW,min, S11, ATTrange, ATTstep, NSD, NFmin.",
+      "token_count": 2995,
+      "description": "RX ADC resolution, RF input frequency, CW power, S11, attenuator range/step, noise spectral density, noise figure",
       "n_tables": 1,
-      "n_figures": 0,
-      "search_tokens": 1324
+      "n_figures": 0
     },
     {
       "number": "4.7",
       "title": "PLL/VCO/Clock Electrical Characteristics",
-      "file": "@library/docs/datasheet-52d435c0/sections/4-7-pll-vco-clock-electrical-characteristics.md",
+      "file": "docs/datasheet-52d435c0/sections/4-7-pll-vco-clock-electrical-characteristics.md",
       "doc_hash": "52d435c0095ec0b002e36dcbc56711ecc7c909945cc756768ed168907be3b131",
       "page_start": 17,
       "page_end": 18,
-      "token_count": 1116,
-      "description": "Parameters: fVCO1, fVCO2, fVCO3, fVCO4, DIVDAC, DIVFBADC, DIVRXADC, PNVCO.",
+      "token_count": 1114,
+      "description": "VCO frequencies, DAC/ADC clock dividers, VCO phase noise",
       "n_tables": 1,
-      "n_figures": 0,
-      "search_tokens": 561
+      "n_figures": 0
     },
     {
       "number": "4.8",
       "title": "Digital Electrical Characteristics",
-      "file": "@library/docs/datasheet-52d435c0/sections/4-8-digital-electrical-characteristics.md",
+      "file": "docs/datasheet-52d435c0/sections/4-8-digital-electrical-characteristics.md",
       "doc_hash": "52d435c0095ec0b002e36dcbc56711ecc7c909945cc756768ed168907be3b131",
       "page_start": 19,
       "page_end": 20,
-      "token_count": 1246,
-      "description": "Parameters: VSRDIFF, VSRCOM, ZSRdiff, FSerDes, TJ, VSTDIFF, VSTCOM, ZSTdiff.",
+      "token_count": 1244,
+      "description": "SerDes differential voltage, common-mode voltage, impedance, data rate to 29.5Gbps, timing parameters",
       "n_tables": 1,
-      "n_figures": 0,
-      "search_tokens": 530
+      "n_figures": 0
     },
     {
       "number": "4.9",
       "title": "Power Supply Electrical Characteristics",
-      "file": "@library/docs/datasheet-52d435c0/sections/4-9-power-supply-electrical-characteristics.md",
+      "file": "docs/datasheet-52d435c0/sections/4-9-power-supply-electrical-characteristics.md",
       "doc_hash": "52d435c0095ec0b002e36dcbc56711ecc7c909945cc756768ed168907be3b131",
       "page_start": 21,
       "page_end": 24,
-      "token_count": 5310,
-      "description": "Parameters: IVDD1P8, IVDD1P2, IVDD0P9, Pdiss.",
+      "token_count": 5308,
+      "description": "Supply currents 1.8V/1.2V/0.9V rails, power dissipation",
       "n_tables": 1,
-      "n_figures": 0,
-      "search_tokens": 2880
+      "n_figures": 0
     },
     {
       "number": "4.10",
       "title": "Timing Requirements",
-      "file": "@library/docs/datasheet-52d435c0/sections/4-10-timing-requirements.md",
+      "file": "docs/datasheet-52d435c0/sections/4-10-timing-requirements.md",
       "doc_hash": "52d435c0095ec0b002e36dcbc56711ecc7c909945cc756768ed168907be3b131",
       "page_start": 25,
       "page_end": 25,
-      "token_count": 432,
-      "description": "Parameters: ts(SYSREF), th(SYSREF), ts(SENB), th(SENB), ts(SDIO), th(SDIO), t(SCLK)_W, t(SCLK)_R.",
+      "token_count": 430,
+      "description": "SYSREF, SENB, SDIO timing, setup/hold/clock period specifications",
       "n_tables": 1,
-      "n_figures": 0,
-      "search_tokens": 213
+      "n_figures": 0
     },
     {
       "number": "4.11",
       "title": "Switching Characteristics",
-      "file": "@library/docs/datasheet-52d435c0/sections/4-11-switching-characteristics.md",
+      "file": "docs/datasheet-52d435c0/sections/4-11-switching-characteristics.md",
       "doc_hash": "52d435c0095ec0b002e36dcbc56711ecc7c909945cc756768ed168907be3b131",
       "page_start": 26,
       "page_end": 26,
-      "token_count": 685,
-      "description": "Parameters: tJESDTX, tJESDRX, tJESDFB.",
+      "token_count": 683,
+      "description": "JESD204 TX/RX/feedback latency",
       "n_tables": 1,
-      "n_figures": 0,
-      "search_tokens": 304
+      "n_figures": 0
     },
     {
       "number": "4.12",
       "title": "Typical Characteristics",
-      "file": "@library/docs/datasheet-52d435c0/sections/4-12-typical-characteristics.md",
+      "file": "docs/datasheet-52d435c0/sections/4-12-typical-characteristics.md",
       "doc_hash": "52d435c0095ec0b002e36dcbc56711ecc7c909945cc756768ed168907be3b131",
       "page_start": 27,
       "page_end": 124,
       "token_count": 17,
-      "description": "(no content)",
+      "description": "Typical characteristics overview",
       "n_tables": 0,
-      "n_figures": 0,
-      "search_tokens": 2
+      "n_figures": 0
     },
     {
       "number": "4.12.1",
       "title": "TX Typical Characteristics 800 MHz",
-      "file": "@library/docs/datasheet-52d435c0/sections/4-12-1-tx-typical-characteristics-800-mhz.md",
+      "file": "docs/datasheet-52d435c0/sections/4-12-1-tx-typical-characteristics-800-mhz.md",
       "doc_hash": "52d435c0095ec0b002e36dcbc56711ecc7c909945cc756768ed168907be3b131",
       "page_start": 27,
       "page_end": 35,
       "token_count": 1974,
-      "description": "Typical values at TA = +25\u00b0C with nominal supplies. 41 plots.",
+      "description": "TX at 800MHz: 11.8GHz DAC, 24x interpolation, 491.52MSPS input, 1st Nyquist, PLL clock",
       "n_tables": 0,
-      "n_figures": 41,
-      "search_tokens": 948
+      "n_figures": 41
     },
     {
       "number": "4.12.2",
       "title": "TX Typical Characteristics at 1.8 GHz",
-      "file": "@library/docs/datasheet-52d435c0/sections/4-12-2-tx-typical-characteristics-at-1-8-ghz.md",
+      "file": "docs/datasheet-52d435c0/sections/4-12-2-tx-typical-characteristics-at-1-8-ghz.md",
       "doc_hash": "52d435c0095ec0b002e36dcbc56711ecc7c909945cc756768ed168907be3b131",
       "page_start": 36,
       "page_end": 42,
       "token_count": 1796,
-      "description": "Typical values at TA = +25\u00b0C with nominal supplies. 34 plots.",
+      "description": "TX at 1.8GHz: 11.8GHz DAC, 24x interpolation, 491.52MSPS input, 1st Nyquist, PLL clock",
       "n_tables": 0,
-      "n_figures": 34,
-      "search_tokens": 860
+      "n_figures": 34
     },
     {
       "number": "4.12.3",
       "title": "TX Typical Characteristics at 2.6 GHz",
-      "file": "@library/docs/datasheet-52d435c0/sections/4-12-3-tx-typical-characteristics-at-2-6-ghz.md",
+      "file": "docs/datasheet-52d435c0/sections/4-12-3-tx-typical-characteristics-at-2-6-ghz.md",
       "doc_hash": "52d435c0095ec0b002e36dcbc56711ecc7c909945cc756768ed168907be3b131",
       "page_start": 43,
       "page_end": 50,
       "token_count": 2083,
-      "description": "Typical values at TA = +25\u00b0C with nominal supplies. 40 plots.",
+      "description": "TX at 2.6GHz: 11.8GHz DAC, 24x interpolation, 491.52MSPS input, 1st Nyquist, PLL clock",
       "n_tables": 0,
-      "n_figures": 40,
-      "search_tokens": 1028
+      "n_figures": 40
     },
     {
       "number": "4.12.4",
       "title": "TX Typical Characteristics at 3.5 GHz",
-      "file": "@library/docs/datasheet-52d435c0/sections/4-12-4-tx-typical-characteristics-at-3-5-ghz.md",
+      "file": "docs/datasheet-52d435c0/sections/4-12-4-tx-typical-characteristics-at-3-5-ghz.md",
       "doc_hash": "52d435c0095ec0b002e36dcbc56711ecc7c909945cc756768ed168907be3b131",
       "page_start": 51,
       "page_end": 56,
       "token_count": 1345,
-      "description": "Typical values at TA = +25\u00b0C with nominal supplies. 31 plots.",
+      "description": "TX at 3.5GHz: 11.8GHz DAC, 24x interpolation, 491.52MSPS input, 1st Nyquist, PLL clock",
       "n_tables": 0,
-      "n_figures": 31,
-      "search_tokens": 667
+      "n_figures": 31
     },
     {
       "number": "4.12.5",
       "title": "TX Typical Characteristics at 4.9 GHz",
-      "file": "@library/docs/datasheet-52d435c0/sections/4-12-5-tx-typical-characteristics-at-4-9-ghz.md",
+      "file": "docs/datasheet-52d435c0/sections/4-12-5-tx-typical-characteristics-at-4-9-ghz.md",
       "doc_hash": "52d435c0095ec0b002e36dcbc56711ecc7c909945cc756768ed168907be3b131",
       "page_start": 57,
       "page_end": 64,
       "token_count": 1814,
-      "description": "Typical values at TA = +25\u00b0C with nominal supplies. 35 plots.",
+      "description": "TX at 4.9GHz: 11.8GHz DAC, 24x interpolation, 491.52MSPS input, 1st Nyquist, PLL clock",
       "n_tables": 0,
-      "n_figures": 35,
-      "search_tokens": 870
+      "n_figures": 35
     },
     {
       "number": "4.12.6",
       "title": "TX Typical Characteristics at 8.1 GHz",
-      "file": "@library/docs/datasheet-52d435c0/sections/4-12-6-tx-typical-characteristics-at-8-1-ghz.md",
+      "file": "docs/datasheet-52d435c0/sections/4-12-6-tx-typical-characteristics-at-8-1-ghz.md",
       "doc_hash": "52d435c0095ec0b002e36dcbc56711ecc7c909945cc756768ed168907be3b131",
       "page_start": 65,
       "page_end": 73,
       "token_count": 1000,
-      "description": "Typical values at TA = +25\u00b0C with nominal supplies. 41 plots.",
+      "description": "TX at 8.1GHz: 11.8GHz DAC, mixed mode, 1st Nyquist, PLL clock, 100MHz NR bandwidth",
       "n_tables": 0,
-      "n_figures": 41,
-      "search_tokens": 462
+      "n_figures": 41
     },
     {
       "number": "4.12.7",
       "title": "TX Typical Characteristics at 9.6 GHz",
-      "file": "@library/docs/datasheet-52d435c0/sections/4-12-7-tx-typical-characteristics-at-9-6-ghz.md",
+      "file": "docs/datasheet-52d435c0/sections/4-12-7-tx-typical-characteristics-at-9-6-ghz.md",
       "doc_hash": "52d435c0095ec0b002e36dcbc56711ecc7c909945cc756768ed168907be3b131",
       "page_start": 74,
       "page_end": 82,
-      "token_count": 1187,
-      "description": "Figure 4-274 TX 4xNR100 MHz Output Spectrum at 9.61 GHz 46 plots.",
+      "token_count": 1185,
+      "description": "TX at 9.6GHz: 4\u00d7NR 100MHz channels, output spectrum",
       "n_tables": 2,
-      "n_figures": 46,
-      "search_tokens": 554
+      "n_figures": 46
     },
     {
       "number": "4.12.8",
       "title": "RX Typical Characteristics at 800 MHz",
-      "file": "@library/docs/datasheet-52d435c0/sections/4-12-8-rx-typical-characteristics-at-800-mhz.md",
+      "file": "docs/datasheet-52d435c0/sections/4-12-8-rx-typical-characteristics-at-800-mhz.md",
       "doc_hash": "52d435c0095ec0b002e36dcbc56711ecc7c909945cc756768ed168907be3b131",
       "page_start": 83,
       "page_end": 88,
       "token_count": 1273,
-      "description": "Typical values at TA = +25\u00b0C, ADC Sampling Rate = 2949.12 GHz. 31 plots.",
+      "description": "RX at 800MHz: 2.95GHz ADC sampling, 491.52MSPS output, 6\u00d7 decimation, PLL clock",
       "n_tables": 0,
-      "n_figures": 31,
-      "search_tokens": 596
+      "n_figures": 31
     },
     {
       "number": "4.12.9",
       "title": "RX Typical Characteristics at 1.75-1.9 GHz",
-      "file": "@library/docs/datasheet-52d435c0/sections/4-12-9-rx-typical-characteristics-at-1-75-1-9-ghz.md",
+      "file": "docs/datasheet-52d435c0/sections/4-12-9-rx-typical-characteristics-at-1-75-1-9-ghz.md",
       "doc_hash": "52d435c0095ec0b002e36dcbc56711ecc7c909945cc756768ed168907be3b131",
       "page_start": 89,
       "page_end": 94,
       "token_count": 1267,
-      "description": "Typical values at TA = +25\u00b0C, ADC Sampling Rate = 2949.12 GHz. 30 plots.",
+      "description": "RX at 1.75-1.9GHz: 2.95GHz ADC sampling, 491.52MSPS output, 6\u00d7 decimation, PLL clock",
       "n_tables": 0,
-      "n_figures": 30,
-      "search_tokens": 589
+      "n_figures": 30
     },
     {
       "number": "4.12.10",
       "title": "RX Typical Characteristics at 3.5 GHz",
-      "file": "@library/docs/datasheet-52d435c0/sections/4-12-10-rx-typical-characteristics-at-3-5-ghz.md",
+      "file": "docs/datasheet-52d435c0/sections/4-12-10-rx-typical-characteristics-at-3-5-ghz.md",
       "doc_hash": "52d435c0095ec0b002e36dcbc56711ecc7c909945cc756768ed168907be3b131",
       "page_start": 95,
       "page_end": 99,
       "token_count": 1115,
-      "description": "Typical values at TA = +25\u00b0C, ADC Sampling Rate = 2949.12 GHz. 27 plots.",
+      "description": "RX at 3.5GHz: 2.95GHz ADC sampling, 491.52MSPS output, 6\u00d7 decimation, PLL clock",
       "n_tables": 0,
-      "n_figures": 27,
-      "search_tokens": 524
+      "n_figures": 27
     },
     {
       "number": "4.12.11",
       "title": "RX Typical Characteristics at 2.6 GHz",
-      "file": "@library/docs/datasheet-52d435c0/sections/4-12-11-rx-typical-characteristics-at-2-6-ghz.md",
+      "file": "docs/datasheet-52d435c0/sections/4-12-11-rx-typical-characteristics-at-2-6-ghz.md",
       "doc_hash": "52d435c0095ec0b002e36dcbc56711ecc7c909945cc756768ed168907be3b131",
       "page_start": 100,
       "page_end": 103,
       "token_count": 779,
-      "description": "Typical values at TA = +25\u00b0C, ADC Sampling Rate = 2949.12 GHz. 20 plots.",
+      "description": "RX at 2.6GHz: 2.95GHz ADC sampling, 491.52MSPS output, 6\u00d7 decimation, PLL clock",
       "n_tables": 0,
-      "n_figures": 20,
-      "search_tokens": 360
+      "n_figures": 20
     },
     {
       "number": "4.12.12",
       "title": "RX Typical Characteristics at 4.9 GHz",
-      "file": "@library/docs/datasheet-52d435c0/sections/4-12-12-rx-typical-characteristics-at-4-9-ghz.md",
+      "file": "docs/datasheet-52d435c0/sections/4-12-12-rx-typical-characteristics-at-4-9-ghz.md",
       "doc_hash": "52d435c0095ec0b002e36dcbc56711ecc7c909945cc756768ed168907be3b131",
       "page_start": 104,
       "page_end": 108,
       "token_count": 1191,
-      "description": "Typical values at TA = +25\u00b0C, ADC Sampling Rate = 2949.12 GHz. 29 plots.",
+      "description": "RX at 4.9GHz: 2.95GHz ADC sampling, 491.52MSPS output, 6\u00d7 decimation, PLL clock",
       "n_tables": 0,
-      "n_figures": 29,
-      "search_tokens": 554
+      "n_figures": 29
     },
     {
       "number": "4.12.13",
       "title": "RX Typical Characteristics at 8.1 GHz",
-      "file": "@library/docs/datasheet-52d435c0/sections/4-12-13-rx-typical-characteristics-at-8-1-ghz.md",
+      "file": "docs/datasheet-52d435c0/sections/4-12-13-rx-typical-characteristics-at-8-1-ghz.md",
       "doc_hash": "52d435c0095ec0b002e36dcbc56711ecc7c909945cc756768ed168907be3b131",
       "page_start": 109,
       "page_end": 113,
       "token_count": 617,
-      "description": "Typical values at TA = +25\u00b0C, ADC Sampling Rate = 2949.12 GHz. 28 plots.",
+      "description": "RX at 8.1GHz: 2.95GHz ADC sampling, 491.52MSPS output, 6\u00d7 decimation, external clock, 8.1GHz matched",
       "n_tables": 0,
-      "n_figures": 28,
-      "search_tokens": 292
+      "n_figures": 28
     },
     {
       "number": "4.12.14",
       "title": "RX Typical Characteristics at 9.6 GHz",
-      "file": "@library/docs/datasheet-52d435c0/sections/4-12-14-rx-typical-characteristics-at-9-6-ghz.md",
+      "file": "docs/datasheet-52d435c0/sections/4-12-14-rx-typical-characteristics-at-9-6-ghz.md",
       "doc_hash": "52d435c0095ec0b002e36dcbc56711ecc7c909945cc756768ed168907be3b131",
       "page_start": 114,
       "page_end": 118,
       "token_count": 571,
-      "description": "Typical values at TA = +25\u00b0C, ADC Sampling Rate = 2949.12 GHz. 28 plots.",
+      "description": "RX at 9.6GHz: 2.95GHz ADC sampling, 1.47GSPS output, 2\u00d7 decimation, external clock, 9.6GHz matched",
       "n_tables": 0,
-      "n_figures": 28,
-      "search_tokens": 267
+      "n_figures": 28
     },
     {
       "number": "4.12.15",
       "title": "PLL and Clock Typical Characteristics",
-      "file": "@library/docs/datasheet-52d435c0/sections/4-12-15-pll-and-clock-typical-characteristics.md",
+      "file": "docs/datasheet-52d435c0/sections/4-12-15-pll-and-clock-typical-characteristics.md",
       "doc_hash": "52d435c0095ec0b002e36dcbc56711ecc7c909945cc756768ed168907be3b131",
       "page_start": 119,
       "page_end": 124,
       "token_count": 1311,
-      "description": "31 plots.",
+      "description": "PLL, VCO, clock typical characteristics at TA=25\u00b0C",
       "n_tables": 0,
-      "n_figures": 31,
-      "search_tokens": 648
+      "n_figures": 31
     },
     {
       "number": "5",
       "title": "Device and Documentation Support",
-      "file": "@library/docs/datasheet-52d435c0/sections/5-device-and-documentation-support.md",
+      "file": "docs/datasheet-52d435c0/sections/5-device-and-documentation-support.md",
       "doc_hash": "52d435c0095ec0b002e36dcbc56711ecc7c909945cc756768ed168907be3b131",
       "page_start": 125,
       "page_end": 125,
       "token_count": 18,
-      "description": "(no content)",
+      "description": "Device support and documentation",
       "n_tables": 0,
-      "n_figures": 0,
-      "search_tokens": 3
+      "n_figures": 0
     },
     {
       "number": "5.1",
       "title": "Receiving Notification of Documentation Updates",
-      "file": "@library/docs/datasheet-52d435c0/sections/5-1-receiving-notification-of-documentation-updates.md",
+      "file": "docs/datasheet-52d435c0/sections/5-1-receiving-notification-of-documentation-updates.md",
       "doc_hash": "52d435c0095ec0b002e36dcbc56711ecc7c909945cc756768ed168907be3b131",
       "page_start": 125,
       "page_end": 125,
       "token_count": 95,
-      "description": "To receive notification of documentation updates, navigate to the device product folder on ti.com.",
+      "description": "Documentation update notifications via ti.com product page",
       "n_tables": 0,
-      "n_figures": 0,
-      "search_tokens": 36
+      "n_figures": 0
     },
     {
       "number": "5.2",
       "title": "Support Resources",
-      "file": "@library/docs/datasheet-52d435c0/sections/5-2-support-resources.md",
+      "file": "docs/datasheet-52d435c0/sections/5-2-support-resources.md",
       "doc_hash": "52d435c0095ec0b002e36dcbc56711ecc7c909945cc756768ed168907be3b131",
       "page_start": 125,
       "page_end": 125,
       "token_count": 112,
-      "description": "TI E2E\u2122 support forums are an engineer's go-to source for fast, verified answers and design help \u2014 straight from the experts.",
+      "description": "TI E2E support forums for technical assistance",
       "n_tables": 0,
-      "n_figures": 0,
-      "search_tokens": 53
+      "n_figures": 0
     },
     {
       "number": "5.3",
       "title": "Trademarks",
-      "file": "@library/docs/datasheet-52d435c0/sections/5-3-trademarks.md",
+      "file": "docs/datasheet-52d435c0/sections/5-3-trademarks.md",
       "doc_hash": "52d435c0095ec0b002e36dcbc56711ecc7c909945cc756768ed168907be3b131",
       "page_start": 125,
       "page_end": 125,
       "token_count": 40,
-      "description": "TI E2E\u2122 is a trademark of Texas Instruments.",
+      "description": "Trademark information",
       "n_tables": 0,
-      "n_figures": 0,
-      "search_tokens": 12
+      "n_figures": 0
     },
     {
       "number": "5.4",
       "title": "Electrostatic Discharge Caution",
-      "file": "@library/docs/datasheet-52d435c0/sections/5-4-electrostatic-discharge-caution.md",
+      "file": "docs/datasheet-52d435c0/sections/5-4-electrostatic-discharge-caution.md",
       "doc_hash": "52d435c0095ec0b002e36dcbc56711ecc7c909945cc756768ed168907be3b131",
       "page_start": 125,
       "page_end": 125,
       "token_count": 18,
-      "description": "(no content)",
+      "description": "ESD caution notice",
       "n_tables": 0,
-      "n_figures": 0,
-      "search_tokens": 3
+      "n_figures": 0
     },
     {
       "number": "5.5",
       "title": "Glossary",
-      "file": "@library/docs/datasheet-52d435c0/sections/5-5-glossary.md",
+      "file": "docs/datasheet-52d435c0/sections/5-5-glossary.md",
       "doc_hash": "52d435c0095ec0b002e36dcbc56711ecc7c909945cc756768ed168907be3b131",
       "page_start": 125,
       "page_end": 125,
       "token_count": 33,
-      "description": "This glossary lists and explains terms, acronyms, and definitions.",
+      "description": "Glossary of terms and acronyms",
       "n_tables": 0,
-      "n_figures": 0,
-      "search_tokens": 9
+      "n_figures": 0
     },
     {
       "number": "6",
       "title": "Revision History",
-      "file": "@library/docs/datasheet-52d435c0/sections/6-revision-history.md",
+      "file": "docs/datasheet-52d435c0/sections/6-revision-history.md",
       "doc_hash": "52d435c0095ec0b002e36dcbc56711ecc7c909945cc756768ed168907be3b131",
       "page_start": 125,
       "page_end": 125,
       "token_count": 86,
-      "description": "Changes from May 24, 2023 to May 1, 2025 (from Revision * (May 2023) to Revision A (May 2025))",
+      "description": "Revision history: changes from May 2023 to May 2025",
       "n_tables": 0,
-      "n_figures": 0,
-      "search_tokens": 35
+      "n_figures": 0
     },
     {
       "number": "7",
       "title": "Mechanical, Packaging, and Orderable Information",
-      "file": "@library/docs/datasheet-52d435c0/sections/7-mechanical-packaging-and-orderable-information.md",
+      "file": "docs/datasheet-52d435c0/sections/7-mechanical-packaging-and-orderable-information.md",
       "doc_hash": "52d435c0095ec0b002e36dcbc56711ecc7c909945cc756768ed168907be3b131",
       "page_start": 125,
       "page_end": 125,
       "token_count": 101,
-      "description": "The following pages include mechanical, packaging, and orderable information.",
+      "description": "Mechanical, packaging, orderable information",
       "n_tables": 0,
-      "n_figures": 0,
-      "search_tokens": 36
+      "n_figures": 0
     }
   ],
   "stats": {
@@ -546,23 +492,10 @@
     "n_footnotes": 20,
     "n_specs": 536,
     "n_plot_files": 492,
-    "total_tokens": 39059,
-    "index_tokens": 2351,
+    "total_tokens": 39033,
+    "index_tokens": 2522,
     "boilerplate_tokens_removed": 0,
     "sections_with_pages": 39,
-    "sections_without_pages": 0,
-    "section_bytes": 157760,
-    "search_index_bytes": 49659,
-    "spec_confidence": {
-      "high": 531,
-      "medium": 2,
-      "low": 3
-    },
-    "plot_confidence": {
-      "high": 0,
-      "medium": 492,
-      "low": 0
-    },
-    "agent_doc_tokens": 1430
+    "sections_without_pages": 0
   }
 }
