@@ -8,6 +8,10 @@ Commands:
   search --part NAME "..."  BM25 full-text search, cited by construction (--json)
   ask --part NAME "..."     one cited answer pack inside a token budget (--json)
   plots --part NAME         deterministic plot lookup (--json)
+  pins --part NAME          pin table lookup: pin -> name, name -> pins (--json)
+  regs --part NAME          register map lookup: address / name / field (--json)
+  card --part NAME --card power|thermal|interface|limits   a task-shaped view
+  compare A B [--symbol S | --card power]   two parts, aligned row by row
   project new|add|remove|build|status   the noun above `part`: a design
   serve                     the local workbench (browser) on DSA_SERVE_HOST/PORT
   serve --mcp               the corpus as MCP tools over local stdio
@@ -27,6 +31,7 @@ import sys
 from pathlib import Path
 
 from datasheet_analyzer.config import PIPELINE_VERSION, get_settings
+from datasheet_analyzer.models import CARD_KINDS, PIN_TYPES
 
 log = logging.getLogger("dsa")
 
@@ -378,6 +383,82 @@ def _cmd_plots(args: argparse.Namespace) -> int:
         return 0 if hits else 1
     print(format_plot_hits(hits, show_part=show_part))
     return 0 if hits else 1
+
+
+# --- Phase 6 derived-artifact commands -------------------------------------
+#
+# `pins`, `regs`, `card` and `compare` are declared here — flags, help text,
+# exit codes — and implemented in `derive/`. The split is deliberate and is
+# the phase's contract: ten tickets run in parallel against one command line,
+# so the command line is frozen once, by ticket 01, and each later ticket
+# writes only its own module. None of them edits this file.
+#
+# Until a module lands, its command parses, prints why it is not available and
+# exits 3 — the same honest-degradation rule the optional `mcp` / `web` extras
+# already follow. It never traces back, and it never silently prints nothing,
+# which would read as "this part has no pins".
+
+
+#: Exit code for a declared-but-not-yet-implemented command. Distinct from 1
+#: ("no match" — a real answer) and 2 ("bad usage / degraded corpus") so a
+#: script can tell "the tool cannot do this yet" from "the corpus cannot
+#: answer this".
+EXIT_NOT_IMPLEMENTED = 3
+
+#: Which module and entry point each phase-6 command delegates to. The value
+#: is the frozen signature every implementing ticket writes against:
+#: `def cli_<name>(args: argparse.Namespace) -> int`.
+DERIVED_COMMANDS: dict[str, tuple[str, str]] = {
+    "pins": ("datasheet_analyzer.derive.pins", "cli_pins"),
+    "regs": ("datasheet_analyzer.derive.registers", "cli_regs"),
+    "card": ("datasheet_analyzer.derive.cards", "cli_card"),
+    "compare": ("datasheet_analyzer.derive.compare", "cli_compare"),
+}
+
+
+def not_implemented_message(command: str) -> str:
+    """What `dsa <command>` prints while its module is still unwritten."""
+    module, func = DERIVED_COMMANDS[command]
+    return (
+        f"dsa {command}: not available in this build — it is declared here but "
+        f"{module}.{func}() has not landed yet. Nothing is missing from your "
+        f"corpus; the command itself is unfinished."
+    )
+
+
+def _run_derived(command: str, args: argparse.Namespace) -> int:
+    """Delegate one phase-6 command to its module, degrading honestly.
+
+    The import is deliberately inside the call, like every other command in
+    this file: `dsa --help` must not pay for a module it is not going to run,
+    and a command whose module does not exist yet must fail as a message
+    rather than as an `ImportError` at startup for every other command too.
+    """
+    from importlib import import_module
+
+    module_path, func_name = DERIVED_COMMANDS[command]
+    try:
+        func = getattr(import_module(module_path), func_name)
+    except (ImportError, AttributeError):
+        print(not_implemented_message(command), file=sys.stderr)
+        return EXIT_NOT_IMPLEMENTED
+    return int(func(args))
+
+
+def _cmd_pins(args: argparse.Namespace) -> int:
+    return _run_derived("pins", args)
+
+
+def _cmd_regs(args: argparse.Namespace) -> int:
+    return _run_derived("regs", args)
+
+
+def _cmd_card(args: argparse.Namespace) -> int:
+    return _run_derived("card", args)
+
+
+def _cmd_compare(args: argparse.Namespace) -> int:
+    return _run_derived("compare", args)
 
 
 #: What to print when the optional MCP extra is not installed. Named here so
@@ -816,6 +897,56 @@ def main(argv: list[str] | None = None) -> int:
         help="emit hits (with matched_via + confidence) as JSON",
     )
     p_plots.set_defaults(func=_cmd_plots)
+
+    # --- Phase 6: derived artifacts. Flags frozen here, behaviour in `derive/`.
+    p_pins = sub.add_parser("pins", help="deterministic pin table lookup")
+    _add_scope(p_pins)
+    p_pins.add_argument("--q", default="", help="pin, name or description substring")
+    p_pins.add_argument(
+        "--type",
+        default="",
+        choices=("", *PIN_TYPES),
+        help="filter by pin type from the checked-in lexicon",
+    )
+    p_pins.add_argument(
+        "--json", action="store_true", help="emit hits (with confidence) as JSON"
+    )
+    p_pins.set_defaults(func=_cmd_pins)
+
+    p_regs = sub.add_parser("regs", help="deterministic register map lookup")
+    _add_scope(p_regs)
+    p_regs.add_argument("--name", default="", help="register name substring")
+    p_regs.add_argument("--addr", default="", help="address as printed, e.g. 0x1A04")
+    p_regs.add_argument("--field", default="", help="bit-field name substring")
+    p_regs.add_argument(
+        "--json", action="store_true", help="emit registers (with fields) as JSON"
+    )
+    p_regs.set_defaults(func=_cmd_regs)
+
+    p_card = sub.add_parser(
+        "card", help="a task-shaped view over records that already exist"
+    )
+    _add_scope(p_card)
+    p_card.add_argument(
+        "--card", required=True, choices=CARD_KINDS, help="which card to render"
+    )
+    p_card.add_argument(
+        "--json", action="store_true", help="emit the card (with provenance) as JSON"
+    )
+    p_card.set_defaults(func=_cmd_card)
+
+    p_compare = sub.add_parser(
+        "compare", help="align two or more parts row by row, with an SI delta"
+    )
+    p_compare.add_argument("parts", nargs="+", help="part numbers, e.g. AFE7950 AFE7953")
+    p_compare.add_argument("--symbol", default="", help="one alias-resolved symbol")
+    p_compare.add_argument(
+        "--card", default="", choices=("", *CARD_KINDS), help="compare a whole card"
+    )
+    p_compare.add_argument(
+        "--json", action="store_true", help="emit the comparison as JSON"
+    )
+    p_compare.set_defaults(func=_cmd_compare)
 
     p_project = sub.add_parser(
         "project", help="group parts into a design (the noun above `part`)"

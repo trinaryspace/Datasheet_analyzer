@@ -31,6 +31,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import yaml
+from pydantic import BaseModel, Field
 
 from datasheet_analyzer.models import GoldenQuestion, SpecRecord
 from datasheet_analyzer.retrieve import AnswerPack, CorpusIndex, PlotHit, Retriever, SpecHit
@@ -403,3 +404,126 @@ def summarize(results: list[QuestionResult]) -> dict:
 def load_golden_yaml(path: Path) -> list[GoldenQuestion]:
     data = yaml.safe_load(Path(path).read_text(encoding="utf-8"))
     return [GoldenQuestion.model_validate(item) for item in data["questions"]]
+
+
+# --- derived artifacts (phase 6) --------------------------------------------
+#
+# Pin and register goldens need no new machinery: they are `ask_query`
+# questions naming the route the pack must take (`{route: pin}`), so they run
+# inside `dsa verify` exactly as the phase-5 paths do, and the pass rule is the
+# one every other path is held to — the answer lands on a page the question
+# cites.
+#
+# A **card** golden could not be expressed that way. A card is not an `ask`
+# route, and `GoldenQuestion` (frozen by ticket 01) carries no `card_query`
+# field to name which card answers. Rather than bend an existing marker into
+# meaning something else, a card golden is its own question type in its own
+# top-level `cards:` block of the same per-part YAML file: `load_golden_yaml`
+# reads `questions:` and ignores it, so an old reader is unaffected and a card
+# question sits beside the datasheet question it derives from.
+
+
+class CardQuestion(BaseModel):
+    """One golden question answered by a design card.
+
+    `card` names which of the four cards must answer — a card question that
+    did not say would pass on a coincidence in another card. `pages` is the
+    same citation ground truth every other golden carries: it is read off the
+    printed page, and a card row satisfies it only if the row's own citation
+    lands there.
+    """
+
+    id: str
+    question: str
+    card: str
+    expected_substrings: list[str]
+    pages: list[int] = Field(default_factory=list)
+    #: Which row must carry them, when the card prints several rows a
+    #: substring could match. Empty means any row on a cited page.
+    row: str = ""
+    notes: str = ""
+
+
+def load_card_golden(path: Path) -> list[CardQuestion]:
+    """The `cards:` block of a golden file; `[]` when it has none."""
+    data = yaml.safe_load(Path(path).read_text(encoding="utf-8")) or {}
+    return [CardQuestion.model_validate(item) for item in data.get("cards") or []]
+
+
+def _card_row_text(row: object) -> str:
+    """Every printed string a card row carries, for substring matching.
+
+    Only `verbatim` text and the row's own labels — never a computed
+    `value_si`. A golden checks that the corpus surfaces what the datasheet
+    *printed*; matching against a normalized float would let a card pass by
+    agreeing with its own arithmetic.
+    """
+    values = getattr(row, "values", {}) or {}
+    printed = " ".join(v.verbatim for v in values.values() if getattr(v, "verbatim", ""))
+    return f"{row.label} {row.symbol} {row.note} {printed}"
+
+
+def verify_card_queries(
+    questions: list[CardQuestion],
+    part_dir: Path,
+    *,
+    page_texts: list[str] | None = None,
+) -> list[QueryResult]:
+    """Deterministic card verification: the row, its citation, and the page.
+
+    Three things must hold, and the third is the phase's whole claim:
+
+    1. the named card has a row carrying every expected substring;
+    2. that row's citation names a page the question cites — the card row
+       points a reader at the printed page, not merely at the right number;
+    3. when the source PDF is supplied, that page really does print them.
+
+    A card whose row matches on a page the question does not cite fails. That
+    is the same rule `verify_spec_queries` applies, applied one layer up.
+    """
+    from datasheet_analyzer.derive.cards import load_or_build_card, row_citation
+
+    results: list[QueryResult] = []
+    for q in questions:
+        card = load_or_build_card(part_dir, Path(part_dir).name, q.card)
+        rows = [r for r in card.rows if not q.row or contains(_card_row_text(r), q.row)]
+        cited = [
+            r
+            for r in rows
+            if any(
+                v.page in q.pages for v in r.values.values() if v.filled and v.page is not None
+            )
+        ]
+        ok = bool(cited) and all(
+            any(contains(_card_row_text(r), sub) for r in cited) for sub in q.expected_substrings
+        )
+        detail = f"{len(cited)} cited row(s) of {len(card.rows)} on the {q.card} card"
+        if ok and not all(row_citation(r) for r in cited):
+            ok, detail = False, "a matching row carries no citation"
+        if ok and page_texts:
+            blob = "\n".join(page_texts[p - 1] for p in q.pages if 0 < p <= len(page_texts))
+            missing = [s for s in q.expected_substrings if not contains(blob, s)]
+            if missing:
+                ok = False
+                detail = f"not printed on the cited page: {', '.join(missing)}"
+        if not ok and not cited:
+            detail = (
+                f"no row on the {q.card} card cites {', '.join(f'p.{p}' for p in q.pages)}"
+                f" ({len(card.rows)} row(s) built)"
+            )
+        results.append(
+            QueryResult(
+                question=GoldenQuestion(
+                    id=q.id,
+                    question=q.question,
+                    expected_substrings=list(q.expected_substrings),
+                    pages=list(q.pages),
+                    kind="card",
+                ),
+                ok=ok,
+                n_records=len(card.rows),
+                n_verified=len(cited),
+                detail=detail,
+            )
+        )
+    return results

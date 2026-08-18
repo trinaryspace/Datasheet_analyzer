@@ -66,9 +66,12 @@ from datasheet_analyzer.models import CorpusManifest, CorpusStats
 from datasheet_analyzer.pipeline import build_part
 from datasheet_analyzer.protocol import agent_doc_current
 from datasheet_analyzer.publish import (
+    cards_current,
     doc_dir_name_for_source,
     document_dirs,
+    pins_current,
     plots_current,
+    registers_current,
     search_index_current,
     specs_current,
 )
@@ -278,7 +281,9 @@ def _extractor_stale(manifest: CorpusManifest) -> bool:
     return False
 
 
-def _publish_artifacts_stale(part_dir: Path, manifest: CorpusManifest) -> bool:
+def _publish_artifacts_stale(
+    part_dir: Path, manifest: CorpusManifest, *, card_version: str = ""
+) -> bool:
     """True when a published document is missing a current publish artifact.
 
     Extraction is not the only thing that can go out of date: the publish
@@ -300,8 +305,17 @@ def _publish_artifacts_stale(part_dir: Path, manifest: CorpusManifest) -> bool:
     `AGENT.md` (ticket 08) is gated the same way, on its own embedded
     protocol marker: a corpus published before the protocol existed would
     otherwise skip forever and ship no protocol beside its index.
+
+    Design cards (phase 6) are the one artifact gated on something other than
+    a schema version: `card_version` (`DSA_CARD_VERSION`) versions the
+    *derivation rules*, so a changed selector regenerates the card instead of
+    leaving a number on disk that no longer follows from the rule that is
+    written down. Cards hang off the part, not a document, because a card
+    composes records from several.
     """
     if not agent_doc_current(part_dir):
+        return True
+    if not cards_current(part_dir, card_version):
         return True
     # Where each document's artifacts live is a fact of the manifest, not of
     # the layout: ticket 04 publishes a document once into the shared store
@@ -315,6 +329,18 @@ def _publish_artifacts_stale(part_dir: Path, manifest: CorpusManifest) -> bool:
             return True
         if not specs_current(doc_dir) or not plots_current(doc_dir):
             return True
+        # `pins.json` joins the same cache key (phase 6, ticket 04). An absent
+        # file reads as current, exactly as it does for specs and plots: a
+        # document that printed no pin table is not a document with a stale
+        # one, and demanding a file that must not exist would put every part
+        # without a pin table into a rebuild loop.
+        if not pins_current(doc_dir):
+            return True
+        # `registers.json` is gated identically (phase 6, ticket 05). Absent
+        # reads as current for the same reason: a document that prints no
+        # register summary table must not put its part into a rebuild loop.
+        if not registers_current(doc_dir):
+            return True
     return False
 
 
@@ -326,8 +352,9 @@ def skip_reason(job: BatchJob, *, settings: Settings, force: bool = False) -> st
     ``extractor_version`` still matches what its backend produces today,
     every published document carries current-schema publish artifacts —
     ``search_index.json``, a ``specs.json`` / ``plots.json`` of the
-    current schema wherever one was written, and the part's ``AGENT.md`` at
-    the current protocol version (``_publish_artifacts_stale``) —
+    current schema wherever one was written, the part's ``AGENT.md`` at
+    the current protocol version, and its design cards at the current
+    ``DSA_CARD_VERSION`` (``_publish_artifacts_stale``) —
     and
     the PDF's sha256 matches the hash of the document recorded for this file
     in the part's inventory AND the manifest's published documents
@@ -360,7 +387,9 @@ def skip_reason(job: BatchJob, *, settings: Settings, force: bool = False) -> st
             return ""
         if _extractor_stale(manifest):
             return ""
-        if _publish_artifacts_stale(part_dir, manifest):
+        if _publish_artifacts_stale(
+            part_dir, manifest, card_version=settings.card_version
+        ):
             return ""
         pdf_hash = compute_content_hash(job.pdf_path)
         published = {s.content_hash for s in manifest.documents}

@@ -232,6 +232,35 @@ class PlotHit:
         """Corpus-relative image path, `""` until pixels exist."""
         return self.record.file
 
+    @property
+    def axes(self) -> dict:
+        """The figure's axis catalog, or nulls where nothing could be read.
+
+        Phase 6 (ticket 08) catalogs each figure's printed axes geometrically;
+        this is that catalog in the one JSON shape every front end emits. An
+        axis the reader could not resolve stays null and its grade says so —
+        `axis_confidence` is the whole catalog's grade, because the two axes
+        are read from one figure region and a half-read region is not a
+        half-trustworthy one.
+        """
+        rec = self.record
+        grade = rec.axis_confidence
+        return {
+            "x": {
+                "label": rec.x_label,
+                "unit": rec.x_unit,
+                "min": rec.x_min,
+                "max": rec.x_max,
+            },
+            "y": {
+                "label": rec.y_label,
+                "unit": rec.y_unit,
+                "min": rec.y_min,
+                "max": rec.y_max,
+            },
+            "confidence": str(getattr(grade, "value", grade) or "") or CONFIDENCE_UNKNOWN,
+        }
+
     def as_dict(self) -> dict:
         """JSON-ready view: the figure, its citation, rung and grade.
 
@@ -253,6 +282,7 @@ class PlotHit:
             "citation": self.citation.label,
             "file": rec.file,
             "tags": list(rec.tags),
+            "axes": self.axes,
             "matched_via": self.matched_via,
             "confidence": self.confidence,
         }

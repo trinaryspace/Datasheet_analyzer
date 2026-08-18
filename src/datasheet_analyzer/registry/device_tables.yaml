@@ -1,0 +1,197 @@
+# Device-table header lexicon — data, not code.
+#
+# Pin tables and register-summary tables are the same structural animal: wide,
+# repetitive, keyed by a first column. `structure/device_tables.py` holds the
+# machinery (identify -> map columns -> validate -> emit); every *word* it
+# knows lives here, exactly like the alias lexicon in `aliases.yaml` and the
+# vendor brand marks in `vendor.py`.
+#
+# Adding a header variant a vendor prints ("Ball No.", "Reg Addr") is an edit
+# to this file and nothing else. Adding a vendor *rule* is not possible here,
+# and that is the point: this is a vocabulary, not a per-vendor branch.
+#
+# Shape, one entry per device-table kind:
+#
+#   <kind>:
+#     label: <human name used in rejection reasons>
+#     key_role: <the role whose cell is the row's key>
+#     key_pattern: <regex a key cell must match, anchored, case-insensitive>
+#     key_names: [pad, ep]        # literal keys the pattern cannot describe
+#     key_share: 0.6              # share of printed rows whose key must match
+#     min_rows: 2                 # body rows below which nothing is a table
+#     min_header_roles: 2         # roles a header row must match to identify
+#     min_row_yield: 0.5          # share of printed rows that must emit
+#     expand_keys: true           # "A1, A2" / "A1-A4" become separate records
+#     validators: [...]           # names in `device_tables.VALIDATORS`
+#     captions: [...]             # phrases a caption or section title uses for
+#                                 # this kind; the positional fallback's only
+#                                 # evidence of what a headerless table is
+#     roles:
+#       <role>:
+#         position: 0             # column index used by the positional fallback
+#         required: true          # a table missing this role is not this kind
+#         headers: [...]          # normalized header phrases that name it
+#
+# Header matching is on the *normalized* phrase (lowercased, footnote markers
+# and punctuation folded to spaces, whitespace collapsed): write "i/o" here and
+# `I/O`, `I/O(2)` and `i o` all match it. The longest matching phrase wins, so
+# a "Pin Name" column reads as `name` rather than as `pin`.
+#
+# **Quote any entry YAML would read as something else.** `no` and `on` are
+# booleans in YAML 1.1 and `#` opens a comment, so `"no"` and `"pin #"` are
+# quoted above; the loader warns rather than silently dropping one.
+
+schema_version: 1
+
+pin:
+  label: pin table
+  key_role: pin
+  # "A1", "12", "AB12", "B12A" — a package designator, never a sentence.
+  key_pattern: '[a-z]{0,3}[0-9]{1,4}[a-z]?'
+  # Printed keys no pattern describes: the exposed pad has a name, not a
+  # number, and it is a pin a designer must connect.
+  key_names: [pad, ep, epad, dap, tab, "thermal pad", "exposed pad"]
+  key_share: 0.6
+  min_rows: 2
+  # Measured: every pin table in the built corpora prints at least pin + name
+  # + description (AD9081 Table 21, HMC520A Table 4, LMX1204 Table 4-1). Two
+  # roles alone is what a bill of materials matches.
+  min_header_roles: 3
+  min_row_yield: 0.5
+  expand_keys: true
+  validators: [key_column_shape, unique_keys, row_yield]
+  # What a caption or section title says this table is about. Consulted only
+  # by the positional fallback: a table that declares no columns has to be
+  # declared by something, or the tool is guessing.
+  captions:
+    - pin function
+    - pin functions
+    - pin description
+    - pin descriptions
+    - pin configuration
+    - pin assignment
+    - pin assignments
+    - terminal function
+    - terminal functions
+    - signal description
+    - signal descriptions
+  roles:
+    pin:
+      position: 0
+      required: true
+      headers:
+        - pin
+        - pin no
+        - pin number
+        - pin num
+        - "pin #"
+        - pin/ball
+        - ball
+        - ball no
+        - ball number
+        - pad
+        - pad no
+        - terminal
+        - terminal no
+        - "no"
+    name:
+      position: 1
+      required: true
+      headers:
+        - name
+        - pin name
+        - ball name
+        - signal
+        - signal name
+        - symbol
+        - mnemonic
+    type:
+      position: 2
+      required: false
+      headers:
+        - type
+        - pin type
+        - i/o
+        - io
+        - i/o type
+        - dir
+        - direction
+    description:
+      position: 3
+      required: false
+      headers:
+        - description
+        - pin description
+        - signal description
+        - function
+        - pin function
+        - comment
+        - comments
+
+register:
+  label: register table
+  key_role: address
+  # "0x1A04", "1A04h", "0055", "12" — a printed register number. At least one
+  # digit is required so a short all-hex *word* ("ace") is not an address.
+  key_pattern: '0x[0-9a-f]+|[0-9a-f]+h|(?=[0-9a-f]*[0-9])[0-9a-f]{1,8}'
+  key_names: []
+  key_share: 0.6
+  min_rows: 2
+  min_header_roles: 2
+  min_row_yield: 0.5
+  # A register address is one number; "0x00, 0x04" as a single key would be
+  # two registers sharing one reset value, which is not a shape any map prints.
+  expand_keys: false
+  validators: [key_column_shape, unique_keys, monotonic_addresses, row_yield]
+  captions:
+    - register map
+    - register maps
+    - registers
+    - register summary
+    - register table
+    - memory map
+  roles:
+    address:
+      position: 0
+      required: true
+      headers:
+        - address
+        - addr
+        - register address
+        - reg address
+        - reg addr
+        - offset
+        - byte offset
+        - reg
+        - "reg no"
+    name:
+      position: 1
+      required: true
+      headers:
+        - name
+        - register
+        - register name
+        - reg name
+        - acronym
+        - mnemonic
+    reset:
+      position: 2
+      required: false
+      headers:
+        - reset
+        - reset value
+        - default
+        - default value
+        - por
+        - por value
+        - power on reset
+    access:
+      position: 3
+      required: false
+      headers:
+        - access
+        - r/w
+        - rw
+        - type
+        - mode
+        - access type

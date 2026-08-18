@@ -114,11 +114,26 @@ class TestSelectBackend:
     def test_unknown_vendor_falls_back_to_layout_backend(self):
         assert select_backend("unknown", DocType.DATASHEET) == "pdf_layout"
 
-    def test_companions_use_pdf_text_for_every_vendor(self):
+    def test_prose_companions_use_pdf_text_for_every_vendor(self):
+        """Errata and app notes are prose and keep the degraded backend.
+
+        Unchanged by phase 6, ticket 05, and asserted here so the register-map
+        re-route below cannot quietly take the other companion types with it.
+        """
         for vendor in ("ti", "adi", "qorvo", "unknown"):
-            assert select_backend(vendor, DocType.REGISTER_MAP) == "pdf_text"
             assert select_backend(vendor, DocType.ERRATA) == "pdf_text"
             assert select_backend(vendor, DocType.APP_NOTE) == "pdf_text"
+            assert select_backend(vendor, DocType.UNKNOWN) == "pdf_text"
+
+    def test_register_maps_route_to_the_layout_backend_for_every_vendor(self):
+        """Phase 6, ticket 05: a register map's tables *are* the document.
+
+        Read as paragraphs it answers no bring-up question at all, so it is
+        the one companion type routed to `pdf_layout` — a document-type fact,
+        not a vendor rule, which is why it holds for every vendor.
+        """
+        for vendor in ("ti", "adi", "qorvo", "unknown"):
+            assert select_backend(vendor, DocType.REGISTER_MAP) == "pdf_layout"
 
     def test_unknown_vendor_name_raises(self):
         with pytest.raises(KeyError, match="nvidia"):
@@ -244,7 +259,7 @@ class TestManifestVendor:
         assert result.manifest.vendor == "ti"
         from datasheet_analyzer.config import PIPELINE_VERSION
 
-        assert result.manifest.pipeline_version == PIPELINE_VERSION == "0.4.0"
+        assert result.manifest.pipeline_version == PIPELINE_VERSION == "0.5.0"
         data = json.loads((result.part_dir / "manifest.json").read_text(encoding="utf-8"))
         assert data["vendor"] == "ti"
         doc = result.manifest.documents[0]

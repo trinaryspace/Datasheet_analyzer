@@ -66,6 +66,7 @@ from datasheet_analyzer.structure.aliases import (
     token_overlap,
     tokens,
 )
+from datasheet_analyzer.structure.plot_axes import Axis, axis_contains
 
 if TYPE_CHECKING:  # pragma: no cover - import cycle guard, typing only
     from datasheet_analyzer.retrieve.pack import AnswerPack
@@ -279,11 +280,25 @@ class Retriever:
         conditions: str = "",
         section: str = "",
         tags: list[str] | None = None,
+        x_label: str = "",
+        y_label: str = "",
+        near_x: str = "",
+        near_y: str = "",
     ) -> list[PlotHit]:
         """AND-match caption/conditions text, exact section number, and tags.
 
         `q` searches the combined caption + conditions text; `caption` and
         `conditions` restrict those fields independently.
+
+        **Axis filters (phase 6, ticket 08).** `x_label`/`y_label` are
+        case-insensitive substrings of the axis titles the figure prints;
+        `near_x`/`near_y` take a quantity ("3.5GHz", "-40") and keep only
+        figures whose printed axis range covers it, converting SI prefixes on
+        both sides so a query in GHz narrows an axis printed in MHz. They are
+        *narrowing* filters over data that is honestly absent for some
+        figures: a record whose axes could not be read is ruled out by them,
+        never in, and the unfiltered catalog is one call away. See
+        `structure/plot_axes.py` for how the catalog is read.
         """
         tags = tags or []
         hits: list[PlotHit] = []
@@ -300,13 +315,18 @@ class Retriever:
                     continue
                 if tags and not all(t.lower() in (rec.tags or []) for t in tags):
                     continue
+                if not _axis_match(rec, x_label, y_label, near_x, near_y):
+                    continue
                 hits.append(
                     PlotHit(
                         record=rec,
                         citation=Citation.for_plot(
                             rec, doc=doc.name, doc_hash=doc.doc_hash, part=self.part
                         ),
-                        matched_via=_plot_matched_via(rec, q, caption, conditions, section, tags),
+                        matched_via=_plot_matched_via(
+                            rec, q, caption, conditions, section, tags,
+                            axis=bool(x_label or y_label or near_x or near_y),
+                        ),
                         confidence=record_confidence(rec),
                     )
                 )
@@ -618,6 +638,26 @@ def _covers_page(sec: SectionFile, page: int) -> bool:
     return sec.page_start <= page <= (sec.page_end or sec.page_start)
 
 
+def _axis_match(
+    rec: PlotRecord, x_label: str, y_label: str, near_x: str, near_y: str
+) -> bool:
+    """True when a record passes every axis filter that was asked for.
+
+    A figure with no axis catalog fails any axis filter — the catalog says
+    `None`, and `None` is not "probably yes". That is the whole point of
+    grading `axis_confidence` rather than filling the field in.
+    """
+    if x_label and x_label.lower() not in rec.x_label.lower():
+        return False
+    if y_label and y_label.lower() not in rec.y_label.lower():
+        return False
+    x_axis = Axis(label=rec.x_label, unit=rec.x_unit, min=rec.x_min, max=rec.x_max)
+    y_axis = Axis(label=rec.y_label, unit=rec.y_unit, min=rec.y_min, max=rec.y_max)
+    covers_x = axis_contains(x_axis, near_x) if near_x else True
+    covers_y = axis_contains(y_axis, near_y) if near_y else True
+    return covers_x and covers_y
+
+
 def _plot_matched_via(
     rec: PlotRecord,
     q: str,
@@ -625,7 +665,10 @@ def _plot_matched_via(
     conditions: str,
     section: str,
     tags: list[str],
+    axis: bool = False,
 ) -> str:
+    if axis and not (q or caption or conditions):
+        return "axis"
     if caption or (q and q.lower() in rec.caption.lower()):
         return "caption"
     if conditions or q:

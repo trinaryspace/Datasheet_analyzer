@@ -677,7 +677,28 @@ class TestAnswerPacks:
 
     def test_every_golden_question_answers_inside_its_budget(self, gate, capsys):
         from datasheet_analyzer.evalh.golden import load_golden
-        from datasheet_analyzer.retrieve import ROUTE_NONE, Retriever
+        from datasheet_analyzer.retrieve import (
+            ROUTE_NONE,
+            ROUTE_PIN,
+            ROUTE_PLOT,
+            ROUTE_REGISTER,
+            ROUTE_SEARCH,
+            ROUTE_SPEC,
+            Retriever,
+        )
+
+        # Every route a pack may legitimately take, plus "none" — but *not*
+        # ROUTE_UNAVAILABLE, which says absence was never established. All four
+        # gate corpora publish a search index, so "unavailable" here is a
+        # broken corpus, and this assertion is what catches it.
+        answerable = (
+            ROUTE_SPEC,
+            ROUTE_PIN,
+            ROUTE_REGISTER,
+            ROUTE_PLOT,
+            ROUTE_SEARCH,
+            ROUTE_NONE,
+        )
 
         rows: list[str] = []
         routes: dict[str, int] = {}
@@ -691,7 +712,7 @@ class TestAnswerPacks:
                 pack = retriever.ask(q.question, budget=self.BUDGET)
                 assert pack.tokens <= self.BUDGET, f"{name}/{q.id} blew its budget"
                 assert not pack.over_budget, f"{name}/{q.id}"
-                assert pack.route in ("spec", "plot", "search", ROUTE_NONE)
+                assert pack.route in answerable, f"{name}/{q.id}: {pack.route}"
                 if pack.route != ROUTE_NONE:
                     assert pack.citations, f"{name}/{q.id}: an answer with no citation"
                     assert all(line.citation for line in pack.answers), f"{name}/{q.id}"

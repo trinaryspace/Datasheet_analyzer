@@ -29,8 +29,10 @@ Pipeline: `PDF → acquire → extract → structure → enrich → publish → 
   MathML, footnotes — no OCR, no hallucination); every other vendor and
   era routes to a vendor-neutral offline layout engine (`pdf_layout`,
   PyMuPDF-only, zero vendor assumptions — tables, specs, plots, page
-  citations straight from the PDF). A degraded `pdf_text` backend handles
-  register maps / errata / app notes (paragraphs only).
+  citations straight from the PDF). Register maps route to `pdf_layout`
+  too — their tables *are* the document — while a degraded `pdf_text`
+  backend handles the prose companions, errata / app notes (paragraphs
+  only).
 - **Structure** — HTML tables become atomic, span-expanded blocks with their
   conditions preamble + footnotes attached; sections get page ranges from the
   PDF's printed TOC; tables get exact pinned pages where possible.
@@ -38,8 +40,15 @@ Pipeline: `PDF → acquire → extract → structure → enrich → publish → 
   LLM writes only the section descriptions (optional); all corpus content is
   verbatim-extracted. Without an API key, descriptions are deterministic.
 - **Publish** — per-section markdown with CSV twins of every table,
-  `specs.json`, `plots.json` + `figures/` image files, a `search_index.json`
-  BM25 index per document, and `manifest.json`.
+  `specs.json`, `plots.json` + `figures/` image files, `pins.json` and
+  `registers.json` where the document prints those tables, a
+  `search_index.json` BM25 index per document, and `manifest.json`.
+- **Derive** — task-shaped views computed from what was published: design
+  cards (power / thermal / interface / limits) and cross-part comparison.
+  **No model appears anywhere in a derived value's path**: every field is a
+  verbatim copy, a documented pure function of one, or a lexicon label, and
+  carries the record id, the printed page and the rule that produced it
+  (`AGENTS.md` invariant 8).
 - **Eval** — `dsa verify` runs the golden Q&A: every answer must appear in the
   corpus section covering the cited page **and** in the cited PDF page itself,
   plus deterministic spec-query and plot-query checks.
@@ -253,6 +262,70 @@ dsa plots --part AFE7950 --q "Output Fullscale" --json
 Returns matching `plots.json` records (caption, conditions, section, page,
 confidence, and the image file path under `figures/`) for an agent to open.
 
+### Look up a pin (`dsa pins`)
+
+```bash
+dsa pins --part AD9081 --type power        # every supply pin, by lexicon label
+dsa pins --part AD9081 --q VDD             # designator, name or description
+dsa pins --part LMX1204 --type ground --json
+```
+
+The table a designer lives inside during schematic capture. `A1, A2, B1` and
+`A1–A4` expand into four records that share name/type/description and are
+each individually citable. The type (`power | ground | analog | digital |
+clock | rf | nc | reserved | unknown`) comes from
+`registry/pin_types.yaml`, and each record names the lexicon entry that
+produced it in `type_evidence`. A part whose datasheet prints no readable pin
+table publishes **no** `pins.json` and says so — that is different from a part
+with no pins.
+
+### Look up a register (`dsa regs`)
+
+```bash
+dsa regs --part LMX1204 --addr 0x11        # by value: 0x11, 0x11, 17 are one question
+dsa regs --part LMX1204 --name R17
+dsa regs --part LMX1204 --json
+```
+
+Address / name / reset / access, each cited to the page that printed it.
+A column the map never printed stays empty and says so — a blank reset read
+as `0x00` is what breaks a bring-up sequence. Per-register **bit fields** are
+not published (see `KNOWN_SHORTCOMINGS.md`); `--field` says that out loud
+rather than returning an empty result that reads as "this register has no
+fields".
+
+### Get a design card (`dsa card`)
+
+```bash
+dsa card --part AFE7950 --card power       # rails: voltage min/typ/max, current
+dsa card --part AFE7950 --card thermal     # RθJA, RθJC, ΨJT, TJ, TA, Tstg
+dsa card --part AD9081  --card interface   # JESD204B/C, lane count, lane rate
+dsa card --part AFE7950 --card limits      # abs-max vs recommended, with margin
+```
+
+A task-shaped view over records that already exist: "what rails does this need
+and how much current?" is one call instead of a five-section scavenger hunt.
+Every value carries the record it was copied from, the printed page, and the
+named rule that produced it; a field that could not be filled is null and says
+why. The `limits` card computes margin **only where both sides parsed** and
+flags any parameter whose recommended maximum equals its absolute maximum —
+a design hazard that is invisible when the two tables are read pages apart.
+Cards are written to `parts/<PART>/cards/<kind>.json` and `.md`, and
+`DSA_CARD_VERSION` participates in the publish cache key, so changing a
+derivation rule regenerates them instead of leaving stale numbers behind.
+
+### Compare two parts (`dsa compare`)
+
+```bash
+dsa compare AFE7950 AFE7953 --symbol TJ
+dsa compare AFE7950 AFE7953 --card power
+```
+
+Rows are aligned by alias-resolved symbol. Each row shows both verbatim values
+with both page cites, and an SI delta **only where both sides parsed**. A
+parameter one part prints and the other does not is reported as such, never
+silently dropped, and the unparsed population is named rather than hidden.
+
 ### Read content by section
 
 Load `parts/AFE7950/INDEX.md` first — it maps every section to its file and
@@ -269,9 +342,17 @@ parts/AFE7950/
     ├── tables/*.csv       # machine-readable twins of each section table
     ├── figures/           # plot image files referenced by plots.json
     ├── specs.json         # parametric spec records (symbol/name/conditions/min/typ/max/unit/page)
-    ├── plots.json         # searchable plot catalog + file map
+    ├── plots.json         # searchable plot catalog + file map + axis catalog
+    ├── pins.json          # pin records, one per designator (when a pin table was read)
+    ├── registers.json     # register summary records (when a register map was read)
     └── search_index.json  # BM25 index over sections/*.md (what `dsa search` ranks)
+└── cards/                 # derived design cards: power|thermal|interface|limits
+    ├── power.json         # every value carries source + page + derivation
+    └── power.md           # the same card rendered, a citation on every row
 ```
+
+`cards/` hangs off the **part**, not a document: a card composes records from
+every document registered for the part.
 
 Every answer should quote values **with units** and cite `p.N` from the
 section header.
@@ -382,9 +463,26 @@ On macOS/Linux the command is `/path/to/repo/.venv/bin/dsa`.
 | `search` | part or project | BM25 hits, each cited by construction |
 | `find_spec` | part or project | spec records through the alias ladder |
 | `read_section` | part | one section verbatim, bounded by `max_tokens` |
-| `find_plots` | part or project | the plot catalog, filtered |
+| `find_plots` | part or project | the plot catalog, filtered by text, section, tags **or axis** |
 | `get_figure` | part | one figure **as an image content block** |
 | `ask` | part or project | one cited, budget-bounded answer pack |
+| `find_pin` | part or project | pins by designator, name, description or type |
+| `find_register` | part or project | registers by name, address or bit field |
+| `get_card` | part | one design card (power / thermal / interface / limits) |
+| `compare_parts` | named parts | two or more parts aligned on one parameter or card |
+
+`find_plots` takes `x_label` / `y_label` (substrings of the printed axis
+titles) and `near_x` / `near_y` (a quantity the printed axis range must
+cover, SI prefixes converted on both sides), so an agent narrows hundreds of
+figures to the one worth opening before spending a vision token. A figure
+whose axes could not be read is not a match — `axes.confidence` says so.
+
+The last four tools are the **derived** artifacts of phase 6, and they carry
+one extra rule: nothing on them is generated. Every value is printed text
+copied verbatim, a number computed from it by a named pure function, or a
+label from a checked-in lexicon, and each ships with the record and printed
+page it came from (`AGENTS.md` invariant 8, `docs/adr/0007-…`). A field that
+could not be filled is null and says why.
 
 Resources `dsa://part/<PART>/INDEX.md` and
 `dsa://project/<NAME>/PROJECT_INDEX.md` let a client pin an index into context
@@ -479,9 +577,12 @@ dsa add-doc register_map.pdf --part AFE7950 --type register_map [--nda]
 dsa build afe7950.pdf --part AFE7950   # rebuild picks it up
 ```
 
-Types: `register_map`, `errata`, `app_note`, `datasheet`. Companions extract
-with the honest `pdf_text` backend (paragraphs only; no trusted tables, no
-`specs.json`) and join the same `INDEX.md`.
+Types: `register_map`, `errata`, `app_note`, `datasheet`. A `register_map`
+extracts with the same `pdf_layout` engine a datasheet does, so its register
+tables are read as tables and answer `dsa regs`; the prose companions
+(`errata`, `app_note`) extract with the honest `pdf_text` backend (paragraphs
+only; no trusted tables, no `specs.json`). All of them join the same
+`INDEX.md`.
 
 ### Other commands
 
@@ -581,11 +682,41 @@ ran establishes nothing.
 - **Content path is vendor-neutral.** TI keeps its HTML viewer path;
   ADI / Qorvo / older TI / vendor N+1 datasheets route to the offline
   `pdf_layout` floor (PyMuPDF-only, no per-vendor layout rules — adding
-  a vendor is a brand-lexicon data change, not engine code). Non-datasheet
-  PDFs (register maps / errata / app notes) use `pdf_text` for any vendor.
+  a vendor is a brand-lexicon data change, not engine code). Register maps
+  read through `pdf_layout` for any vendor (a document-type fact, not a
+  vendor rule: read as paragraphs a register map answers nothing); the prose
+  companions — errata, app notes — use `pdf_text` for any vendor.
 - Table page pinning is exact where the table is locatable in PDF page text;
-  otherwise the table honestly keeps its section-level page range.
-- Spec values are verbatim strings — no float parsing or numeric comparison.
+  otherwise the table honestly keeps its section-level page range. A row of a
+  table that spills onto the next printed page cites its own page only on the
+  `pdf_layout` path; an HTML-derived table gives every row the page the table
+  starts on (see `KNOWN_SHORTCOMINGS.md`).
+- Register summary tables (address / name / reset / access) publish as
+  `registers.json` and answer `dsa regs --part X [--name] [--addr 0x1A04]`.
+  A summary table that fails validation is rejected whole with a recorded
+  reason rather than published half-read, and a column the map never printed
+  stays empty and says so — a blank reset read as `0x00` is what breaks a
+  bring-up sequence.
+- **Verbatim values are authoritative; the parsed numeric layer is additive
+  and may be absent.** Every printed cell is kept exactly as the datasheet
+  printed it and is never mutated. Beside it, `structure/quantities.py` parses
+  what it can into SI floats (`value_si`, `unit_si`, `value_kind`,
+  `parse_confidence`) so cards, margins and `dsa compare` can do arithmetic.
+  A cell that does not parse stays `parse_confidence: none` — a first-class
+  outcome, not an error — and any consumer that sorts or compares **reports
+  the unparsed population explicitly** rather than dropping it.
+- Pin tables publish as `pins.json` and answer `dsa pins --part X [--q VDD]
+  [--type power]`; multi-pin rows expand so each pin is individually citable,
+  and a type comes from a checked-in lexicon with `unknown` as a legitimate
+  answer. A pin table that fails validation is rejected **whole**, with the
+  reason recorded — a pin table missing a row reads as "this pin does not
+  exist" during schematic capture. Package drawings stay figure images.
+- Design cards (`dsa card --part X --card power|thermal|interface|limits`)
+  and `dsa compare A B` are derived views: they compose records that already
+  exist, and every value on them carries the record id, the printed page and
+  the named rule that produced it. An empty card is a real answer — this part
+  does not print that data — and `dsa compare` reports rows only one part
+  prints rather than dropping them.
 - **PyMuPDF is AGPL-3.0** — it is the engine behind the offline
   `pdf_layout` extraction floor, and TI's HTML path uses it for
   TOC/identity/verification. Fine for local research; review before
@@ -598,13 +729,19 @@ ran establishes nothing.
   Applicability, Tag, Label, Job, Batch
 - `docs/adr/` — architecture decision records, including
   `0005-documents-apply-to-parts.md` (why a document applies to parts instead
-  of belonging to one) and `0006-auto-resolved-scope.md` (why there is still no
-  "all parts" scope)
+  of belonging to one), `0006-auto-resolved-scope.md` (why there is still no
+  "all parts" scope) and `0007-deterministic-derived-artifacts.md` (why no
+  model may appear anywhere in a derived value's path)
+- `KNOWN_SHORTCOMINGS.md` — what this tool cannot currently do, why, what it
+  does instead, and what would close each entry
 - `PHASE_1_REPORT.md` / `PHASE_2_REPORT.md` / `PHASE_3_REPORT.md` /
-  `PHASE_4_REPORT.md` / `PHASE_5_REPORT.md` — measured results per phase (all
-  five phases are shipped; PHASE 4 covers the vendor-neutral layout core +
-  four-part gate, PHASE 5 the agent-native access surface: retrieval core,
-  aliases, search, confidence, `ask`, projects, MCP, `AGENT.md`)
+  `PHASE_4_REPORT.md` / `PHASE_5_REPORT.md` / `PHASE_6_REPORT.md` — measured
+  results per phase (all six phases are shipped; PHASE 4 covers the
+  vendor-neutral layout core + four-part gate, PHASE 5 the agent-native access
+  surface: retrieval core, aliases, search, confidence, `ask`, projects, MCP,
+  `AGENT.md`; PHASE 6 the design-time content: the numeric layer, pins,
+  registers, design cards, the plot axis catalog and cross-part compare, all
+  under invariant 8)
 - `PHASE_2_PLAN.md` / `PHASE_3_PLAN.md` / `PHASE_4_PLAN.md` /
-  `PHASE_5_PLAN.md` — completed execution contracts, superseded by their
-  reports
+  `PHASE_5_PLAN.md` / `PHASE_6_PLAN.md` — completed execution contracts,
+  superseded by their reports

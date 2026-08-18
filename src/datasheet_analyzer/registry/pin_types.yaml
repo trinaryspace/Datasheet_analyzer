@@ -1,0 +1,166 @@
+# Pin-type lexicon — data, not code (invariant 8, clause (c)).
+#
+# `derive/pins.py` holds the machinery; every *word* it knows lives here, the
+# same way `aliases.yaml` holds the designer's synonyms and
+# `device_tables.yaml` holds the header vocabulary. Teaching the tool that a
+# vendor prints "PWR" in its type column, or that `VBAT` is a supply rail, is
+# an edit to this file and nothing else.
+#
+# A pin's `type` is one of the nine labels frozen in `models.PIN_TYPES`:
+#
+#   power | ground | analog | digital | clock | rf | nc | reserved | unknown
+#
+# **`unknown` is a legitimate output; a guess is not.** Nothing in this file
+# assigns a label by "looks like" — every label is a phrase somebody wrote
+# down here, and the record that carries it also carries `type_evidence`, the
+# entry that produced it, so a reader can check the label against the lexicon
+# instead of trusting it.
+#
+# ## How a label is decided
+#
+# Three ranks of evidence, strongest first. The first rank that says anything
+# decides, and the label records which one it was:
+#
+#   1. `printed`  — the table's own type/direction cell ("PWR", "GND", "NC").
+#   2. `names`    — the pin's printed name ("AVDD2", "VSSA", "CLKIN_P").
+#   3. `keywords` — a phrase in the printed description ("analog ground").
+#
+# Two things produce `unknown` rather than a label, and both are honest
+# readings of a genuinely unclear row:
+#
+#   - the printed cell and the name disagree (`GND` printed on a pin named
+#     `VDD18`) — the datasheet contradicts itself and this tool does not get
+#     to pick a winner;
+#   - one name cell names several pins whose own labels disagree
+#     (`VDD, GND`) — there is no single answer to record.
+#
+# ## Patterns
+#
+# `printed` and `names` entries are **globs**, not regexes: `*` matches any
+# run of characters and everything else is literal. They are matched against
+# the normalized text (lowercased, whitespace collapsed) and must match the
+# *whole* token — `*vdd*` matches `PLLCLKVDD1`, `nc` does not match `NCO_EN`.
+# `keywords` are plain substrings of the normalized description.
+#
+# **Order is priority.** Within one rank, the first `types:` entry that
+# matches wins, which is what makes `CLKVDD1` a supply rather than a clock:
+# a rail is named by its rail word wherever else the name wanders. Reordering
+# this list changes classifications, so it is part of the data contract —
+# see `tests/unit/test_pins.py`, which asserts the order-sensitive cases.
+
+schema_version: 1
+
+# Printed cells that read as a *direction* rather than as a type. Matched
+# whole (normalized), and kept **verbatim** in `PinRecord.direction` — the
+# glyph a datasheet printed (`—`) is the glyph a reader checks against the
+# page, so nothing here rewrites one direction into another's spelling.
+directions:
+  - i
+  - o
+  - "i/o"
+  - io
+  - in
+  - out
+  - input
+  - output
+  - "input/output"
+  - inout
+  - bidirectional
+  - bidir
+  - "i/o/z"
+  - "—"
+  - "–"
+  - "-"
+  - "n/a"
+
+types:
+  - type: ground
+    printed: [gnd, ground, gnd*, vss, "gnd/thermal pad"]
+    names: ["*gnd*", "*vss*", ep, epad, "e-pad", dap, pad, "thermal pad", "exposed pad", tab, agnd, dgnd]
+    keywords: [ground, "return path"]
+
+  - type: power
+    printed: [pwr, power, "power supply", supply, "*supply*", vdd, vcc]
+    names: ["*vdd*", "*vcc*", "*vnn*", "*vee*", vbat, vpp, vsup*, vs, "vs+", "vs-", "v+", "v-", vddio, vin_supply]
+    keywords: [supply, "power rail", "positive rail", "negative rail"]
+
+  - type: nc
+    printed: [nc, "n/c", nic, dnc, "no connect", "do not connect"]
+    names: [nc, "n.c.", "nc*", nic*, dnc*, nu, noconnect]
+    keywords: ["no connect", "not internally connected", "not connected", "do not connect", "leave this pin unconnected"]
+
+  - type: reserved
+    printed: [rsvd, reserved]
+    names: [rsvd*, reserved*, rsv*]
+    keywords: [reserved, "factory use only", "do not use"]
+
+  - type: clock
+    printed: [clk, clock]
+    names: ["*clk*", "*clock*", "*sysref*", xtal*, osc*, refin, "ref in"]
+    keywords: [clock, sysref, "reference input"]
+
+  - type: rf
+    printed: [rf]
+    names: [rf, "rf*", "*rfin*", "*rfout*", lo, lop, lon, lo_p, lo_n, loin*, loout*, "if", if1, if2, ifin*, ifout*, ant*]
+    keywords: ["rf port", "rf input", "rf output", "lo port", "local oscillator", "if port", "if input", "if output"]
+
+  # Before `analog` deliberately: `ADC0_FD0` is a fast-detect *output*, not
+  # the converter's analog input, and `*_fd*` says so before `adc*` claims it.
+  - type: digital
+    printed: [dig, digital, cmos, lvcmos, lvds, ttl, "digital input", "digital output"]
+    names: ["*_fd*", spi*, sck*, sclk*, sdi*, sdo*, sdio*, scl, sda, cs, "cs#", csb, csn, nss, ss, "ss#", miso, mosi, gpio*, irq*, int, intb, reset*, rst*, en, enb, enable, "*_en", pdn, pwdn*, sync*, tck, tms, tdi, tdo, trst, muxout, sdout*, sdin*, serdin*, serdout*, txen*, rxen*]
+    keywords: [spi, "serial data", "chip select", "cmos input", "digital input", "digital output", "logic input", "logic output", gpio, "serial interface"]
+
+  - type: analog
+    printed: [ana, analog, byp, bypass, "analog input", "analog output"]
+    names: [vref*, "*vcm*", bias*, "*_bias", ain*, aout*, vin, vip, vinp, vinn, iout*, iset, iref, rext, rbias, dac*, adc*]
+    keywords: ["analog input", "analog output", bias, "reference voltage", "common mode", "bypass capacitor"]
+
+# The package cross-check (a documented pure function, invariant 8 clause (b)).
+#
+# Where the package or ordering-information text prints a pin count, it is
+# compared against the number of records the pin table yielded and a mismatch
+# is a **warning** — the pin table is still the best record available, and a
+# part whose package section is silent is not a part with a broken pin table.
+#
+# The two guards below are what keep a table of contents ("21 Pin Configuration
+# and Functions") and a sentence ("connect the IF1 pin") out of the count:
+# a real declaration is either hyphenated (`324-Ball`) or plural (`400 PINS`),
+# is at least `min_count`, and sits in text that also names a package.
+package:
+  count_words: [pin, ball, lead, terminal, contact]
+  min_count: 4
+  context_words:
+    - package
+    - packaging
+    - bga
+    - fc-bga
+    - qfn
+    - vqfn
+    - wqfn
+    - hvqfn
+    - lga
+    - clga
+    - clcc
+    - leadless
+    - chip carrier
+    - wlcsp
+    - csp
+    - soic
+    - so-8
+    - tssop
+    - ssop
+    - msop
+    - dip
+    - pdip
+    - cdip
+    - to-99
+    - to-92
+    - lqfp
+    - tqfp
+    - qfp
+    - dfn
+    - mclp
+    - pin count
+    - orderable
+    - ordering guide

@@ -10,13 +10,23 @@ classified by feature hits, in the plan's order:
 
 | # | Feature | Route |
 |---|---|---|
-| 1 | the spec ladder resolves the question (symbol / alias / prefix / fuzzy) | `spec` |
-| 2 | plot vocabulary (`plot`, `curve`, `vs`, `versus`, `graph`, `figure`) **and** a figure whose caption uses the question's words | `plot` |
-| 3 | anything the full-text index ranks | `search` |
-| 4 | nothing, and the corpus has no current full-text index | `unavailable` — rebuild to enable search |
-| 5 | nothing at all | `none` — an explicit no-match plus nearest candidates |
+| 1 | pin vocabulary (`pin`, `ball`, `pad`) **and** a published `pins.json` that answers | `pin` |
+| 2 | register vocabulary (`register`, `reset value`, `bit field`) **and** a published `registers.json` that answers | `register` |
+| 3 | the spec ladder resolves the question (symbol / alias / prefix / fuzzy) | `spec` |
+| 4 | plot vocabulary (`plot`, `curve`, `vs`, `versus`, `graph`, `figure`) **and** a figure whose caption uses the question's words | `plot` |
+| 5 | anything the full-text index ranks | `search` |
+| 6 | nothing, and the corpus has no current full-text index | `unavailable` — rebuild to enable search |
+| 7 | nothing at all | `none` — an explicit no-match plus nearest candidates |
 
-Route 4 exists because an empty full-text result means "nothing matched" only
+Routes 1 and 2 are phase 6's, and they go first for the reason the phase
+exists: "which pins are ground?" has a *table* for an answer, and a corpus
+that publishes that table should never answer it with a paragraph that happens
+to contain the word "ground". They are guarded exactly as the plot route is —
+vocabulary alone never routes anything; the derived artifact has to exist and
+has to return a record — so a part that published no pin table (most of them
+do not) routes as it always did, and no phase-5 answer moves.
+
+Route 6 exists because an empty full-text result means "nothing matched" only
 when there was an index to match against. A corpus published before
 `search_index.json` existed (or against an older schema) hands back the same
 empty list, and reading that as absence would put a claim in the pack that the
@@ -58,6 +68,7 @@ dependency-free, so the check is available wherever the schema is.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, replace
 
 from datasheet_analyzer.config import get_settings
@@ -77,18 +88,51 @@ from datasheet_analyzer.structure.search import tokenize
 from datasheet_analyzer.tokens import count_tokens, truncate_to_tokens
 
 ROUTE_SPEC = "spec"
+#: Phase 6: the derived device tables. A pin or register question asked of a
+#: corpus that published one is answered from that artifact rather than from a
+#: paragraph that happens to contain the word — see `_route`.
+ROUTE_PIN = "pin"
+ROUTE_REGISTER = "register"
 ROUTE_PLOT = "plot"
 ROUTE_SEARCH = "search"
 ROUTE_NONE = "none"
 #: No route could run: the spec and figure paths found nothing and this corpus
 #: has no current full-text index, so absence was never established.
 ROUTE_UNAVAILABLE = "unavailable"
-ROUTES = (ROUTE_SPEC, ROUTE_PLOT, ROUTE_SEARCH, ROUTE_NONE, ROUTE_UNAVAILABLE)
+ROUTES = (
+    ROUTE_SPEC,
+    ROUTE_PIN,
+    ROUTE_REGISTER,
+    ROUTE_PLOT,
+    ROUTE_SEARCH,
+    ROUTE_NONE,
+    ROUTE_UNAVAILABLE,
+)
+
+#: What makes a question a *pin* question, and a *register* question. Both are
+#: printed-word lexicons, like `PLOT_VOCABULARY` — matching one is necessary
+#: and never sufficient: the derived artifact must also exist and must
+#: actually answer, so a routing technicality can never cost an answer that
+#: exists (the rule the plot route already follows).
+PIN_VOCABULARY = re.compile(r"\b(pin|pins|pinout|pin-?out|ball|balls|pad|pads)\b", re.IGNORECASE)
+REGISTER_VOCABULARY = re.compile(
+    r"\b(register|registers|regmap|register map|reset value|default value|"
+    r"bit ?field|bit ?fields)\b",
+    re.IGNORECASE,
+)
+#: A printed pin designator (`A1`, `B12`, `E7`) or a signal/register name
+#: (`VDD18`, `TXDIG_CTRL0`). Case is significant: a datasheet prints both in
+#: upper case, and lower-casing the question first would make "the" a name.
+_DESIGNATOR = re.compile(r"\b[A-Z]{1,2}\d{1,3}\b")
+_IDENTIFIER = re.compile(r"\b[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)*[A-Z0-9]\b")
+_HEX_LITERAL = re.compile(r"\b0x[0-9a-fA-F]+\b")
 
 # How many candidates each route offers the budget. The budget is the real
 # limit; these caps only stop a prefix-family query from rendering two hundred
 # lines just to trim them again.
 MAX_SPEC_ANSWERS = 6
+MAX_PIN_ANSWERS = 8
+MAX_REGISTER_ANSWERS = 6
 MAX_PLOT_ANSWERS = 5
 MAX_SEARCH_ANSWERS = 3
 MAX_SUGGESTIONS = 5
@@ -99,7 +143,13 @@ MAX_PROJECT_ANSWERS = 8
 _HEADER_PARTS = 6
 # Which route leads a project pack when two parts answer by different paths:
 # a parametric row is a stronger answer than a quoted paragraph.
-_ROUTE_STRENGTH = {ROUTE_SPEC: 0, ROUTE_PLOT: 1, ROUTE_SEARCH: 2}
+_ROUTE_STRENGTH = {
+    ROUTE_SPEC: 0,
+    ROUTE_PIN: 1,
+    ROUTE_REGISTER: 2,
+    ROUTE_PLOT: 3,
+    ROUTE_SEARCH: 4,
+}
 
 _TRUNCATION_NOTICE = (
     "_Truncated to fit a {budget}-token budget — raise it with `--budget N` "
@@ -514,6 +564,13 @@ def _route(
     if not question:
         return ROUTE_NONE, [_no_match_line(question)], None, _verify_none(), [], False
 
+    # The derived device tables answer first when they can — see module docs.
+    # Each returns `None` unless its artifact exists *and* held a record, so
+    # neither can shadow an answer the older routes would have found.
+    derived = _pin_route(retriever, question) or _register_route(retriever, question)
+    if derived is not None:
+        return derived
+
     spec_hits = retriever.specs(name=question)
     # The plot lookup runs only when the question actually names a figure, and
     # its result is what allows it to override the spec route (module docs).
@@ -554,6 +611,118 @@ def _route(
         retriever.suggest_specs(question, limit=MAX_SUGGESTIONS),
         False,
     )
+
+
+def _pin_type_named(question: str) -> str:
+    """The pin-type label a question names, from the checked-in lexicon.
+
+    Invariant 8 clause (c): the label is not inferred from the shape of the
+    question, it is a phrase somebody wrote down in `registry/pin_types.yaml`.
+    Only the literal phrases are used — a glob (`*vdd*`) describes a printed
+    *name*, not a word a designer types — and lexicon order decides, exactly
+    as it does when the same file labels a record.
+    """
+    from datasheet_analyzer.derive.pins import load_pin_lexicon, normalize
+
+    asked = normalize(question)
+    for spec in load_pin_lexicon().types:
+        for phrase in (*spec.printed, *spec.keywords):
+            if "*" in phrase:
+                continue
+            # Whole words, not substrings: "ground?" ends a printed question
+            # and "background" is not one. The boundary is alphanumeric-only
+            # because the lexicon's own phrases carry punctuation (`n/c`).
+            pattern = rf"(?<![a-z0-9]){re.escape(normalize(phrase))}(?![a-z0-9])"
+            if phrase and re.search(pattern, asked):
+                return spec.type
+    return ""
+
+
+def _named_records(question: str) -> list[str]:
+    """Printed designators and identifiers the question names, longest first.
+
+    `A1`, `VDD18`, `TXDIG_CTRL0` — the strings a datasheet prints in a device
+    table's key column. Longest first because a question that names both
+    `TXDIG_CTRL0` and `TX` is asking about the former, and the lookup takes
+    the first term that matches a record.
+    """
+    found = [*_DESIGNATOR.findall(question), *_IDENTIFIER.findall(question)]
+    unique = list(dict.fromkeys(found))
+    return sorted(unique, key=lambda t: (-len(t), t))
+
+
+def _pin_route(retriever: Retriever, question: str):
+    """The pin table's answer, or `None` to leave the question to another route.
+
+    `None` — not an empty pack — for every way this route can decline: the
+    question names no pin, the part published no `pins.json`, or the table has
+    no matching record. Declining is what keeps the guarantee that adding this
+    route cannot move an answer another route already gave.
+    """
+    if not PIN_VOCABULARY.search(question):
+        return None
+    label = _pin_type_named(question)
+    terms = _named_records(question)
+    if not label and not terms:
+        return None
+    from datasheet_analyzer.derive.pins import find_pins, load_part_pins
+
+    part_pins = load_part_pins(retriever.part_dir, retriever.part)
+    if not part_pins.sets:
+        return None
+    hits: list = []
+    # A named designator is the sharper question, so it is asked first; a type
+    # that was also named is the fallback, which is what makes "which pins are
+    # ground on the AD9081?" answer despite naming the part in passing.
+    for term in [*terms, ""] if label else terms:
+        hits = find_pins(part_pins, q=term, pin_type=label)
+        if hits:
+            break
+    if not hits:
+        return None
+    lines = [_pin_line(h) for h in hits[:MAX_PIN_ANSWERS]]
+    top = hits[0]
+    excerpt = _excerpt_for(retriever, question, top.citation)
+    verify = _verify_record(retriever, top.citation, top.confidence)
+    return ROUTE_PIN, lines, excerpt, verify, [], len(hits) > MAX_PIN_ANSWERS
+
+
+def _register_route(retriever: Retriever, question: str):
+    """The register map's answer, or `None` to leave the question alone.
+
+    Same decline contract as `_pin_route`. An address is asked first and by
+    *value* (`derive.registers` resolves `0x1A04`, `0x1a04` and `6660` to one
+    question), because a firmware engineer who typed an address knows exactly
+    which register they mean.
+    """
+    if not REGISTER_VOCABULARY.search(question):
+        return None
+    addresses = _HEX_LITERAL.findall(question)
+    names = _named_records(question)
+    if not addresses and not names:
+        return None
+    from datasheet_analyzer.derive.registers import find_registers, load_part_registers
+
+    part_registers = load_part_registers(retriever.part_dir, retriever.part)
+    if not part_registers.sets:
+        return None
+    hits: list = []
+    for address in addresses:
+        hits = find_registers(part_registers, addr=address)
+        if hits:
+            break
+    if not hits:
+        for name in names:
+            hits = find_registers(part_registers, name=name)
+            if hits:
+                break
+    if not hits:
+        return None
+    lines = [_register_line(h) for h in hits[:MAX_REGISTER_ANSWERS]]
+    top = hits[0]
+    excerpt = _excerpt_for(retriever, question, top.citation)
+    verify = _verify_record(retriever, top.citation, top.confidence)
+    return ROUTE_REGISTER, lines, excerpt, verify, [], len(hits) > MAX_REGISTER_ANSWERS
 
 
 def _spec_route(retriever: Retriever, question: str, hits: list[SpecHit]):
@@ -654,6 +823,60 @@ def _spec_value(rec: SpecRecord) -> str:
         if val
     ]
     return ", ".join(parts)
+
+
+def _pin_line(hit) -> PackLine:
+    """`A1  VSSA  [ground] — Analog ground`, every half optional but the key.
+
+    The type is printed in brackets because it is a *derived* label and a
+    reader must be able to tell it from the two cells the datasheet printed;
+    `dsa pins` prints it the same way for the same reason.
+    """
+    rec = hit.record
+    head = f"{rec.pin}  {rec.name}".strip()
+    direction = f" {rec.direction}" if rec.direction else ""
+    text = f"{head}  [{rec.type}{direction}]"
+    if rec.description:
+        text = f"{text} — {rec.description}"
+    return PackLine(
+        text=text,
+        citation=hit.citation.label,
+        confidence=hit.confidence,
+        matched_via=hit.matched_via,
+        doc=hit.citation.doc,
+        section=hit.citation.section,
+        page_start=hit.citation.page_start,
+        page_end=hit.citation.page_end,
+    )
+
+
+def _register_line(hit) -> PackLine:
+    """`0x1A04  TXDIG_CTRL0: reset 0x00, access R/W` — printed cells only.
+
+    A column the map never printed contributes nothing rather than a
+    placeholder: the line says what the page says.
+    """
+    rec = hit.record
+    head = f"{rec.address.verbatim}  {rec.name}".strip() or rec.id
+    detail = [
+        f"{label} {value}"
+        for label, value in (("reset", rec.reset.verbatim), ("access", rec.access))
+        if value
+    ]
+    for field in hit.fields:
+        bits = field.bits.verbatim or "?"
+        detail.append(f"{bits} {field.name}".strip())
+    text = f"{head}: {', '.join(detail)}" if detail else head
+    return PackLine(
+        text=text,
+        citation=hit.citation.label,
+        confidence=hit.confidence,
+        matched_via=hit.matched_via,
+        doc=hit.citation.doc,
+        section=hit.citation.section,
+        page_start=hit.citation.page_start,
+        page_end=hit.citation.page_end,
+    )
 
 
 def _plot_line(hit: PlotHit) -> PackLine:
@@ -994,10 +1217,18 @@ def validate_pack(payload: object, schema: dict | None = None, path: str = "$") 
     """Check `payload` against `ANSWER_PACK_SCHEMA`; `[]` means it validates.
 
     A deliberately small JSON-Schema subset (type, enum, anyOf, properties,
-    required, items, `additionalProperties: false`) implemented here rather
-    than pulled in as a dependency: the declared shape is part of the contract
-    between this core and its front ends, and checking it must never depend on
-    an optional package being installed.
+    required, items, and `additionalProperties` as either `false` or a schema)
+    implemented here rather than pulled in as a dependency: the declared shape
+    is part of the contract between this core and its front ends, and checking
+    it must never depend on an optional package being installed.
+
+    Schema-valued `additionalProperties` is phase 6's addition, and it exists
+    for one shape: a derived card's `values` is keyed by *column name*, so the
+    only way to declare what a card's cells are is to declare the schema every
+    unlisted key must satisfy. Without it that node would have to be declared
+    as "some object" — and a contract that stops describing the payload at the
+    exact place the provenance envelope lives is not worth shipping to a
+    client.
     """
     schema = ANSWER_PACK_SCHEMA if schema is None else schema
     errors: list[str] = []
@@ -1021,15 +1252,20 @@ def validate_pack(payload: object, schema: dict | None = None, path: str = "$") 
         if not ok:
             return [*errors, f"{path}: expected {'/'.join(names)}, got {type(payload).__name__}"]
 
-    if isinstance(payload, dict) and "properties" in schema:
+    if isinstance(payload, dict) and ("properties" in schema or "additionalProperties" in schema):
+        properties = schema.get("properties", {})
+        extra = schema.get("additionalProperties")
         for key in schema.get("required", []):
             if key not in payload:
                 errors.append(f"{path}.{key}: required key missing")
-        if schema.get("additionalProperties") is False:
-            for key in payload:
-                if key not in schema["properties"]:
-                    errors.append(f"{path}.{key}: unexpected key")
-        for key, sub in schema["properties"].items():
+        for key in payload:
+            if key in properties:
+                continue
+            if extra is False:
+                errors.append(f"{path}.{key}: unexpected key")
+            elif isinstance(extra, dict):
+                errors.extend(validate_pack(payload[key], extra, f"{path}.{key}"))
+        for key, sub in properties.items():
             if key in payload:
                 errors.extend(validate_pack(payload[key], sub, f"{path}.{key}"))
 

@@ -1,0 +1,274 @@
+# Design-card selectors — data, not code (invariant 8, clause (c)).
+#
+# `derive/cards.py` holds the machinery; every *word* it knows lives here, the
+# same way `aliases.yaml` holds the designer's synonyms and `pin_types.yaml`
+# holds the pin vocabulary. Teaching the power card that a vendor names its
+# rails `VBAT`, or the interface card that a part speaks JESD204D, is an edit
+# to this file and nothing else — which is the point of the acceptance
+# criterion "a new rail-naming convention is a data change".
+#
+# A card **derives nothing new**. It selects records that already exist and
+# computes only what a documented pure function can compute from them (the
+# `limits` card's margin). Nothing here can invent a value: every selector is
+# a filter over published records, and a group that matches nothing produces
+# an entry in the card's `unresolved` list, never a plausible default.
+#
+# ## Shape
+#
+#   <card kind>:
+#     title:   what the rendered card is called
+#     intent:  one sentence — why a designer opens this card
+#     groups:  ordered list of row groups (see below)
+#
+# ## A group
+#
+#   - id:        stable key for the group (appears in `unresolved` lines)
+#     heading:   the rendered section heading
+#     cells:     which printed cells become columns, in order
+#                (`min` | `typ` | `max` | `value`)
+#     families:  alias-lexicon symbols (`aliases.yaml`) whose family claims
+#                the record — `structure/aliases.AliasLexicon.entry_for`
+#     patterns:  phrases matched inside the record's own symbol + name text,
+#                normalized (lowercased, punctuation to space) so `RθJA`
+#                is written `rθja` and `Junction-to-ambient` matches
+#                `junction to ambient`
+#     units:     accepted *base* units, after `structure/quantities.resolve_unit`
+#                — `V` also admits `mV`, `A` admits `mA`, `s` admits `ns`.
+#                Empty means any unit is accepted.
+#     unitless:  true to also accept a record that printed no unit at all
+#                (a compliance row like "JESD204B and JESD204C")
+#     exclude:   phrases that reject a record outright, checked first
+#
+# A record joins a group when it matches **at least one** of `families` /
+# `patterns`, passes the `units` filter, and hits none of `exclude`.
+# `pin_types` replaces both for a group drawn from `pins.json`.
+#
+# The `limits` card is different in kind — it joins two tables rather than
+# selecting rows — and declares `sides` instead of `groups`. See the comment
+# above it.
+
+version: 1
+
+cards:
+  power:
+    title: Power
+    intent: >-
+      What rails does this part need, how much current does each draw, and
+      what does the whole thing dissipate — the five-section scavenger hunt,
+      answered as one page.
+    groups:
+      - id: rails
+        heading: Supply voltage
+        cells: [min, typ, max, value]
+        families: [VDD]
+        patterns:
+          - supply voltage
+          - rail voltage
+          - operating voltage
+        units: [V]
+        exclude:
+          - pin voltage
+          - pin volatge          # as printed in AFE7950 §4.1 — kept verbatim
+          - electrostatic
+          - esd
+
+      - id: currents
+        heading: Supply current
+        cells: [min, typ, max, value]
+        families: [IDD]
+        patterns:
+          - supply current
+          - quiescent current
+          - operating current
+          - current consumption
+        units: [A]
+        exclude:
+          - short circuit
+          - leakage
+
+      - id: dissipation
+        heading: Power dissipation
+        cells: [min, typ, max, value]
+        families: [Pdiss]
+        patterns:
+          - power dissipation
+          - power consumption
+          - dissipated power
+        units: [W]
+
+      - id: supply_pins
+        heading: Supply and ground pins
+        pin_types: [power, ground]
+
+  thermal:
+    title: Thermal
+    intent: >-
+      The thermal budget in one place: the resistances that turn watts into
+      degrees, and the temperatures the part is allowed to reach.
+    groups:
+      - id: rtheta_ja
+        heading: Junction-to-ambient thermal resistance (RθJA)
+        cells: [min, typ, max, value]
+        patterns:
+          - junction to ambient
+          - rθja
+          - θja
+          - theta ja
+        units: ["°C/W"]
+
+      - id: rtheta_jc
+        heading: Junction-to-case thermal resistance (RθJC)
+        cells: [min, typ, max, value]
+        patterns:
+          - junction to case
+          - rθjc
+          - θjc
+          - theta jc
+        units: ["°C/W"]
+
+      - id: rtheta_jb
+        heading: Junction-to-board thermal resistance (RθJB)
+        cells: [min, typ, max, value]
+        patterns:
+          - junction to board thermal resistance
+          - rθjb
+          - θjb
+          - theta jb
+        units: ["°C/W"]
+
+      - id: psi_jt
+        heading: Junction-to-top characterization parameter (ΨJT)
+        cells: [min, typ, max, value]
+        patterns:
+          - junction to top characterization
+          - ψjt
+          - psi jt
+        units: ["°C/W"]
+
+      - id: psi_jb
+        heading: Junction-to-board characterization parameter (ΨJB)
+        cells: [min, typ, max, value]
+        patterns:
+          - junction to board characterization
+          - ψjb
+          - psi jb
+        units: ["°C/W"]
+
+      - id: tj
+        heading: Junction temperature (TJ)
+        cells: [min, typ, max, value]
+        families: [TJ]
+        patterns:
+          - junction temperature
+          - channel temperature
+        units: ["°C"]
+
+      - id: ta
+        heading: Ambient temperature (TA)
+        cells: [min, typ, max, value]
+        families: [TA]
+        patterns:
+          - ambient temperature
+          - operating free air temperature
+        units: ["°C"]
+
+      - id: tstg
+        heading: Storage temperature (Tstg)
+        cells: [min, typ, max, value]
+        families: [Tstg]
+        patterns:
+          - storage temperature
+        units: ["°C"]
+
+  interface:
+    title: Digital interface
+    intent: >-
+      What the part talks, how fast, over how many lanes, and what the
+      register interface demands of a host — the bring-up page.
+    groups:
+      - id: standards
+        heading: Standards compliance
+        cells: [value, typ, min, max]
+        patterns:
+          - jesd204
+          - jesd 204
+          - standards compliance
+          - interface standard
+          - protocol support
+        unitless: true
+
+      - id: lanes
+        heading: Lanes
+        cells: [min, typ, max, value]
+        patterns:
+          - number of lanes
+          - lane count
+          - serdes lanes
+          - number of serdes
+        unitless: true
+
+      - id: lane_rate
+        heading: Lane rate
+        cells: [min, typ, max, value]
+        families: [FSerDes]
+        patterns:
+          - serdes bit rate
+          - serial interface rate
+          - lane rate
+          - serdes rate
+        units: [bps]
+
+      - id: spi_timing
+        heading: Serial port (SPI) timing
+        cells: [min, typ, max, value]
+        families: ["t(SCLK)"]
+        patterns:
+          - sclk
+          - spi
+          - serial port
+          - senb
+          - sdio
+          - csb
+        units: [s]
+
+# The `limits` card joins the absolute-maximum table against the
+# recommended-operating table by alias-resolved symbol, and computes a margin
+# **only where both sides parsed numerically**. Everything it could not
+# compare is listed rather than dropped, because a parameter silently missing
+# from a margin table reads as "no margin problem here", which is the exact
+# failure this card exists to prevent.
+#
+# A side is identified from the record's own section title (from the
+# manifest) or from the table/row conditions printed above it. Both are text
+# the datasheet itself printed; nothing infers a side from a value.
+#
+#   compare_cells — the cells that carry the limit being compared, in
+#                   preference order. Both sides compare a maximum: the
+#                   absolute-maximum rating against the recommended maximum
+#                   is the margin a designer has to work in.
+  limits:
+    title: Limits and margin
+    intent: >-
+      Absolute maximum against recommended operating, per parameter, with the
+      margin between them — the comparison that is invisible when the two
+      tables are read pages apart.
+    sides:
+      abs_max:
+        label: Absolute maximum
+        section_patterns:
+          - absolute maximum
+          - absolute maximum ratings
+          - stress ratings
+        text_patterns:
+          - absolute maximum
+          - stress rating
+        compare_cells: [max, value]
+      recommended:
+        label: Recommended operating
+        section_patterns:
+          - recommended operating conditions
+          - recommended operating
+          - operating conditions
+        text_patterns:
+          - recommended operating
+        compare_cells: [max, value]

@@ -1,5 +1,12 @@
 """Vendor identity + backend routing — a thin, rule-free routing record.
 
+Routing has two axes and neither is a vendor rulebook: the *vendor* chooses
+the datasheet backend chain, and the *document type* chooses whether a
+companion is read as prose (``pdf_text``) or as tables (``pdf_layout``,
+``TABLE_COMPANION_TYPES``). Adding a table-shaped companion type is an entry
+in that set; adding a vendor is an entry in ``VENDOR_PROFILES``.
+
+
 The vendor is *never* a rulebook: a ``VendorProfile`` carries only an
 identity detector (shared brand-mark lexicon against page-1 text and the
 filename), a backend preference chain, and no behavior of its own. No
@@ -34,7 +41,21 @@ class VendorProfile:
     name: str
     brand_marks: tuple[str, ...]  # case-insensitive substrings (page-1 text / filename)
     backend_chain: tuple[str, ...]  # datasheet backends, preference order
-    companion_backend: str = "pdf_text"  # non-datasheets for every vendor
+    companion_backend: str = "pdf_text"  # prose companions, every vendor
+    # Companions whose content *is* tables (`TABLE_COMPANION_TYPES`). Still
+    # not the datasheet chain: that chain starts at a vendor's HTML mirror,
+    # which publishes datasheets and not programmer's guides, so a register
+    # map routed through it would fetch the wrong document or nothing at all.
+    table_companion_backend: str = "pdf_layout"
+
+
+#: Companion document types whose *tables* are the document (phase 6, ticket
+#: 05). A register map read as paragraphs is a document with no answers in it:
+#: every bring-up question — what is at 0x1A04, what does R5 reset to — is a
+#: table lookup. These route to the layout backend for every vendor, which is
+#: a doc-type fact rather than a vendor rule, so it lives beside the profiles
+#: instead of inside one. Errata and app notes are prose and keep `pdf_text`.
+TABLE_COMPANION_TYPES: frozenset[DocType] = frozenset({DocType.REGISTER_MAP})
 
 
 VENDOR_PROFILES: dict[str, VendorProfile] = {
@@ -111,15 +132,33 @@ def detect_vendor(path: Path) -> tuple[str, str]:
 def select_backend(vendor_name: str, doc_type: DocType) -> str:
     """First *registered* backend in the profile's preference chain.
 
-    Companions (register maps, errata, app notes) use the degraded
-    ``pdf_text`` backend for every vendor. A datasheet whose chain names no
-    registered backend raises ``BackendUnavailableError`` — honest failure
-    over silent degradation.
+    Prose companions (errata, app notes) use the degraded ``pdf_text``
+    backend for every vendor. **Table companions — register maps — use
+    ``pdf_layout``** (phase 6, ticket 05): they were paragraphs-only until
+    that change, which made every bring-up question unanswerable by
+    construction. The change invalidates cached ``(content_hash, backend)``
+    extractions for those documents, which is what the ``PIPELINE_VERSION``
+    bump to 0.5.0 exists for.
+
+    A datasheet whose chain names no registered backend raises
+    ``BackendUnavailableError`` — honest failure over silent degradation. A
+    companion falls back to ``pdf_text`` when its preferred backend is not
+    registered, because a degraded reading of a companion is still better
+    than failing a build over one.
     """
     from datasheet_analyzer.extract import BackendUnavailableError, available_backends
 
     profile = get_profile(vendor_name)
     if doc_type != DocType.DATASHEET:
+        if doc_type not in TABLE_COMPANION_TYPES:
+            return profile.companion_backend
+        preferred = profile.table_companion_backend
+        if preferred in set(available_backends()):
+            return preferred
+        log.warning(
+            "backend %r is not registered — reading %s documents as paragraphs (%s)",
+            preferred, doc_type.value, profile.companion_backend,
+        )
         return profile.companion_backend
     registered = set(available_backends())
     for name in profile.backend_chain:

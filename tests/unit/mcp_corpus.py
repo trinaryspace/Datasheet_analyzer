@@ -16,15 +16,27 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from datasheet_analyzer.config import PIPELINE_VERSION, Settings
+from datasheet_analyzer.config import (
+    PINS_SCHEMA_VERSION,
+    PIPELINE_VERSION,
+    REGISTERS_SCHEMA_VERSION,
+    Settings,
+)
+from datasheet_analyzer.derive.pins import write_pinset
+from datasheet_analyzer.derive.registers import write_registerset
 from datasheet_analyzer.models import (
     Confidence,
     DocType,
+    PinRecord,
+    PinSet,
     PlotRecord,
     PlotSet,
     Project,
     ProjectMember,
     RawDocument,
+    RegisterRecord,
+    RegisterSet,
+    RegisterValue,
     SectionNode,
     SourceDocument,
     SpecRecord,
@@ -114,12 +126,70 @@ def _plots(part: str) -> PlotSet:
                 caption="Figure 4-1 TX Output Fullscale vs Output Frequency",
                 conditions="DSA = 0", page_start=29, page_end=29, file=FIGURE,
                 tags=["tx", "fullscale"], confidence=Confidence.HIGH,
+                # The axis catalog of ticket 08, as the annotator writes it:
+                # both axes read, so `axis_confidence` is `high` and the
+                # `find_plots` axis filters have something to narrow on.
+                x_label="Output Frequency", x_unit="MHz", x_min=600.0, x_max=1500.0,
+                y_label="Output Full Scale", y_unit="dBm", y_min=-2.0, y_max=7.0,
+                axis_confidence=Confidence.HIGH,
             ),
             PlotRecord(
                 id="4.12.1-f002", section="4.12.1",
                 caption="Figure 4-2 TX Calibrated Gain Error vs DSA Setting",
                 page_start=30, page_end=30, tags=["tx"],
                 confidence=Confidence.MEDIUM,
+            ),
+        ],
+    )
+
+
+def _pins(part: str) -> PinSet:
+    """A small, structurally real pin table (phase 6, ticket 04's shape).
+
+    Two ground pins and one supply, so a type filter has something to filter
+    and a designator lookup has a neighbour to not match.
+    """
+    return PinSet(
+        schema_version=PINS_SCHEMA_VERSION,
+        part_number=part,
+        doc_hash=DOC_HASH,
+        pins=[
+            PinRecord(
+                pin="A1", name="VSSA", type="ground", direction="—",
+                description="Analog ground", section="4.3", table_index=2,
+                row_index=0, page=6, type_evidence="name:*vss*",
+                confidence=Confidence.HIGH,
+            ),
+            PinRecord(
+                pin="A2", name="VSSA", type="ground", direction="—",
+                description="Analog ground", section="4.3", table_index=2,
+                row_index=0, page=6, expanded_from="A1, A2",
+                type_evidence="name:*vss*", confidence=Confidence.HIGH,
+            ),
+            PinRecord(
+                pin="B1", name="VDD1P8", type="power", direction="I",
+                description="1.8 V supply", section="4.3", table_index=2,
+                row_index=1, page=6, type_evidence="name:*vdd*",
+                confidence=Confidence.MEDIUM,
+            ),
+        ],
+        declared_pin_count=3,
+    )
+
+
+def _registers(part: str) -> RegisterSet:
+    """One register summary row, addressable by value or by printed form."""
+    return RegisterSet(
+        schema_version=REGISTERS_SCHEMA_VERSION,
+        part_number=part,
+        doc_hash=DOC_HASH,
+        registers=[
+            RegisterRecord(
+                name="TXDIG_CTRL0",
+                address=RegisterValue(verbatim="0x1A04", value=6660),
+                reset=RegisterValue(verbatim="0x00", value=0),
+                access="R/W", width=8, section="4.5", table_index=0,
+                row_index=0, page=7, confidence=Confidence.HIGH,
             ),
         ],
     )
@@ -146,6 +216,10 @@ def build_part(part_dir: Path, *, with_figure: bool = True) -> Path:
         specsets=[_specs(part)],
         plotsets=[_plots(part)],
     )
+    # The derived device tables (phase 6) are written beside the document's
+    # other artifacts, exactly as `pipeline.build_part` writes them.
+    write_pinset(part_dir / "docs" / DOC, _pins(part))
+    write_registerset(part_dir / "docs" / DOC, _registers(part))
     if with_figure:
         figures = part_dir / "docs" / DOC / "figures"
         figures.mkdir(parents=True, exist_ok=True)

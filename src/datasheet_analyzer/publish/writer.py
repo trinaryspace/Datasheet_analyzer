@@ -61,7 +61,13 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
-from datasheet_analyzer.config import PLOTS_SCHEMA_VERSION, SPECS_SCHEMA_VERSION
+from datasheet_analyzer.config import (
+    CARDS_SCHEMA_VERSION,
+    PINS_SCHEMA_VERSION,
+    PLOTS_SCHEMA_VERSION,
+    REGISTERS_SCHEMA_VERSION,
+    SPECS_SCHEMA_VERSION,
+)
 from datasheet_analyzer.corpus_ref import (
     LIBRARY_REF_PREFIX,
     is_library_ref,
@@ -69,6 +75,11 @@ from datasheet_analyzer.corpus_ref import (
     library_root_of,
     library_root_ref,
     resolve_artifact_ref,
+)
+from datasheet_analyzer.derive.provenance import (
+    CARDS_DIRNAME,
+    PINS_ARTIFACT,
+    REGISTERS_ARTIFACT,
 )
 from datasheet_analyzer.models import (
     CorpusManifest,
@@ -106,6 +117,7 @@ log = logging.getLogger(__name__)
 __all__ = [
     "LIBRARY_REF_PREFIX",
     "ArtifactRef",
+    "cards_current",
     "doc_dir_name",
     "doc_dir_name_for_source",
     "document_dirs",
@@ -115,8 +127,10 @@ __all__ = [
     "library_root_ref",
     "manifest_artifacts",
     "missing_artifacts",
+    "pins_current",
     "plots_current",
     "read_manifest",
+    "registers_current",
     "resolve_artifact_ref",
     "specs_current",
     "write_corpus",
@@ -232,6 +246,51 @@ def specs_current(doc_dir: Path) -> bool:
 def plots_current(doc_dir: Path) -> bool:
     """`plots.json`'s twin of `specs_current`, keyed on `PLOTS_SCHEMA_VERSION`."""
     return _artifact_schema_current(doc_dir, "plots.json", PLOTS_SCHEMA_VERSION)
+
+
+def pins_current(doc_dir: Path) -> bool:
+    """`pins.json`'s twin of `specs_current`, keyed on `PINS_SCHEMA_VERSION`."""
+    return _artifact_schema_current(doc_dir, PINS_ARTIFACT, PINS_SCHEMA_VERSION)
+
+
+def registers_current(doc_dir: Path) -> bool:
+    """`registers.json`'s twin, keyed on `REGISTERS_SCHEMA_VERSION`."""
+    return _artifact_schema_current(doc_dir, REGISTERS_ARTIFACT, REGISTERS_SCHEMA_VERSION)
+
+
+def cards_current(part_dir: Path, card_version: str) -> bool:
+    """Whether a part's design cards were built by the current rules (phase 6).
+
+    Cards are the one publish artifact keyed on something other than a schema
+    version: `card_version` (`DSA_CARD_VERSION`) is the version of the
+    *derivation rules* — which records a card selects and what pure functions
+    it computes from them. Changing a selector changes the card's contents
+    without changing its shape, so a schema version alone would leave stale
+    cards on disk forever, which is exactly the failure invariant 8 exists to
+    prevent: a number a reader trusts that no longer follows from the rule
+    that is written down.
+
+    Cards live under the *part*, not under a document, because a card
+    composes records from several documents. Missing reads as current, the
+    same asymmetry `_artifact_schema_current` documents: a part with no
+    cards is not a part with stale cards, and demanding one would put every
+    part without them into a rebuild loop.
+    """
+    cards_dir = Path(part_dir) / CARDS_DIRNAME
+    if not cards_dir.is_dir():
+        return True
+    for path in sorted(cards_dir.glob("*.json")):
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return False
+        if not isinstance(data, dict):
+            return False
+        if data.get("schema_version") != CARDS_SCHEMA_VERSION:
+            return False
+        if data.get("card_version") != card_version:
+            return False
+    return True
 
 
 def _shared_neutral(artifact: SpecSet | PlotSet, shared: bool):
