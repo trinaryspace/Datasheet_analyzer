@@ -116,15 +116,22 @@ class TestPhase3MultiDoc:
         for d in doc_dirs.values():
             assert (d / "sections").exists()
 
-    def test_register_map_has_pdf_text_provenance(self, built):
+    def test_register_map_is_published_and_read_by_the_layout_backend(self, built):
+        """Phase 6, ticket 05 re-routed `REGISTER_MAP` to `pdf_layout`.
+
+        This test asserted `pdf_text` provenance when register maps were read
+        as paragraphs. The document is still published under its own
+        `register_map-<hash>` directory with its section tree; what changed is
+        the backend that read it, which is now the one that reconstructs
+        tables — the whole point of the re-route.
+        """
         result, _settings, reg_source = built
         reg_dir = document_dirs(result.manifest, part_dir=result.part_dir)[
             reg_source.content_hash
         ]
         assert reg_dir.name == f"register_map-{reg_source.content_hash[:8]}"
         assert reg_dir.exists()
-        # No specs.json for pdf_text documents.
-        assert not (reg_dir / "specs.json").exists()
+        assert result.manifest.extraction_stats[reg_source.content_hash].backend == "pdf_layout"
         # Sections were rendered.
         section_files = list((reg_dir / "sections").glob("*.md"))
         assert len(section_files) >= 1

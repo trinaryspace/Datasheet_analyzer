@@ -160,14 +160,34 @@ def find_plots(
     conditions: str = "",
     section: str = "",
     tags: list[str] | None = None,
+    x_label: str = "",
+    y_label: str = "",
+    near_x: str = "",
+    near_y: str = "",
 ) -> list[PlotRecord]:
-    """AND-match plot caption/conditions, section number, and tags.
+    """AND-match plot caption/conditions, section number, tags, and axes.
 
     ``q`` searches the combined caption + conditions text. ``caption`` and
     ``conditions`` restrict those fields independently.
+
+    The axis filters (phase 6, ticket 08) narrow on what the figure *prints*
+    on its axes rather than on what its caption says: ``x_label``/``y_label``
+    are substrings of the printed axis titles, and ``near_x``/``near_y`` keep
+    only figures whose printed range covers a quantity ("3.5GHz"), converting
+    SI prefixes so a GHz query narrows an axis printed in MHz. A figure whose
+    axes could not be read is ruled *out* by them — see
+    ``structure/plot_axes.py`` for why that is the honest direction.
     """
     hits = Retriever.for_part(part_dir).plots(
-        q=q, caption=caption, conditions=conditions, section=section, tags=tags
+        q=q,
+        caption=caption,
+        conditions=conditions,
+        section=section,
+        tags=tags,
+        x_label=x_label,
+        y_label=y_label,
+        near_x=near_x,
+        near_y=near_y,
     )
     return [h.record for h in hits]
 

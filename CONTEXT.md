@@ -235,3 +235,32 @@ nouns — excluding a document from a Batch stops it being built, whereas
 removing a part from a Project only narrows the view. How many Parts a Batch
 yields is a fact about its documents, never a count of its jobs.
 _Avoid_: bulk, campaign, queue, spec file, project, folder
+
+**Quantity**:
+The parsed numeric reading of one printed spec cell: a magnitude in SI units,
+a kind (`point`, `range`, `bound`, `tolerance`) and the confidence of the
+parse. It is a *second* layer, never a replacement — the verbatim string
+stays authoritative and unmutated, and a cell that does not parse (`See
+Figure 7`, `—`) yields no Quantity at all, which is a first-class outcome
+rather than an error. Nothing may present a Quantity without the printed
+text it came from.
+_Avoid_: value, number, float, parsed value, normalized value
+
+**Device table**:
+A wide, repetitive table keyed by its first column — a pin table or a
+register-summary table. One structural animal with two consumers, read by
+identify → map columns → validate → emit. A device table that fails
+validation is rejected **whole**, with the reason recorded: half a pin table
+reads as "this pin does not exist", which is worse than no pin table.
+_Avoid_: grid, matrix, listing, table (unqualified)
+
+**Design card**:
+A task-shaped view over records that already exist — power, thermal,
+interface, limits — published per Part rather than per document, because the
+question ("what rails does this need?") is about the device, not about one
+PDF. Every cell carries the record it was copied from, the printed page, and
+the named rule that produced it; a cell that could not be filled is null and
+says why. An empty card is a real answer about the datasheet, not a failure
+of the tool. Its rules are versioned by `card_version`, which participates in
+the publish cache key — changing a rule regenerates the card.
+_Avoid_: report, summary, dashboard, view, digest

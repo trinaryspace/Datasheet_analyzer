@@ -33,6 +33,10 @@ from mcp_corpus import DOC, FIGURE, built_settings
 
 from datasheet_analyzer import cli
 from datasheet_analyzer.config import Settings
+from datasheet_analyzer.derive.cards import load_or_build_card
+from datasheet_analyzer.derive.compare import compare_parts
+from datasheet_analyzer.derive.pins import find_pins, load_part_pins
+from datasheet_analyzer.derive.registers import find_registers, load_part_registers
 from datasheet_analyzer.mcp_server import responses as R
 from datasheet_analyzer.retrieve import Retriever
 
@@ -74,6 +78,15 @@ class TestMcpServerIsFormatOnly:
             "SpecRecord",
             "PlotRecord",
             "SearchIndex",
+            # Phase 6's artifacts are read through `derive/`, never opened
+            # here — the same rule, extended to the derived layer.
+            "pins.json",
+            "registers.json",
+            "PinRecord",
+            "RegisterRecord",
+            "PinSet",
+            "RegisterSet",
+            "model_validate",
             "bm25",
             "§",
             "p.{",
@@ -93,6 +106,57 @@ class TestMcpServerIsFormatOnly:
     def test_the_declared_search_shape_is_the_hit_s_own_shape(self, settings):
         hit = Retriever.for_part(settings.parts_dir / "TEST").search("sysref")[0]
         assert set(hit.as_dict()) == set(R.SEARCH_HIT_SCHEMA["required"])
+
+    def test_the_declared_pin_shape_is_the_hit_s_own_shape(self, settings):
+        pins = load_part_pins(settings.parts_dir / "TEST", "TEST")
+        hit = find_pins(pins, pin_type="ground")[0]
+        assert set(hit.as_dict()) == set(R.PIN_HIT_SCHEMA["required"])
+
+    def test_the_declared_register_shape_is_the_hit_s_own_shape(self, settings):
+        registers = load_part_registers(settings.parts_dir / "TEST", "TEST")
+        hit = find_registers(registers, addr="0x1A04")[0]
+        assert set(hit.as_dict()) == set(R.REGISTER_HIT_SCHEMA["required"])
+
+    def test_the_declared_card_row_shape_is_what_the_response_builds(self, settings):
+        card = load_or_build_card(settings.parts_dir / "TEST", "TEST", "power")
+        rows = R.card_rows(card)
+        assert rows
+        for row in rows:
+            assert set(row) == set(R.CARD_ROW_SCHEMA["required"])
+            assert R.validate_pack(row, R.CARD_ROW_SCHEMA) == []
+
+    def test_the_declared_comparison_row_shape_is_what_the_response_builds(
+        self, settings
+    ):
+        comparison, reason = compare_parts(
+            ["TEST", "OTHER"], symbol="TJ", parts_dir=settings.parts_dir
+        )
+        assert reason == ""
+        rows = R.comparison_rows(comparison)
+        assert rows
+        for row in rows:
+            assert set(row) == set(R.COMPARE_ROW_SCHEMA["required"])
+            assert R.validate_pack(row, R.COMPARE_ROW_SCHEMA) == []
+
+    def test_the_provenance_envelope_is_declared_down_to_its_last_field(
+        self, settings
+    ):
+        """The nested check that makes the declared card shape worth shipping.
+
+        A card's `values` is keyed by column name, so the schema declares what
+        every *unlisted* key must be — a full `DerivedValue`. Without that the
+        contract would stop describing the payload exactly where invariant 8
+        lives, so this proves the validator reaches in and bites there.
+        """
+        card = load_or_build_card(settings.parts_dir / "TEST", "TEST", "thermal")
+        row = R.card_rows(card)[0]
+        assert R.validate_pack(row, R.CARD_ROW_SCHEMA) == []
+        column = next(iter(row["values"]))
+        row["values"][column]["confidence"] = "excellent"
+        assert R.validate_pack(row, R.CARD_ROW_SCHEMA)
+        row["values"][column]["confidence"] = "high"
+        row["values"][column]["made_up_field"] = 1
+        assert R.validate_pack(row, R.CARD_ROW_SCHEMA)
 
     def test_a_real_hit_validates_and_a_wrong_grade_does_not(self, settings):
         """The validator bites — without needing a session to produce a payload.

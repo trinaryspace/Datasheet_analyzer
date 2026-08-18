@@ -14,14 +14,27 @@ from pathlib import Path
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-PIPELINE_VERSION = "0.4.0"
+# "0.5.0": phase 6, ticket 05 routes `DocType.REGISTER_MAP` to `pdf_layout`
+# instead of the paragraphs-only `pdf_text` backend (`vendor.select_backend`).
+# The extraction cache is keyed by `(content_hash, backend)`, so the old entry
+# is not *wrong* — it is a reading of the same bytes by a different backend,
+# and it would keep being served to every part that already skipped. The bump
+# is what makes `batch.skip_reason` rebuild those parts once so their register
+# maps come back with tables in them. 0.4.0 is published (AFE7950, AFE7953).
+PIPELINE_VERSION = "0.5.0"
 # "2": phase 5, ticket 04 added the per-record `confidence` grade to every
 # spec and plot record. The field is additive (an older file still loads,
 # reading `unknown`), but a corpus published without it answers every query
 # ungraded, so the version bump is what makes `batch.skip_reason` republish it
 # once instead of skipping it forever — the same publish-cache-key rule
 # `SEARCH_SCHEMA_VERSION` already carries for `search_index.json`.
-SPECS_SCHEMA_VERSION = "2"
+# "3": phase 6, ticket 01 gave every spec record a stable, addressable `id`
+# (`rec_s4.5-t2-r13`) and ticket 02 adds the parsed numeric layer beside the
+# verbatim strings. A derived artifact cites a record by that id, so a
+# `specs.json` published without one cannot be the target of a card's
+# `source` — the bump is what republishes it once instead of leaving every
+# citation on that part unresolvable.
+SPECS_SCHEMA_VERSION = "3"
 # "2" also carries the GUI change: `PlotRecord.file` is *library*-relative
 # once a document is published into the shared store, not part-relative. A
 # `plots.json` still at "1" predates both changes and must be republished
@@ -33,6 +46,13 @@ SEARCH_SCHEMA_VERSION = "1"
 # skipped with a warning rather than guessed at, the same rule the other
 # schema versions carry.
 LIBRARY_SCHEMA_VERSION = "1"
+# Phase 6 derived artifacts, each gated the same way its extracted siblings
+# are: `pins.json`, `registers.json` and `cards/<kind>.json` carry their
+# schema version on disk, and a file at an older one republishes once rather
+# than being served forever in a shape its reader no longer expects.
+PINS_SCHEMA_VERSION = "1"
+REGISTERS_SCHEMA_VERSION = "1"
+CARDS_SCHEMA_VERSION = "1"
 
 
 class Settings(BaseSettings):
@@ -92,6 +112,16 @@ class Settings(BaseSettings):
 
     # Plot pixel rendering (PDF fallback)
     plot_image_dpi: int = 150
+
+    # Design cards (`DSA_CARD_VERSION`, phase 6). Not a schema version: it is
+    # the version of the *derivation rules* — which records a card selects and
+    # what pure functions it computes from them. It participates in the
+    # publish cache key (`publish.writer.cards_current`, read by the batch
+    # skip gate), so changing a selector or a margin rule forces regeneration
+    # instead of silently leaving stale cards on disk. Bump it in the commit
+    # that changes a rule; overriding it by env is how a rule change is tried
+    # against a corpus without editing the source.
+    card_version: str = "1"
 
     # `dsa batch` worker pool: --workers flag overrides; this env-backed
     # value is the default; 4 is the fallback.

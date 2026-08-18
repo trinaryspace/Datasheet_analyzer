@@ -12,6 +12,7 @@ from datasheet_analyzer.config import SPECS_SCHEMA_VERSION
 from datasheet_analyzer.models import RawDocument, SectionNode, SpecRecord, SpecSet, SpecTableInfo
 from datasheet_analyzer.structure.aliases import load_lexicon
 from datasheet_analyzer.structure.confidence import grade_spec_record
+from datasheet_analyzer.structure.quantities import annotate_record
 from datasheet_analyzer.structure.roles import assign_roles, classify_table
 from datasheet_analyzer.structure.units import canonical_unit, normalize_text
 
@@ -75,6 +76,11 @@ def table_to_records(
         # reconstruction provenance, its page pinning and the row's own cells
         # are all gone by the time a record reaches `retrieve/`.
         record.confidence = grade_spec_record(record, table, section, lexicon=lexicon)
+        # Phase 6, ticket 02: the parsed numeric layer, filled here for the
+        # same reason the grade is - additively, beside the verbatim strings,
+        # which it never touches. A cell that is not a quantity leaves
+        # `parse_confidence: none` and no number at all.
+        annotate_record(record)
         records.append(record)
 
     info = SpecTableInfo(

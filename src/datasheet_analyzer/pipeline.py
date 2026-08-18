@@ -30,6 +30,13 @@ from datasheet_analyzer.acquire.inventory import (
     sync_to_library,
 )
 from datasheet_analyzer.config import PIPELINE_VERSION, Settings
+from datasheet_analyzer.derive.pins import PinBuild, build_pins, record_pin_rejections, write_pinset
+from datasheet_analyzer.derive.registers import (
+    RegisterBuild,
+    build_registers,
+    record_register_rejections,
+    write_registerset,
+)
 from datasheet_analyzer.enrich import (
     AnthropicClient,
     DeterministicWriter,
@@ -45,6 +52,7 @@ from datasheet_analyzer.models import (
     Applicability,
     CorpusManifest,
     DocType,
+    ExtractionStats,
     PlotSet,
     RawDocument,
     SourceDocument,
@@ -58,6 +66,7 @@ from datasheet_analyzer.publish.plots import (
 from datasheet_analyzer.publish.writer import doc_dir_name
 from datasheet_analyzer.structure.corpus import SectionPlan, build_section_plans
 from datasheet_analyzer.structure.pagemap import pin_table_pages
+from datasheet_analyzer.structure.plot_axes import annotate_plot_axes
 from datasheet_analyzer.structure.plots import build_plotset
 from datasheet_analyzer.structure.specs import build_specset
 from datasheet_analyzer.vendor import select_backend, warn_vendor_drift
@@ -140,6 +149,95 @@ def _store_cached_raw(settings: Settings, raw: RawDocument) -> None:
     """
     path = _extract_cache_path(settings, raw.source.content_hash, raw.extractor)
     _atomic_write_text(path, raw.model_dump_json(indent=2))
+
+
+def _annotate_axes(plotset: PlotSet, raw: RawDocument) -> None:
+    """Fill the plot catalog's axis fields from the document's own PDF.
+
+    Ticket 08. The axis catalog is geometry read off the printed page, so it
+    needs the PDF rather than the extractor's output — a TI part whose figure
+    catalog came from the HTML datasheet is annotated from the very same PDF,
+    which is why this is keyed on the source file and not on `raw.extractor`.
+
+    A document with no local PDF is *not attempted*, and its records keep
+    `axis_confidence: unknown` rather than being graded `low`: "nobody
+    looked" and "looked and found nothing" are different claims and the
+    corpus makes both of them separately.
+    """
+    if not plotset.plots:
+        return
+    source = Path(raw.source.path)
+    if source.suffix.lower() != ".pdf" or not source.is_file():
+        return
+    coverage = annotate_plot_axes(plotset, source)
+    log.info(
+        "plot axes: %d/%d figures read at high confidence (%.0f%%), %d log-scale",
+        coverage.high, coverage.total, 100 * coverage.high_fraction, coverage.log_axes,
+    )
+
+
+def _derive_pins(raw: RawDocument, part_number: str) -> PinBuild:
+    """Read one document's pin table and record what happened to it (ticket 04).
+
+    Two things land here rather than in `derive/pins.py`, because both are
+    about the *document* rather than about pins:
+
+    - a rejected pin table's reason joins `ExtractionStats.rejection_reasons`,
+      which `write_corpus` copies into the manifest below — so the refusal
+      shows up in `dsa status` beside the parametric tables the layout engine
+      refused, instead of vanishing;
+    - a document that carries no stats yet (an older extractor output, or a
+      backend that reports none) gets an empty set rather than losing the
+      reason. Silence about a rejected pin table is the one outcome this phase
+      cannot ship: a missing pin reads as "this pin does not exist".
+
+    The `pins.json` file itself is written after publish, once the document's
+    directory is known.
+    """
+    build = build_pins(raw, part_number)
+    if build.rejection_reasons and raw.extraction_stats is None:
+        raw.extraction_stats = ExtractionStats(backend=raw.extractor)
+    record_pin_rejections(raw.extraction_stats, build)
+    if build.pinset is not None:
+        log.info(
+            "pins: %d records from %s (package declares %s)",
+            build.n_pins,
+            raw.source.path,
+            build.declared.count if build.declared.count is not None else "nothing parseable",
+        )
+    for warning in build.warnings:
+        log.warning("pins: %s", warning)
+    return build
+
+
+def _derive_registers(raw: RawDocument, part_number: str) -> RegisterBuild:
+    """Read one document's register summary table and record what happened.
+
+    `_derive_pins`'s twin, for the same reasons and with the same two
+    document-level jobs: a rejected register table's reason joins
+    `ExtractionStats.rejection_reasons` so `dsa status` prints it, and a
+    document carrying no stats yet gets an empty set rather than losing the
+    reason.
+
+    This is the artifact the routing change (ticket 05) exists to make
+    possible: read as paragraphs, a register map yields no tables at all, so
+    every document here would report "no candidate register table" forever
+    and the silence would be indistinguishable from a part that has no
+    registers. The `registers.json` file itself is written after publish, once
+    the document's directory is known.
+    """
+    build = build_registers(raw, part_number)
+    if build.rejection_reasons and raw.extraction_stats is None:
+        raw.extraction_stats = ExtractionStats(backend=raw.extractor)
+    record_register_rejections(raw.extraction_stats, build)
+    if build.registerset is not None:
+        log.info(
+            "registers: %d records from %d table(s) in %s",
+            build.n_registers, build.accepted_tables, raw.source.path,
+        )
+    for warning in build.warnings:
+        log.warning("registers: %s", warning)
+    return build
 
 
 def _brief_and_facts(raw: RawDocument) -> tuple[str, list[str]]:
@@ -263,7 +361,8 @@ def _extract_document(
     """Extract one document, using cache if enabled. Returns (raw, cached).
 
     Backend follows the source's evidence-pinned vendor routing record:
-    datasheet -> the profile's preference chain, companions -> pdf_text.
+    datasheet -> the profile's preference chain, register maps -> pdf_layout
+    (phase 6, ticket 05), other companions -> pdf_text.
     """
     backend_name = select_backend(source.vendor, source.doc_type)
     cached = False
@@ -359,7 +458,7 @@ def build_part(
     )
 
     # extract each document (datasheet via the vendor's preferred backend,
-    # companions via pdf_text)
+    # register maps via pdf_layout, other companions via pdf_text)
     _progress("extracting")
     docs: list[RawDocument] = []
     any_cached = True
@@ -397,6 +496,10 @@ def build_part(
     _progress("structuring")
     specsets: list[PlotSet] = []
     plotsets: list[PlotSet] = []
+    # Derived artifacts, keyed by document (phase 6). Held until publish, when
+    # the document's directory is known — shared store or under the part.
+    pinbuilds: dict[str, PinBuild] = {}
+    registerbuilds: dict[str, RegisterBuild] = {}
     doc_summaries: list[tuple[str, str, int, str]] = []
     brief, facts = "", []
     for raw in docs:
@@ -406,6 +509,9 @@ def build_part(
             specsets.append(specset)
         plotset = build_plotset(raw, part_number)
         plotsets.append(plotset)
+        _annotate_axes(plotset, raw)
+        pinbuilds[raw.source.content_hash] = _derive_pins(raw, part_number)
+        registerbuilds[raw.source.content_hash] = _derive_registers(raw, part_number)
 
         # pixel fetch only for html-derived docs; pdf_layout figures are
         # clip-rendered from their vector regions (never fetched)
@@ -484,6 +590,21 @@ def build_part(
         plotsets=plotsets,
         shared_docs_dir=shared_docs_dir,
     )
+    # `pins.json` lands beside the document's other artifacts, wherever they
+    # were published. Written only for a document that actually yielded a pin
+    # table: a part with none publishes no file at all rather than an empty
+    # one, which would read as "this part has no pins" (ticket 04).
+    # `registers.json` follows the same rule (ticket 05): written only for a
+    # document that actually yielded a register summary table, so a part with
+    # none publishes no file rather than an empty map.
+    for raw in docs:
+        build = pinbuilds.get(raw.source.content_hash)
+        if build is not None and build.pinset is not None:
+            write_pinset(_doc_out_dir(raw), build.pinset, shared=True)
+        regbuild = registerbuilds.get(raw.source.content_hash)
+        if regbuild is not None and regbuild.registerset is not None:
+            write_registerset(_doc_out_dir(raw), regbuild.registerset, shared=True)
+
     # sources.json is derived: regenerated here from the resolved document
     # set so `dsa status` and the batch skip gate keep reading what they
     # always read, and a hand edit never survives a build.

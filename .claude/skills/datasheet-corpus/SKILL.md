@@ -63,7 +63,7 @@ Report the value **with its unit** and the `§<n>, p.<page>` exactly as printed.
 
 ## Access path 2 — MCP tools (`dsa serve --mcp`)
 
-Tools: `list_parts`, `list_projects`, `get_index`, `search`, `find_spec`, `read_section`, `find_plots`, `get_figure`, `ask`. Resources: `dsa://part/<PART>/INDEX.md`, `dsa://project/<NAME>/PROJECT_INDEX.md`.
+Tools: `list_parts`, `list_projects`, `get_index`, `search`, `find_spec`, `read_section`, `find_plots`, `get_figure`, `ask`, and the derived views `find_pin`, `find_register`, `get_card`, `compare_parts`. Resources: `dsa://part/<PART>/INDEX.md`, `dsa://project/<NAME>/PROJECT_INDEX.md`.
 
 Worked example — the same question, then the figure behind it (call, then the shape that comes back):
 

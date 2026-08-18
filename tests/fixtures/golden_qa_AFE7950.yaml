@@ -188,3 +188,26 @@ questions:
     section: "4.12.8"
     kind: plot
     plot_query: {caption_contains: "RX Input Fullscale", section: "4.12.8"}
+
+# Design-card goldens (phase 6, ticket 10) — see the AD9081 set for why they
+# live in their own block rather than as `questions:` entries.
+cards:
+  - id: c1-thermal-rthja
+    question: What is the junction-to-ambient thermal resistance?
+    card: thermal
+    row: Junction-to-ambient
+    expected_substrings: ["16.2"]
+    pages: [6]
+    notes: the thermal card's first row, the same value q06 verifies through
+      the spec path — one number, two surfaces, one printed page.
+
+  - id: c2-limits-tj
+    question: How much margin is there between the recommended and the absolute-maximum junction temperature?
+    card: limits
+    row: Junction temperature
+    expected_substrings: ["150", "110"]
+    pages: [4, 6]
+    notes: >-
+      the join the limits card exists for - abs-max (p.4) against recommended
+      (p.6). The computed margin is deliberately NOT an expected substring —
+      it is printed nowhere, and a golden asserts what the page prints.

@@ -349,7 +349,7 @@ class TestMechanics:
         doc = result.manifest.documents[0]
         stats = result.manifest.extraction_stats[doc.content_hash]
         assert stats.backend == "pdf_layout"
-        assert result.manifest.pipeline_version == "0.4.0"
+        assert result.manifest.pipeline_version == "0.5.0"
         assert result.manifest.vendor == "unknown"
         # `sources.json` is now a *derived* view of the Library (ADR 0005),
         # so it is the generated wrapper object rather than a bare list. What

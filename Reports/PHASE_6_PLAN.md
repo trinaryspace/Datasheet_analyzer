@@ -1,7 +1,12 @@
 # PHASE 6 PLAN — Design-Time Content
 
-**Status: planned.** Execution contract for `.scratch/design-time-content/`.
-Superseded on landing by `Reports/PHASE_6_REPORT.md`.
+**Status: SUPERSEDED — shipped.** Execution contract for
+`.scratch/design-time-content/`, kept for the record. The measured outcome is
+`Reports/PHASE_6_REPORT.md`; read that first. Three statements here were stale
+by the time the phase ran and the report is the authority on all three: the ADR
+is **0007**, not 0005 (0005 and 0006 were taken); `PIPELINE_VERSION` went
+**0.4.0 → 0.5.0**, not 0.3.0 → 0.4.0; and ticket 05 was **unblocked** by
+`LMX1204_registermap.pdf` landing in the repo.
 
 **Depends on Phase 5** (retrieval core, confidence, MCP surface, alias
 lexicon). New artifacts here are surfaced through the seams Phase 5 built.

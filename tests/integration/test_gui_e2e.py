@@ -725,7 +725,7 @@ class TestTheInvariantsThisDesignPutAtRisk:
         assert PdfLayoutBackend.output_version == "tables-08"
 
     def test_the_pipeline_version_is_unchanged(self):
-        assert PIPELINE_VERSION == "0.4.0"
+        assert PIPELINE_VERSION == "0.5.0"
 
     @pytest.mark.parametrize(
         "verb",

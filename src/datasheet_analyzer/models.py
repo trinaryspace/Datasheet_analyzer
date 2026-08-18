@@ -19,7 +19,7 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import TYPE_CHECKING, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, computed_field
 
 if TYPE_CHECKING:  # pragma: no cover - typing only, never imported at runtime
     from datasheet_analyzer.retrieve.results import Citation
@@ -58,12 +58,139 @@ class Confidence(str, Enum):
     UNKNOWN = "unknown"
 
 
+class ParseConfidence(str, Enum):
+    """How much the *parse* of a printed value can be trusted (phase 6).
+
+    Deliberately not `Confidence`, which grades how well a record was
+    **extracted**. This grades a second, later question: whether the verbatim
+    string that extraction captured could be turned into a number by
+    `structure/quantities.py`. A record can be extraction-`high` and
+    parse-`none` — `"See Figure 7"` is printed exactly as the datasheet has
+    it and is not a quantity.
+
+    `NONE` is the honest default and covers both "tried and could not parse"
+    and "never attempted" (a corpus published before the parsed layer
+    existed). Nothing downstream may tell those apart *into a number*: in
+    both cases there is no parsed value, `value_si is None`, and a consumer
+    that sorts or compares must report the row as unparsed rather than
+    guess at it.
+    """
+
+    HIGH = "high"
+    MEDIUM = "medium"
+    LOW = "low"
+    NONE = "none"
+
+
+# Shape of a parsed quantity (`SpecRecord.value_kind`, `DerivedValue.value_kind`).
+# `structure/quantities.py` (phase 6, ticket 02) owns the parse; these names are
+# the frozen vocabulary it emits, so a consumer never string-matches a literal.
+VALUE_KIND_POINT = "point"  # `105`, `1350 mA`
+VALUE_KIND_RANGE = "range"  # `−40 to +85` — `value_si` low, `value_si_hi` high
+VALUE_KIND_BOUND = "bound"  # `< 5`, `≥ 1.8` — `value_si` is the bound
+VALUE_KIND_TOLERANCE = "tolerance"  # `±0.5` — `value_si` is the magnitude
+VALUE_KINDS: tuple[str, ...] = (
+    VALUE_KIND_POINT,
+    VALUE_KIND_RANGE,
+    VALUE_KIND_BOUND,
+    VALUE_KIND_TOLERANCE,
+)
+
+# The two named derivation rules that every derived artifact needs and that no
+# single ticket owns. Clause (b) of invariant 8 — a value computed by a
+# documented pure function — names that function instead, chaining with `+`
+# (`parse_quantity+si_normalize`); `derive/provenance.py` enforces the shape.
+DERIVATION_VERBATIM = "verbatim_copy"  # clause (a): copied, unchanged
+DERIVATION_LEXICON = "lexicon_label"  # clause (c): a label from a checked-in lexicon
+
+# `PinRecord.type` (phase 6, ticket 04). A closed vocabulary drawn from a
+# checked-in lexicon over the pin's name + description — clause (c) of
+# invariant 8. `unknown` is a legitimate output; a guess is not.
+PIN_TYPE_UNKNOWN = "unknown"
+PIN_TYPES: tuple[str, ...] = (
+    "power",
+    "ground",
+    "analog",
+    "digital",
+    "clock",
+    "rf",
+    "nc",
+    "reserved",
+    PIN_TYPE_UNKNOWN,
+)
+
+# The four design cards (phase 6, ticket 07). Frozen here so the CLI's
+# `--card` choices, the MCP tool's enum and the builder's dispatch table are
+# the same list.
+CARD_POWER = "power"
+CARD_THERMAL = "thermal"
+CARD_INTERFACE = "interface"
+CARD_LIMITS = "limits"
+CARD_KINDS: tuple[str, ...] = (CARD_POWER, CARD_THERMAL, CARD_INTERFACE, CARD_LIMITS)
+
+
 # How the layout engine arrived at a reconstructed grid (`TableBlock.reconstruction`).
 # The header-anchored split is the table's own declaration of its columns; a
 # rescue is a coarser retry-ladder split that only won because that declaration
 # did not pass the gate — which is exactly what makes its rows `low`.
 RECONSTRUCTION_HEADER = "header-anchored"
 RECONSTRUCTION_RESCUED = "rescued"
+
+
+# --- Stable record ids (phase 6, ticket 01) --------------------------------
+# A derived artifact cites the record it drew from as `<artifact>#<id>`, so
+# every citable record needs an id that is the *same string* after a rebuild
+# of identical input. The ids below are therefore a pure function of the
+# record's own coordinates inside its document — never an ordinal position in
+# a list, which would shift for every record after a table that gained a row,
+# silently repointing already-written cards at the wrong number.
+_ID_UNSAFE = re.compile(r"[^A-Za-z0-9._+]+")
+
+
+def _id_part(value: object) -> str:
+    """One id component, with anything that would break the format folded out."""
+    return _ID_UNSAFE.sub("_", str(value).strip())
+
+
+def record_id(prefix: str, *parts: object) -> str:
+    """`rec_s4.5-t2-r13` — the shape every derived record id takes."""
+    return f"{prefix}_" + "-".join(_id_part(p) for p in parts)
+
+
+def spec_record_id(section: str, table_index: int, row_index: int) -> str:
+    """Id of one `SpecRecord`: its section, its table in that section, its row."""
+    return record_id("rec", f"s{section}", f"t{table_index}", f"r{row_index}")
+
+
+def pin_record_id(table_index: int, row_index: int, pin: str) -> str:
+    """Id of one `PinRecord`.
+
+    The designator is part of the key because a multi-pin row expands: the
+    printed row `A1, A2, B1` becomes three individually citable records that
+    share one `(table_index, row_index)`.
+    """
+    return record_id("pin", f"t{table_index}", f"r{row_index}", pin)
+
+
+def register_record_id(table_index: int, row_index: int) -> str:
+    """Id of one `RegisterRecord` — its row in the register summary table."""
+    return record_id("reg", f"t{table_index}", f"r{row_index}")
+
+
+def bit_field_id(register_record_id_: str, field_index: int) -> str:
+    """Id of one `BitField`, hung off its register's id: `reg_t0-r5.f3`."""
+    return f"{register_record_id_}.f{field_index}"
+
+
+def source_ref(artifact: str, record_id_: str) -> str:
+    """The `source` string a derived value carries: `specs.json#rec_s4.5-t2-r13`.
+
+    `artifact` may be bare (`specs.json`) when the consumer already knows
+    which document it is reading, a corpus-relative path
+    (`docs/datasheet-1f2e3d4c/specs.json`) when it does not, or an
+    `@library/…` reference into the shared document store.
+    """
+    return f"{artifact}#{record_id_}"
 
 
 class SourceDocument(BaseModel):
@@ -629,6 +756,39 @@ class SpecRecord(BaseModel):
     # rule). Additive: a corpus built before it existed has no value on disk
     # and loads as `UNKNOWN` — honestly ungraded, never optimistically high.
     confidence: Confidence = Confidence.UNKNOWN
+    # --- Phase 6: the parsed numeric layer (ticket 02) ---------------------
+    # Strictly additive and always allowed to fail. The verbatim strings above
+    # stay authoritative and are never mutated; these carry the *parse* of
+    # them, produced by `structure/quantities.py`. Every one of them is absent
+    # (`None` / `""` / `parse_confidence == NONE`) when the print could not be
+    # parsed, and a consumer that sorts, compares or checks margins must
+    # report that population explicitly rather than drop it — invariant 8.
+    #
+    # `value_si` is the parse of the record's *primary* cell, and
+    # `value_si_cell` names which cell that was, so a number is never read as
+    # a max when the datasheet printed it as a typ. The per-cell parses below
+    # are what the `limits` card joins on (abs-max against recommended-max).
+    value_si: float | None = None
+    value_si_hi: float | None = None  # high end of a `range`; `None` otherwise
+    value_si_cell: str = ""  # "min" | "typ" | "max" | "value" | ""
+    unit_si: str = ""  # canonical unit of the parsed value ("A", "°C")
+    value_kind: str = ""  # one of `VALUE_KINDS`, "" when nothing parsed
+    parse_confidence: ParseConfidence = ParseConfidence.NONE
+    min_si: float | None = None
+    typ_si: float | None = None
+    max_si: float | None = None
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def id(self) -> str:
+        """Stable, addressable id — what a derived artifact's `source` points at.
+
+        Computed, never stored: it cannot drift from the coordinates it
+        describes, and a rebuild of identical input necessarily reproduces it.
+        Serialized into `specs.json` so a reader that never constructs the
+        model can still resolve a citation.
+        """
+        return spec_record_id(self.section, self.table_index, self.row_index)
 
 
 class SpecTableInfo(BaseModel):
@@ -667,6 +827,24 @@ class PlotRecord(BaseModel):
     # Per-record extraction confidence, same contract as `SpecRecord`: a plot
     # is graded on how precisely it can be cited and identified.
     confidence: Confidence = Confidence.UNKNOWN
+    # --- Phase 6: the axis catalog (ticket 08) -----------------------------
+    # Geometric and deterministic: tick labels cluster along the figure
+    # region's left and bottom edges and the axis title is the text run
+    # parallel to that edge. Additive and independently optional — an axis
+    # whose label reads but whose ticks do not still records the label and
+    # leaves the range null. **Anything uncertain stays null** and says so
+    # through `axis_confidence`; a plausible range is never interpolated,
+    # because the point of the catalog is to spend a vision call on the right
+    # figure rather than to answer "what is the gain at 3.5 GHz" without one.
+    x_label: str = ""
+    x_unit: str = ""
+    x_min: float | None = None
+    x_max: float | None = None
+    y_label: str = ""
+    y_unit: str = ""
+    y_min: float | None = None
+    y_max: float | None = None
+    axis_confidence: Confidence = Confidence.UNKNOWN
 
 
 class PlotSet(BaseModel):
@@ -676,6 +854,333 @@ class PlotSet(BaseModel):
     part_number: str = ""
     doc_hash: str = ""
     plots: list[PlotRecord] = Field(default_factory=list)
+
+
+# --- Phase 6: derived artifacts (ADR 0007, invariant 8) --------------------
+#
+# Everything below this line describes data the pipeline *derives* rather than
+# extracts. The contract, in full:
+#
+#   A derived artifact may contain only (a) values copied verbatim from a
+#   spec, table or pin record; (b) values computed from those by a documented
+#   pure function; (c) structural labels from a checked-in lexicon. Every
+#   field carries `source` (record id + page) and `derivation` (the named
+#   rule). No model call may appear in the derivation path. A field that
+#   cannot be filled stays null and says so — never interpolated, never a
+#   plausible default.
+#
+# `DerivedValue` is how a field says all of that in one place; the record
+# models under it are the derived artifacts themselves.
+
+
+class DerivedValue(BaseModel):
+    """One value on a derived artifact, carrying the provenance invariant 8 demands.
+
+    ```json
+    { "verbatim": "1350 mA", "value_si": 1.35, "unit_si": "A",
+      "source": "specs.json#rec_s4.9-t0-r12", "page": 21,
+      "derivation": "parse_quantity+si_normalize", "confidence": "high" }
+    ```
+
+    Three rules make this envelope worth its bytes:
+
+    - **`verbatim` is the answer; `value_si` is a convenience.** The printed
+      string is what a designer checks against the page, so it is never
+      rewritten to look tidier. `value_si` exists so a machine can sort and
+      compare, and it is allowed to be absent for every value that is real
+      but not numeric (`"See Figure 7"`, `"—"`).
+    - **`source` + `page` are not optional for a filled value.** A number
+      nobody can trace to a printed page is exactly the failure mode this
+      whole phase exists to prevent, so `derive/provenance.py` checks the
+      pair and a card that cannot supply it must leave the field null.
+    - **A null value says why.** `null_reason` is the "and says so" half of
+      the invariant: `"no recommended-max printed"` is an answer, a silently
+      absent key is not, and a plausible default is a lie.
+    """
+
+    verbatim: str = ""
+    value_si: float | None = None
+    value_si_hi: float | None = None  # high end of a `range`; `None` otherwise
+    unit_si: str = ""
+    value_kind: str = ""  # one of `VALUE_KINDS`, "" when nothing parsed
+    source: str = ""  # `<artifact>#<record id>`, e.g. "specs.json#rec_s4.9-t0-r12"
+    page: int | None = None  # the printed page the source record sits on
+    derivation: str = ""  # the named rule: `verbatim_copy`, `abs_max_margin`, …
+    confidence: Confidence = Confidence.UNKNOWN
+    null_reason: str = ""  # why an unfilled field is unfilled; never blank when null
+
+    @property
+    def filled(self) -> bool:
+        """Whether this envelope actually carries a value."""
+        return bool(self.verbatim) or self.value_si is not None
+
+    @classmethod
+    def missing(
+        cls,
+        reason: str,
+        *,
+        derivation: str = "",
+        source: str = "",
+        page: int | None = None,
+    ) -> DerivedValue:
+        """The honest empty value: null, with the reason it is null.
+
+        Preferred over omitting the field entirely, because a consumer cannot
+        tell an omission from an oversight, and both read as "the datasheet
+        does not say" when only one of them is true.
+        """
+        return cls(
+            source=source,
+            page=page,
+            derivation=derivation,
+            confidence=Confidence.UNKNOWN,
+            null_reason=reason or "not stated",
+        )
+
+    @classmethod
+    def copied(
+        cls,
+        verbatim: str,
+        *,
+        source: str,
+        page: int | None,
+        unit_si: str = "",
+        confidence: Confidence = Confidence.UNKNOWN,
+    ) -> DerivedValue:
+        """Clause (a): a value copied verbatim, derivation `verbatim_copy`."""
+        return cls(
+            verbatim=verbatim,
+            unit_si=unit_si,
+            source=source,
+            page=page,
+            derivation=DERIVATION_VERBATIM,
+            confidence=confidence,
+        )
+
+    @classmethod
+    def labeled(
+        cls,
+        label: str,
+        *,
+        source: str,
+        page: int | None,
+        confidence: Confidence = Confidence.UNKNOWN,
+    ) -> DerivedValue:
+        """Clause (c): a structural label from a checked-in lexicon."""
+        return cls(
+            verbatim=label,
+            source=source,
+            page=page,
+            derivation=DERIVATION_LEXICON,
+            confidence=confidence,
+        )
+
+
+class PinRecord(BaseModel):
+    """One pin of one package, from a printed pin table (phase 6, ticket 04).
+
+    During schematic capture the pin table *is* the datasheet, so this is a
+    first-class record with the same provenance contract a `SpecRecord`
+    carries: table, row, page, and a confidence grade.
+
+    Two fields exist because of honesty rules rather than data:
+
+    - `expanded_from` records the printed first cell when one row became
+      several — `"A1, A2, B1"` and `"A1–A4"` expand so every pin is
+      individually citable, and the reader can still see the row as printed.
+    - `type_evidence` names the lexicon entry that produced `type`. A label
+      nobody can trace back to the checked-in lexicon is indistinguishable
+      from a guess, and clause (c) of invariant 8 forbids guesses.
+    """
+
+    pin: str = ""  # designator as printed: "A1", "12"
+    name: str = ""  # signal name: "VSSA"
+    type: str = PIN_TYPE_UNKNOWN  # one of `PIN_TYPES` — `unknown` is legitimate
+    direction: str = ""  # as printed: "I", "O", "I/O", "—"
+    description: str = ""
+    # identity within the document, exactly as `SpecRecord` carries it
+    section: str = ""
+    table_index: int = 0
+    row_index: int = 0
+    page: int | None = None
+    row_verbatim: list[str] = Field(default_factory=list)
+    expanded_from: str = ""  # printed cell when this row expanded, "" otherwise
+    type_evidence: str = ""  # the lexicon entry behind `type`
+    confidence: Confidence = Confidence.UNKNOWN
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def id(self) -> str:
+        """Stable, addressable id: `pin_t2-r0-A1`."""
+        return pin_record_id(self.table_index, self.row_index, self.pin)
+
+
+class PinSet(BaseModel):
+    """A document's full pin table (`pins.json`).
+
+    `rejection_reasons` is why this file may be *short* — a pin table that
+    failed validation is rejected whole and named here, never emitted
+    half-parsed, the same contract `pdf_layout` already applies to parametric
+    tables. A part with no parseable pin table produces no `pins.json` at all
+    rather than a partial one.
+
+    `declared_pin_count` is whatever the package or ordering-information
+    section printed, when that is parseable; comparing it against `len(pins)`
+    is the package cross-check, and a mismatch is a `warning`, never fatal —
+    the pin table is still the best record available.
+    """
+
+    schema_version: str = ""
+    part_number: str = ""
+    doc_hash: str = ""
+    pins: list[PinRecord] = Field(default_factory=list)
+    rejection_reasons: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+    declared_pin_count: int | None = None  # None when nothing parseable was printed
+
+
+class RegisterValue(BaseModel):
+    """A printed register number and its integer value: `0x1A04` -> 6660.
+
+    `value` stays `None` when the print could not be parsed — a register
+    address the tool guessed at is worse than one it admits it cannot read.
+    """
+
+    verbatim: str = ""
+    value: int | None = None
+
+
+class BitRange(BaseModel):
+    """The bit positions a field occupies: `[7:4]` -> hi 7, lo 4.
+
+    `hi` / `lo` are `None` together when the printed range could not be
+    parsed. Wrong bit positions are worse than absent ones: a driver written
+    against them fails silently in hardware.
+    """
+
+    verbatim: str = ""
+    hi: int | None = None
+    lo: int | None = None
+
+    @property
+    def width(self) -> int | None:
+        """Number of bits, or `None` when the range did not parse."""
+        if self.hi is None or self.lo is None:
+            return None
+        return abs(self.hi - self.lo) + 1
+
+
+class BitField(BaseModel):
+    """One named field inside a register (phase 6, ticket 06)."""
+
+    name: str = ""
+    bits: BitRange = Field(default_factory=BitRange)
+    access: str = ""  # as printed: "R/W", "RO", "W1C"
+    reset: str = ""  # as printed
+    description: str = ""
+    page: int | None = None
+    confidence: Confidence = Confidence.UNKNOWN
+
+
+class RegisterRecord(BaseModel):
+    """One register from a register-summary table (phase 6, ticket 05).
+
+    `fields` is filled by ticket 06 and is legitimately empty: a register
+    summary that lists address, name, reset and access is already the answer
+    to most bring-up questions, and an empty `fields` list says "the bit
+    breakdown was not extracted" rather than implying the register has none.
+    """
+
+    block: str = ""  # register block / peripheral, "" when the map has none
+    name: str = ""
+    address: RegisterValue = Field(default_factory=RegisterValue)
+    width: int | None = None  # register width in bits, None when not printed
+    reset: RegisterValue = Field(default_factory=RegisterValue)
+    access: str = ""  # as printed: "R/W", "RO"
+    fields: list[BitField] = Field(default_factory=list)
+    # identity within the document, exactly as `SpecRecord` carries it
+    section: str = ""
+    table_index: int = 0
+    row_index: int = 0
+    page: int | None = None
+    row_verbatim: list[str] = Field(default_factory=list)
+    confidence: Confidence = Confidence.UNKNOWN
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def id(self) -> str:
+        """Stable, addressable id: `reg_t0-r5`."""
+        return register_record_id(self.table_index, self.row_index)
+
+
+class RegisterSet(BaseModel):
+    """A document's register map (`registers.json`).
+
+    Same honesty contract as `PinSet`: a summary table that fails validation
+    (duplicate addresses, non-monotonic addresses where the map declares
+    them, an unmappable header set) is rejected whole and named in
+    `rejection_reasons`.
+    """
+
+    schema_version: str = ""
+    part_number: str = ""
+    doc_hash: str = ""
+    registers: list[RegisterRecord] = Field(default_factory=list)
+    rejection_reasons: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+
+
+class CardRow(BaseModel):
+    """One line of a design card: a parameter and its provenance-carrying values.
+
+    `values` is keyed by column name (`min`, `typ`, `max`, `value`,
+    `margin`, …) so a card can shape its own table without a new model per
+    card. Every value in it is a `DerivedValue`, which is what makes the
+    invariant-8 walk possible: a test resolves every `source` on the card
+    back to a record and a printed page without knowing what card it is
+    looking at.
+    """
+
+    label: str = ""  # what this row is, as the card names it
+    symbol: str = ""  # alias-resolved symbol, "" when the row is not symbol-keyed
+    values: dict[str, DerivedValue] = Field(default_factory=dict)
+    note: str = ""  # honest per-row note: "zero margin", "typ only"
+    flags: list[str] = Field(default_factory=list)  # machine-readable hazards
+
+
+class Card(BaseModel):
+    """A task-shaped view over records that already exist (`cards/<kind>.json`).
+
+    A card derives nothing new: it *selects* records a designer would
+    otherwise hunt for across five sections, and computes only what a
+    documented pure function can compute from them (the `limits` card's
+    margin). An **honest empty card** — no rows, `unresolved` naming what was
+    looked for — is the correct output for a part that genuinely lacks the
+    data, and is never padded with plausible values.
+
+    `card_version` is `DSA_CARD_VERSION` at build time and participates in the
+    publish cache key, so changing a selector or a derivation rule forces
+    regeneration instead of silently leaving stale cards on disk.
+    """
+
+    part_number: str = ""
+    card: str = ""  # one of `CARD_KINDS`
+    schema_version: str = ""
+    card_version: str = ""  # `DSA_CARD_VERSION` at build; publish cache key
+    rows: list[CardRow] = Field(default_factory=list)
+    # What the card looked for and could not fill, named out loud. The
+    # `limits` card's "could not compare" population lives here.
+    unresolved: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+    # Every artifact this card drew from, so a reader can find the inputs
+    # without re-deriving the selector rules.
+    sources: list[str] = Field(default_factory=list)
+    generated_at: datetime = Field(default_factory=_utcnow)
+
+    @property
+    def is_empty(self) -> bool:
+        """True for an honest empty card — no rows at all."""
+        return not self.rows
 
 
 class SearchSection(BaseModel):

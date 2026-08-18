@@ -51,6 +51,11 @@ RECORDED_BIN = Path(__file__).parent.parent / "fixtures" / "recorded_http_bin"
 GOLDEN = Path(__file__).parent.parent / "fixtures" / "golden_qa_AFE7950.yaml"
 PARTS = Path(__file__).parent.parent.parent / "parts"
 
+#: Where `search_index_committed_corpus` parks the copied shared store,
+#: relative to the copied part directory — a `library_root` that keeps the
+#: whole copy inside one `tmp_path`.
+COPIED_LIBRARY = "_library"
+
 TINY_GIF = (
     b"GIF89a\x01\x00\x01\x00\x00\x00\x00!\xf9\x04\x00\x00\x00\x00\x00,"
     b"\x00\x00\x00\x00\x01\x00\x01\x00\x00\x02\x02D\x01\x00;"
@@ -580,6 +585,15 @@ def search_index_committed_corpus(src: Path, dst: Path) -> Path:
     is what keeps `TestAnswerPacksOnAfe7953`'s "predates search" case honest.
 
     `figures/` is deliberately not copied: the search path reads markdown.
+
+    Both reference corpora publish their documents *once*, into the shared
+    store (ticket 04), so the manifest names its sections `@library/docs/…`
+    and copying the part directory alone copies no section at all. The
+    library the manifest resolves against is therefore copied in beside it,
+    under `dst`, and the copy's `library_root` is re-pointed at that — the
+    one field whose whole job is to say where the shared store is, and the
+    one that must change when a corpus moves. Every reference in the copy
+    still names the same bytes; nothing else in the manifest is touched.
     """
     import shutil
 
@@ -587,73 +601,72 @@ def search_index_committed_corpus(src: Path, dst: Path) -> Path:
         corpus_relative,
         is_library_ref,
         library_root_of,
-        resolve_artifact_ref,
     )
     from datasheet_analyzer.publish.search_index import (
         build_search_index,
         write_search_index,
     )
+    from datasheet_analyzer.retrieve import clear_index_cache
     from datasheet_analyzer.structure.corpus import SectionPlan
 
-    shutil.copytree(src, dst, ignore=shutil.ignore_patterns("figures"))
+    no_figures = shutil.ignore_patterns("figures")
+    shutil.copytree(src, dst, ignore=no_figures)
     manifest = CorpusManifest.model_validate_json(
         (dst / "manifest.json").read_text(encoding="utf-8")
     )
-
-    # A corpus published into the shared store references its documents as
-    # `@library/...`, and those bytes live outside the part directory — so the
-    # copy above is not self-contained and joining the reference onto `dst`
-    # names a file that is not there. Bring the referenced documents along and
-    # re-root the copy at them, which keeps the promise this helper makes: the
-    # committed corpus is read, never written.
-    source_library = library_root_of(manifest, src)
     shared = sorted(
-        {corpus_relative(sec.file).partition("/sections/")[0]
-         for sec in manifest.sections
-         if is_library_ref(sec.file)}
+        {
+            corpus_relative(sec.file).partition("/sections/")[0]
+            for sec in manifest.sections
+            if is_library_ref(sec.file)
+        }
     )
-    if shared and source_library is not None:
+    if shared:
+        library = library_root_of(manifest, src)
+        assert library is not None, f"{src} names @library/… but records no root"
         for doc_dir in shared:
-            origin = source_library / doc_dir
-            if origin.is_dir():
-                shutil.copytree(
-                    origin,
-                    dst / "_library" / doc_dir,
-                    ignore=shutil.ignore_patterns("figures"),
-                    dirs_exist_ok=True,
-                )
-        manifest.library_root = "_library"
-        (dst / "manifest.json").write_text(
-            manifest.model_dump_json(indent=2), encoding="utf-8"
-        )
+            shutil.copytree(
+                library / doc_dir, dst / COPIED_LIBRARY / doc_dir, ignore=no_figures
+            )
+        raw = json.loads((dst / "manifest.json").read_text(encoding="utf-8"))
+        raw["library_root"] = COPIED_LIBRARY
+        (dst / "manifest.json").write_text(json.dumps(raw, indent=2), encoding="utf-8")
 
-    library_dir = dst / "_library" if shared else None
-
-    def resolved(ref: str) -> Path:
-        return resolve_artifact_ref(ref, part_dir=dst, library_dir=library_dir)
-
+    # Resolve through `CorpusIndex`, never by joining onto `dst`: it is the
+    # reader's own rule for which root a `docs/<doc>/…` reference hangs off,
+    # so the index lands in the directory the retriever will look in — the
+    # part-local copy when a corpus carries one, the shared store otherwise.
+    clear_index_cache()
+    index = CorpusIndex.load(dst)
     plans: dict[str, list[SectionPlan]] = {}
     for sec in manifest.sections:
-        doc_dir, _, rel = corpus_relative(sec.file).partition("/sections/")
-        # Keyed on the *reference* so the index is written back beside the
-        # document it indexes, wherever that document actually lives.
-        plans.setdefault(sec.file.partition("/sections/")[0], []).append(
+        doc_dir, _, rel = sec.file.partition("/sections/")
+        markdown = index.corpus_path(sec.file)
+        assert markdown is not None and markdown.is_file(), sec.file
+        plans.setdefault(doc_dir, []).append(
             SectionPlan(
                 section=SectionNode(number=sec.number, title=sec.title),
                 file=f"sections/{rel}",
-                markdown=resolved(sec.file).read_text(encoding="utf-8"),
+                markdown=markdown.read_text(encoding="utf-8"),
                 token_count=sec.token_count,
             )
         )
-    for doc_ref, doc_plans in plans.items():
+    root = dst.resolve()
+    for doc_dir, doc_plans in plans.items():
+        target = index.doc_dir(doc_dir.rsplit("/", 1)[-1])
+        # The copy is self-contained, so nothing this writes may land outside
+        # it — that is what keeps the committed corpus (and the real shared
+        # library behind it) untouched.
+        assert target is not None and root in target.resolve().parents, doc_dir
         write_search_index(
-            resolved(doc_ref),
+            target,
             build_search_index(
                 doc_plans,
                 part_number=manifest.part_number,
-                doc_hash=corpus_relative(doc_ref).rsplit("-", 1)[-1],
+                doc_hash=doc_dir.rsplit("-", 1)[-1],
             ),
         )
+    clear_index_cache()
     return dst
 
 

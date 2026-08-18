@@ -179,3 +179,29 @@ def estimate_lookup_tokens(part_dir: Path, results: list[QuestionResult]) -> dic
         "max_per_question": max(per_question, default=0),
         "full_dump_tokens": total_section_tokens,
     }
+
+
+def render_card_query_report(results: list[QueryResult]) -> str:
+    """Card-path verification table (phase 6, ticket 10).
+
+    Rendered like every other query table, and read the same way: the detail
+    column is the verifier's own sentence about why a card question passed or
+    failed, because the reason belongs with the rule that produced it.
+    """
+    passed = sum(1 for r in results if r.ok)
+    lines = [
+        "## Design-card verification (deterministic)",
+        "",
+        (
+            f"**{passed}/{len(results)} passed** — each question checks that the "
+            "named card carries a row with the expected printed values AND that "
+            "the row's own citation lands on the page the question cites."
+        ),
+        "",
+        "| # | Question | Card | Result |",
+        "|---|---|---|---|",
+    ]
+    for i, r in enumerate(results, 1):
+        status = "✅" if r.ok else "❌"
+        lines.append(f"| {i} | {r.question.question} | {r.question.kind} | {status} {r.detail} |")
+    return "\n".join(lines)

@@ -280,21 +280,219 @@ SPEC_HIT_SCHEMA = {
     },
 }
 
+_NUM_OR_NULL = {"type": ["number", "null"]}
+
+#: One printed axis of a figure (phase 6, ticket 08). Every field is nullable
+#: because an axis this tool could not read stays null and says so through
+#: `axes.confidence` — a plausible range is never interpolated.
+_AXIS_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["label", "unit", "min", "max"],
+    "properties": {
+        "label": _STR, "unit": _STR, "min": _NUM_OR_NULL, "max": _NUM_OR_NULL,
+    },
+}
+
 #: `PlotHit.as_dict()`.
 PLOT_HIT_SCHEMA = {
     "type": "object",
     "additionalProperties": False,
     "required": [
         "id", "caption", "figure_number", "conditions", "section", "page_start",
-        "page_end", "part", "doc", "doc_hash", "citation", "file", "tags",
+        "page_end", "part", "doc", "doc_hash", "citation", "file", "tags", "axes",
         "matched_via", "confidence",
     ],
     "properties": {
         "id": _STR, "caption": _STR, "figure_number": _STR, "conditions": _STR,
         "section": _STR, "page_start": _INT_OR_NULL, "page_end": _INT_OR_NULL,
         "part": _STR, "doc": _STR, "doc_hash": _STR, "citation": _STR, "file": _STR,
-        "tags": {"type": "array", "items": _STR}, "matched_via": _STR,
+        "tags": {"type": "array", "items": _STR},
+        "axes": {
+            "type": "object",
+            "additionalProperties": False,
+            "required": ["x", "y", "confidence"],
+            "properties": {
+                "x": _AXIS_SCHEMA, "y": _AXIS_SCHEMA, "confidence": _CONFIDENCE,
+            },
+        },
+        "matched_via": _STR,
         "confidence": _CONFIDENCE,
+    },
+}
+
+#: `PinHit.as_dict()` — `derive/pins.py` owns the shape, this declares it.
+PIN_HIT_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": [
+        "id", "pin", "name", "type", "direction", "description", "type_evidence",
+        "expanded_from", "part", "doc", "page", "citation", "matched_via",
+        "confidence",
+    ],
+    "properties": {
+        "id": _STR, "pin": _STR, "name": _STR, "type": _STR, "direction": _STR,
+        "description": _STR,
+        # The lexicon entry behind `type`, and the printed cell a multi-pin row
+        # expanded from: a derived label is only usable if it is traceable.
+        "type_evidence": _STR, "expanded_from": _STR,
+        "part": _STR, "doc": _STR, "page": _INT_OR_NULL, "citation": _STR,
+        "matched_via": _STR, "confidence": _CONFIDENCE,
+    },
+}
+
+_REGISTER_VALUE_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["verbatim", "value"],
+    "properties": {"verbatim": _STR, "value": _INT_OR_NULL},
+}
+
+_BIT_FIELD_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["name", "bits", "access", "reset", "description", "page", "confidence"],
+    "properties": {
+        "name": _STR,
+        "bits": {
+            "type": "object",
+            "additionalProperties": False,
+            "required": ["verbatim", "hi", "lo"],
+            "properties": {"verbatim": _STR, "hi": _INT_OR_NULL, "lo": _INT_OR_NULL},
+        },
+        "access": _STR, "reset": _STR, "description": _STR,
+        "page": _INT_OR_NULL, "confidence": _CONFIDENCE,
+    },
+}
+
+#: `RegisterHit.as_dict()`. `fields` is `[]` when no bit breakdown was
+#: extracted — which is every published register today (ticket 06 parked); the
+#: empty list means "not extracted", and `find_register` says so in `warning`.
+REGISTER_HIT_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": [
+        "id", "name", "block", "address", "reset", "access", "width", "fields",
+        "part", "doc", "page", "citation", "matched_via", "confidence",
+        "address_derivation",
+    ],
+    "properties": {
+        "id": _STR, "name": _STR, "block": _STR,
+        "address": _REGISTER_VALUE_SCHEMA, "reset": _REGISTER_VALUE_SCHEMA,
+        "access": _STR, "width": _INT_OR_NULL,
+        "fields": {"type": "array", "items": _BIT_FIELD_SCHEMA},
+        "part": _STR, "doc": _STR, "page": _INT_OR_NULL, "citation": _STR,
+        "matched_via": _STR, "confidence": _CONFIDENCE,
+        # The named pure function behind `address.value`, empty when the
+        # printed address did not parse (invariant 8: a computed value names
+        # the rule that computed it).
+        "address_derivation": _STR,
+    },
+}
+
+#: `models.DerivedValue` — the invariant-8 provenance envelope, and the reason
+#: this file declares nested shapes at all. Every number on a card or a
+#: comparison ships inside one of these, so a client can check *before reading
+#: a value* that it carries a source, a page and the rule that produced it.
+DERIVED_VALUE_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": [
+        "verbatim", "value_si", "value_si_hi", "unit_si", "value_kind", "source",
+        "page", "derivation", "confidence", "null_reason",
+    ],
+    "properties": {
+        "verbatim": _STR, "value_si": _NUM_OR_NULL, "value_si_hi": _NUM_OR_NULL,
+        "unit_si": _STR, "value_kind": _STR, "source": _STR, "page": _INT_OR_NULL,
+        "derivation": _STR, "confidence": _CONFIDENCE,
+        # Why a field is empty, which invariant 8 requires of every unfilled
+        # value: a card leaves a field null and *says so*.
+        "null_reason": _STR,
+    },
+}
+
+#: One row of a design card. `values` is keyed by column name — the columns
+#: differ per card — so it is declared as a map whose every value is a
+#: provenance envelope.
+CARD_ROW_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["label", "symbol", "note", "flags", "citation", "values"],
+    "properties": {
+        "label": _STR, "symbol": _STR, "note": _STR,
+        "flags": {"type": "array", "items": _STR},
+        "citation": _STR,
+        "values": {"type": "object", "additionalProperties": DERIVED_VALUE_SCHEMA},
+    },
+}
+
+_COMPARE_CELL_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": [
+        "part", "label", "symbol", "note", "conditions", "page", "citation", "values",
+    ],
+    "properties": {
+        "part": _STR, "label": _STR, "symbol": _STR, "note": _STR,
+        "conditions": _STR, "page": _INT_OR_NULL, "citation": _STR,
+        "values": {"type": "object", "additionalProperties": DERIVED_VALUE_SCHEMA},
+    },
+}
+
+_COMPARE_DELTA_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": [
+        "cell", "baseline", "part", "value", "baseline_source", "baseline_page",
+    ],
+    "properties": {
+        "cell": _STR, "baseline": _STR, "part": _STR,
+        "value": DERIVED_VALUE_SCHEMA,
+        "baseline_source": _STR, "baseline_page": _INT_OR_NULL,
+    },
+}
+
+#: One aligned row of a cross-part comparison. `status` and the three name
+#: lists are what make a row honest: a parameter one part prints and another
+#: does not is reported as such, never silently dropped.
+COMPARE_ROW_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": [
+        "key", "label", "symbol", "matched_on", "status", "citation", "cells",
+        "deltas", "present_in", "missing_from", "not_comparable", "flags",
+    ],
+    "properties": {
+        "key": _STR, "label": _STR, "symbol": _STR, "matched_on": _STR,
+        "status": _STR, "citation": _STR,
+        "cells": {"type": "array", "items": _COMPARE_CELL_SCHEMA},
+        "deltas": {"type": "array", "items": _COMPARE_DELTA_SCHEMA},
+        "present_in": {"type": "array", "items": _STR},
+        "missing_from": {"type": "array", "items": _STR},
+        "not_comparable": {"type": "array", "items": _STR},
+        "flags": {"type": "array", "items": _STR},
+    },
+}
+
+_COMPARE_COVERAGE_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["considered", "compared", "reasons"],
+    "properties": {
+        "considered": {"type": "integer"}, "compared": {"type": "integer"},
+        "reasons": {"type": "array", "items": _STR},
+    },
+}
+
+#: The unparsed population, per part — the number a comparison must report
+#: rather than quietly drop ("3 of 47 rows could not be parsed").
+_PARSE_COVERAGE_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["part", "considered", "parsed", "unparsed"],
+    "properties": {
+        "part": _STR, "considered": {"type": "integer"}, "parsed": {"type": "integer"},
+        "unparsed": {"type": "array", "items": _STR},
     },
 }
 
@@ -402,6 +600,58 @@ SCHEMAS: dict[str, dict] = {
         listed=True,
     ),
     "find_plots": _schema({"hits": {"type": "array", "items": PLOT_HIT_SCHEMA}}, listed=True),
+    # Phase 6. Each names the parts that published no such artifact, because
+    # "this part has no pins" and "no pin table was published for this part"
+    # are different findings and only one of them is ever true.
+    "find_pin": _schema(
+        {
+            "hits": {"type": "array", "items": PIN_HIT_SCHEMA},
+            "counts": {"type": "object", "additionalProperties": {"type": "integer"}},
+            "parts_without_pins": {"type": "array", "items": _STR},
+        },
+        listed=True,
+    ),
+    "find_register": _schema(
+        {
+            "hits": {"type": "array", "items": REGISTER_HIT_SCHEMA},
+            "parts_without_registers": {"type": "array", "items": _STR},
+            "bit_fields": {"type": "boolean"},
+        },
+        listed=True,
+    ),
+    "get_card": _schema(
+        {
+            "card": _STR,
+            "card_version": _STR,
+            "schema_version": _STR,
+            "generated_at": _STR,
+            "rows": {"type": "array", "items": CARD_ROW_SCHEMA},
+            # What the card could not do, carried with what it could: records
+            # whose citation would not resolve, and the reasons.
+            "unresolved": {"type": "array", "items": _STR},
+            "warnings": {"type": "array", "items": _STR},
+            "sources": {"type": "array", "items": _STR},
+        },
+        listed=True,
+    ),
+    "compare_parts": _schema(
+        {
+            "parts": {"type": "array", "items": _STR},
+            "baseline": _STR,
+            "mode": _STR,
+            "card": _STR,
+            "symbol": _STR,
+            "resolved_symbol": _STR,
+            "schema_version": _STR,
+            "generated_at": _STR,
+            "rows": {"type": "array", "items": COMPARE_ROW_SCHEMA},
+            "coverage": _COMPARE_COVERAGE_SCHEMA,
+            "parse_coverage": {"type": "array", "items": _PARSE_COVERAGE_SCHEMA},
+            "unresolved": {"type": "array", "items": _STR},
+            "warnings": {"type": "array", "items": _STR},
+        },
+        listed=True,
+    ),
     "read_section": _schema(
         {
             "section": _STR, "title": _STR, "file": _STR,
@@ -412,6 +662,111 @@ SCHEMAS: dict[str, dict] = {
     "get_figure": _schema({"figure": {"anyOf": [_FIGURE_SCHEMA, {"type": "null"}]}}),
     "ask": _schema({"pack": {"anyOf": [ANSWER_PACK_SCHEMA, {"type": "null"}]}}),
 }
+
+
+# --- derived-artifact bodies -------------------------------------------------
+#
+# A card and a comparison are pydantic models, not hits, so there is no
+# `as_dict()` to reuse; these are the two places their model becomes a
+# response body. They live here, beside the schemas that declare them, and
+# they add exactly one thing the model does not carry: the **citation string**
+# a reader verifies a row by. It is never assembled here — `Citation.label`
+# and `derive.cards.row_citation` are the only two things that turn a page
+# number into a printed citation anywhere in this project.
+
+
+def card_rows(card: Any) -> list[dict]:
+    """One design card's rows, each carrying its own citation.
+
+    `values` stays keyed by column name (the model's own shape, and the reason
+    one model serves four cards); every value is the full provenance envelope,
+    unabridged — a card cell without its `source` and `derivation` is exactly
+    the thing invariant 8 exists to prevent shipping.
+    """
+    from datasheet_analyzer.derive.cards import row_citation
+
+    return [
+        {
+            "label": row.label,
+            "symbol": row.symbol,
+            "note": row.note,
+            "flags": list(row.flags),
+            "citation": row_citation(row),
+            "values": {
+                column: value.model_dump(mode="json") for column, value in row.values.items()
+            },
+        }
+        for row in card.rows
+    ]
+
+
+def comparison_rows(comparison: Any) -> list[dict]:
+    """One comparison's rows: a cell per part, in the order the call named them.
+
+    The model keys its cells by part; the response lists them, so the columns
+    of a row arrive in a defined order and a client does not have to re-derive
+    it from `parts`. A part that did not print the parameter contributes no
+    cell and is named in `missing_from` — the row says so rather than showing
+    a blank that reads like a zero.
+    """
+    from datasheet_analyzer.retrieve import Citation
+
+    def cited(page: int | None, part: str) -> str:
+        return Citation(part=part, page_start=page, page_end=page).label if page else ""
+
+    rows: list[dict] = []
+    for row in comparison.rows:
+        cells: list[dict] = []
+        for part in comparison.parts:
+            cell = row.cells.get(part)
+            if cell is None:
+                continue
+            cells.append(
+                {
+                    "part": cell.part_number,
+                    "label": cell.label,
+                    "symbol": cell.symbol,
+                    "note": cell.note,
+                    "conditions": cell.conditions,
+                    "page": cell.page,
+                    "citation": cited(cell.page, cell.part_number),
+                    "values": {
+                        column: value.model_dump(mode="json")
+                        for column, value in cell.values.items()
+                    },
+                }
+            )
+        rows.append(
+            {
+                "key": row.key,
+                "label": row.label,
+                "symbol": row.symbol,
+                "matched_on": row.matched_on,
+                "status": row.status,
+                # The row's citation is every page it drew on: a comparison row
+                # is only checkable if each side can be opened.
+                "citation": ", ".join(
+                    dict.fromkeys(c["citation"] for c in cells if c["citation"])
+                ),
+                "cells": cells,
+                "deltas": [
+                    {
+                        "cell": delta.cell,
+                        "baseline": delta.baseline,
+                        "part": delta.part_number,
+                        "value": delta.value.model_dump(mode="json"),
+                        "baseline_source": delta.baseline_source,
+                        "baseline_page": delta.baseline_page,
+                    }
+                    for delta in row.deltas
+                ],
+                "present_in": list(row.present_in),
+                "missing_from": list(row.missing_from),
+                "not_comparable": list(row.not_comparable),
+                "flags": list(row.flags),
+            }
+        )
+    return rows
 
 
 def validate_response(payload: object, tool: str) -> list[str]:

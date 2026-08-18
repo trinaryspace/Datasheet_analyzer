@@ -233,7 +233,9 @@ def _mcp_block(key: str, value: str) -> list[str]:
         "",
         (
             "Tools: `list_parts`, `list_projects`, `get_index`, `search`, `find_spec`, "
-            "`read_section`, `find_plots`, `get_figure`, `ask`. Resources: "
+            "`read_section`, `find_plots`, `get_figure`, `ask`, and the derived "
+            "views `find_pin`, `find_register`, `get_card`, `compare_parts`. "
+            "Resources: "
             "`dsa://part/<PART>/INDEX.md`, `dsa://project/<NAME>/PROJECT_INDEX.md`."
         ),
         "",

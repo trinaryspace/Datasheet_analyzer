@@ -66,3 +66,52 @@ questions:
     kind: plot
     plot_query: {caption_contains: "HD2 vs. fOUT over Digital Scale, 6 GSPS"}
     notes: vector plot clip-rendered from the region above its caption
+
+  # --- phase 6: the derived device tables -------------------------------
+  #
+  # Both go through `dsa ask` and both name the route the pack must take, so
+  # a pin question answered from a paragraph is a failure even when the words
+  # happen to match. Ground truth is unchanged: the page the question cites
+  # and the strings printed on it.
+
+  - id: p1-pins-ground
+    question: Which pins are ground?
+    expected_substrings: ["GND", "Ground References"]
+    pages: [23]
+    kind: ask
+    ask_query: {route: pin}
+    notes: phase-6 pin path. 15 pins carry the lexicon label `ground`; the
+      pack must answer from `pins.json`, cited to the page that prints them.
+
+  - id: p2-pin-a1
+    question: What is pin A1 on this device?
+    expected_substrings: ["A1", "GND"]
+    pages: [23]
+    kind: ask
+    ask_query: {route: pin}
+    notes: phase-6 pin path, the designator direction — a printed ball
+      number resolves to its signal name and its printed description.
+
+# Design-card goldens (phase 6, ticket 10). A card question is verified by
+# `evalh.citations.verify_card_queries`, not by `dsa verify`: `GoldenQuestion`
+# carries no `card_query` marker and `cli.py` is frozen, so these live in
+# their own block, which `load_golden_yaml` ignores. Every expected substring
+# is a value the datasheet *printed* — never a computed margin, which the
+# page-truth check would rightly fail.
+cards:
+  - id: c1-power-rails
+    question: What supply rails does the AD9081 need and at what voltages?
+    card: power
+    row: AVDD2
+    expected_substrings: ["1.9", "2.0", "2.1"]
+    pages: [4]
+    notes: Table 1 (Absolute Maximum / recommended supplies), 2.0 V rail
+      family — the card composes it from records already published.
+
+  - id: c2-interface-jesd
+    question: Which JESD204 standards does this converter support?
+    card: interface
+    expected_substrings: ["JESD204B", "JESD204C"]
+    pages: [11]
+    notes: the one interface row this part's records can address (see
+      KNOWN_SHORTCOMINGS.md - spec ids are not unique in this document).
