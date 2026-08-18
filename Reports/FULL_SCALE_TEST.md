@@ -378,6 +378,62 @@ difference is `revision_freshness`, above.
 
 ---
 
+## Stage 9 — `dsa golden suggest|confirm` (READ THIS BEFORE RUNNING IT)
+
+Landed in `9be58d5`: templates candidate benchmark questions from records that
+already carry a verbatim answer and a printed page, then walks you through
+confirming them. 52 new tests; measured 19/20 text on AD9081 and LM741.
+
+**Back the golden file up before you run `confirm` on a real one.** All seven
+`tests/fixtures/golden_qa_*.yaml` are git-tracked, so recovery is
+`git checkout -- tests/fixtures/golden_qa_<PART>.yaml`. You will want it.
+
+Two defects I confirmed by reading `evalh/confirm.py`, not from the report:
+
+**F16 (HIGH) — a merge that produces unparsable YAML corrupts the golden file
+and does not roll back.** `merge_into_golden` writes the file, *then* re-parses
+it to decide whether to roll back:
+
+```python
+golden.write_text(text, encoding="utf-8")            # confirm.py:328
+reloaded = yaml.safe_load(golden.read_text(...))     # raises on bad YAML
+```
+
+`yaml.safe_load` raises before the rollback guard below it is ever reached, so
+the corrupted file stays on disk. The advertised "rolls back if a hand-written
+question moves" only covers the *parsable* failure.
+
+**F17 (HIGH) — a newly created golden file is stamped with a human-verification
+claim that may be false.** On creation the header is written unconditionally
+(`confirm.py:320-323`):
+
+> `# Every answer below was checked against the printed page before it landed here.`
+
+A bulk `--accept-ids` / `--decisions` run never displays a page, so that
+sentence is a fabricated provenance claim — written into the exact file that
+serves as invariant 5's objective function. Treat any golden file created by a
+bulk run as unverified regardless of what its header says.
+
+Five further notes the implementer recorded honestly and did not fix:
+
+- On a **legacy corpus the empty-pool note misreports the cause**, and a stale
+  corpus silently yields the exact degenerate candidate set the ticket's first
+  acceptance box exists to prevent — with no warning.
+- **Untemplatable records are dropped silently.** The documented claim that
+  they are "counted" is not implemented, so the refused population of a
+  stratified selection goes unreported (ADR 0005's unparsed-population clause).
+- The merge rollback guard and reindent logic have **zero test coverage**.
+- The stratification helper is vacuous on a constant list, so the test named
+  for the degenerate generator would not catch it.
+- No test checks that the page text actually appears in what `confirm` shows.
+
+Also: `parts/AFE7950` and `parts/AFE7953` yield **0** spec/pin/register
+candidates — their records predate ADR 0005 record ids and are unaddressable,
+so invariant 8 forbids templating them. AFE7950 rebuilds offline; AFE7953
+needs the TI document viewer.
+
+---
+
 ## Known findings — what you will hit, and what it means
 
 Full evidence in `Reports/FINDINGS_2026-08-18.md`.
@@ -390,6 +446,8 @@ Full evidence in `Reports/FINDINGS_2026-08-18.md`.
 | F4 | HIGH | TI sha256 changes daily | Upstream behaviour — design must not read it as a new revision |
 | F8 | HIGH | `sniff_revision` → `SYSREFOUT0` for LMX1204 | **FIXED** in `f32d9a9` — verified live, see Stage 7 |
 | F14 | HIGH | Every `--json` command prints a PyMuPDF deprecation warning **on stdout** ahead of the JSON | Real defect — `dsa ask … --json \| jq` fails to parse; breaks the agent-facing contract |
+| F16 | HIGH | `golden confirm` merge producing unparsable YAML corrupts the file; rollback never runs | Real defect — back up first; recover with `git checkout` |
+| F17 | HIGH | New golden file stamped "checked against the printed page" even for a bulk run where no page was shown | Real defect — a forged provenance claim in invariant 5's own file |
 | F13 | MED-HIGH | `check-revisions --all` on a missing parts dir prints `0 checked, 0 stale, 0 content-drift, 0 could not be checked` and exits 0 | Real defect — a typo'd `DSA_PARTS_DIR` reads as "fleet current" |
 | F15 | MED | `dsa audit` grades a never-checked corpus C on `revision_freshness`, weight 3.0 | By design, but the grade depends on run order — check revisions first |
 | F3 | MED | `dsa batch` has no `--vendor` override | Gap — blocks offline batch of TI parts |
