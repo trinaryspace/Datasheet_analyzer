@@ -1,12 +1,19 @@
-[
-  {
-    "content_hash": "52d435c0095ec0b002e36dcbc56711ecc7c909945cc756768ed168907be3b131",
-    "path": "afe7953.pdf",
-    "part_number": "AFE7953",
-    "doc_type": "datasheet",
-    "revision": "SBASAN1A",
-    "page_count": 134,
-    "nda": false,
-    "registered_at": "2026-08-02T05:36:59.614615Z"
-  }
-]
+{
+  "generated": true,
+  "note": "Generated file - do not edit. The Library is the authoritative inventory; this is a derived view of the documents that apply to this part, regenerated at publish time. Hand edits are overwritten by the next build.",
+  "part_number": "AFE7953",
+  "sources": [
+    {
+      "content_hash": "52d435c0095ec0b002e36dcbc56711ecc7c909945cc756768ed168907be3b131",
+      "path": "C:\\Users\\afpim\\Repos\\datasheet_analyzer\\afe7953.pdf",
+      "part_number": "AFE7953",
+      "doc_type": "datasheet",
+      "revision": "SBASAN1A",
+      "page_count": 134,
+      "nda": false,
+      "vendor": "ti",
+      "vendor_evidence": "",
+      "registered_at": "2026-08-18T16:48:29.685133Z"
+    }
+  ]
+}
