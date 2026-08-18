@@ -623,3 +623,64 @@ class TestGoldenSet:
         assert ask_results and all(r.ok for r in ask_results)
         search_results = verify_search_queries(questions, gate.part_dir)
         assert search_results and all(r.ok for r in search_results)
+
+
+class TestAuditOnTheRegisterCorpus:
+    """Phase 7, ticket 05 — the seventh built part, and the only one with
+    registers.
+
+    LMX1204 is what makes `registers_present` a metric that can read `yes`: the
+    other six built parts print no register summary at all, so without this
+    corpus the rubric's register row would only ever be exercised in its absent
+    form. Its two documents also make it the one part whose `mean_fidelity` is
+    averaged over more than one document.
+
+    Measured at the time of writing (rubric v1): B, on 12 of 13 metrics, with
+    `records graded high` at 8 % — 764 of its 853 spec rows grade `low`, which
+    is what a two-document register map extracted off the layout floor looks
+    like, stated plainly.
+    """
+
+    def _card(self, gate):
+        from datasheet_analyzer.audit import build_scorecard
+        from datasheet_analyzer.evalh.golden import default_golden_path
+
+        return build_scorecard(gate.part_dir, golden=default_golden_path(PART))
+
+    def test_it_grades_and_the_scorecard_is_recorded(self, gate, capsys):
+        """The readings, printed for the phase report.
+
+        Printed metric by metric rather than through `render_scorecard`, whose
+        staleness banner carries a warning glyph a raw cp1252 console cannot
+        encode. The banner itself is asserted on the gate corpora.
+        """
+        from datasheet_analyzer.audit.render import counts, grade_of, reading
+
+        card = self._card(gate)
+        assert card.grade is not None
+        assert card.n_graded >= 12
+        with capsys.disabled():
+            print()
+            print(
+                f"audit {card.part}: grade {card.grade.value} "
+                f"(score {card.score:.2f}), {card.n_graded} graded / "
+                f"{card.n_unavailable} n/a"
+            )
+            for metric in card.metrics:
+                print(
+                    f"  {metric.key:<24} {reading(metric):>6} "
+                    f"{counts(metric):>10} [{grade_of(metric)}] w{metric.weight:g}"
+                )
+
+    def test_the_register_metric_reads_yes_here(self, gate):
+        card = self._card(gate)
+        registers = next(m for m in card.metrics if m.key == "registers_present")
+        assert registers.available is True and registers.state == "true"
+        assert registers.numerator == gate.manifest.stats.n_registers > 0
+        assert registers.grade is not None and registers.grade.value == "A"
+
+    def test_fidelity_is_averaged_over_both_documents(self, gate):
+        card = self._card(gate)
+        fidelity = next(m for m in card.metrics if m.key == "mean_fidelity")
+        assert fidelity.available is True
+        assert "2 document(s)" in fidelity.detail

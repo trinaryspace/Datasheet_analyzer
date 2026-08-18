@@ -509,6 +509,63 @@ determinism check, not a silence. `--json` gives every value in its provenance
 envelope with each reference named to its part *and* its document, because both
 revisions publish a `rec_1`.
 
+### Grade a corpus before you trust it (`dsa audit`)
+
+```bash
+dsa audit --part AD9081            # one scorecard: 13 metrics, each graded A-F
+dsa audit --all                    # the fleet table, worst grade first
+dsa audit --all --json             # feeds tooling
+dsa audit --all --min-grade B      # exit 1 on anything below the floor
+```
+
+`extraction_stats` tells the *builder* how a build went. This tells the *agent*
+whether to trust the corpus **before** it answers:
+
+```
+# Corpus audit - AD9081
+
+**Grade: B** (score 3.46) - 12 of 13 metrics graded, 1 n/a.
+
+> This corpus grades B - figure axes read 0%. 1 of 13 metrics could not be
+> computed and are excluded, not scored.
+
+| Metric                | Reading | Count   | Grade | Weight |
+|-----------------------|---------|---------|-------|--------|
+| section page coverage | 100%    | 34/34   | A     | 3      |
+| table pin rate        | 100%    | 21/21   | A     | 3      |
+| table accept rate     | 100%    | 29/29   | A     | 2      |
+| mean table fidelity   | 87%     |         | B     | 2      |
+| spec page rate        | 100%    | 556/556 | A     | 2      |
+| records graded high   | 49%     | 481/977 | A     | 3      |
+| pin records published | yes     |         | A     | 1      |
+| register records ...  | no      |         | C     | 1      |
+| design cards hold rows| yes     |         | A     | 1      |
+| figure axes read      | 0%      | 0/100   | F     | 1      |
+| alias hit rate        | n/a     |         | n/a   | 1      |
+| revision freshness    | unknown |         | C     | 3      |
+| golden pass rate      | 100%    | 22/22   | A     | 4      |
+```
+
+The `headline` is the deliverable: it is the sentence an agent puts in front of
+its answer to downgrade its own confidence language before it speaks —
+
+> "This corpus grades C — table pin rate 61%. The value I found is `medium`
+> confidence; confirm against printed p.47."
+
+**A metric that cannot be computed is `n/a` and is excluded from the average.**
+Never scored 0 (which would defame a corpus for a statistic nobody recorded)
+and never full marks (which would flatter one) — and the scorecard prints that
+convention rather than leaving you to assume it. A *missing artifact* is the
+other case and **does** lower the grade: "this corpus publishes no pins" is a
+fact about the corpus, not a gap in the measurement. A corpus too sparse to
+average carries no letter at all and says why.
+
+**The rubric is data.** Every threshold, weight and letter lives in
+`registry/audit_rubric.yaml`, with a comment block justifying each cut point
+against the measured fleet — so a grade is arguable rather than an oracle, and
+disagreeing with one is a YAML edit. Deleting a metric from that file makes the
+metric `n/a`; there is no threshold hidden in Python behind it.
+
 ### Find a plot
 
 ```bash
@@ -679,6 +736,7 @@ On macOS/Linux the command is `/path/to/repo/.venv/bin/dsa`.
 | `find_register` | part or project | registers by address, acronym or bit-field name |
 | `get_card` | part | one design card, every value in its provenance envelope |
 | `get_figure` | part | one figure **as an image content block** |
+| `get_audit` | part | the corpus scorecard: an A–F grade, thirteen metrics, and the headline sentence to answer with |
 | `compare_parts` | a list of parts | one parameter or one card, side by side, with SI deltas |
 | `ask` | part or project | one cited, budget-bounded answer pack |
 

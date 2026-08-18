@@ -88,6 +88,14 @@ REVDIFF_SCHEMA_VERSION = "1"
 # version like `specs.json` does; the derivation-rule half of its identity is
 # `CARD_VERSION`, which the manifest already stamps.
 ERRATA_SCHEMA_VERSION = "1"
+# "1": phase 7, ticket 05 — the shape `dsa audit` / the MCP `get_audit` tool
+# return. Like a comparison and a revision diff it is derived live from what the
+# corpus already publishes and is never written to disk, so it is no part of any
+# publish cache key; it exists so a machine consumer can tell one scorecard
+# payload from the next. The *rubric*'s own version travels beside it on the
+# scorecard (`registry/audit_rubric.yaml`), because a grade produced under
+# different thresholds is a different reading even when the shape is identical.
+AUDIT_SCHEMA_VERSION = "1"
 
 # The version of the *derivation rules* (ADR 0005 / invariant 8). Derived
 # artifacts — design cards and anything else computed from records by a named

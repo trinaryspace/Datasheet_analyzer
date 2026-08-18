@@ -321,3 +321,75 @@ markdown must show the warning under the value. If a whole section was named by
 several items, check the banner is still readable at the top of the file rather
 than a wall of quoted errata — the display cap is
 `errata.render.BANNER_QUOTE_CHARS`, and lowering it is a one-constant change.
+
+
+---
+
+## Ticket 05 — `dsa audit` corpus scorecard
+
+### L11. Grade the fleet with `revision_freshness` actually checked
+
+`dsa audit` is fully offline by construction — every metric is a count of
+records the corpus already published, divided by another — with **one
+exception**: `revision_freshness` reads whatever `dsa check-revisions` last
+wrote onto `sources.json`, and nothing in this repo has ever run that against a
+live upstream. So every corpus in the measured fleet table
+(`Reports/PHASE_7_REPORT.md`, ticket 05) grades that metric `unknown`, which the
+rubric scores `C` on weight 3.
+
+That is the honest reading and it is not a gap in the audit — `unknown` is
+correct until somebody checks. But it means **no corpus here has yet been graded
+with freshness `current` or `stale`**, and the two states the metric exists for
+have therefore only been exercised against synthetic fixtures
+(`tests/unit/test_revisions.py`, `tests/unit/test_audit.py`).
+
+With network, after running L2–L5 of ticket 02:
+
+```bash
+dsa check-revisions --all          # writes staleness onto every sources.json
+dsa audit --all                    # the fleet table, now with freshness graded
+dsa audit --part AFE7950           # the full scorecard for one part
+dsa audit --all --json > fleet.json
+```
+
+**What to check:**
+
+1. The `revision freshness` row of each scorecard now reads `current` or
+   `stale` rather than `unknown`, and the grade moves accordingly (`A` for
+   `current`, `D` for `stale` — `registry/audit_rubric.yaml`).
+2. The **overall grade moves with it.** A corpus whose only `C` was freshness
+   should gain roughly 0.23 of a score point when it turns `current` (weight 3
+   of a 26-weight rubric, `C`→`A`). If a grade does *not* move, the metric is
+   not reaching the average and that is a defect worth a ticket.
+3. The scorecard's staleness **banner** — the block under the headline — says
+   the same thing as `dsa status` and as the top of `INDEX.md`. All three render
+   `staleness.one_line`; three surfaces disagreeing is the failure mode ticket
+   02's tests exist to catch, and this is the first run where the state is
+   something other than `unknown` on a real corpus.
+
+**Record afterwards:** the re-measured fleet table in
+`Reports/PHASE_7_REPORT.md` under ticket 05, replacing the all-`unknown`
+freshness column, and note whether any part's overall letter changed.
+
+### L12. Re-grade the two reference corpora after a rebuild
+
+Eight of thirteen metrics report `n/a` for `parts/AFE7950` and `parts/AFE7953`
+because those corpora predate record ids, per-record confidence, `card_version`
+and the table-pinning count. `AFE7950` can be rebuilt offline from the
+repo-root PDF; `AFE7953` **cannot be rebuilt hermetically** (no recorded TI
+document-viewer pages exist for it), which is why this step is here rather than
+done.
+
+```bash
+dsa build afe7950.pdf --part AFE7950     # offline; TI HTML backend needs network for AFE7953
+dsa build afe7953.pdf --part AFE7953     # needs the TI document viewer
+dsa audit --all
+```
+
+**What to check:** that `table_pin_rate` reports a real number for a TI HTML
+corpus for the first time. It is 100 % on every `pdf_layout` corpus by
+construction (the layout engine stamps a table's page at construction), so the
+HTML path is the only place this metric can discriminate — and
+`pagemap.pin_table_pages` genuinely can fail there, leaving `page: None`.
+A rate materially below 100 % is the finding this metric was put in the rubric
+for; record it, and re-check the `A`/`C` cut points against it.

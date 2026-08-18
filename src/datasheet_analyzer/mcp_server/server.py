@@ -1,4 +1,4 @@
-"""The MCP server itself: thirteen tools, two resources, local stdio only.
+"""The MCP server itself: fourteen tools, two resources, local stdio only.
 
 **This is a front end.** It holds no retrieval logic — no corpus walk, no
 parsing of corpus artifacts, no hand-built citation string. Every lookup goes
@@ -21,6 +21,7 @@ the moment retrieval creeps back in here.
 | `find_pin` | part or project | pins by designator, name or lexicon type |
 | `find_register` | part or project | registers by address, acronym or bit field |
 | `get_card` | part | one design card, every value in its provenance envelope |
+| `get_audit` | part | the corpus scorecard: an A–F grade an agent checks *before* answering |
 | `get_figure` | part | one figure **as an image content block** |
 | `compare_parts` | a list of parts | one parameter or one card, side by side, with SI deltas |
 | `ask` | part or project | one cited, budget-bounded answer pack |
@@ -49,8 +50,10 @@ from mcp.server import MCPServer
 from mcp.server.mcpserver.resources import FunctionResource
 from mcp.types import CallToolResult, ImageContent, TextContent
 
+from datasheet_analyzer.audit import build_scorecard
 from datasheet_analyzer.cards import row_citations
 from datasheet_analyzer.config import PIPELINE_VERSION, Settings, get_settings
+from datasheet_analyzer.evalh.golden import default_golden_path
 from datasheet_analyzer.mcp_server.responses import (
     ASK_BUDGET_FLOOR,
     CAP_SETTING,
@@ -438,6 +441,54 @@ def build_server(settings: Settings | None = None) -> MCPServer:
         # rather than a list keeps it honest under the cap: rows the cap sheds
         # take their citations with them.
         return fit_list(payload, "rows", cap, cite=row_citations)
+
+    @server.tool(name="get_audit", meta=declared("get_audit"))
+    def get_audit(part: str) -> dict[str, Any]:
+        """Grade this corpus before you answer from it, and say so if it is weak.
+
+        Returns the `dsa audit` scorecard: an overall A–F plus thirteen graded
+        metrics — section page coverage, table pin rate, table accept rate and
+        fidelity, spec page rate, the record confidence mix, whether pins,
+        registers and design cards exist, figure axis coverage, alias hit rate,
+        revision freshness and the golden pass rate — each against the
+        checked-in rubric.
+
+        Use `headline` verbatim to downgrade your own confidence language:
+        "This corpus grades C — table pin rate 61%. The value I found is
+        `medium` confidence; confirm against printed p.47."
+
+        A metric this corpus carries no fact for is `available: false` with a
+        reason, is reported `n/a`, and is **excluded** from the overall grade —
+        never scored 0 and never scored full marks. `grade: null` means too few
+        metrics could be computed to average at all; `notes` says what the
+        corpus needs (usually a rebuild or a revision check).
+        """
+        scope, error = _part_scope(part)
+        if scope is None:
+            return error_response(
+                "get_audit", error, max_tokens=cap, part=part,
+                grade=None, score=None, headline="", metrics=[], count=0, total=0,
+                n_graded=0, n_unavailable=0, unavailable_policy="", notes=[],
+            )
+        # The scorecard is built by `audit/`, never here: the server formats
+        # what the core returns (`AGENTS.md`, "no retrieval logic in a front
+        # end"), and a grade computed twice is a grade that can disagree with
+        # the CLI's.
+        card = build_scorecard(
+            scope.part_dir, golden=default_golden_path(scope.part)
+        )
+        payload = envelope(
+            "get_audit", max_tokens=cap, part=scope.part, staleness=_staleness(scope)
+        )
+        body = card.model_dump(mode="json")
+        payload["metrics"] = body.pop("metrics")
+        for key in ("grade", "score", "headline", "n_graded", "n_unavailable",
+                    "unavailable_policy", "notes"):
+            payload[key] = body[key]
+        # Under a tight cap the metric rows are what may be shed — never the
+        # grade, the headline or the policy sentence, which is why they ride
+        # the payload rather than inside the list.
+        return fit_list(payload, "metrics", cap)
 
     @server.tool(name="read_section", meta=declared("read_section"))
     def read_section(part: str, ref: str, max_tokens: int = 0) -> dict[str, Any]:

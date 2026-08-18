@@ -2118,3 +2118,100 @@ class TestCrossPartCompareOnTheGateCorpora:
                         continue
                     assert cell.delta.unit_si == reference.values[row.role].unit_si
                     assert cell.values[row.role].unit_si == cell.delta.unit_si
+
+
+@pytest.mark.integration
+class TestAuditOnTheGateCorpora:
+    """Phase 7, ticket 05 — `dsa audit` graded against four real datasheets.
+
+    The ticket asks that every built part be graded and the grades recorded for
+    the phase report, *including any that grade poorly, stated plainly*. That is
+    what this class does: it grades all four gate corpora, prints the fleet
+    table into the test output so the report's numbers are measured rather than
+    claimed, and asserts the three properties that make a grade worth reading.
+
+    - **Every metric is either graded or carries a reason.** There is no third
+      state: a metric with no grade and no `unavailable_reason` would be a hole
+      in the scorecard that reads as a pass.
+    - **An `n/a` is excluded, not scored.** `n_graded` counts exactly the
+      metrics that carry a grade, and the overall score is the weighted mean of
+      those — asserted arithmetically against the rubric's own points, on real
+      corpora, so a future change that starts folding zeros in is caught here
+      and not only in the unit suite.
+    - **The grade is defensible from the metrics.** Every metric that earned a
+      letter carries the artifact it was read from and the rule that produced
+      it; the fleet table printed below is the evidence for
+      `Reports/PHASE_7_REPORT.md`.
+
+    Measured at the time of writing (rubric v1, four gate parts): AD9081 B,
+    HMC520A B, QPA1003P B, LM741 C. LM741's `C` is the honest one — it publishes
+    71 spec rows and grades every one of them `low`, so `records graded high`
+    reads 4 % and earns an `F` on weight 3.
+    """
+
+    def _cards(self, gate):
+        from datasheet_analyzer.audit import build_scorecard
+        from datasheet_analyzer.evalh.golden import default_golden_path
+
+        return {
+            name: build_scorecard(
+                gate[name].part_dir, golden=default_golden_path(name)
+            )
+            for name in GATE
+        }
+
+    def test_every_gate_part_grades_and_the_fleet_table_is_recorded(self, gate, capsys):
+        from datasheet_analyzer.audit import render_fleet
+
+        cards = self._cards(gate)
+        for name, card in cards.items():
+            assert card.grade is not None, f"{name} produced no grade"
+            assert card.score is not None
+            assert card.headline.startswith("This corpus grades ")
+            assert card.n_graded >= 4, name
+        with capsys.disabled():
+            print()
+            print(render_fleet(list(cards.values())))
+
+    def test_no_metric_is_silently_ungraded(self, gate):
+        """A metric with neither a grade nor a reason is a hole in the card."""
+        for name, card in self._cards(gate).items():
+            for metric in card.metrics:
+                if metric.grade is None:
+                    assert metric.available is False, f"{name}/{metric.key}"
+                    assert metric.unavailable_reason, f"{name}/{metric.key}"
+                else:
+                    assert metric.available is True, f"{name}/{metric.key}"
+                    assert metric.source and metric.derivation, f"{name}/{metric.key}"
+
+    def test_the_score_is_the_mean_over_graded_metrics_only(self, gate):
+        """The n/a rule, checked arithmetically on real corpora."""
+        from datasheet_analyzer.audit import load_audit_rubric
+
+        rubric = load_audit_rubric()
+        for name, card in self._cards(gate).items():
+            graded = [m for m in card.metrics if m.grade is not None]
+            assert len(graded) == card.n_graded, name
+            assert len(card.metrics) - len(graded) == card.n_unavailable, name
+            weight = sum(m.weight for m in graded)
+            expected = sum(
+                rubric.grade_points(m.grade) * m.weight for m in graded
+            ) / weight
+            assert card.score == pytest.approx(expected), name
+
+    def test_a_part_with_no_pin_table_is_graded_down_not_errored(self, gate):
+        """HMC520A states 24 terminals and publishes none — a real absence."""
+        card = self._cards(gate)["HMC520A"]
+        pins = next(m for m in card.metrics if m.key == "pins_present")
+        assert pins.available is True and pins.state == "false"
+        assert pins.grade is not None and pins.grade.value != "A"
+        assert card.grade is not None  # the corpus still grades
+
+    def test_the_scorecard_carries_the_staleness_banner(self, gate):
+        """The fourth of ticket 02's four surfaces, on a real corpus."""
+        from datasheet_analyzer.audit import render_scorecard
+
+        card = self._cards(gate)["AD9081"]
+        assert card.staleness == "unknown"
+        assert "not checked" in card.banner
+        assert card.banner in render_scorecard(card)

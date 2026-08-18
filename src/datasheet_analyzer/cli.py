@@ -306,15 +306,15 @@ def _cmd_batch(args: argparse.Namespace) -> int:
 
 
 def _default_golden_path(part: str) -> Path:
-    """Per-part golden discovery (SPEC story 26): each part verifies
-    against tests/fixtures/golden_qa_<PART>.yaml, so a missing benchmark
-    is a hard failure, never a silent zero-question pass."""
-    return (
-        Path(__file__).resolve().parent.parent.parent
-        / "tests"
-        / "fixtures"
-        / f"golden_qa_{part}.yaml"
-    )
+    """Per-part golden discovery, owned by `evalh` (phase 7, ticket 05).
+
+    Delegated rather than spelled here so `dsa verify`, `dsa audit` and the MCP
+    `get_audit` tool cannot end up meaning different files by "this part's
+    golden set" — a front end may not decide where the objective function lives.
+    """
+    from datasheet_analyzer.evalh.golden import default_golden_path
+
+    return default_golden_path(part)
 
 
 def _cmd_verify(args: argparse.Namespace) -> int:
@@ -813,6 +813,91 @@ def _cmd_diff_rev(args: argparse.Namespace) -> int:
         print(markdown)
     if written is not None:
         print(f"written: {written}", file=sys.stderr)
+    return 0
+
+
+def _cmd_audit(args: argparse.Namespace) -> int:
+    """Grade one corpus, or the whole fleet, against the checked-in rubric.
+
+    The scorecard is built and rendered by `audit/` — this command chooses the
+    scope and the format and owns the exit codes, exactly as `diff-rev` does.
+    The golden benchmark is resolved by the same per-part rule `dsa verify`
+    uses, so "the golden pass rate" means the same file in both commands; a
+    part with no benchmark reports that metric `n/a` rather than failing, because
+    an audit is a reading of what exists and a missing benchmark is one of the
+    things it exists to report.
+
+    Exit codes: 0 the audit ran, 1 at least one part graded below the floor
+    (`--min-grade`, off by default), 2 there was nothing to grade.
+    """
+    import json
+
+    from datasheet_analyzer.audit import (
+        build_scorecard,
+        grade_order,
+        render_fleet,
+        render_scorecard,
+    )
+    from datasheet_analyzer.models import AuditGrade
+    from datasheet_analyzer.retrieve import discover_parts
+
+    settings = get_settings()
+    if args.all:
+        part_dirs = discover_parts(settings.parts_dir)
+        if not part_dirs:
+            print(
+                f"audit error: no parts under {settings.parts_dir} — build one first: "
+                f"`dsa build <pdf> --part <PART>`",
+                file=sys.stderr,
+            )
+            return 2
+    else:
+        part = args.part_pos or args.part
+        if not part:
+            print("audit error: name a part, or pass --all", file=sys.stderr)
+            return 2
+        part_dir = settings.parts_dir / part
+        if not part_dir.is_dir():
+            print(
+                f"audit error: no corpus for {part} under {settings.parts_dir} — "
+                f"build it first: `dsa build <pdf> --part {part}`",
+                file=sys.stderr,
+            )
+            return 2
+        part_dirs = [part_dir]
+
+    cards = [
+        build_scorecard(part_dir, golden=_default_golden_path(part_dir.name))
+        for part_dir in part_dirs
+    ]
+    if args.json:
+        payload = [card.model_dump(mode="json") for card in cards]
+        print(json.dumps(payload if args.all else payload[0], ensure_ascii=False, indent=2))
+    elif args.all:
+        print(render_fleet(cards))
+    else:
+        print(render_scorecard(cards[0]))
+
+    # A floor is opt-in: an audit that failed the build by default would make
+    # `dsa audit` unusable as the reporting tool it is. With one, the phase
+    # gate's "every onboarded part grades >= B" becomes a command.
+    #
+    # An **ungraded** corpus is always below the floor, whatever the floor is:
+    # a quality gate that a corpus nobody could measure passes silently is not
+    # a gate. It is the same rule the fleet table sorts by, through the same
+    # `grade_order`, so a part that prints first there cannot pass here.
+    if not args.min_grade:
+        return 0
+    floor = grade_order(AuditGrade(args.min_grade.upper()))
+    below = [
+        c.part for c in cards if c.grade is None or grade_order(c.grade) < floor
+    ]
+    if below:
+        print(
+            f"below the {args.min_grade.upper()} floor: {', '.join(sorted(below))}",
+            file=sys.stderr,
+        )
+        return 1
     return 0
 
 
@@ -1441,6 +1526,32 @@ def main(argv: list[str] | None = None) -> int:
         help="print the report without writing parts/<PART>/REVISION_DIFF.md",
     )
     p_diff.set_defaults(func=_cmd_diff_rev)
+
+    p_audit = sub.add_parser(
+        "audit",
+        help="grade a built corpus against the checked-in rubric "
+             "(registry/audit_rubric.yaml)",
+    )
+    p_audit.add_argument(
+        "part_pos", nargs="?", default="", metavar="PART",
+        help="part number, e.g. AFE7950 (or --all)",
+    )
+    p_audit.add_argument("--part", default="", help="part number")
+    p_audit.add_argument(
+        "--all", action="store_true", help="grade every part under parts_dir"
+    )
+    p_audit.add_argument(
+        "--min-grade",
+        dest="min_grade",
+        default="",
+        choices=["A", "B", "C", "D", "F"],
+        help="exit 1 when any graded part falls below this letter "
+             "(an ungraded part is always below it)",
+    )
+    p_audit.add_argument(
+        "--json", action="store_true", help="emit the scorecard(s) as JSON"
+    )
+    p_audit.set_defaults(func=_cmd_audit)
 
     p_plots = sub.add_parser("plots", help="deterministic plot lookup")
     _add_scope(p_plots)

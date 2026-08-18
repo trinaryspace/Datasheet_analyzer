@@ -67,6 +67,8 @@ ALL_CALLS = [
     ("find_pin", {"part": "TEST", "type": "ground"}),
     ("find_register", {"part": "TEST", "addr": "0x19"}),
     ("get_card", {"part": "TEST", "card": "power"}),
+    # phase 7, ticket 05 — the trust signal, read before an answer is composed
+    ("get_audit", {"part": "TEST"}),
     ("get_figure", {"part": "TEST", "file": FIGURE}),
     ("ask", {"part": "TEST", "question": "max junction temperature"}),
     ("compare_parts", {"parts": ["TEST", "OTHER"], "name": "junction temperature"}),
@@ -129,6 +131,8 @@ class TestEveryToolOverTheMemoryTransport:
             "compare_parts",
             # phase 6, ticket 10 — the two device tables and the design card
             "find_pin", "find_register", "get_card",
+            # phase 7, ticket 05 — the trust signal an agent reads *before* it answers
+            "get_audit",
         }
 
     def test_every_tool_ships_its_declared_response_schema(self, server):

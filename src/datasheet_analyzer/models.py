@@ -140,6 +140,121 @@ class Staleness(str, Enum):
     UNKNOWN = "unknown"
 
 
+class AuditGrade(str, Enum):
+    """The letter one metric — or one whole corpus — earns (phase 7, ticket 05).
+
+    Five grades, because a scorecard exists to be *acted on*: `A` needs no
+    action, `F` means do not answer from this corpus without opening the PDF,
+    and the three in between are the gradations a designer actually uses when
+    deciding how much to double-check. What each letter *means* for each metric
+    is not here — it is `registry/audit_rubric.yaml`, checked-in data, so a
+    threshold argument is a YAML edit rather than a code change.
+
+    **There is no grade for "could not measure".** A metric the corpus cannot
+    answer carries `None`, is reported as `n/a`, and is excluded from the
+    overall average — never scored `F` (which would defame a corpus for a
+    statistic nobody recorded) and never scored `A` (which would flatter one).
+    """
+
+    A = "A"
+    B = "B"
+    C = "C"
+    D = "D"
+    F = "F"
+
+
+class MetricKind(str, Enum):
+    """What shape of reading one audit metric produces.
+
+    The kind decides how the rubric grades it, which is why it travels on the
+    metric rather than being inferred from the value: a `RATIO` is graded
+    against ordered thresholds, a `BOOLEAN` and a `STATE` against a named-value
+    map. Nothing here interpolates between them.
+    """
+
+    RATIO = "ratio"
+    BOOLEAN = "boolean"
+    STATE = "state"
+
+
+class AuditMetric(BaseModel):
+    """One graded reading about one corpus (`dsa audit`, phase 7 ticket 05).
+
+    It is a derived value in the sense of invariant 8 and carries the same two
+    fields every derived value does: `source` (the artifact it was read from)
+    and `derivation` (the named rule that produced it). No model call appears
+    anywhere in that path — every number here is a count of records the corpus
+    already published, divided by another.
+
+    **`available: false` is a first-class outcome**, and the one thing this
+    model exists to keep honest. `value` is then `None`, `grade` is `None`, and
+    `unavailable_reason` says which fact the corpus does not carry. A metric in
+    that state is excluded from the overall grade; it is never read as `0`
+    (which would defame a good corpus for a statistic nobody recorded) and
+    never as full marks (which would flatter a bad one).
+    """
+
+    key: str
+    label: str
+    kind: MetricKind = MetricKind.RATIO
+    #: The reading, `0.0`–`1.0` for a ratio, `1.0`/`0.0` for a boolean, `None`
+    #: for a state metric and for anything unavailable.
+    value: float | None = None
+    #: The reading of a `STATE` metric (`current` / `stale` / `unknown`), and
+    #: the word a boolean reads as. `""` for a ratio.
+    state: str = ""
+    #: The counts a ratio was computed from, so a reader can see 61% as 38/62
+    #: and tell a small denominator from a large one. `None` when the metric is
+    #: not a quotient.
+    numerator: int | None = None
+    denominator: int | None = None
+    grade: AuditGrade | None = None
+    weight: float = 1.0
+    available: bool = True
+    unavailable_reason: str = ""
+    #: Anything a reader needs beside the number — the full confidence mix, the
+    #: rejection reasons, the golden set that produced a pass rate.
+    detail: str = ""
+    source: str = ""
+    derivation: str = ""
+
+
+class AuditScorecard(BaseModel):
+    """Every metric of one corpus, graded, plus the overall letter.
+
+    `grade` is `None` when too few metrics could be computed for an average to
+    mean anything (`min_graded_metrics` in the rubric) — an ungraded corpus
+    says so rather than reporting a letter earned by three readings out of
+    thirteen.
+
+    `headline` is the sentence the ticket exists to produce: the one line an
+    agent can put in front of an answer to downgrade its own confidence
+    language before it speaks.
+    """
+
+    schema_version: str = ""
+    rubric_version: str = ""
+    part: str = ""
+    grade: AuditGrade | None = None
+    #: The weighted mean of the graded metrics' grade points, on the rubric's
+    #: own scale. `None` whenever `grade` is.
+    score: float | None = None
+    metrics: list[AuditMetric] = Field(default_factory=list)
+    n_graded: int = 0
+    n_unavailable: int = 0
+    #: The convention this scorecard applied to metrics it could not compute,
+    #: stated in the output rather than assumed by the reader (ticket 05).
+    unavailable_policy: str = ""
+    #: The staleness banner, so the scorecard is one of the four surfaces that
+    #: cannot disagree about a corpus's freshness (ticket 02).
+    staleness: str = ""
+    banner: str = ""
+    headline: str = ""
+    #: What this corpus needs doing to it — a rebuild, a revision check, a
+    #: golden set. Each one names the command.
+    notes: list[str] = Field(default_factory=list)
+
+
 class ParseConfidence(str, Enum):
     """Whether the numeric layer could read a record's printed value.
 
@@ -372,6 +487,18 @@ class CorpusStats(BaseModel):
     boilerplate_tokens_removed: int = 0
     sections_with_pages: int = 0
     sections_without_pages: int = 0
+    # Phase 7, ticket 05: how many of `n_tables` were pinned to an exact
+    # printed page rather than inheriting their section's range. It is the
+    # builder-side fact behind `dsa audit`'s **table pin rate** — "p.7" beats
+    # "p.7-13" when an agent cites a spec row, and nothing else in the manifest
+    # records whether the pinning worked.
+    #
+    # `None`, not `0`, is the default, and it is the whole point of the field:
+    # a corpus published before this ticket carries no such count, and reading
+    # that absence as "0 tables pinned" would grade a perfectly good corpus at
+    # `F` for a statistic nobody ever recorded. `None` reports as `n/a` and
+    # says a rebuild would measure it.
+    tables_pinned: int | None = None
     # Phase 5 search index economics, recorded per part so the ratio is a
     # measured number in every manifest rather than a claim in a report:
     # the bytes every `search_index.json` occupies, against the bytes of the

@@ -610,6 +610,32 @@ _COMPARISON_SCHEMA = {
     },
 }
 
+#: One row of `get_audit` (phase 7, ticket 05). `value`, `grade`, `numerator`
+#: and `denominator` are all nullable together, because a metric the corpus
+#: carries no fact for publishes none of them — the contract has to be able to
+#: express "not measured" without borrowing `0`, which is the whole point of the
+#: metric. `available: false` plus `unavailable_reason` is the readable form of
+#: the same fact.
+_AUDIT_METRIC_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": [
+        "key", "label", "kind", "value", "state", "numerator", "denominator",
+        "grade", "weight", "available", "unavailable_reason", "detail", "source",
+        "derivation",
+    ],
+    "properties": {
+        "key": _STR, "label": _STR, "kind": {"enum": ["ratio", "boolean", "state"]},
+        "value": _NUM_OR_NULL, "state": _STR,
+        "numerator": _INT_OR_NULL, "denominator": _INT_OR_NULL,
+        "grade": {"enum": ["A", "B", "C", "D", "F", None]},
+        "weight": {"type": "number"},
+        "available": {"type": "boolean"},
+        "unavailable_reason": _STR, "detail": _STR,
+        "source": _STR, "derivation": _STR,
+    },
+}
+
 _PART_SCHEMA = {
     "type": "object",
     "additionalProperties": False,
@@ -740,6 +766,23 @@ SCHEMAS: dict[str, dict] = {
         {
             "comparison": {"anyOf": [_COMPARISON_SCHEMA, {"type": "null"}]},
             "rows": {"type": "array", "items": COMPARISON_ROW_SCHEMA},
+        },
+        listed=True,
+    ),
+    # The trust signal an agent reads *before* it answers (phase 7, ticket 05).
+    # `grade` is nullable and that is load-bearing: a corpus too sparse to
+    # average carries no letter rather than a plausible one, and a client that
+    # cannot express the null would have to invent a grade to parse the payload.
+    "get_audit": _schema(
+        {
+            "grade": {"enum": ["A", "B", "C", "D", "F", None]},
+            "score": _NUM_OR_NULL,
+            "headline": _STR,
+            "metrics": {"type": "array", "items": _AUDIT_METRIC_SCHEMA},
+            "n_graded": {"type": "integer"},
+            "n_unavailable": {"type": "integer"},
+            "unavailable_policy": _STR,
+            "notes": {"type": "array", "items": _STR},
         },
         listed=True,
     ),

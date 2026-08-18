@@ -21,6 +21,23 @@ from datasheet_analyzer.evalh.citations import (
 from datasheet_analyzer.models import GoldenQuestion
 from datasheet_analyzer.tokens import count_tokens
 
+#: Where a part's hand-verified benchmark lives, relative to the repo root.
+#: One rule, not three: `dsa verify` and `dsa audit` and the MCP `get_audit`
+#: tool must all mean the same file by "this part's golden set", or the golden
+#: pass rate an agent reads would be measured against a different benchmark
+#: from the one the build gate enforces (invariant 5).
+GOLDEN_DIR = Path(__file__).resolve().parent.parent.parent.parent / "tests" / "fixtures"
+
+
+def default_golden_path(part: str) -> Path:
+    """`tests/fixtures/golden_qa_<PART>.yaml` — per-part golden discovery.
+
+    SPEC story 26: each part verifies against its own benchmark, so a missing
+    one is a hard failure in `dsa verify` and an `n/a` metric in `dsa audit` —
+    never a silent zero-question pass.
+    """
+    return GOLDEN_DIR / f"golden_qa_{part}.yaml"
+
 
 def load_golden(path: Path) -> list[GoldenQuestion]:
     return load_golden_yaml(path)

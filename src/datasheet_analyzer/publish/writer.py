@@ -465,6 +465,10 @@ def write_corpus(
     part_dir.mkdir(parents=True, exist_ok=True)
 
     stats = CorpusStats(n_documents=len(docs))
+    # Accumulated separately from `stats` so `CorpusStats.tables_pinned` can
+    # stay `None` on corpora published before it existed: a local int always
+    # counts, and it is assigned onto the manifest below.
+    tables_pinned = 0
     manifest = CorpusManifest(
         part_number=part_dir.name,
         pipeline_version=pipeline_version,
@@ -604,6 +608,13 @@ def write_corpus(
 
             sec = plan.section
             stats.n_tables += len(sec.tables)
+            # Phase 7, ticket 05: the builder-side half of `dsa audit`'s table
+            # pin rate. Counted here because this is the last place the
+            # `TableBlock` objects exist — `manifest.json` records the section's
+            # page range, and a table's own pinned page survives nowhere else.
+            # Accumulated into a local first so the manifest field stays `None`
+            # only for corpora published before the field existed.
+            tables_pinned += sum(1 for t in sec.tables if t.page is not None)
             stats.n_figures += len(sec.figures)
             stats.n_footnotes += sum(len(t.footnotes) for t in sec.tables)
             stats.total_tokens += plan.token_count
@@ -651,6 +662,11 @@ def write_corpus(
                 f"{card.card} card for {part_dir.name} has no rows — see "
                 f"{CARDS_DIRNAME}/{card.card}.md for what it looked for"
             )
+
+    # The table-pinning count is a *measured* fact about this publish, so it is
+    # assigned unconditionally — including as 0 for a corpus whose tables could
+    # none of them be pinned, which is a real finding rather than an absence.
+    stats.tables_pinned = tables_pinned
 
     # Errata links (phase 7, ticket 04). Written — or deliberately removed —
     # here, after the records they point at exist on disk. The warnings are the

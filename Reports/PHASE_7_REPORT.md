@@ -760,3 +760,162 @@ be minted. An errata document is never its own target.
   Narrowing it means re-reading the PDF at structure time, which is what
   `pin_table_pages` and the axis catalog already do and is the shape a future
   ticket would follow.
+
+
+---
+
+## Ticket 05 — `dsa audit` — corpus scorecard + rubric
+
+**Landed.** `pytest` 1937 passed / 1 skipped (1875 before this ticket + 62 new);
+`ruff` clean. `extraction_stats` told the *builder* how a build went; nothing told
+the *agent* whether to trust a corpus before answering. `dsa audit` is that
+signal: thirteen readings taken off artifacts the corpus already publishes,
+each graded against a checked-in rubric into A–F, averaged by weight into one
+letter, and carried by a one-sentence **headline** an agent can put in front of
+its answer.
+
+### What shipped
+
+| Piece | Where | What it owns |
+|---|---|---|
+| the rubric, as data | `registry/audit_rubric.yaml` | every threshold, weight and letter, plus a comment block justifying each cut point against the measured fleet |
+| the loader | `audit/rubric.py` | `AuditRubric` / `MetricRule`; grading a ratio, grading a named state, averaging letters. Nothing here has a fallback threshold — a metric the file does not carry is not graded |
+| the readers | `audit/build.py` | `build_scorecard`, `METRIC_KEYS`, and the `n/a`-vs-zero rule that governs all thirteen |
+| the renderings | `audit/render.py` | the per-part scorecard and the fleet table |
+| the command | `cli.py::_cmd_audit` | `--part` / `--all` / `--json` / `--min-grade` |
+| the MCP tool | `mcp_server` `get_audit` | the fourteenth tool; grade, headline, metrics, policy, notes |
+| the one new build statistic | `CorpusStats.tables_pinned` | `int \| None` — see "the null that matters" below |
+
+### The measured fleet (rubric v1)
+
+Every built corpus this repo can produce offline, graded. Five gate parts built
+in-test from `tests/fixtures/pdf/`; two reference corpora read from `parts/`.
+
+| Part | Grade | Score | Graded | n/a | Worst graded metric |
+|---|---|---|---|---|---|
+| AD9081 | **B** | 3.46 | 12 | 1 | figure axes read 0 % (F) |
+| HMC520A | **B** | 3.00 | 12 | 1 | pin records published: no (D) |
+| QPA1003P | **B** | 3.00 | 12 | 1 | figure axes read 0 % (F) |
+| LMX1204 | **B** | 3.08 | 12 | 1 | records graded high 8 % (D) |
+| AFE7950 | **B** | 2.92 | 5 | 8 | alias hit rate 0 % (F) |
+| AFE7953 | **B** | 3.00 | 5 | 8 | alias hit rate 40 % (D) |
+| LM741 | **C** | 2.58 | 12 | 1 | records graded high 4 % (F) |
+
+Per metric, across the five corpora that can answer them:
+
+| Metric | AD9081 | LM741 | QPA1003P | HMC520A | LMX1204 | AFE7950 | AFE7953 |
+|---|---|---|---|---|---|---|---|
+| section page coverage | 100 % | 100 % | 100 % | 100 % | 100 % | 100 % | 100 % |
+| table pin rate | 100 % | 100 % | 100 % | 100 % | 100 % | n/a | n/a |
+| table accept rate | 100 % | 75 % | 83 % | 86 % | 79 % | n/a | n/a |
+| mean table fidelity | 87 % | 74 % | 93 % | 83 % | 76 % | n/a | n/a |
+| spec page rate | 100 % | 100 % | 100 % | 100 % | 100 % | 100 % | 100 % |
+| records graded high | 49 % | 4 % | 9 % | 18 % | 8 % | n/a | n/a |
+| pins published | yes | no | no | no | yes | n/a | n/a |
+| registers published | no | no | no | no | yes | n/a | n/a |
+| design cards hold rows | yes | yes | yes | **no** | yes | n/a | n/a |
+| figure axes read | 0 % | 0 % | 0 % | 50 % | 43 % | n/a | n/a |
+| alias hit rate | n/a | n/a | n/a | n/a | n/a | 0 % | 40 % |
+| revision freshness | unknown | unknown | unknown | unknown | unknown | unknown | unknown |
+| golden pass rate | 100 % | 100 % | 100 % | 100 % | 100 % | 97 % | 96 % |
+
+**Stated plainly, as the ticket asks.**
+
+- **LM741 grades C, and it should.** It publishes 71 spec rows and grades every
+  one of them `low`: 4 % of its records carry `high`, which earns an `F` on the
+  heaviest non-golden weight. That is the true reading of a corpus whose every
+  parametric value needs the printed page opened, and curving it would defeat
+  the point of the metric.
+- **AD9081, LM741 and QPA1003P read 0 % figure axes.** Their figures are raster
+  plots whose axes exist only as pixels; the catalog attempted a reading and
+  could not make one. That is `LOW`, not `UNKNOWN`, and therefore a graded `F`
+  rather than an `n/a` — the distinction the axis metric was built on.
+- **HMC520A publishes no design-card rows at all** and no pin table (it states
+  24 terminals and its printed pin table is rejected whole). Both are graded
+  down. Neither is an error.
+- **The two reference corpora grade on five metrics out of thirteen.** They
+  predate record ids, `search_index.json`, per-record confidence, `card_version`
+  and the table-pinning count. Their scorecards say so eight times over and
+  print the rebuild command; the grade they carry is stated beside "8 of 13
+  metrics could not be computed and are excluded, not scored."
+- **The `revision freshness` column is `unknown` everywhere**, correctly: no
+  corpus in this repo has run `dsa check-revisions` against a live upstream.
+  `unknown` grades `C`, not `A` — ticket 02's asymmetry, now on a scorecard.
+
+### Two metrics that measured something other than what was expected
+
+- **table pin rate is 100 % on every `pdf_layout` corpus**, and that is
+  structural rather than lucky: the layout engine stamps a table's printed page
+  at construction, so pinning cannot fail there. It is the *HTML* path that has
+  no page numbers of its own and depends on `pagemap.pin_table_pages` locating
+  cell text — and the two HTML corpora are exactly the ones that record no count
+  yet. So this metric does not discriminate between layout-engine corpora today;
+  it is in the scorecard because it will discriminate the moment a TI corpus is
+  rebuilt, and because a backend that cannot pin must not look like one that can.
+- **alias hit rate is 0 % on AFE7950 and 40 % on AFE7953**, and the finding is
+  about the *benchmark*, not the corpus. Those sets' `spec_query` entries are
+  keyed by printed fragments (`Attenuation`, `SCLK`, `Electrostatic`) rather than
+  by designer phrases, so the ladder resolves them on the substring rung and the
+  alias lexicon is never exercised. The five gate benchmarks ask no name-keyed
+  spec question at all and report `n/a`. This is a real gap in the golden sets
+  that ticket 06 (golden generation) is the natural place to close; it is graded
+  at weight 1 precisely because it measures the lexicon and the benchmark rather
+  than the extraction.
+
+### The null that matters
+
+`CorpusStats.tables_pinned` is `int | None`, and the `None` is the whole design.
+A corpus published before this ticket records no pinning count; reading that
+absence as "0 tables pinned" would grade two perfectly good TI corpora `F` on a
+weight-3 metric for the age of their manifest. So the field defaults to `None`,
+the metric reports `n/a`, and the scorecard names the rebuild that would measure
+it. The same discriminator does the same work three more times:
+`manifest.card_version == ""` is what separates "this corpus predates pins,
+registers and cards" from "this datasheet prints none of them", and
+`Confidence.UNKNOWN` on a plot axis separates "never read" from "read and
+unreadable".
+
+`tests/unit/test_audit.py::TestUnavailableIsNeitherZeroNorFullMarks` is the
+arithmetic proof: the same corpus is graded twice, once with `tables_pinned:
+null` and once with `tables_pinned: 0`, and the second must score **strictly
+lower**. If `n/a` were being folded in as a zero the two would tie.
+
+### Acceptance criteria
+
+| Criterion | Status | Evidence |
+|---|---|---|
+| `dsa audit --part X` grades every metric above; `--all` prints the fleet table; `--json` feeds tooling | met | `TestTheCommand` (7); `TestEveryMetricIsGraded::test_the_scorecard_publishes_every_metric_the_plan_names` asserts the thirteen keys against the plan's own list |
+| The rubric is data-driven: changing `registry/audit_rubric.yaml` in a test changes the grade — asserted | met | `TestTheRubricIsData` (6): a raised threshold moves one metric's grade and moves nothing else; a reweight moves the overall grade; **deleting** a metric makes it `n/a` (the proof there is no Python fallback); the CLI reads the file too; a missing file grades nothing; an unparseable one degrades to an empty rubric |
+| MCP `get_audit(part)` exposes the grade so an agent can check trust before answering | met | `TestGetAuditOverMcp` (3) over the SDK memory transport + the declared `SCHEMAS["get_audit"]`; `test_mcp_server.py` now drives it in the whole-surface cap and schema sweeps |
+| Missing artifacts (no pins, no registers, no cards) reduce the grade rather than erroring | met | `TestMissingArtifactsReduceTheGradeRatherThanErroring` (2) on a synthetic corpus; `TestAuditOnTheGateCorpora::test_a_part_with_no_pin_table_is_graded_down_not_errored` on HMC520A, which really does publish none |
+| A metric that cannot be computed is reported as `n/a` and excluded from the average, never scored as zero | met | `TestUnavailableIsNeitherZeroNorFullMarks` (6), including the null-vs-zero score comparison and the full-marks half; `TestAuditOnTheGateCorpora::test_the_score_is_the_mean_over_graded_metrics_only` re-checks the arithmetic on four real corpora, and `TestAuditOnTheReferenceCorpora::test_the_missing_statistics_are_not_scored_as_zero` on the two old ones |
+| All six built parts are graded and the grades recorded for the phase report — including any that grade poorly, stated plainly | met | seven, in fact: the fleet table above. `TestAuditOnTheGateCorpora` (4 parts), `TestAuditOnTheRegisterCorpus` (LMX1204), `TestAuditOnTheReferenceCorpora` (2 parts). LM741's `C` and HMC520A's empty cards are stated above rather than smoothed |
+| The rubric's thresholds are justified in a comment block, so a grade is defensible rather than arbitrary | met | the ~100-line block at the head of `registry/audit_rubric.yaml`: the placement rule (`A` = the best real corpus, `C` = where an agent's language must change, `F` = untrustworthy alone) and, per metric, the readings each cut point was placed against |
+| The staleness banner appears in `dsa audit` (ticket 02's fourth surface) | met | `TestTheScorecardCarriesTheStalenessBanner` (2) + `TestAuditOnTheGateCorpora::test_the_scorecard_carries_the_staleness_banner`. Until this ticket the surface existed only as `staleness.audit_metric`; it is now a rendered scorecard |
+
+### Open items carried forward
+
+- **The rubric is calibrated on seven corpora, five of them from one backend.**
+  Every cut point is anchored to a measured value, but the sample is small and
+  four of the five layout-engine parts are RF/analog datasheets. Onboarding
+  twenty parts (ticket 08's scale gate) is the first real test of whether `A`
+  is set where it should be, and the file is data precisely so that is an edit.
+- **`table_pin_rate` cannot discriminate on the layout path** (above). It is
+  kept because it is the plan's metric and because it is the reading that would
+  catch a backend that silently stopped pinning.
+- **`golden_pass_rate` is the corpus-side half of `dsa verify`, not all of it.**
+  The page-truth check needs the printed PDF, which is not part of a corpus, so
+  the metric runs the section half of each text question plus all seven query
+  paths and **says so** in its own `detail` and `derivation`
+  (`golden_corpus_checks`). Measured: it agrees with `dsa verify` at 100 % on
+  all five gate parts.
+- **The two reference corpora need rebuilding.** Eight of thirteen metrics
+  cannot be measured for them, and the scorecard tells the reader so on every
+  run. Rebuilding AFE7950 is a `dsa build` away; AFE7953 cannot be rebuilt
+  hermetically (no recorded TI document-viewer pages exist for it), which is the
+  same constraint recorded under ticket 04 of phase 5.
+- **No `--min-grade` in any gate yet.** The flag exists and is tested; wiring it
+  into the phase-8 scale gate ("every onboarded part grades ≥ B, or carries a
+  recorded shortcoming") is ticket 08's decision, not this one's. On today's
+  fleet that gate would fail on LM741, which is the correct and intended
+  outcome — the shortcoming is real and now measured.

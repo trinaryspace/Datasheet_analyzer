@@ -431,6 +431,27 @@ and an answer whose supporting record it names carries the erratum on the answer
 row — beside the value, where a budget can only drop the two together.
 _Avoid_: mapping, association, reference, tag, annotation
 
+**Audit grade**:
+What one corpus is worth to whoever is about to answer from it — `A` to `F`,
+computed by `dsa audit` from thirteen readings of the artifacts the corpus
+already published and a checked-in rubric (`registry/audit_rubric.yaml`). It is
+the consumer's half of a number the builder already had: `extraction_stats`
+says how a build went, and this says whether to trust it. It is derived like a
+design card and written to no file, so it is always a reading of the corpus as
+it is now.
+Its governing rule is what it does with a metric it cannot compute: that metric
+is **`n/a` and excluded from the average** — never `0`, which would defame a
+corpus for a statistic nobody recorded, and never full marks, which would
+flatter one — and the convention is stated in the grade output rather than
+assumed by the reader. A *missing artifact* is the opposite case and is graded
+down, because "this corpus publishes no pins" is a fact about the corpus. A
+corpus too sparse to average carries **no letter at all** rather than a
+plausible one. Every threshold, weight and letter is data, so a grade is
+arguable rather than an oracle, and the grade travels with a one-sentence
+**headline** — the line an agent puts in front of its answer to downgrade its
+own confidence language before it speaks.
+_Avoid_: score, rating, quality, health, star
+
 **SourceDocument**:
 A registered input file of a part (datasheet, register map, errata, app
 note). Identity is the sha256 of its bytes.

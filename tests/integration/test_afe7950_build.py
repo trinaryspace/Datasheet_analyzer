@@ -971,3 +971,116 @@ class TestDesignCardsOnTheReferenceCorpus:
         result, _ = built
         assert result.manifest.stats.n_cards == len(self.CARDS)
         assert result.manifest.stats.n_card_rows >= 20
+
+
+def _audit_summary(card) -> str:
+    """One scorecard as ASCII, for the report's measured numbers.
+
+    Deliberately not `render_scorecard`: that carries the staleness banner's
+    warning glyph, and a `capsys.disabled()` print goes to the raw console,
+    which is cp1252 on Windows. The banner is asserted separately; what belongs
+    in the test log is the readings.
+    """
+    from datasheet_analyzer.audit.render import counts, grade_of, reading
+
+    lines = [
+        (
+            f"audit {card.part}: grade "
+            f"{card.grade.value if card.grade else 'ungraded'} "
+            f"(score {card.score:.2f}), {card.n_graded} graded / "
+            f"{card.n_unavailable} n/a"
+        )
+    ]
+    for metric in card.metrics:
+        lines.append(
+            f"  {metric.key:<24} {reading(metric):>6} {counts(metric):>10} "
+            f"[{grade_of(metric)}] w{metric.weight:g}"
+        )
+    return "\n".join(lines)
+
+
+@pytest.mark.integration
+class TestAuditOnTheReferenceCorpora:
+    """Phase 7, ticket 05 — the fleet-honesty case, on the two committed parts.
+
+    `parts/AFE7950` and `parts/AFE7953` were published by an older pipeline:
+    no record ids, no `search_index.json`, no per-record confidence, no
+    `card_version`, no table-pinning count. Eight of the thirteen audit metrics
+    therefore cannot be computed for them at all — and this class exists to
+    assert that the scorecard says exactly that, rather than doing either of the
+    two things that would be easier and wrong.
+
+    - It must not score a missing statistic as **0**. Reading "nobody recorded a
+      confidence mix" as "no record is confident" would grade two perfectly good
+      TI corpora `F` for the age of their manifest.
+    - It must not score it as **full marks** either, which would let a corpus
+      that cannot answer a question look like one that answers it well.
+
+    So each of the eight reports `n/a` with the reason, is excluded from the
+    average, and the scorecard's `notes` name the rebuild that would close the
+    gap. Both parts still grade — on five metrics — and the card says how many
+    it could not compute, because a `B` earned on five of thirteen readings is a
+    different claim from a `B` earned on all thirteen.
+    """
+
+    PARTS = ("AFE7950", "AFE7953")
+
+    #: The metrics an older corpus physically cannot answer. Listed rather than
+    #: derived, so a rebuild that starts filling one of them in fails this test
+    #: and the list is updated deliberately.
+    UNAVAILABLE = (
+        "table_pin_rate", "table_accept_rate", "mean_fidelity", "record_confidence",
+        "pins_present", "registers_present", "cards_present", "axis_coverage",
+    )
+
+    def _card(self, part: str):
+        from datasheet_analyzer.audit import build_scorecard
+        from datasheet_analyzer.evalh.golden import default_golden_path
+
+        manifest = PARTS / part / "manifest.json"
+        if not manifest.exists():
+            pytest.skip(f"committed parts/{part} corpus not present")
+        return build_scorecard(PARTS / part, golden=default_golden_path(part))
+
+    @pytest.mark.parametrize("part", PARTS)
+    def test_it_grades_and_says_how_much_it_could_not_measure(self, part, capsys):
+        card = self._card(part)
+        assert card.grade is not None, part
+        assert card.n_unavailable == len(self.UNAVAILABLE)
+        assert card.n_graded == len(card.metrics) - card.n_unavailable
+        assert f"{card.n_unavailable} of {len(card.metrics)}" in card.headline
+        with capsys.disabled():
+            print()
+            print(_audit_summary(card))
+
+    @pytest.mark.parametrize("part", PARTS)
+    def test_the_old_schema_metrics_are_n_a_with_a_reason(self, part):
+        card = self._card(part)
+        by_key = {m.key: m for m in card.metrics}
+        for key in self.UNAVAILABLE:
+            metric = by_key[key]
+            assert metric.available is False, f"{part}/{key}"
+            assert metric.grade is None and metric.value is None, f"{part}/{key}"
+            assert metric.unavailable_reason, f"{part}/{key}"
+
+    @pytest.mark.parametrize("part", PARTS)
+    def test_the_output_says_the_corpus_needs_a_rebuild(self, part):
+        """The ticket: "let the output say the corpus needs a rebuild"."""
+        card = self._card(part)
+        rebuild = [n for n in card.notes if "rebuild" in n]
+        assert rebuild, card.notes
+        assert "dsa build" in rebuild[0]
+
+    @pytest.mark.parametrize("part", PARTS)
+    def test_the_missing_statistics_are_not_scored_as_zero(self, part):
+        """The arithmetic proof: the score is the mean over the graded five."""
+        from datasheet_analyzer.audit import load_audit_rubric
+
+        card = self._card(part)
+        rubric = load_audit_rubric()
+        graded = [m for m in card.metrics if m.grade is not None]
+        weight = sum(m.weight for m in graded)
+        expected = sum(rubric.grade_points(m.grade) * m.weight for m in graded) / weight
+        assert card.score == pytest.approx(expected)
+        # and the denominator is the graded weight, not the whole rubric's
+        assert weight < sum(m.weight for m in card.metrics)

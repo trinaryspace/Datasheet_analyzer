@@ -565,3 +565,66 @@ report one. A figure reference in errata prose ("Figure 12") is also not a rule:
 figure numbering repeats across documents of one part, and a cued figure rule
 would need the same doc-scoping the section rule gets for free from the
 published section number.
+
+
+---
+
+## Corpus audit (phase 7, ticket 05)
+
+### 1. `table_pin_rate` cannot discriminate between layout-engine corpora
+
+Measured 100 % on all five `pdf_layout` gate corpora, and that is structural,
+not lucky: the layout engine stamps a table's printed page at construction
+(`pdf_layout.py`, `page=page_number`), so pinning there cannot fail. The metric
+can only ever vary on the HTML path, where a document carries no page numbers of
+its own and `pagemap.pin_table_pages` has to locate cell text in the PDF — and
+the two TI corpora that would exercise it record no pinning count at all yet
+(`CorpusStats.tables_pinned` is `None` on a corpus published before this
+ticket), so they report `n/a`.
+
+So a weight-3 metric currently contributes an `A` to every corpus that can
+compute it. It is kept because it is the plan's metric, because it will
+discriminate the moment a TI corpus is rebuilt, and because a backend that
+silently stopped pinning would show up here and nowhere else — but it should not
+be read as evidence that the *audit* discriminates well until a rebuilt HTML
+corpus has been measured (`Reports/PHASE_7_LIVE_RUN.md`, L12).
+
+### 2. `alias_hit_rate` measures the benchmark, not the corpus
+
+Measured 0 % on AFE7950 and 40 % on AFE7953; `n/a` on all five gate parts,
+because their golden sets ask no `spec_query` keyed by `name` at all. The
+reading is real and the reason is in the golden files: their spec questions are
+keyed by printed fragments (`Attenuation`, `SCLK`, `Electrostatic`) rather than
+by the words a designer would type, so the resolution ladder answers them on the
+substring rung and `registry/aliases.yaml` is never consulted.
+
+That is a gap in the **benchmarks**, and grading a corpus down for it is the
+compromise this metric accepts — which is why it carries weight 1 of 26. The fix
+is more designer-worded golden questions, which is ticket 06's subject; until
+then, a low alias hit rate says nothing about whether the corpus would answer a
+designer's phrasing, only that nobody asked it one.
+
+### 3. `golden_pass_rate` is the corpus-side half of `dsa verify`
+
+`dsa verify`'s text questions are judged twice: the corpus section covering the
+cited page must contain the answer, **and** the cited PDF page itself must. The
+second half needs the printed PDF, which is not part of a corpus and is not
+something an audit can assume is on disk — so `dsa audit` runs the first half
+plus all seven query paths, and names what it skipped in the metric's own
+`detail` and `derivation` (`golden_corpus_checks`).
+
+Measured, the two agree: 100 % on all five gate parts, where `dsa verify` also
+reports 100 %. But a corpus whose sections quote an answer that is *not* on the
+page it cites would pass this metric and fail `dsa verify`, and the audit would
+not catch it. The scorecard is a trust signal, not a substitute for the gate.
+
+### 4. The rubric is calibrated on seven corpora, five from one backend
+
+Every cut point in `registry/audit_rubric.yaml` is anchored to a measured
+reading, and the comment block says which — but the sample is seven corpora,
+five of them RF/analog datasheets through `pdf_layout` and two of them TI HTML
+corpora too old to answer eight of the thirteen metrics. `A` is set at "the best
+this pipeline has managed", which on a sample this size is as much a fact about
+the sample as about the pipeline. Onboarding twenty parts (the phase-8 scale
+gate) is the first real calibration; the thresholds are data so that is an edit
+rather than a change.
