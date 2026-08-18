@@ -1,0 +1,704 @@
+<title>Datasheet Analyzer Shakedown</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&family=JetBrains+Mono:wght@400;500;700&display=swap">
+
+<style>
+  /* ---- tokens: complete light palette on bare :root ---------------------- */
+  :root {
+    --ground:      #F6F7F9;
+    --surface:     #FFFFFF;
+    --surface-alt: #EFF2F5;
+    --terminal:    #12171D;
+    --terminal-ink:#D7DEE6;
+    --ink:         #131820;
+    --ink-soft:    #5A6472;
+    --ink-faint:   #8B94A1;
+    --rule:        #DCE1E8;
+    --rule-strong: #C2CAD4;
+    --accent:      #0E6B77;
+    --accent-soft: #E2EFF1;
+    --sev-high:    #A93520;
+    --sev-high-bg: #F7E7E3;
+    --sev-med:     #91600F;
+    --sev-med-bg:  #F7EFDF;
+    --sev-info:    #37578C;
+    --sev-info-bg: #E6EBF4;
+    --ok:          #2C6B4F;
+
+    --measure: 68ch;
+    --step-0: 0.75rem;
+    --step-1: 0.875rem;
+    --step-2: 1rem;
+    --step-3: 1.25rem;
+    --step-4: 1.6rem;
+    --step-5: 2.15rem;
+    --step-6: 3rem;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground:      #0E1216;
+      --surface:     #161C23;
+      --surface-alt: #1D242C;
+      --terminal:    #080B0E;
+      --terminal-ink:#C8D2DC;
+      --ink:         #E5EAF0;
+      --ink-soft:    #A2ADBB;
+      --ink-faint:   #6F7986;
+      --rule:        #28313B;
+      --rule-strong: #3A4552;
+      --accent:      #46B3C0;
+      --accent-soft: #143236;
+      --sev-high:    #EE8878;
+      --sev-high-bg: #341914;
+      --sev-med:     #DDA855;
+      --sev-med-bg:  #2E2413;
+      --sev-info:    #8CA8D6;
+      --sev-info-bg: #1A2233;
+      --ok:          #6BBE96;
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --ground:      #0E1216;
+    --surface:     #161C23;
+    --surface-alt: #1D242C;
+    --terminal:    #080B0E;
+    --terminal-ink:#C8D2DC;
+    --ink:         #E5EAF0;
+    --ink-soft:    #A2ADBB;
+    --ink-faint:   #6F7986;
+    --rule:        #28313B;
+    --rule-strong: #3A4552;
+    --accent:      #46B3C0;
+    --accent-soft: #143236;
+    --sev-high:    #EE8878;
+    --sev-high-bg: #341914;
+    --sev-med:     #DDA855;
+    --sev-med-bg:  #2E2413;
+    --sev-info:    #8CA8D6;
+    --sev-info-bg: #1A2233;
+    --ok:          #6BBE96;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: "Source Serif 4", Georgia, "Times New Roman", serif;
+    font-size: var(--step-2);
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap {
+    max-width: 78rem;
+    margin: 0 auto;
+    padding: 0 clamp(1rem, 4vw, 3rem) 6rem;
+  }
+
+  /* ---- masthead --------------------------------------------------------- */
+  header.mast {
+    border-bottom: 2px solid var(--ink);
+    padding: clamp(2.5rem, 6vw, 4.5rem) 0 1.5rem;
+    margin-bottom: 2.5rem;
+  }
+  .eyebrow {
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-size: var(--step-0);
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    color: var(--accent);
+    margin: 0 0 1rem;
+  }
+  h1 {
+    font-family: Archivo, "Helvetica Neue", Arial, sans-serif;
+    font-weight: 700;
+    font-size: clamp(2.1rem, 6vw, var(--step-6));
+    line-height: 1.02;
+    letter-spacing: -0.025em;
+    margin: 0 0 1rem;
+    text-wrap: balance;
+  }
+  .standfirst {
+    max-width: var(--measure);
+    font-size: var(--step-3);
+    color: var(--ink-soft);
+    margin: 0 0 2rem;
+  }
+  .meta-strip {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0 2.5rem;
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-size: var(--step-0);
+    color: var(--ink-faint);
+  }
+  .meta-strip b {
+    display: block;
+    color: var(--ink);
+    font-weight: 500;
+    font-variant-numeric: tabular-nums;
+  }
+  .meta-strip span {
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+  }
+
+  /* ---- thesis ----------------------------------------------------------- */
+  .thesis {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+    gap: 1px;
+    background: var(--rule);
+    border: 1px solid var(--rule);
+    margin-bottom: 3.5rem;
+  }
+  .thesis > div {
+    background: var(--surface);
+    padding: 1.4rem 1.5rem;
+  }
+  .thesis .n {
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-size: var(--step-0);
+    color: var(--accent);
+    letter-spacing: 0.1em;
+  }
+  .thesis p { margin: 0.5rem 0 0; font-size: var(--step-1); line-height: 1.5; }
+  .thesis .hot { border-top: 3px solid var(--accent); }
+
+  /* ---- stage layout ----------------------------------------------------- */
+  .stage {
+    display: grid;
+    grid-template-columns: 5.5rem minmax(0, var(--measure)) 1fr;
+    gap: 0 2rem;
+    padding: 2.5rem 0;
+    border-top: 1px solid var(--rule);
+    align-items: start;
+  }
+  @media (max-width: 52rem) {
+    .stage { grid-template-columns: 1fr; gap: 0; }
+    .rail { margin-bottom: 0.75rem; }
+  }
+  .rail {
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-size: var(--step-0);
+    color: var(--ink-faint);
+    letter-spacing: 0.08em;
+    position: sticky;
+    top: 1rem;
+  }
+  .rail .num {
+    display: block;
+    font-size: var(--step-4);
+    font-weight: 700;
+    color: var(--rule-strong);
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+  }
+  .body { grid-column: 2; min-width: 0; }
+  @media (max-width: 52rem) { .body { grid-column: 1; } }
+
+  h2 {
+    font-family: Archivo, "Helvetica Neue", Arial, sans-serif;
+    font-weight: 600;
+    font-size: var(--step-4);
+    letter-spacing: -0.015em;
+    line-height: 1.15;
+    margin: 0 0 0.4rem;
+    text-wrap: balance;
+  }
+  h3 {
+    font-family: Archivo, "Helvetica Neue", Arial, sans-serif;
+    font-weight: 600;
+    font-size: var(--step-2);
+    margin: 2rem 0 0.6rem;
+  }
+  .dur {
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-size: var(--step-0);
+    color: var(--ink-faint);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    margin: 0 0 1.2rem;
+  }
+  p { margin: 0 0 1rem; }
+  ul, ol { margin: 0 0 1rem; padding-left: 1.2rem; }
+  li { margin-bottom: 0.45rem; }
+  a { color: var(--accent); text-underline-offset: 0.18em; }
+
+  code {
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-size: 0.86em;
+    background: var(--surface-alt);
+    padding: 0.1em 0.35em;
+    border-radius: 2px;
+  }
+
+  pre {
+    background: var(--terminal);
+    color: var(--terminal-ink);
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-size: var(--step-1);
+    line-height: 1.6;
+    padding: 1.1rem 1.25rem;
+    margin: 0 0 1rem;
+    overflow-x: auto;
+    border-left: 3px solid var(--accent);
+  }
+  pre code { background: none; padding: 0; font-size: 1em; color: inherit; }
+  .prompt { color: var(--accent); user-select: none; }
+  .cmt { color: #7C8794; }
+
+  .observed {
+    border-left: 3px solid var(--ok);
+    background: var(--surface);
+    padding: 0.85rem 1.1rem;
+    margin: 0 0 1.25rem;
+    font-size: var(--step-1);
+  }
+  .observed b {
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-size: var(--step-0);
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--ok);
+    display: block;
+    margin-bottom: 0.3rem;
+    font-weight: 700;
+  }
+
+  .warn {
+    border-left: 3px solid var(--sev-med);
+    background: var(--sev-med-bg);
+    padding: 0.85rem 1.1rem;
+    margin: 0 0 1.25rem;
+    font-size: var(--step-1);
+  }
+  .warn b {
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-size: var(--step-0);
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--sev-med);
+    display: block;
+    margin-bottom: 0.3rem;
+    font-weight: 700;
+  }
+
+  /* ---- tables ----------------------------------------------------------- */
+  .scroller { overflow-x: auto; margin: 0 0 1.25rem; }
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    font-size: var(--step-1);
+    font-family: Archivo, "Helvetica Neue", Arial, sans-serif;
+  }
+  th {
+    text-align: left;
+    font-weight: 600;
+    font-size: var(--step-0);
+    text-transform: uppercase;
+    letter-spacing: 0.09em;
+    color: var(--ink-soft);
+    border-bottom: 1.5px solid var(--ink);
+    padding: 0.55rem 0.8rem 0.5rem;
+    white-space: nowrap;
+  }
+  td {
+    border-bottom: 1px solid var(--rule);
+    padding: 0.6rem 0.8rem;
+    vertical-align: top;
+  }
+  td.num, th.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .mono { font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 0.92em; }
+
+  .chip {
+    display: inline-block;
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    padding: 0.14em 0.5em;
+    border-radius: 2px;
+    white-space: nowrap;
+  }
+  .c-high { color: var(--sev-high); background: var(--sev-high-bg); }
+  .c-med  { color: var(--sev-med);  background: var(--sev-med-bg); }
+  .c-info { color: var(--sev-info); background: var(--sev-info-bg); }
+  .c-ok   { color: var(--ok);       background: var(--accent-soft); }
+
+  /* ---- checklist -------------------------------------------------------- */
+  .check { list-style: none; padding: 0; margin: 0 0 1rem; }
+  .check li {
+    display: grid;
+    grid-template-columns: 1.5rem 1fr;
+    gap: 0.7rem;
+    padding: 0.6rem 0;
+    border-bottom: 1px solid var(--rule);
+    align-items: start;
+  }
+  .check li::before {
+    content: "";
+    display: block;
+    width: 1.05rem;
+    height: 1.05rem;
+    margin-top: 0.28rem;
+    border: 1.5px solid var(--rule-strong);
+    border-radius: 2px;
+    background: var(--surface);
+  }
+
+  .closing {
+    border: 1px solid var(--rule);
+    border-top: 3px solid var(--accent);
+    background: var(--surface);
+    padding: 1.6rem 1.8rem;
+    margin-top: 1.5rem;
+  }
+  .closing p:last-child { margin-bottom: 0; }
+
+  footer {
+    border-top: 1px solid var(--rule);
+    margin-top: 3rem;
+    padding-top: 1.5rem;
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-size: var(--step-0);
+    color: var(--ink-faint);
+    max-width: var(--measure);
+  }
+
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  @media (prefers-reduced-motion: reduce) {
+    * { animation: none !important; transition: none !important; }
+  }
+</style>
+
+<div class="wrap">
+
+<header class="mast">
+  <p class="eyebrow">Runbook · 19 August 2026</p>
+  <h1>Datasheet Analyzer Shakedown</h1>
+  <p class="standfirst">
+    An end-to-end test of the whole system, from a PDF on disk to an agent
+    answering a schematic-capture question with a page citation. Every command
+    in stages 0–6 was executed against this worktree before it was written
+    down; the observed output is quoted beside it.
+  </p>
+  <div class="meta-strip">
+    <div><span>Time budget</span><b>~90 min · stages 0–6</b></div>
+    <div><span>Fleet</span><b>7 parts · 3 vendors</b></div>
+    <div><span>Goldens</span><b>106 · all passing</b></div>
+    <div><span>Findings</span><b>12 recorded</b></div>
+  </div>
+</header>
+
+<section class="thesis">
+  <div><span class="n">CLAIM 1</span><p>A datasheet PDF becomes a corpus offline and deterministically.</p></div>
+  <div><span class="n">CLAIM 2</span><p>Every answer carries a printed page you can open and check.</p></div>
+  <div><span class="n">CLAIM 3</span><p>An agent drives the whole thing over MCP without you.</p></div>
+  <div class="hot"><span class="n">CLAIM 4 — ATTACK THIS</span><p>It says <em>“I don’t know”</em> rather than guessing. A tool that confidently returns a wrong number is worse than no tool.</p></div>
+</section>
+
+<!-- 0 -->
+<article class="stage">
+  <div class="rail"><span class="num">00</span>Setup</div>
+  <div class="body">
+    <h2>Confirm the ground you’re standing on</h2>
+    <p class="dur">5 minutes</p>
+<pre><code><span class="prompt">$</span> cd C:/Users/afpim/Repos/datasheet_analyzer/.claude/worktrees/roadmap-phases-5-7
+<span class="prompt">$</span> git log --oneline -1
+<span class="prompt">$</span> .venv/Scripts/python.exe -m pytest
+<span class="prompt">$</span> .venv/Scripts/python.exe -m ruff check src tests
+<span class="prompt">$</span> .venv/Scripts/dsa.exe status</code></pre>
+    <div class="observed">
+      <b>Observed</b>
+      <code>1663 passed, 1 skipped</code> in 202 s at the Phase 6 baseline, ruff clean.
+      After Phase 7 ticket 01 the suite reads <code>1708 passed</code>.
+    </div>
+    <p><code>dsa status</code> prints <code>llm: NO KEY (deterministic mode)</code>.
+    That is the <em>correct</em> mode for this test — every number below is reproducible.</p>
+    <div class="warn">
+      <b>Gotcha</b>
+      <code>addopts = "-q"</code> is already set in <code>pyproject.toml</code>. Adding
+      another <code>-q</code> makes it <code>-qq</code> and pytest prints no summary line at all.
+    </div>
+  </div>
+</article>
+
+<!-- 1 -->
+<article class="stage">
+  <div class="rail"><span class="num">01</span>Hygiene</div>
+  <div class="body">
+    <h2>Untrack the <code>.env</code> before anything else</h2>
+    <p class="dur">2 minutes · do this first</p>
+    <p><code>.env</code> is tracked in git in the <strong>main checkout</strong> and contains
+    an <code>API_KEY</code> line. It has never been committed. Clear it before it can enter history.</p>
+<pre><code><span class="prompt">$</span> cd C:/Users/afpim/Repos/datasheet_analyzer
+<span class="prompt">$</span> git status --short .env      <span class="cmt"># confirm it is tracked</span>
+<span class="prompt">$</span> git rm --cached .env
+<span class="prompt">$</span> git commit -m "chore: untrack .env"</code></pre>
+    <p>The worktree’s <code>.gitignore</code> already lists <code>.env</code>; confirm the
+    main checkout’s does too.</p>
+  </div>
+</article>
+
+<!-- 2 -->
+<article class="stage">
+  <div class="rail"><span class="num">02</span>Build</div>
+  <div class="body">
+    <h2>Turn a PDF into a corpus, with no network</h2>
+    <p class="dur">5 minutes</p>
+<pre><code><span class="prompt">$</span> export DSA_PARTS_DIR=/c/tmp/dsatest/parts
+<span class="prompt">$</span> export DSA_CACHE_DIR=/c/tmp/dsatest/cache
+<span class="prompt">$</span> .venv/Scripts/dsa.exe build lm741.pdf --part LM741 --vendor unknown</code></pre>
+    <div class="observed">
+      <b>Observed · exit 0</b>
+      40 sections · 6 tables · 3 figures · 10 footnotes · 71 spec records · 3 plot files.
+      Corpus 13 672 tokens; INDEX.md 2 253 tokens against a 3 000 budget; page coverage 40/40.
+    </div>
+    <div class="warn">
+      <b>Why --vendor unknown</b>
+      It is <em>required</em> to build a TI part offline. Without it, vendor detection pins
+      <code>ti</code>, which routes to the <code>ti_html</code> backend and needs network —
+      and that path crashes rather than degrading. See finding F2.
+    </div>
+  </div>
+</article>
+
+<!-- 3 -->
+<article class="stage">
+  <div class="rail"><span class="num">03</span>Verify</div>
+  <div class="body">
+    <h2>Verify — and learn to read the number</h2>
+    <p class="dur">5 minutes</p>
+<pre><code><span class="prompt">$</span> .venv/Scripts/dsa.exe verify --part LM741 --pdf lm741.pdf</code></pre>
+    <div class="observed">
+      <b>Observed</b>
+      <code>17/17 passed (100%)</code>
+    </div>
+    <p>Now run it <strong>without</strong> <code>--pdf</code> and watch the identical corpus
+    report <code>2/17 passed (12%)</code>. Nothing is broken: the page-truth check is
+    <em>disabled</em>, but a disabled check renders as ❌ and still counts in the headline.</p>
+    <div class="warn">
+      <b>Rule</b>
+      Always pass <code>--pdf</code>. For a part with companion documents it must point at the
+      document the questions are actually sourced from — see stage 05 and finding F12.
+    </div>
+  </div>
+</article>
+
+<!-- 4 -->
+<article class="stage">
+  <div class="rail"><span class="num">04</span>Retrieval</div>
+  <div class="body">
+    <h2>The surfaces a designer actually touches</h2>
+    <p class="dur">15 minutes</p>
+<pre><code><span class="prompt">$</span> dsa ask    --part LM741 "what is the maximum supply voltage?"
+<span class="prompt">$</span> dsa search --part LM741 "offset null"
+<span class="prompt">$</span> dsa card   --part LM741 --card power
+<span class="prompt">$</span> dsa pins   --part LM741
+<span class="prompt">$</span> dsa plots  --part AFE7950 --y-label "Fullscale"</code></pre>
+    <ul>
+      <li><strong>ask</strong> → <code>Supply voltage: ±22 V (max) — §6.1, p.4 [low]</code>,
+        a supporting excerpt, and a <code>Verify: Printed page 4 of lm741.pdf</code> footer. Correct.</li>
+      <li><strong>search</strong> → BM25 hits with scores and page cites.</li>
+      <li><strong>card</strong> → provenance table with grades, plus the disambiguation note
+        <em>“largest of 2 printed values for this parameter”</em>. Syntax is
+        <code>--card power</code>, not a positional argument.</li>
+      <li><strong>pins</strong> → an honest-degradation message. But LM741 <em>does</em> print
+        a pin table and extraction yielded zero pins — finding F6.</li>
+      <li><strong>plots</strong> → filters on the printed axis <em>and states its blind spot</em>:
+        “23 of 514 figures publish no readable y axis … cannot establish that no such figure exists.”
+        That sentence is the behaviour to look for everywhere.</li>
+    </ul>
+
+    <h3>Now try to make it lie</h3>
+<pre><code><span class="prompt">$</span> dsa query --part LM741 --symbol NOSUCHSYMBOL
+<span class="prompt">$</span> dsa ask   --part LM741 "what is the gate charge?"
+<span class="prompt">$</span> dsa regs  --part LM741</code></pre>
+    <p>A good result is an explicit <em>“not found, and here is what I looked for.”</em>
+    A bad result is a confident wrong number. <strong>Report anything that guesses.</strong></p>
+  </div>
+</article>
+
+<!-- 5 -->
+<article class="stage">
+  <div class="rail"><span class="num">05</span>Fleet</div>
+  <div class="body">
+    <h2>Seven parts, three vendors, 106 golden questions</h2>
+    <p class="dur">20 minutes</p>
+    <p>All seven have been rebuilt at the current schema and verified — including both
+    reference corpora, which were stale before this run.</p>
+    <div class="scroller">
+      <table>
+        <thead><tr><th>Part</th><th>Vendor</th><th>Build</th><th class="num">Goldens</th></tr></thead>
+        <tbody>
+          <tr><td class="mono">AFE7950</td><td>TI</td><td class="mono">build afe7950.pdf --part AFE7950 <em>(network)</em></td><td class="num">21/21</td></tr>
+          <tr><td class="mono">AFE7953</td><td>TI</td><td class="mono">build afe7953.pdf --part AFE7953 <em>(network)</em></td><td class="num">13/13</td></tr>
+          <tr><td class="mono">LM741</td><td>TI</td><td class="mono">build lm741.pdf --part LM741 --vendor unknown</td><td class="num">17/17</td></tr>
+          <tr><td class="mono">LMX1204</td><td>TI</td><td class="mono">needs its companion — see below</td><td class="num">12/12</td></tr>
+          <tr><td class="mono">AD9081</td><td>ADI</td><td class="mono">build ad9081.pdf --part AD9081</td><td class="num">12/12</td></tr>
+          <tr><td class="mono">HMC520A</td><td>ADI</td><td class="mono">build hmc520a.pdf --part HMC520A</td><td class="num">15/15</td></tr>
+          <tr><td class="mono">QPA1003P</td><td>Qorvo</td><td class="mono">build QPA1003P.pdf --part QPA1003P</td><td class="num">16/16</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>LMX1204 — the multi-document case, and the most instructive one</h3>
+<pre><code><span class="prompt">$</span> dsa add-doc tests/fixtures/pdf/LMX1204_registermap.pdf \
+      --part LMX1204 --type register_map --vendor unknown
+<span class="prompt">$</span> dsa build tests/fixtures/pdf/lmx1204.pdf --part LMX1204 --vendor unknown
+<span class="prompt">$</span> dsa verify --part LMX1204 \
+      --pdf tests/fixtures/pdf/LMX1204_registermap.pdf</code></pre>
+    <div class="observed">
+      <b>Observed</b>
+      Without the companion: <code>2/12</code>. With the companion and <code>--pdf</code> on the
+      <em>register map</em>: <code>12/12</code>. With <code>--pdf</code> on the <em>datasheet</em>:
+      still <code>2/12</code> — all twelve questions are sourced from the companion, and
+      <code>verify</code> accepts only one <code>--pdf</code>. That is F12.
+    </div>
+<pre><code><span class="prompt">$</span> dsa regs --part LMX1204 --address 0x18
+<span class="prompt">$</span> dsa regs --part LMX1204 --name "Temperature Sensor"</code></pre>
+    <p>28 of 35 registers publish validated bit fields; the other 7 publish
+    <code>fields: []</code> with a recorded reason. Seven registers with no fields is a
+    <em>recorded limit</em>, not a silent gap — confirm the reason is stated.</p>
+  </div>
+</article>
+
+<!-- 6 -->
+<article class="stage">
+  <div class="rail"><span class="num">06</span>MCP</div>
+  <div class="body">
+    <h2>The agent path — the reason all of this exists</h2>
+    <p class="dur">15 minutes · the one step that still needs a human</p>
+    <div class="observed">
+      <b>Already verified over real stdio</b>
+      Driven as a genuine subprocess, not the in-process test transport:
+      <code>initialize</code> handshake OK · <code>tools/list</code> returns <strong>13 tools</strong> ·
+      <code>tools/call ask</code> returns a cited answer at 892 tokens of a 6 000 budget ·
+      output is correct UTF-8 · <code>dsa version</code> writes only <code>0.5.0</code> to stdout,
+      so JSON-RPC framing is clean.
+    </div>
+    <p class="mono" style="font-size:var(--step-1);color:var(--ink-soft)">
+      list_parts · list_projects · get_index · search · find_spec · find_plots · find_pin ·
+      find_register · get_card · read_section · get_figure · compare_parts · ask
+    </p>
+<pre><code>{
+  "mcpServers": {
+    "datasheet-analyzer": {
+      "command": "C:\\...\\roadmap-phases-5-7\\.venv\\Scripts\\dsa.exe",
+      "args": ["serve", "--mcp"],
+      "env": {
+        "DSA_PARTS_DIR": "C:\\...\\roadmap-phases-5-7\\parts"
+      }
+    }
+  }
+}</code></pre>
+    <p>Then ask the model, in your own words:</p>
+    <ol>
+      <li>“Which parts do you know about?”</li>
+      <li>“What is the AFE7950’s maximum junction temperature? Cite the page.”</li>
+      <li>“I’m clocking the LMX1204 — what do I write to R0 to reset it?”</li>
+      <li>“Compare the AFE7950 and AFE7953 power rails.”</li>
+      <li>“What’s the gate charge of the LM741?” — <strong>must decline</strong>, not invent.</li>
+    </ol>
+    <p><strong>This is the real test.</strong> Everything before it is machinery.</p>
+  </div>
+</article>
+
+<!-- 7 -->
+<article class="stage">
+  <div class="rail"><span class="num">07</span>Phase 7/8</div>
+  <div class="body">
+    <h2>Capabilities still landing</h2>
+    <p class="dur">check status before running</p>
+    <p>At the time of writing, <strong>Phase 7 ticket 01 had landed</strong> (document registry
+    and <code>dsa fetch</code>, 45 new tests); tickets 02–08 and all of Phase 8 were still
+    running. Check <code>git log --oneline</code> and <code>Reports/PHASE_7_REPORT.md</code>
+    first — a command whose ticket has not landed simply will not exist.</p>
+<pre><code><span class="prompt">$</span> dsa fetch AFE7950                      <span class="cmt"># expect a hash mismatch — see F4</span>
+<span class="prompt">$</span> dsa fetch AFE7950 --accept-new-revision
+<span class="prompt">$</span> dsa check-revisions --all
+<span class="prompt">$</span> dsa audit --all</code></pre>
+    <div class="warn">
+      <b>Expect the first fetch of every TI part to report a hash mismatch</b>
+      That is correct, not a bug. TI regenerates a datasheet’s “PACKAGE MATERIALS
+      INFORMATION” page with the current date on every download, so the bytes change daily
+      while the revision identifier does not. The warning is written to say so explicitly.
+    </div>
+  </div>
+</article>
+
+<!-- findings -->
+<article class="stage">
+  <div class="rail"><span class="num">‡</span>Findings</div>
+  <div class="body">
+    <h2>What you will hit, and what it means</h2>
+    <p class="dur">full evidence in Reports/FINDINGS_2026-08-18.md</p>
+    <div class="scroller">
+      <table>
+        <thead><tr><th>ID</th><th>Sev</th><th>Symptom</th><th>Verdict</th></tr></thead>
+        <tbody>
+          <tr><td class="mono">F1</td><td><span class="chip c-high">HIGH</span></td><td><code>verify</code> without <code>--pdf</code> reports 12% on a 100% corpus</td><td>Real defect — disabled ≠ failed</td></tr>
+          <tr><td class="mono">F12</td><td><span class="chip c-high">HIGH</span></td><td>Multi-document part scores 2/12 with the wrong <code>--pdf</code></td><td>Real defect — resolve the PDF per record</td></tr>
+          <tr><td class="mono">F2</td><td><span class="chip c-high">HIGH</span></td><td>TI build dies with a raw traceback on a 404</td><td>Real defect — breaches invariant 7</td></tr>
+          <tr><td class="mono">F4</td><td><span class="chip c-high">HIGH</span></td><td>TI sha256 changes daily</td><td>Upstream behaviour — must not read as a new revision</td></tr>
+          <tr><td class="mono">F8</td><td><span class="chip c-high">HIGH</span></td><td><code>sniff_revision</code> → <code>SYSREFOUT0</code> for LMX1204</td><td>Real defect — regex too loose</td></tr>
+          <tr><td class="mono">F3</td><td><span class="chip c-med">MED</span></td><td><code>dsa batch</code> has no <code>--vendor</code> override</td><td>Gap — blocks offline batch of TI parts</td></tr>
+          <tr><td class="mono">F6</td><td><span class="chip c-med">MED</span></td><td>LM741 pin table not extracted, no reason recorded</td><td>Real defect — and the message points nowhere</td></tr>
+          <tr><td class="mono">F10</td><td><span class="chip c-med">MED</span></td><td>Two revision parsers disagree</td><td>Duplication — should share one</td></tr>
+          <tr><td class="mono">F11</td><td><span class="chip c-info">LOW</span></td><td><code>TJ</code> matches “Total Jitter” in a thermal question</td><td>Alias-ladder imprecision</td></tr>
+          <tr><td class="mono">F7</td><td><span class="chip c-info">INFO</span></td><td>Every <code>pdf_layout</code> spec grades <code>low</code></td><td>Confidence tracks backend, as designed</td></tr>
+          <tr><td class="mono">F9</td><td><span class="chip c-info">INFO</span></td><td>ADI unreachable; TI fetchable by part number</td><td>Environment constraint</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>F4 and F8 are already written into
+    <code>.scratch/reach-and-trust/issues/02-revision-awareness.md</code> as blocking criteria
+    with the measured evidence, so the Phase 7 workflow fixes them rather than you.</p>
+  </div>
+</article>
+
+<!-- scoring -->
+<article class="stage">
+  <div class="rail"><span class="num">✓</span>Scoring</div>
+  <div class="body">
+    <h2>What “pass” means</h2>
+    <ul class="check">
+      <li><span><code>pytest</code> green, <code>ruff</code> clean</span></li>
+      <li><span>All seven parts build and verify at 100% <strong>with the correct <code>--pdf</code></strong></span></li>
+      <li><span>Every answer you spot-check against the printed page is correct</span></li>
+      <li><span>Every question it cannot answer is <strong>declined</strong>, not guessed</span></li>
+      <li><span>MCP registers in your client and answers questions 1–4</span></li>
+      <li><span>Question 5 is declined</span></li>
+    </ul>
+    <div class="closing">
+      <p>The system does <strong>not</strong> pass merely because the tests are green. The
+      objective function is the golden Q&amp;A set and your own spot-checks against printed
+      pages. Green tests prove the machinery runs; only a page you opened yourself proves
+      the answer is true.</p>
+    </div>
+
+    <h3>If something fails</h3>
+    <ol>
+      <li>Re-run with the exact command from this page — most surprises are F1 (missing
+        <code>--pdf</code>) or F12 (wrong <code>--pdf</code> on a multi-document part).</li>
+      <li><code>dsa status</code> shows configuration, detected parts, and recorded reasons.</li>
+      <li><code>KNOWN_SHORTCOMINGS.md</code> records measured limits with the test that
+        measures them — check there before filing something as new.</li>
+      <li>For a build failure, re-run with <code>--vendor unknown</code> to force the offline
+        <code>pdf_layout</code> floor and see whether it is a backend-routing problem.</li>
+    </ol>
+  </div>
+</article>
+
+<footer>
+  Companion documents: Reports/FULL_SCALE_TEST.md · Reports/FINDINGS_2026-08-18.md ·
+  Reports/PHASE_7_LIVE_RUN.md · KNOWN_SHORTCOMINGS.md
+</footer>
+
+</div>
