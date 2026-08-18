@@ -400,6 +400,37 @@ sentence with both revisions and the date, `unknown` carries one short line
 naming the command that clears it.
 _Avoid_: warning, notice, alert, flag, disclaimer
 
+**Erratum**:
+One item of an errata document, verbatim: the lines the vendor printed under one
+heading (`Advisory 3`), the page range they were read from, and the named rule
+that decided where the item starts. It is a statement about silicon, so it is
+never summarized and never rewritten — a shortened erratum is a different
+erratum — and it is never *conditional* on being understood: a document whose
+headings no lexicon recognises still publishes every line it printed, one item
+per section, because an erratum that disappears is worse than one nobody could
+place. Which words begin an item is data (`registry/errata.yaml`), so teaching
+the reader a vendor's house style is a YAML edit.
+_Avoid_: issue, bug, note, advisory text, known issue
+
+**Errata link**:
+What one erratum invalidates: a section, a spec row, a pin or a register, named
+by the reference that resolves back to it and by the identifier the erratum
+printed. It is derived like a design card and owns no printed value at all —
+every link is an **exact** match on a structured identifier (a cued section
+number, a printed table caption, a printed symbol, an alias phrase the lexicon
+declares, a pin name, a cued designator, a register name, an address compared as
+an integer), never a resemblance between two pieces of prose: an erratum and the
+section it is about are written in the same words about the same device, so
+similarity between them is evidence of nothing and a link made from it would
+banner the wrong page while looking exactly like a right one. Every link records
+what it matched on, so a wrong one is diagnosable without reopening the PDF. An
+erratum nothing matched is **unlinked**, published under its own heading beside
+the linked ones, and the two lists sum to the item count. A link is also a
+warning: the sections it names carry a banner from the moment they are written,
+and an answer whose supporting record it names carries the erratum on the answer
+row — beside the value, where a budget can only drop the two together.
+_Avoid_: mapping, association, reference, tag, annotation
+
 **SourceDocument**:
 A registered input file of a part (datasheet, register map, errata, app
 note). Identity is the sha256 of its bytes.

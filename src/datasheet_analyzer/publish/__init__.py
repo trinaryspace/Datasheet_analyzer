@@ -12,6 +12,7 @@ from datasheet_analyzer.publish.writer import (
     cards_current,
     doc_dir_name,
     doc_dir_name_for_source,
+    errata_current,
     pins_current,
     plots_current,
     registers_current,
@@ -19,6 +20,7 @@ from datasheet_analyzer.publish.writer import (
     specs_current,
     write_cards,
     write_corpus,
+    write_errata,
     write_revision_diff,
 )
 
@@ -31,6 +33,7 @@ __all__ = [
     "cards_current",
     "doc_dir_name",
     "doc_dir_name_for_source",
+    "errata_current",
     "pins_current",
     "plots_current",
     "registers_current",
@@ -39,5 +42,6 @@ __all__ = [
     "specs_current",
     "write_cards",
     "write_corpus",
+    "write_errata",
     "write_revision_diff",
 ]

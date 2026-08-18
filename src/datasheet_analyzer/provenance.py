@@ -66,6 +66,16 @@ PIN_ID_PREFIX = "pin_"
 #: `PIN_ID_PREFIX` makes.
 REGISTER_ID_PREFIX = "reg_"
 
+#: Errata item ids read `err_1`, `err_2`, ... (phase 7, ticket 04). They are
+#: minted *part*-scoped rather than document-scoped, because `errata_links.json`
+#: lives beside `INDEX.md` and a part may register two errata documents; the
+#: ordinal walks the part's errata documents in publication order and then each
+#: document's items in reading order, so a rebuild of identical input reproduces
+#: every id exactly. An errata item is not an addressable **record** — nothing
+#: cites one as a `source` — so it is deliberately absent from `ARTIFACTS`
+#: above: links point *into* those artifacts, never the other way round.
+ERRATA_ID_PREFIX = "err_"
+
 #: Corpus-relative document directories live under `docs/`; a fully qualified
 #: reference is `docs/<doc>/<artifact>#<record id>`.
 _DOCS_DIR = "docs"
@@ -94,6 +104,11 @@ def pin_record_id(ordinal: int) -> str:
 def register_record_id(ordinal: int) -> str:
     """Id of the `ordinal`-th (0-based) register record of a document."""
     return f"{REGISTER_ID_PREFIX}{ordinal + 1}"
+
+
+def errata_item_id(ordinal: int) -> str:
+    """Id of the `ordinal`-th (0-based) errata item of a *part*."""
+    return f"{ERRATA_ID_PREFIX}{ordinal + 1}"
 
 
 @dataclass(frozen=True)

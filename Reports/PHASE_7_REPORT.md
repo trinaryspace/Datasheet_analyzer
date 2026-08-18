@@ -564,3 +564,199 @@ not.
   the record for a future "diff the drifted upstream copy against the local one";
   that needs a *fetched* second copy, so it stays a live step rather than a
   feature.
+
+---
+
+## Ticket 04 — Errata cross-linking
+
+**Landed.** `pytest` 1875 passed / 1 skipped (1809 before this ticket + 66 new);
+`ruff check src tests` clean.
+
+### What shipped
+
+| Piece | Where |
+|---|---|
+| The lexicon | `src/datasheet_analyzer/registry/errata.yaml` + `errata/lexicon.py` |
+| Item segmentation | `errata/items.py` (`build_items`, three named rules) |
+| The matching rules | `errata/link.py` (`build_errata_links`, eight rules) |
+| Reading links back | `errata/link.py` (`links_by_target`, `sections_to_banner`) |
+| The report, the banner, the pack warning | `errata/render.py` (`ERRATA.md`, `section_banner`, `pack_warning`) |
+| Publication | `publish/writer.py` (`write_errata`, `errata_current`, `_errata_links`, `_bannered_docs`) |
+| The consumer | `retrieve/index.py` (`CorpusIndex.errata`, `errata_for`, `section_file`), `retrieve/retriever.py` (`Retriever.errata_for`), `retrieve/pack.py` (`PackLine.source` / `PackLine.errata`, `_with_errata`) |
+| Models | `ErrataTargetKind`, `ErrataTarget`, `ErrataItem`, `ErrataLink`, `ErrataLinkSet` (additive); `CorpusStats.n_errata_items` / `n_errata_linked`; `ERRATA_SCHEMA_VERSION = "1"`; `provenance.errata_item_id` |
+| The declared errata document | `tests/fixtures/synthetic/errata_doc.py` |
+| Tests | `tests/unit/test_errata.py` (52), `tests/integration/test_phase7_errata.py` (14) |
+
+New files per part, and **only** for a part that registers an errata document:
+`parts/<PART>/errata_links.json` and `parts/<PART>/ERRATA.md`.
+
+### The honest half: the errata document is synthetic, the target is real
+
+This repo carries **no vendor errata PDF**. `dsa add-doc --type errata` has
+existed since phase 3 and `acquire/inventory.py` has detected the type since
+then, but nothing has ever been filed under it — a grep over `src/`, `tests/`,
+`registry/`, `scripts/` and the built corpora under `parts/` finds only the type
+name, never a document. None can be fetched offline, and composing a plausible
+vendor errata URL is exactly what the offline boundary forbids.
+
+So the ticket is proven against a **split** fixture, and the split is the point:
+
+- the document being linked *to* is real — `tests/fixtures/pdf/lm741.pdf`, the
+  committed gate datasheet, pushed through the whole pipeline;
+- every expected target was read off that datasheet's own published records by
+  hand: `§6.1 Absolute Maximum Ratings` (printed p.4), its two
+  `Junction temperature` rows (`rec_9`, `rec_10`), and `§7.3.2 Latch-up
+  Prevention` (printed p.7);
+- only the errata *prose* — the half a vendor writes — is declared, in
+  `tests/fixtures/synthetic/errata_doc.py`.
+
+That is weaker than a vendor errata sheet in one respect (nobody has confirmed
+that a real TI/ADI errata item phrases its cross-references the way the fixture
+does) and stronger in another (with a real errata PDF the expected targets would
+themselves have to be read off two documents by hand and could be wrong). The
+live step is **L9** in `Reports/PHASE_7_LIVE_RUN.md`.
+
+### Matching is by structured identifier, and there is no threshold to tune
+
+Eight rules, all of them exact comparisons against something the document
+printed:
+
+| Rule | Fires on | Grade |
+|---|---|---|
+| `section-number` | a **cued** number (`Section 6.1`, `§7.3.2`) equal to a published section's printed number | high |
+| `table-caption` | a printed table caption (≥ 8 chars) contained in the item, normalized and space-fenced | medium |
+| `spec-symbol` | a printed symbol, whole-token and case-sensitive, that *reads like a symbol* | high |
+| `alias-phrase` | an `aliases.yaml` phrase in the item, resolved to a canonical symbol the record carries or prints | medium |
+| `pin-name` | a printed pin name, whole-token and case-sensitive | high |
+| `pin-designator` | a **cued** designator (`ball A1`) | high |
+| `register-name` | a printed register acronym, whole-token and case-sensitive | high |
+| `register-address` | a `0x…` word equal, **as an integer**, to a register's parsed address | high |
+
+Three refusals are load-bearing and each has its own test:
+
+- **A section number must be cued.** An uncued `6.1` in errata prose is a supply
+  voltage far more often than a section, and this rule's output is what puts a
+  warning banner on a page. `test_an_uncued_number_links_nothing`.
+- **A symbol must look like a symbol.** The layout floor records `Supply`,
+  `Input` and `Large` in the *symbol* column of datasheets that print no symbol
+  column at all (measured: LM741 `rec_1`, `rec_17`, `rec_32`). `_is_identifier`
+  requires a digit, a second capital, or a non-ASCII letter, so `TJ`, `IVDD1P8`
+  and `RθJA` link and `Supply` cannot. Those prose rows stay reachable through
+  the alias rule, which requires the checked-in lexicon to vouch for the phrase
+  at **both** ends — which is how "the junction temperature limit" reaches a row
+  whose printed symbol is `Junction temperature`.
+- **An unparsed register address is unreachable.** Addresses are compared as
+  integers, exactly as `dsa regs --addr` resolves one, so a register whose
+  printed address the grammar could not read publishes no integer and is not
+  matched by a string comparison against another notation.
+
+There is deliberately no similarity rung anywhere, and nothing in `errata.yaml`
+that could become one. `TestNoFuzzyMatching` asserts it twice: a source-level
+guard over the whole package (no `difflib`, no `SequenceMatcher`, no
+`similarity(`, no `get_close_matches`, no `nearest_names`, no `fuzz`), and
+behaviourally, on an item whose prose paraphrases a section title closely and
+names no identifier — which links nothing.
+
+### Nothing is ever lost
+
+The failure this ticket exists to prevent is a vanished erratum, so the design
+puts the item count itself under assertion:
+
+- segmentation has a **floor** (`errata-section`): a document declaring no
+  marker word and no ordinal opener still publishes every line it printed, one
+  item per section;
+- `ErrataLinkSet` holds `links` and `unlinked` as two named lists and `n_items`
+  is their sum — a filter cannot hide an item without breaking an arithmetic
+  identity three tests check;
+- `ERRATA.md` renders unplaced items under a **constant** heading
+  (`errata.render.UNLINKED_HEADING`), so the renderer and the test read the same
+  string, and its opening line states `N items: X linked, Y unlinked` so a reader
+  can check by arithmetic;
+- the manifest records `n_errata_items` / `n_errata_linked` and a
+  `derived_warnings` line naming the unplaced population;
+- a rule that matched more records than `max_targets_per_rule` **states how many
+  it found** on the link's `notes`, rather than truncating silently.
+
+### The banner is inserted before the corpus is written
+
+`write_corpus` derives the links *first*, then replaces each affected
+`SectionPlan` with a bannered copy (`_bannered_docs`) — before the BM25 index is
+built and before a byte lands. The file on disk, the token count in the manifest
+and the text the search index was built from are therefore the same string; a
+banner added after publish would have quietly broken "what is searchable is
+exactly what is readable". A section is bannered when an item named it **or**
+when an item named a record printed in it, because an erratum correcting one row
+of the absolute-maximum table has to warn whoever opens that table.
+
+### An answer pack carries the warning on the row, not on the pack
+
+`PackLine` gains `source` (the ADR 0005 reference of the record the row was read
+from) and `errata` (the warnings naming it). They ride on the **line** for the
+same reason the citation does: they must be dropped only if the row they qualify
+is dropped. `_with_errata` runs after routing and before the budget, so the
+fitting arithmetic measures each row *with* its warning and cannot keep a value
+while dropping the notice that an erratum names it. Three references can reach an
+item — the row's record, a file the row already names, and the section file it
+was printed in — deduplicated by the rendered warning.
+
+Measured, on the gate corpus: `dsa ask --part LM741 "maximum junction
+temperature"` routes `spec`, answers from `specs.json#rec_9`, and renders
+`⚠ errata err_1 (p.1): Advisory 1 Section 6.1 Absolute Maximum Ratings: the
+junction temperature limit printed for this device is incorrect…` under the
+value. A part with no errata document produces the pack it produced before this
+ticket, unchanged: `CorpusIndex.errata is None` returns the rows untouched.
+
+### Invariant 8
+
+No model call is anywhere in this path. Every field of an `ErrataTarget` is a
+reference to a published record, a verbatim identifier the errata document
+printed (`matched_on`), or a structural label from a checked-in lexicon (`rule`,
+`confidence`). Record targets are referenced with `provenance.source_ref` so the
+round trip resolves; a **section** target is referenced by its corpus-relative
+markdown file, for the same reason the revision diff does it — inventing an
+`artifact#rec_n` id for a file would produce a reference that looks resolvable
+and is not. A record published without an id yields an honestly empty reference
+rather than one pointed at a neighbouring row.
+
+Only records the publisher **actually writes** are targetable: `pins.json` and
+`registers.json` exist only when they hold rows, so a link into a rejected pin
+table — which would read as a placed erratum while resolving to nothing — cannot
+be minted. An errata document is never its own target.
+
+### Criteria
+
+| Criterion | Status | Evidence |
+|---|---|---|
+| ≥1 errata item on a real document links to its target section or spec, hand-verified | **met against a real datasheet with a declared errata document** | `TestPublishedLinks` — §6.1 by `section-number`, `rec_9`/`rec_10` by `alias-phrase`, §7.3.2 by the `§` cue, all read off `lm741.pdf` by hand; L9 in `Reports/PHASE_7_LIVE_RUN.md` |
+| Unlinked errata items are still published under an explicit "unlinked errata" heading — asserted | met | `TestUnlinkedItemsSurvive` (3), `TestNothingIsLost` (4) — the count identity, the heading constant, the verbatim text under it, and the manifest warning |
+| Every link records `matched_on` | met | `test_every_link_records_what_it_matched_on`; every rule test asserts the exact `matched_on` string |
+| Affected section files carry a warning banner at publish | met | `TestSectionBanners` — banner in both targeted files, under the source comment, naming the item and what it matched on; absent from every other section |
+| An answer pack whose supporting record is targeted carries the warning inline — asserted end to end | met | `TestAnswerPackCarriesTheWarning` (3) — in `pack.markdown`, in the declared JSON shape, and absent for an untargeted record |
+| A part with no errata document is unaffected (no empty file, no banner) | met | `TestPartWithoutErrataIsUnaffected` (2) |
+| Matching never uses fuzzy text similarity on prose — only structured identifiers | met | `TestNoFuzzyMatching` (2: source guard + behavioural), plus the three refusal tests above |
+
+### Open items carried forward
+
+- **No real vendor errata document exists in this repo.** The linker is proven
+  against a real datasheet and a declared errata document; L9 in
+  `Reports/PHASE_7_LIVE_RUN.md` is the step that closes it, and it is the one
+  criterion above that is not live-confirmed.
+- **There is no `dsa errata` command.** The ticket's surfaces are the published
+  files, the section banners and the answer pack; the phase plan's new-CLI list
+  does not include one, and adding a lookup command is a separate decision.
+  `ERRATA.md` is readable and `errata_links.json` is greppable in the meantime.
+- **`INDEX.md` does not mention errata.** The staleness banner (ticket 02) earned
+  its place at the top of the index by being about the whole corpus; a per-part
+  "this device has N known errata items" line is the natural twin and was left
+  out rather than added unmeasured.
+- **An errata document with no marker word falls to the section floor.** Every
+  line is still published, but an item read that way is often a whole page and
+  links more broadly than it should. The fix is a marker word in `errata.yaml`,
+  a data edit — and the condition is visible in the item's own `derivation`
+  field (`errata-section` rather than `errata-item-marker`).
+- **Page attribution is a range.** `pdf_text` carries no per-line page, so an
+  item takes the page range of the section it was read from. For a one-page
+  errata sheet that is exact; for a TOC'd multi-page one it can read `p.3-5`.
+  Narrowing it means re-reading the PDF at structure time, which is what
+  `pin_table_pages` and the axis catalog already do and is the shape a future
+  ticket would follow.

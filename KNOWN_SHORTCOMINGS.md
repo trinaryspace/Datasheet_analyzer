@@ -514,3 +514,54 @@ not reported as such.
 with no name — the first is a real (if uninformative) parameter, the second is
 extraction residue. The device-table abstraction has the evidence to tell them
 apart; the diff does not.
+
+---
+
+## Errata cross-linking (phase 7, ticket 04)
+
+### 1. No real errata document exists in this repo, so the gate declares one
+
+`dsa add-doc --type errata` has existed since phase 3 and the type has been
+detected since then, but **no vendor errata PDF has ever been filed**, and none
+can be fetched offline. The gate
+(`tests/integration/test_phase7_errata.py`) therefore splits the fixture: the
+datasheet being linked *into* is real (`tests/fixtures/pdf/lm741.pdf`, through
+the whole pipeline, every expected target read off its printed pages by hand),
+and the errata prose is declared in `tests/fixtures/synthetic/errata_doc.py`.
+
+What that cannot establish is **how a vendor actually phrases a
+cross-reference**. The rules read `Section 6.1`, `§7.3.2`, a printed table
+caption, a symbol, a pin name and a `0x…` address; a vendor that writes
+"Table 6-1" or "the thermal section" and nothing else would have its items
+published **unlinked** — correctly, but with less value than a real errata sheet
+should yield.
+
+**What would change it** is L9 in `Reports/PHASE_7_LIVE_RUN.md`: file a real
+`SPRZ…`-style errata document, then read `ERRATA.md`'s unlinked list and every
+`matched_on` in `errata_links.json`. Closing a gap that turns up there is a
+`registry/errata.yaml` edit or one new rule — not a threshold, because there is
+none.
+
+### 2. An erratum's page is a range, not a point
+
+`pdf_text` publishes one paragraph per printed line and carries no per-line
+page, so an item takes the page range of the section it was read from. A
+one-page errata sheet (the common shape, and the gate's) makes that exact; a
+TOC'd multi-page one can cite `p.3-5` for an item printed entirely on p.4.
+Invariant 3 allows `p.N-M`, and narrowing it by guessing would not.
+
+**What would change it** is re-reading the errata PDF's page texts at structure
+time, which is what `pin_table_pages` and the axis catalog already do for the
+datasheet — a shape that exists, applied to a document that has not needed it
+yet.
+
+### 3. An erratum on a plot is linked to the section, not to the figure
+
+`ErrataTargetKind` deliberately has no `figure` member. An erratum that
+corrects a curve links the section the figure was printed in — through the
+section-number or table-caption rule — so the warning still reaches whoever
+opens the page, but `plots.json` carries no errata flag and `dsa plots` does not
+report one. A figure reference in errata prose ("Figure 12") is also not a rule:
+figure numbering repeats across documents of one part, and a cued figure rule
+would need the same doc-scoping the section rule gets for free from the
+published section number.

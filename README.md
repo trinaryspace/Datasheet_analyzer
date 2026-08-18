@@ -551,6 +551,9 @@ parts/AFE7950/
 ├── INDEX.md               # always-loadable index (hard budget, 3000 tok)
 ├── AGENT.md               # the retrieval protocol, shipped with the corpus (~1.4k tok)
 ├── cards/                 # design cards: power|thermal|interface|limits, as .json + .md
+├── errata_links.json      # every errata item + what it invalidates (only when the
+├── ERRATA.md              #   part registers an errata document; unplaced items are
+│                          #   published under "## Unlinked errata", never dropped)
 ├── sources.json           # doc inventory: sha256, type, revision, nda flag
 ├── manifest.json          # machine-readable section map + stats
 └── docs/datasheet-<hash8>/
@@ -708,6 +711,22 @@ extracts through the vendor-neutral layout floor and publishes
 `registers.json` (`dsa regs`); errata and app notes extract with the honest
 `pdf_text` backend (paragraphs only; no trusted tables, no `specs.json`).
 All of them join the same `INDEX.md`.
+
+An **errata** document does one thing more (phase 7, ticket 04): the build
+cross-links each of its items to the section, spec row, pin or register it
+invalidates and writes `errata_links.json` + `ERRATA.md` beside `INDEX.md`.
+Matching is deterministic and exact — a *cued* section number (`Section 6.1`,
+`§7.3.2`), a printed table caption, a printed symbol, an alias phrase from
+`registry/aliases.yaml`, a pin name, a *cued* pin designator, a register name,
+or a register address compared as an integer — and every link records what it
+matched on. There is no prose-similarity rung: two documents about one device
+share their whole vocabulary, so a link built from resemblance would look
+exactly like a real one while warning about the wrong page. The sections an
+erratum names carry a warning banner from the moment they are written, and
+`dsa ask` prints the erratum inline beside any answer row it targets. **An item
+no rule could place is still published**, under an explicit "Unlinked errata"
+heading — nothing is ever dropped. A part with no errata document gets no file
+and no banner.
 
 ### Other commands
 

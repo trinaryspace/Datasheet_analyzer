@@ -12,6 +12,8 @@ Layout per part:
         tables/*.csv
         specs.json / plots.json / pins.json / registers.json  (when there is one)
         search_index.json
+      errata_links.json + ERRATA.md   (only for a part that registers an errata
+                              document — phase 7, ticket 04)
 """
 
 from __future__ import annotations
@@ -19,21 +21,38 @@ from __future__ import annotations
 import json
 import logging
 import re
+from dataclasses import replace as dc_replace
 from pathlib import Path
 
 from datasheet_analyzer.cards import CardDoc, build_cards, render_card
 from datasheet_analyzer.config import (
     CARD_VERSION,
     CARDS_SCHEMA_VERSION,
+    ERRATA_SCHEMA_VERSION,
     PINS_SCHEMA_VERSION,
     PLOTS_SCHEMA_VERSION,
     REGISTERS_SCHEMA_VERSION,
     SPECS_SCHEMA_VERSION,
 )
+from datasheet_analyzer.errata import (
+    ERRATA_LINKS_FILENAME,
+    ERRATA_MARKDOWN_FILENAME,
+    SectionBanner,
+    TargetDoc,
+    build_errata_links,
+    build_items,
+    insert_banner,
+    is_errata,
+    render_errata,
+    section_banner,
+    sections_to_banner,
+)
 from datasheet_analyzer.models import (
     CorpusManifest,
     CorpusStats,
     DesignCard,
+    DocType,
+    ErrataLinkSet,
     ExtractionStats,
     PinRecord,
     PinSet,
@@ -236,6 +255,56 @@ def write_revision_diff(part_dir: Path, markdown: str) -> Path:
     return path
 
 
+def errata_current(part_dir: Path, manifest: CorpusManifest) -> bool:
+    """Whether the part's errata links are present and of the current schema.
+
+    Asymmetric like `cards_current` and for the same reason, but keyed on the
+    *inventory* rather than on the file: a part that registers an errata document
+    must publish `errata_links.json`, so a missing one is staleness (a corpus
+    published before this ticket existed), while a part with no errata document
+    must publish none at all, so a missing one is correct. Anything unreadable
+    reads as stale, which is the safe direction: rebuild.
+    """
+    has_errata = any(doc.doc_type == DocType.ERRATA for doc in manifest.documents)
+    path = Path(part_dir) / ERRATA_LINKS_FILENAME
+    if not has_errata:
+        return not path.exists()
+    if not path.exists():
+        return False
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return False
+    return isinstance(data, dict) and data.get("schema_version") == ERRATA_SCHEMA_VERSION
+
+
+def write_errata(part_dir: Path, link_set: ErrataLinkSet | None) -> list[Path]:
+    """Write (or remove) the part's errata artifacts; return what was written.
+
+    Both forms, as for a design card: `errata_links.json` is what a machine
+    walks — every target in its reference form, every item verbatim — and
+    `ERRATA.md` is what a person reads, rendered by the same function nothing
+    else may re-implement.
+
+    `None` means the part registers no errata document, and then the *absence*
+    of both files is the artifact: an empty errata file reads as "no known
+    issues", which is a claim this corpus has no evidence for. A republish of a
+    part whose errata document was removed therefore takes the old files with
+    it, exactly as a pin table that no longer parses takes `pins.json` with it.
+    """
+    part_dir = Path(part_dir)
+    json_path = part_dir / ERRATA_LINKS_FILENAME
+    md_path = part_dir / ERRATA_MARKDOWN_FILENAME
+    if link_set is None:
+        json_path.unlink(missing_ok=True)
+        md_path.unlink(missing_ok=True)
+        return []
+    part_dir.mkdir(parents=True, exist_ok=True)
+    json_path.write_text(link_set.model_dump_json(indent=2), encoding="utf-8")
+    md_path.write_text(render_errata(link_set), encoding="utf-8")
+    return [json_path, md_path]
+
+
 def registers_current(doc_dir: Path) -> bool:
     """`registers.json`'s twin, keyed on `REGISTERS_SCHEMA_VERSION`.
 
@@ -244,6 +313,102 @@ def registers_current(doc_dir: Path) -> bool:
     cannot produce would rebuild those parts forever.
     """
     return _artifact_schema_current(doc_dir, "registers.json", REGISTERS_SCHEMA_VERSION)
+
+
+def _errata_links(
+    part_number: str,
+    docs: list[tuple[RawDocument, list[SectionPlan], dict[str, str]]],
+    specsets_by_hash: dict[str, SpecSet],
+    pinsets_by_hash: dict[str, PinSet],
+    registersets_by_hash: dict[str, RegisterSet],
+) -> tuple[ErrataLinkSet | None, dict[str, SectionBanner]]:
+    """Derive the part's errata links and the banners they imply.
+
+    `(None, {})` for a part that registers no errata document — the case that
+    must stay completely inert, so that a part with no errata gets no file and
+    no banner and reads exactly as it did before this ticket.
+
+    The target surface is deliberately narrow. An errata document is never its
+    own target (an erratum does not invalidate itself), and only records the
+    publisher is about to *write* are targetable: `pins.json` and
+    `registers.json` are written only when they hold rows, so a link into a
+    rejected pin table would resolve to nothing while reading as a placed
+    erratum.
+    """
+    errata_docs = [(doc_dir_name(raw), raw) for raw, _plans, _d in docs if is_errata(raw)]
+    if not errata_docs:
+        return None, {}
+
+    targets: list[TargetDoc] = []
+    for raw, plans, _descriptions in docs:
+        if is_errata(raw):
+            continue
+        doc_rel = f"docs/{doc_dir_name(raw)}"
+        specset = specsets_by_hash.get(raw.source.content_hash)
+        pinset = pinsets_by_hash.get(raw.source.content_hash)
+        registerset = registersets_by_hash.get(raw.source.content_hash)
+        targets.append(
+            TargetDoc(
+                name=doc_dir_name(raw),
+                doc_hash=raw.source.content_hash,
+                sections=tuple(
+                    (plan.section, f"{doc_rel}/{plan.file}") for plan in plans
+                ),
+                specs=tuple(specset.records) if specset else (),
+                pins=tuple(pinset.pins) if pinset and pinset.pins else (),
+                registers=(
+                    tuple(registerset.registers)
+                    if registerset and registerset.registers
+                    else ()
+                ),
+            )
+        )
+
+    items = build_items(errata_docs)
+    link_set = build_errata_links(
+        part_number, items, targets, errata_docs=[name for name, _raw in errata_docs]
+    )
+    return link_set, sections_to_banner(link_set, targets)
+
+
+def _bannered_docs(
+    docs: list[tuple[RawDocument, list[SectionPlan], dict[str, str]]],
+    banners: dict[str, SectionBanner],
+) -> list[tuple[RawDocument, list[SectionPlan], dict[str, str]]]:
+    """The same plans, with a warning banner inserted where an erratum lands.
+
+    Applied here — before the search index is built and before a byte is
+    written — so the file on disk, the token count in the manifest and the text
+    the BM25 index was built from are the same string. A corpus where "what is
+    searchable is exactly what is readable" held only until an erratum arrived
+    would be a quiet lie about the index.
+
+    Nothing is mutated: each affected plan is replaced by a copy, so a caller
+    that kept its own reference to the plans (the enrich stage does) still sees
+    exactly what it produced.
+    """
+    if not banners:
+        return docs
+    out: list[tuple[RawDocument, list[SectionPlan], dict[str, str]]] = []
+    for raw, plans, descriptions in docs:
+        doc_rel = f"docs/{doc_dir_name(raw)}"
+        new_plans: list[SectionPlan] = []
+        for plan in plans:
+            banner = banners.get(f"{doc_rel}/{plan.file}")
+            if banner is None:
+                new_plans.append(plan)
+                continue
+            markdown = insert_banner(
+                plan.markdown,
+                section_banner(list(banner.links), banner.targets),
+            )
+            new_plans.append(
+                dc_replace(
+                    plan, markdown=markdown, token_count=count_tokens(markdown)
+                )
+            )
+        out.append((raw, new_plans, descriptions))
+    return out
 
 
 def write_corpus(
@@ -321,6 +486,19 @@ def write_corpus(
     graded_registers: list[RegisterRecord] = []
 
     doc_dirs: list[str] = []
+
+    # Errata cross-links (phase 7, ticket 04). Derived *before* anything is
+    # written, because the section files themselves change: a section an erratum
+    # names carries a warning banner, and a banner added after the search index
+    # was built would make the corpus searchable for text it no longer matches.
+    # The link set is derived from the very records this function is about to
+    # write — nothing may point into a `pins.json` the publisher declines to
+    # write — which is why the target surface is assembled here rather than in
+    # the structure stage.
+    link_set, banners = _errata_links(
+        part_dir.name, docs, specsets_by_hash, pinsets_by_hash, registersets_by_hash
+    )
+    docs = _bannered_docs(docs, banners)
 
     for raw, plans, descriptions in docs:
         doc_dirs.append(doc_dir_name(raw))
@@ -474,6 +652,28 @@ def write_corpus(
                 f"{CARDS_DIRNAME}/{card.card}.md for what it looked for"
             )
 
+    # Errata links (phase 7, ticket 04). Written — or deliberately removed —
+    # here, after the records they point at exist on disk. The warnings are the
+    # honest half: an item nobody could place is a finding about this part, and
+    # it belongs in the manifest beside the empty-card warnings rather than in a
+    # log line nobody reads.
+    write_errata(part_dir, link_set)
+    if link_set is not None:
+        stats.n_errata_items = link_set.n_items
+        stats.n_errata_linked = len(link_set.links)
+        if link_set.unlinked:
+            manifest.derived_warnings.append(
+                f"{len(link_set.unlinked)} of {link_set.n_items} errata items for "
+                f"{part_dir.name} could not be linked to a published record — they "
+                f"are published under \"unlinked errata\" in "
+                f"{ERRATA_MARKDOWN_FILENAME} and must be read by hand"
+            )
+        if link_set.empty_reason:
+            manifest.derived_warnings.append(
+                f"{part_dir.name} registers an errata document but published no "
+                f"errata item: {link_set.empty_reason}"
+            )
+
     # The retrieval protocol ships *with* the corpus (ticket 08): INDEX.md is
     # the map, AGENT.md is how to read it. Written here rather than by the
     # enrich stage because it is not enriched — it is fixed text plus the
@@ -512,6 +712,12 @@ def write_corpus(
         "design cards: %d written (%d rows) at card_version %s",
         stats.n_cards, stats.n_card_rows, card_version,
     )
+    if link_set is not None:
+        log.info(
+            "errata links: %d item(s), %d linked, %d unlinked (%d target(s))",
+            link_set.n_items, len(link_set.links), len(link_set.unlinked),
+            link_set.n_targets,
+        )
     log.info(
         "confidence mix: specs %s; plots %s; pins %s; registers %s",
         stats.spec_confidence or "(none)", stats.plot_confidence or "(none)",

@@ -252,3 +252,72 @@ and check how many rows now come from the superseded revision. If the answer is
 "enough to mislead", the rule to add is that part-level derived artifacts read
 the newest labelled document — a deliberate change, recorded in
 `KNOWN_SHORTCOMINGS.md` rather than made as a side effect of this ticket.
+
+---
+
+## Ticket 04 — errata cross-linking
+
+### L9. Link a real vendor errata document
+
+This repo carries **no errata PDF**. `dsa add-doc --type errata` has existed
+since phase 3 and `acquire/inventory.py` has detected the type since then, but
+nothing has ever been filed under it, and no errata URL may be composed offline
+— a plausible vendor URL that resolves to the wrong document is exactly what
+this phase's boundary forbids.
+
+So the linker was built and proven against a **split** fixture: the datasheet it
+links *into* is real (`tests/fixtures/pdf/lm741.pdf`, through the whole
+pipeline, with every expected target read off its printed pages by hand), and
+only the errata prose is declared, in `tests/fixtures/synthetic/errata_doc.py`.
+What that cannot establish is whether a vendor's errata sheet phrases its
+cross-references the way the fixture does — whether it writes "Section 6.1",
+"§6.1", "Table 6-1" or nothing at all.
+
+With network, pick a part this repo already builds and that has a published
+errata or advisory document — a TI "Silicon Errata" (`SPRZ…`) or an ADI
+anomaly sheet — and file it:
+
+```bash
+dsa fetch --url <the errata PDF URL> --part <PART> --doc-type errata
+dsa build <part>.pdf --part <PART>
+```
+
+**Then read three things, in this order:**
+
+1. `parts/<PART>/ERRATA.md` — how many items were segmented, and under which
+   rule. Every item carries its `derivation`: `errata-item-marker` means the
+   document's own heading words were recognised, `errata-section` means they
+   were not and the floor rule fired. If it is the floor rule, the fix is one
+   line in `src/datasheet_analyzer/registry/errata.yaml` under `item_markers`
+   — a data edit, not a code change.
+2. The **"Unlinked errata"** section of that same file. This is the measurement
+   that matters: what fraction of a real vendor's items name an identifier this
+   corpus publishes. A high unlinked count is not a bug — it is the honest
+   reading, and it is the number to record — but read the items themselves and
+   check *why*. If they cite tables by a caption the datasheet prints and the
+   caption rule missed it, that is a real gap worth a ticket.
+3. Every link's `matched_on` in `parts/<PART>/errata_links.json`. Each one must
+   name an identifier that really is in the erratum's text. **A wrong link is
+   worse than a missing one**, so check the `high`-graded ones first
+   (`section-number`, `spec-symbol`, `register-address`) and confirm the section
+   or row they landed on is what the erratum was about.
+
+**Record afterwards:** the item count, the linked/unlinked split, and any
+`matched_on` that pointed at the wrong thing, in
+`Reports/PHASE_7_REPORT.md` under ticket 04 — and, if a rule mislinked, in
+`KNOWN_SHORTCOMINGS.md` before changing the rule.
+
+### L10. Confirm the banner and the pack warning on that real part
+
+After L9, open a section file the links name and confirm the banner reads
+sensibly beside real datasheet prose:
+
+```bash
+dsa ask --part <PART> "<a question the erratum is about>" --json
+```
+
+The answering row must carry a non-empty `errata` array, and the rendered
+markdown must show the warning under the value. If a whole section was named by
+several items, check the banner is still readable at the top of the file rather
+than a wall of quoted errata — the display cap is
+`errata.render.BANNER_QUOTE_CHARS`, and lowering it is a one-constant change.

@@ -82,6 +82,12 @@ COMPARE_SCHEMA_VERSION = "1"
 # written markdown is a report of one run, not a corpus artifact a build must
 # keep current.
 REVDIFF_SCHEMA_VERSION = "1"
+# "1": phase 7, ticket 04 — `errata_links.json`, the errata cross-link set a
+# build writes for a part that holds an errata document. Unlike a comparison or
+# a revision diff it *is* a published corpus artifact, so it carries a schema
+# version like `specs.json` does; the derivation-rule half of its identity is
+# `CARD_VERSION`, which the manifest already stamps.
+ERRATA_SCHEMA_VERSION = "1"
 
 # The version of the *derivation rules* (ADR 0005 / invariant 8). Derived
 # artifacts — design cards and anything else computed from records by a named

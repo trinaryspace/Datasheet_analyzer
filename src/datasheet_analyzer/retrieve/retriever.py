@@ -55,6 +55,7 @@ from typing import TYPE_CHECKING
 from datasheet_analyzer.config import SEARCH_SCHEMA_VERSION
 from datasheet_analyzer.models import (
     DesignCard,
+    ErrataLink,
     PinRecord,
     PlotRecord,
     RegisterRecord,
@@ -190,6 +191,18 @@ class Retriever:
         from `sources.json`, which `dsa check-revisions` wrote.
         """
         return self.index.staleness
+
+    def errata_for(self, reference: str) -> list[ErrataLink]:
+        """Every errata item that named one published record or section file.
+
+        A lookup method, like `staleness()`, and for the same reason: the pack,
+        the CLI and any second front end must read one record through one rule
+        rather than each deciding what "affected by an erratum" means. `[]` for
+        a part with no errata document, which is silence rather than a claim
+        that the device has no known issues — that distinction lives in
+        `CorpusIndex.errata` being `None`.
+        """
+        return self.index.errata_for(reference)
 
     def specs(
         self,

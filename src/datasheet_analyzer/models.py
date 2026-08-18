@@ -397,6 +397,13 @@ class CorpusStats(BaseModel):
     # as a number rather than in a report as a claim. Additive: 0 on corpora
     # published before the protocol existed.
     agent_doc_tokens: int = 0
+    # Phase 7, ticket 04: how many errata items this part publishes, and how
+    # many of them the linker could place. Both are 0 for a part with no errata
+    # document at all — and the *gap* between them is the number that matters,
+    # because it is exactly the population `errata_links.json` publishes under
+    # "unlinked errata" rather than dropping.
+    n_errata_items: int = 0
+    n_errata_linked: int = 0
 
 
 class ExtractionStats(BaseModel):
@@ -1190,6 +1197,170 @@ class RevisionDiff(BaseModel):
     def of_kind(self, kind: str) -> list[RevisionChange]:
         """Every change of one artifact kind, in the order they were derived."""
         return [change for change in self.changes if change.kind == kind]
+
+class ErrataTargetKind(str, Enum):
+    """What one errata link points at (phase 7, ticket 04).
+
+    Exactly the four things a corpus publishes that an erratum can invalidate:
+    a section of prose, a parametric row, a pin, or a register. A figure is
+    deliberately absent — an erratum that corrects a curve corrects the section
+    it was printed in, and pointing at an image nobody can re-read would be a
+    link with nothing behind it.
+    """
+
+    SECTION = "section"
+    SPEC = "spec"
+    PIN = "pin"
+    REGISTER = "register"
+
+
+class ErrataTarget(BaseModel):
+    """One thing an errata item was matched to, and what matched it.
+
+    A derived artifact row under ADR 0005, and the strictest kind: it owns no
+    printed value at all. `id` is the reference that walks back to the thing
+    itself — a `provenance.source_ref` for a record
+    (`docs/<doc>/specs.json#rec_9`), the corpus-relative section file for a
+    section — and `matched_on` is invariant 8's `derivation` spelled for a
+    reader: the identifier the errata item printed, and where it was found.
+
+    `rule` is the named rule that produced the link (`section-number`,
+    `alias-phrase`, …) and `confidence` is that rule's grade from
+    `registry/errata.yaml`. Both are structural labels from a checked-in
+    lexicon (ADR 0005 (c)) — no model call is anywhere in this path, and no
+    similarity score exists to be tuned.
+    """
+
+    kind: ErrataTargetKind = ErrataTargetKind.SECTION
+    #: The reference that resolves back to the target.
+    id: str = ""
+    #: The document directory the target lives in (`datasheet-e0d1e5a2`).
+    doc: str = ""
+    #: A human-readable name for the target — the section's full title, the
+    #: record's symbol/name. Never what a caller resolves by; `id` is.
+    label: str = ""
+    #: The printed section number the target sits under, when it has one. It is
+    #: what the publisher banners on, so a spec-record target banners the
+    #: section that printed it.
+    section: str = ""
+    #: The printed page of the target itself, so a link can be cited without
+    #: re-opening the record it names.
+    page: int | None = None
+    confidence: Confidence = Confidence.UNKNOWN
+    #: The named rule (`registry/errata.yaml`'s `rules` keys).
+    rule: str = ""
+    #: What the match was made on, verbatim: `section number "6.1" (cued by
+    #: "Section")`, `alias phrase "junction temperature" -> TJ`.
+    matched_on: str = ""
+
+
+class ErrataItem(BaseModel):
+    """One item of an errata document, verbatim (phase 7, ticket 04).
+
+    `text` is the printed lines of the item joined with newlines and is never
+    rewritten — an erratum is a legal statement about silicon, and a summarized
+    one is a different statement. `marker` is the printed line that started it
+    (`Advisory 3`), `derivation` the named rule that segmented it, so a reader
+    who disagrees with where an item starts can see which rule drew the line.
+
+    `page` / `page_end` are the printed page range of the errata document
+    section the item was read from, so the item cites as `p.3` or `p.3-4`.
+    `pdf_text` carries no per-line page, so a range is the honest reading and a
+    narrower one would be invented.
+    """
+
+    #: Stable id within the part's `errata_links.json` (`err_1`), minted by
+    #: `provenance.errata_item_id` in document-then-reading order.
+    id: str = ""
+    doc: str = ""  # the errata document's corpus directory name
+    doc_hash: str = ""
+    marker: str = ""
+    text: str = ""
+    section: str = ""  # the errata document's own section number
+    section_title: str = ""
+    page: int | None = None
+    page_end: int | None = None
+    derivation: str = ""
+
+    @property
+    def pages(self) -> str:
+        """`p.3`, `p.3-4`, or `p.?` when the errata document pinned no page."""
+        if self.page is None:
+            return "p.?"
+        if self.page_end is not None and self.page_end != self.page:
+            return f"p.{self.page}-{self.page_end}"
+        return f"p.{self.page}"
+
+
+class ErrataLink(BaseModel):
+    """One errata item and everything the linker could place it against.
+
+    `targets` may be **empty**, and an empty one is not a lesser link: it is an
+    item the matcher could not place, which is published under its own heading
+    rather than dropped. Losing an erratum is the worst failure this artifact
+    can produce, so the set holds linked and unlinked items in two named lists
+    and `ErrataLinkSet.n_items` is asserted against their sum.
+
+    `notes` carries anything the matcher had to say about its own limits — a
+    rule that matched more records than `max_targets_per_rule` states how many
+    it found, because a truncated list that does not say it was truncated reads
+    as a complete one.
+    """
+
+    errata_item_id: str = ""
+    item: ErrataItem = Field(default_factory=ErrataItem)
+    targets: list[ErrataTarget] = Field(default_factory=list)
+    notes: list[str] = Field(default_factory=list)
+
+    @property
+    def text(self) -> str:
+        """The item's verbatim text — the shape the ticket names."""
+        return self.item.text
+
+    @property
+    def page(self) -> int | None:
+        return self.item.page
+
+    def targets_of_kind(self, kind: ErrataTargetKind) -> list[ErrataTarget]:
+        return [t for t in self.targets if t.kind == kind]
+
+
+class ErrataLinkSet(BaseModel):
+    """A part's `errata_links.json` — every errata item, placed or not.
+
+    Written only for a part that actually holds an errata document. A part with
+    no errata document gets **no file**, because an empty one would read as "no
+    known issues", which is a claim this corpus has no evidence for.
+
+    A part that holds an errata document the segmenter could read nothing out of
+    still gets a file, with `empty_reason` saying so: "there is an errata
+    document and it yielded no items" and "there is no errata document" are
+    different findings and a designer must be able to tell them apart.
+    """
+
+    schema_version: str = ""
+    part_number: str = ""
+    #: The errata documents this set was built from, by corpus directory name.
+    errata_docs: list[str] = Field(default_factory=list)
+    #: Items with at least one target.
+    links: list[ErrataLink] = Field(default_factory=list)
+    #: Items with none — published, never dropped.
+    unlinked: list[ErrataLink] = Field(default_factory=list)
+    notes: list[str] = Field(default_factory=list)
+    empty_reason: str = ""
+
+    @property
+    def n_items(self) -> int:
+        return len(self.links) + len(self.unlinked)
+
+    @property
+    def n_targets(self) -> int:
+        return sum(len(link.targets) for link in self.links)
+
+    def all_items(self) -> list[ErrataLink]:
+        """Every item, linked first then unlinked — nothing filtered out."""
+        return list(self.links) + list(self.unlinked)
+
 
 class SearchSection(BaseModel):
     """One indexed section file: its term frequencies and its token length.

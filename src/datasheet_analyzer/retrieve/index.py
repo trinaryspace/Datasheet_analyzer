@@ -25,8 +25,11 @@ from pathlib import Path
 
 from datasheet_analyzer.acquire.inventory import SOURCES_FILE, load_inventory
 from datasheet_analyzer.config import PIPELINE_VERSION
+from datasheet_analyzer.errata import ERRATA_LINKS_FILENAME, links_by_target
 from datasheet_analyzer.models import (
     CorpusManifest,
+    ErrataLink,
+    ErrataLinkSet,
     PinRecord,
     PinSet,
     PlotRecord,
@@ -118,10 +121,22 @@ class CorpusIndex:
     # read the snapshot would keep reporting `unknown` after a check had
     # already found the corpus stale (phase 7, ticket 02).
     sources: tuple[SourceDocument, ...] = ()
+    # `errata_links.json` (phase 7, ticket 04), or None for a part that
+    # registers no errata document. None and an *empty* set are different
+    # findings and both are load-bearing: no errata document at all is silence,
+    # while a set whose `unlinked` list is full is a part with known issues
+    # nobody could place — which a consumer must be able to say out loud.
+    errata: ErrataLinkSet | None = None
     # Lazily-read section markdown, keyed by corpus-relative path. Section
     # bodies are the expensive part of a corpus; nothing reads them unless a
     # caller asks.
     _section_text: dict[str, str] = field(default_factory=dict, repr=False, compare=False)
+    #: The errata links indexed by the reference each target carries, built on
+    #: first use. `""` is the sentinel key that records "already built", so a
+    #: part whose errata name nothing is not re-indexed on every answer row.
+    _errata_by_target: dict[str, list] = field(
+        default_factory=dict, repr=False, compare=False
+    )
 
     @classmethod
     def load(cls, part_dir: Path | str) -> CorpusIndex:
@@ -176,7 +191,50 @@ class CorpusIndex:
             docs=tuple(docs),
             sections=tuple(manifest.sections) if manifest else (),
             sources=tuple(load_inventory(part_dir)),
+            errata=_load_json_model(part_dir / ERRATA_LINKS_FILENAME, ErrataLinkSet),
         )
+
+    def errata_for(self, reference: str) -> list[ErrataLink]:
+        """Every errata item that named `reference`; `[]` when none did.
+
+        `reference` is whatever a target carries: a record reference
+        (`docs/<doc>/specs.json#rec_9`) or a corpus-relative section file. One
+        lookup for both, because a consumer holds one or the other and must not
+        have to know which kind of target the linker minted.
+        """
+        if self.errata is None or not reference:
+            return []
+        return self._errata_index().get(reference, [])
+
+    def section_file(self, doc: str, number: str) -> str:
+        """The corpus-relative file of one document's section; `""` when none.
+
+        Keyed on the document *directory* name and the printed section number,
+        because that is the pair a citation carries. It exists so a caller that
+        holds a citation can reach the file the corpus published for it without
+        rebuilding the path by hand — `AGENTS.md`'s "a caller's string becomes a
+        path in exactly one place" applies to composing one too.
+        """
+        if not doc or not number:
+            return ""
+        prefix = f"docs/{doc}/"
+        for section in self.sections:
+            if section.number == number and section.file.startswith(prefix):
+                return section.file
+        return ""
+
+    def _errata_index(self) -> dict[str, list[ErrataLink]]:
+        """The by-reference index, built once per loaded corpus.
+
+        Cached on the index rather than recomputed per answer row: an MCP
+        session asks dozens of questions of one corpus, and the link set is
+        immutable for as long as `manifest.json` has not moved (`_cache_key`).
+        """
+        cached = self._errata_by_target.get("")
+        if cached is None:
+            self._errata_by_target.update(links_by_target(self.errata))
+            self._errata_by_target[""] = []
+        return self._errata_by_target
 
     @property
     def staleness(self) -> CorpusStaleness:
