@@ -453,3 +453,64 @@ part records a revision AGENTS.md's table does not.
 **What would change it** is a closed series list in `_TI_DOC_ID` itself. It was
 not done here because that pattern is the shared revision lexicon every part's
 recorded revision flows through, and ticket 02 (revision awareness) owns it.
+
+## Revision diff (phase 7, ticket 03)
+
+### 1. No real revision pair exists in this repo, so the gate uses a declared one
+
+Every part here carries exactly one revision, and this run had no network, so
+`dsa diff-rev` has never been run on two revisions a vendor actually published.
+The gate instead builds a **declared** pair
+(`tests/fixtures/synthetic/revision_pair.py`): two PDFs whose differences are a
+fixed hand-written list, both pushed through the real `PdfLayoutBackend` and the
+real pipeline, with the diff asserted to be exactly that list — 12 declared
+edits, 12 found, nothing else.
+
+That makes the *expectation* exact in a way a real pair could not (a real pair's
+expected delta would have to be read off two PDFs by hand and could be wrong).
+What it cannot show is that a vendor's revision moves things the way the fixture
+does — in particular how much page-shift noise a 146-page revision produces, and
+whether the alias lexicon aligns parameters a vendor genuinely renamed.
+
+**What would change it** is `Reports/PHASE_7_LIVE_RUN.md` L7: the first time a
+registered part reports `stale`, fetch the new revision, build it under `--rev`,
+and record the measured change counts.
+
+### 2. A part holding two revisions has part-level cards built from both
+
+Design cards are a *part*-level artifact — a card joins rows from every document
+of a part, which is what makes a limits margin work across two tables in two
+documents. A part holding two revisions therefore gets cards that can quote
+either one. Nothing is fabricated and nothing is hidden: every card row cites the
+document directory it came from, and those now carry the revision label
+(`datasheet-a1b2c3d4-reve`), so a reader can see which revision a row is from.
+But the card does not *choose*, and a reader who does not look at the citation
+could take a superseded value.
+
+The same is true of any other part-level view over all documents (`dsa ask`,
+`dsa query` without a document filter): they answer from both revisions, each hit
+cited to its own.
+
+**What would change it** is a rule that part-level derived artifacts read only
+the newest labelled document of each type. That is a real behaviour change for
+multi-document parts and it was not made as a side effect of this ticket; L8 in
+`Reports/PHASE_7_LIVE_RUN.md` is the measurement that should decide it.
+
+### 3. A spec row that printed no value in any column takes no part in the diff
+
+The layout floor emits a spec record for rows of neighbouring tables that carry
+no value in `min`/`typ`/`max`/`value` — six of them per side in the gate's own
+fixture. They are excluded from the alignment, because a dozen valueless rows
+collapse onto one `(unnamed row)` key and bury every real change under a wall of
+"uncomparable" refusals.
+
+They are **not** dropped from the report: each side's count is stated in the
+diff's own notes ("6 of those spec records print no value in any column and take
+no part in the alignment"), beside the parse-population sentence invariant 8
+requires. But a valueless row that a revision genuinely *added* or *removed* is
+not reported as such.
+
+**What would change it** is a distinction between a row with no value and a row
+with no name — the first is a real (if uninformative) parameter, the second is
+extraction residue. The device-table abstraction has the evidence to tell them
+apart; the diff does not.

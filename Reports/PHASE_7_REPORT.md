@@ -392,3 +392,175 @@ superseded.
   direction, but a corpus whose *register map* is stale and whose datasheet is
   current currently reports one line naming the worse document; a per-document
   breakdown in `dsa status` would be an improvement and is not here.
+
+---
+
+## Ticket 03 — `dsa diff-rev`
+
+**Landed.** `pytest` 1809 passed / 1 skipped (1759 before this ticket + 50 new);
+`ruff check src tests` clean.
+
+### What shipped
+
+| Piece | Where |
+|---|---|
+| The derivation | `src/datasheet_analyzer/revdiff/build.py` (`build_revision_diff`) |
+| The report | `src/datasheet_analyzer/revdiff/render.py` (`REVISION_DIFF.md`) |
+| The lookup | `src/datasheet_analyzer/retrieve/revdiff.py` (`RevisionPair`) |
+| Two revisions under one part | `dsa build --rev <label>` → `pipeline._register_revision`, `SourceDocument.revision_label`, `publish.doc_dir_name_for_source` |
+| The command | CLI `_cmd_diff_rev` (`dsa diff-rev --part X [--from A --to B] [--json] [--no-write]`) |
+| The file writer | `publish.write_revision_diff` |
+| Models | `RevisionChange`, `RevisionDiff` (additive); `REVDIFF_SCHEMA_VERSION = "1"` |
+| The declared revision pair | `tests/fixtures/synthetic/revision_pair.py` |
+| Tests | `tests/unit/test_revdiff.py` (39), `tests/integration/test_phase7_revdiff.py` (11) |
+
+### Two revisions coexist because the document directory carries the label
+
+A part corpus already keys its document directories on the content hash
+(`datasheet-a1b2c3d4`), so two revisions of one datasheet **could not collide**
+even before this ticket — what they could not do is be told apart by a reader,
+or selected by a command. `--rev F` adds `revision_label` to the inventory entry
+and a `-revf` suffix to the published directory, which buys legibility and
+selection rather than uniqueness. It is strictly additive: a document with no
+label is published under exactly the name it always was, so no built corpus
+moves and no existing citation breaks.
+
+Three refusals guard it:
+
+- **A PDF already registered is never re-labelled.** The label names the
+  directory every one of that document's citations points at, so re-labelling
+  would rename it and orphan the built copy. `pipeline.BuildRefused` says so and
+  names the fix (asserted in the gate).
+- **The two sides of a diff are selected, never guessed.** A selector matches a
+  label, a printed revision, a document directory or a content hash; a selector
+  matching two documents is refused with both named. The no-selector default is
+  taken only when exactly one document *type* has exactly two entries — a part
+  holding a datasheet and a register map has two documents that are not two
+  revisions of anything.
+- **Diffing a document against itself is allowed and is empty.** That is the
+  determinism check the ticket asks for, and the empty diff says which of the
+  two empties it is (`same document` against `identical revisions`).
+
+### One rule decides what is scored
+
+A change carries a numeric delta **only** where the phase-6 numeric layer read
+both printed values into the same SI base, and that delta is the sole number
+this artifact adds (`si_delta:<column>`, `after − before`, both operands cited).
+Everything else is quoted verbatim under **Review by hand** and carries no
+score, no sign and no direction:
+
+| Reported as | Scored? | Why |
+|---|---|---|
+| `TJ max 105 °C -> 125 °C` | yes, `+20 °C` | both sides parsed, same column, same base |
+| `IDD typ 120 mA -> 135 mA` | yes, `+0.015 A` | scaled to the SI base first, as everywhere else |
+| `Output noise typ See Figure 7 -> See Figure 9` | no | neither side is a quantity |
+| `VDD typ 1.8 V -> 1900 mV` | yes, `+0.1 V` | a prefix is not a change; the *unit* move is its own unscored row beside it |
+| `VDD typ 1.8 V -> 1.9 A` | no | different SI base — a change to review, not to subtract |
+| register `R2` reset `0x0223 -> 0x0233` | **never** | a reset is a bit pattern; a signed difference between two of them means nothing |
+| section retitled / page-shifted, pin renamed, anything added or removed | no | there is no second value to subtract from |
+
+The register reset is the deliberate one. It would parse as an integer, and
+scoring it would produce a number (`+16`) that looks like a measurement and is
+not one.
+
+### Alignment, per artifact
+
+| Artifact | Aligned on | Why |
+|---|---|---|
+| spec | alias-resolved symbol (`registry/aliases.yaml`), else a shared printed symbol | a parameter the vendor renamed is **one changed row**, not a removal plus an addition — the ticket's second criterion |
+| section | printed section number, else normalized title | a section's identity survives a rewording of its title, which is what makes `retitled` distinguishable from `added` |
+| pin | printed designator | the package fixes it; a renamed pin is the same ball, and calling that "one removed, one added" would tell a designer to redraw a footprint that did not move |
+| register | parsed address (`0x1A04`, `0x1a04` and `6660` are one register), else the printed string | the identity `dsa regs --addr` already uses |
+| bit field | field name, inside a paired register | its own `kind`, because a field that moved from `2:0` to `3:1` compiles, runs and misconfigures silicon silently |
+
+An **ambiguous** key — several rows on a side that share no printed identity
+cell — is refused whole and listed with its printed values under *Not
+comparable*, never reported as added + removed, because that would be a claim
+about the device.
+
+### Verified against a declared revision pair
+
+There is no real revision pair in this repo (one revision of every part), so the
+gate uses a **declared** one: `tests/fixtures/synthetic/revision_pair.py` writes
+two PDFs whose differences are a fixed hand-written list, and both go through
+the real `PdfLayoutBackend` and the real pipeline. The gate asserts the diff is
+**exactly** that list:
+
+| Declared edit | Reported as |
+|---|---|
+| TJ max 105 → 125 °C | `spec changed TJ max`, delta `+20 °C` |
+| IDD typ 120 → 135 mA | `spec changed IDD typ`, delta `+0.015 A` |
+| Output noise typ `See Figure 7` → `See Figure 9` | `spec changed Output noise typ`, review by hand |
+| Turn-on time added | `spec added Turn-on time` |
+| Gain error removed | `spec removed Gain Error` (keyed by the canonical symbol; the printed spelling travels as the label) |
+| §5 retitled | `section retitled 5 title` |
+| §5 moved p.3 → p.4 | `section page-shifted 5 page` |
+| §4.2 added | `section added 4.2` |
+| §4 now spans p.2-3 | `section page-shifted 4 page` |
+| pin A2 VDD → VDD1P8 | `pin renamed A2 name` |
+| pin B3 added | `pin added B3` |
+| pin A4 removed | `pin removed A4` |
+
+12 declared, 12 found, nothing else — and the rows that did **not** move
+(including one printing `See Figure 12` on both sides, the row most likely to be
+spuriously reported by a string diff) produce no changes at all. Register and
+bit-field deltas are proven at corpus level on a two-revision register map
+(`tests/unit/test_revdiff.py::TestTwoRevisionCorpus`) rather than inside the PDF
+pair, because the layout floor routes a register summary through a register-map
+document and the pair is a datasheet.
+
+This is a *stronger* check than a real pair would give — with a real pair the
+expected delta would itself have to be read off two PDFs by hand — but it is not
+the same check, and the difference is recorded as **L7** in
+`Reports/PHASE_7_LIVE_RUN.md`.
+
+### Invariant 8
+
+Every `before`/`after` cell is a `DerivedValue` carrying the printed string with
+its unit, the page, the rule (`copy_cell`, or
+`copy_cell+parse_quantity+si_normalize` where the numeric layer read it) and a
+**part- and document-qualified** source reference
+(`parts/REVPART/docs/register_map-…-reva/registers.json#reg_1`). The
+qualification is not decoration: both revisions of one part publish a `rec_1`, so
+an unqualified reference would resolve to a confident, wrong record. The gate
+resolves every one of them through `provenance.resolve_source`.
+
+The one exception is a **section**, which is a file rather than a record: its
+reference is the corpus-relative path of its markdown file, because inventing an
+`artifact#rec_n` id for it would produce a reference that looks resolvable and is
+not.
+
+### Criteria
+
+| Criterion | Status | Evidence |
+|---|---|---|
+| Two revisions coexist under one part directory without colliding; both independently queryable | met | `TestTwoRevisionsCoexist` (4) — two `-rev` directories, each with `specs.json` + `pins.json`, one query returning both revisions' values with distinct citations |
+| Spec deltas computed by alias-resolved symbol; a renamed-but-equivalent parameter is `changed`, not removed+added | met | `test_renamed_parameter_is_one_changed_row_not_a_removal_and_addition` |
+| Numeric deltas only where both sides parsed; everything else listed verbatim under "review by hand" and never scored | met | `test_numeric_delta_appears_only_where_both_sides_parsed`, `test_unscored_change_is_quoted_verbatim_under_review_by_hand`, `test_everything_else_is_quoted_verbatim_and_never_scored` |
+| Section retitles and page shifts distinguished from additions | met | `test_retitle_page_shift_and_addition_are_three_distinct_facts`, plus the gate's §4 / §4.2 / §5 rows |
+| Pin and register deltas included, reset-value changes called out specifically | met | `TestPinChanges`, `TestRegisterChanges` (`reset-changed` is its own change value, beside bit-field bits/reset moves) |
+| A diff against an identical revision is empty, not noise | met | `test_identical_revisions_produce_an_empty_diff_not_noise`, `test_diffing_a_revision_against_itself_is_empty`, `test_two_runs_over_the_same_input_produce_the_same_diff` |
+| Verified against a hand-checked expectation on a real revision pair | **met against a declared synthetic pair; no real pair exists offline** | `TestDeclaredEditsAreFoundExactly` (12 declared edits, 12 found, nothing else); L7 in `Reports/PHASE_7_LIVE_RUN.md` |
+| Output: `parts/<PART>/REVISION_DIFF.md` plus `--json` | met | `TestTheWrittenReport`, `TestCli::test_json_carries_the_schema_version_and_the_envelopes` |
+
+### Open items carried forward
+
+- **A part holding two revisions has part-level cards built from both.** Design
+  cards join rows from every document of a part, so a two-revision part's
+  `cards/power.json` can quote either revision — each row cited to its own
+  document directory, so it is visible rather than silent, but it is not
+  *chosen*. Recorded in `KNOWN_SHORTCOMINGS.md`; the fix (part-level derived
+  artifacts read the newest labelled document) is a rule change worth making
+  deliberately rather than as a side effect of this ticket.
+- **`dsa diff-rev` has no MCP tool.** The phase plan lists `get_audit`,
+  `list_families` and `get_family_index` as this phase's new MCP surface and not
+  this one; the diff is CLI + JSON only.
+- **A spec row that printed no value in any column takes no part in the
+  alignment.** The layout floor emits one per neighbouring pin-table row; a dozen
+  of them collapse onto one `(unnamed row)` key and bury the changes that matter.
+  They are counted per side in the report's own notes rather than dropped
+  silently.
+- **`content_drift` is still not an input.** Ticket 02 left `upstream_sha256` on
+  the record for a future "diff the drifted upstream copy against the local one";
+  that needs a *fetched* second copy, so it stays a live step rather than a
+  feature.

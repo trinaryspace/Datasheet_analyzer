@@ -176,3 +176,79 @@ re-run L4 and check that:
 
 Record the measured output in `Reports/PHASE_7_REPORT.md`; that is the one
 observation this phase could not make for itself.
+
+---
+
+## Ticket 03 — `dsa diff-rev`
+
+The command itself needs no network: it reads two documents a part already
+holds. What needed network is *getting* a second revision, and this repo carries
+exactly one revision of every part it has. So the whole feature is implemented
+and tested, and the one thing it could not be shown on is a vendor's actual
+revision.
+
+### L7. Diff a real revision pair
+
+The gate proves the command against a **declared** pair —
+`tests/fixtures/synthetic/revision_pair.py` writes two PDFs whose differences
+are a fixed hand-written list, both go through the real extraction pipeline, and
+`tests/integration/test_phase7_revdiff.py` asserts the diff is exactly that list
+(12 declared edits, 12 found, nothing else). That is a stronger *expectation*
+than a real pair gives, because a real pair's expected delta would itself have
+to be read off two PDFs by hand. It is not, however, evidence that a **vendor's**
+revision moves things the way the fixture does.
+
+When a part in `registry/datasheets.yaml` revises upstream — `dsa
+check-revisions --all` reports `stale`, naming the new revision — do this:
+
+```bash
+# 1. keep the built revision where it is, and fetch the new one
+dsa fetch AFE7950 --accept-new-revision     # writes parts/AFE7950/documents/<new>.pdf
+
+# 2. build the new one beside the old, each under its own label
+dsa build parts/AFE7950/documents/afe7950.pdf --part AFE7950 --rev SBASA41F
+
+# (the already-built revision needs no label: --from also accepts its printed
+#  revision identifier or its document directory name)
+
+# 3. the review
+dsa diff-rev --part AFE7950 --from SBASA41E --to SBASA41F
+dsa diff-rev --part AFE7950 --from SBASA41E --to SBASA41F --json > revdiff.json
+```
+
+**What to check, and record in `Reports/PHASE_7_REPORT.md` under ticket 03:**
+
+- how many changes the diff reports, and how many of them carried a numeric
+  delta — the ratio is the honest measure of how much of a real revision this
+  tool can *score* rather than merely surface;
+- whether any change is one the vendor's own revision-history section does
+  **not** mention (that is the value of the feature: the deltas nobody lists);
+- whether any change in the vendor's revision-history section is **missing**
+  from the diff (that is the feature's real failure mode, and the number worth
+  publishing);
+- whether the alias lexicon aligned a genuinely renamed parameter, or reported
+  it as removed + added. If the latter, the fix is a YAML edit to
+  `registry/aliases.yaml`, not code — and it is the first real evidence of what
+  that lexicon needs to cover.
+
+**Expect noise from the page shifts.** A vendor who adds one page to a datasheet
+shifts every section after it, and each of those is a real `page-shifted` row.
+The gate's four-page fixture shows two; a 146-page revision may show dozens.
+Whether that wants collapsing ("§7–§39 all shifted by 1") is a judgement to make
+against real output rather than in advance — record the raw count first.
+
+### L8. Confirm a two-revision part's cards
+
+Design cards are part-level and join rows from **every** document of a part, so
+a part holding two revisions can produce a card quoting either one. Every row is
+cited to its own document directory, so it is visible rather than silent, but it
+is not *chosen*. After L7, run:
+
+```bash
+dsa card --part AFE7950 --card power --json
+```
+
+and check how many rows now come from the superseded revision. If the answer is
+"enough to mislead", the rule to add is that part-level derived artifacts read
+the newest labelled document — a deliberate change, recorded in
+`KNOWN_SHORTCOMINGS.md` rather than made as a side effect of this ticket.

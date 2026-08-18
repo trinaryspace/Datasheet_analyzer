@@ -359,6 +359,34 @@ as its worst member — which is named, because an unattributed warning cannot
 be acted on.
 _Avoid_: outdated, expired, cache, freshness score, version
 
+**Revision diff**:
+What changed between two revisions of one part — `dsa diff-rev`, written as
+`parts/<PART>/REVISION_DIFF.md`. It is a derived artifact like a design card or
+a comparison, built from records both revisions already publish, and it owns
+exactly one number: the delta between two printed values the numeric layer read
+into the same SI base. Everything else it finds — a retitled section, a renamed
+pin, a register reset that moved, a value that reads `See Figure 7` — is quoted
+verbatim under **review by hand** and is never scored, because a direction
+guessed at between two printed strings is the one thing a revision review must
+not be handed. Each artifact aligns on the identity that *survives* a revision:
+a spec on its alias-resolved symbol, a section on its printed number, a pin on
+its designator, a register on its parsed address. That is what makes a renamed
+parameter one changed row rather than a removal plus an addition — the
+distinction the whole artifact exists for. A diff of a revision against itself
+is empty and says so.
+_Avoid_: changelog, delta report, comparison, upgrade
+
+**Revision label**:
+The name a human filed one copy of a document under (`dsa build --rev F`). It is
+a name, not a reading: the document's `revision` is what the page printed, and
+the label is what the person who filed it called it. It is what lets two
+revisions of one part coexist legibly — the content hash already made their
+document directories distinct, and the label makes them *readable* and
+selectable (`--from` / `--to` accept either) — so it is recorded exactly as
+given and never derived from the document. A document filed without one is
+published under precisely the name it always was.
+_Avoid_: version, tag, alias, name
+
 **Staleness banner**:
 The one sentence that says what a corpus's staleness means, rendered in the
 four places it can still change a decision: the top of `INDEX.md`, `dsa

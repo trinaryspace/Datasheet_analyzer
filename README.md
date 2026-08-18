@@ -461,6 +461,54 @@ to its part (`parts/LM741/docs/<doc>/specs.json#rec_9`) — because `rec_9` exis
 in nearly every corpus, and a cross-part reference that did not say which one it
 meant would resolve to a confident, wrong record.
 
+### Review a datasheet update (`dsa diff-rev`)
+
+```bash
+# file the new revision beside the built one — each gets its own document directory
+dsa build afe7950_revF.pdf --part AFE7950 --rev SBASA41F
+
+dsa diff-rev --part AFE7950 --from SBASA41E --to SBASA41F   # writes REVISION_DIFF.md
+dsa diff-rev --part AFE7950 --json                          # a part holding exactly two needs no selectors
+dsa diff-rev --part AFE7950 --no-write                      # print without writing
+```
+
+A datasheet update becomes a review instead of a re-read. Both revisions live
+under one part — the document directory already keyed on the content hash, and
+`--rev` adds the label so a reader (and `--from` / `--to`) can tell them apart —
+and both stay independently queryable, every hit cited to the revision it came
+from.
+
+What it reports, and what aligns each of them:
+
+| Artifact | Reported as | Aligned by |
+|---|---|---|
+| specs | added / removed / changed, per printed column | the **alias-resolved symbol**, so a parameter the vendor renamed is one *changed* row, not a removal plus an addition |
+| sections | added / removed / **retitled** / **page-shifted** | the printed section number |
+| pins | added / removed / **renamed** / re-typed | the printed designator — a renamed pin is the same ball |
+| registers | added / removed / renamed / **reset-changed** | the parsed address (`0x1A04`, `0x1a04`, `6660` are one register) |
+| bit fields | added / removed / bits moved / reset moved | the field name inside a paired register |
+
+```
+| What                        | Change  | Before  | After   | Δ after − before   |
+|-----------------------------|---------|---------|---------|--------------------|
+| `TJ` **max** Junction temp. | changed | 105 °C  | 125 °C  | +20 °C *(derived)* |
+| `0x19` **reset** R25        | reset-changed | 0x0000 | 0x0001 | review by hand |
+```
+
+**One rule decides what is scored.** A change carries a numeric delta only where
+the numeric layer read *both* printed values into the same SI base. Everything
+else — a value that reads `See Figure 7`, a retitled section, a renamed pin, an
+added parameter, and a register reset that moved from `0x0223` to `0x0233` — is
+quoted verbatim under a **Review by hand** heading and given no score, no sign
+and no direction. The reset is excluded on purpose even though it would parse as
+an integer: it is a bit pattern, and a signed difference between two bit patterns
+is a number that means nothing and reads like it means something.
+
+A diff of a revision against itself is **empty and says so** — that is the
+determinism check, not a silence. `--json` gives every value in its provenance
+envelope with each reference named to its part *and* its document, because both
+revisions publish a `rec_1`.
+
 ### Find a plot
 
 ```bash

@@ -178,6 +178,15 @@ class SourceDocument(BaseModel):
     vendor: str = "ti"
     vendor_evidence: str = ""
     registered_at: datetime = Field(default_factory=_utcnow)
+    # --- side-by-side revisions (phase 7, ticket 03) ---------------------------
+    #: The label a human gave *this* copy of the document when it was built with
+    #: `dsa build --rev`, so two revisions of one part can live under one part
+    #: directory. It is a name, not a reading: `revision` above is what the
+    #: document itself printed, and this is what the person who filed it called
+    #: it. Empty for every document filed without one, which is why it is
+    #: additive — the published directory name only gains its `-rev<label>`
+    #: suffix when a label exists, so no existing corpus moves.
+    revision_label: str = ""
     # --- revision awareness (phase 7, ticket 02) -------------------------------
     # Additive and written only by `dsa check-revisions`, which is an explicit,
     # opt-in, network command. `dsa build` never fills these in — that is what
@@ -1096,6 +1105,91 @@ class PartComparison(BaseModel):
     def n_deltas(self) -> int:
         return sum(row.n_deltas for row in self.rows)
 
+
+class RevisionChange(BaseModel):
+    """One difference between two revisions of one part (phase 7, ticket 03).
+
+    A derived artifact row under ADR 0005: `before` and `after` are cells copied
+    verbatim out of the two revisions' own published records, each carrying the
+    record it came from and the page it was printed on, and `delta` is the one
+    number this artifact adds — a documented pure function of those two cells,
+    present **only** where both parsed into the same SI base.
+
+    A change that carries no `delta` is not a weaker change; it is one this tool
+    refuses to score. It is flagged `review-by-hand` and quoted verbatim, because
+    a direction guessed at between two printed strings ("Rev. B is better") is
+    the one thing a revision review must never be handed.
+
+    `kind` says which artifact moved (`spec` | `section` | `pin` | `register` |
+    `field`), `change` says how (`added` | `removed` | `changed` | `retitled` |
+    `page-shifted` | `renamed` | `reset-changed`), and `field` names the printed
+    column that moved, so `changed` is never a claim a reader has to open two
+    documents to interpret.
+    """
+
+    kind: str = ""
+    change: str = ""
+    key: str = ""
+    label: str = ""
+    field: str = ""
+    aligned_on: str = ""
+    before: DerivedValue | None = None
+    after: DerivedValue | None = None
+    delta: DerivedValue | None = None
+    #: The one-line reading, composed only from the two verbatim cells and the
+    #: delta where one exists ("TJ max 105 °C -> 125 °C (+20 °C)").
+    summary: str = ""
+    flags: list[str] = Field(default_factory=list)
+    note: str = ""
+
+
+class RevisionDiff(BaseModel):
+    """What changed between two revisions of one part — `REVISION_DIFF.md`.
+
+    Phase 7, ticket 03. Derived like a comparison and governed by the same ADR:
+    it owns no printed value, quotes both revisions' records with their pages,
+    and adds exactly one number per row where the numeric layer read both sides.
+
+    - `changes` may be empty, and an empty diff is the **correct** answer for two
+      identical revisions — `identical` says so explicitly rather than leaving a
+      reader to infer it from a missing table.
+    - `review_by_hand` is every change this tool refused to score, quoted
+      verbatim, one line each. It is the artifact's honesty half: a revision
+      review that silently dropped what it could not measure would be worse than
+      no review at all.
+    - `notes` carries the population sentences invariant 8 requires of a consumer
+      that compares, and `unparsed` the alignments it refused (a parameter whose
+      rows could not be paired without a guess), with their printed values.
+    """
+
+    schema_version: str = ""
+    card_version: str = ""
+    part_number: str = ""
+    #: How the caller named each side, and what each one actually is on disk.
+    before_label: str = ""
+    before_doc: str = ""
+    before_revision: str = ""
+    after_label: str = ""
+    after_doc: str = ""
+    after_revision: str = ""
+    changes: list[RevisionChange] = Field(default_factory=list)
+    notes: list[str] = Field(default_factory=list)
+    review_by_hand: list[str] = Field(default_factory=list)
+    unparsed: list[str] = Field(default_factory=list)
+    identical: bool = False
+    empty_reason: str = ""
+
+    @property
+    def n_changes(self) -> int:
+        return len(self.changes)
+
+    @property
+    def n_deltas(self) -> int:
+        return sum(1 for change in self.changes if change.delta is not None)
+
+    def of_kind(self, kind: str) -> list[RevisionChange]:
+        """Every change of one artifact kind, in the order they were derived."""
+        return [change for change in self.changes if change.kind == kind]
 
 class SearchSection(BaseModel):
     """One indexed section file: its term frequencies and its token length.

@@ -229,6 +229,49 @@ def _extract_document(
     return raw, cached
 
 
+class BuildRefused(RuntimeError):
+    """A build the acquire stage refused, with the reason in its message."""
+
+
+def _register_revision(
+    pdf_path: Path,
+    *,
+    part_number: str,
+    part_dir: Path,
+    inventory: list[SourceDocument],
+    vendor: str,
+    revision_label: str,
+) -> list[SourceDocument]:
+    """File one PDF as a named revision of a part that already holds documents.
+
+    The one place `--rev` widens acquire, and it is deliberately narrow: a PDF
+    whose bytes are already registered is *not* re-labelled. The label is part of
+    the published document directory name, so re-labelling would rename a
+    directory every existing citation points at and leave the old one orphaned on
+    disk — a corpus with two copies of one revision, one of them unreachable. A
+    contradicting label is therefore refused with the reason, and a matching one
+    is a no-op, which keeps `dsa build --rev` idempotent.
+    """
+    source = register_source(
+        pdf_path, part_number=part_number, doc_type="datasheet",
+        vendor=vendor or None, revision_label=revision_label,
+    )
+    existing = next(
+        (s for s in inventory if s.content_hash == source.content_hash), None
+    )
+    if existing is None:
+        return append_to_inventory([source], part_dir)
+    if (existing.revision_label or "") == source.revision_label:
+        return inventory
+    raise BuildRefused(
+        f"{Path(pdf_path).name} is already registered for {part_number} under "
+        f"revision label {existing.revision_label or '(none)'!r}; it cannot be "
+        f"re-filed as {source.revision_label!r} because the label names the "
+        f"published document directory and every citation in it. Build the other "
+        f"revision's own PDF with --rev instead"
+    )
+
+
 def build_part(
     pdf_path: Path,
     *,
@@ -237,6 +280,7 @@ def build_part(
     vendor: str = "",
     use_cache: bool = True,
     use_llm: bool = True,
+    revision_label: str = "",
     on_progress: Callable[[str], None] | None = None,
 ) -> BuildResult:
     """Build one part corpus end to end.
@@ -244,10 +288,20 @@ def build_part(
     ``vendor`` = explicit override of detection (recorded as cli-override
     evidence); "" = detection/pinned value.
 
+    ``revision_label`` (`dsa build --rev F`, phase 7 ticket 03) files this PDF as
+    a *named revision* of the part: it is registered into the inventory even when
+    the part already holds documents, and the publisher gives it its own
+    `-rev<label>` document directory, so two revisions coexist under one part and
+    both stay independently queryable. Without a label the behaviour is exactly
+    what it always was — the inventory is bootstrapped only when it is empty.
+
     ``on_progress`` is an additive hook: when supplied it is called at each
     stage boundary (``extracting``, ``structuring``, ``enriching``,
     ``publishing``) before that stage's work starts. Callers that omit it get
     the exact behavior they always had.
+
+    Raises ``BuildRefused`` when a revision label contradicts one already
+    recorded for the same bytes.
     """
     pdf_path = Path(pdf_path)
     part_dir = settings.parts_dir / part_number
@@ -261,9 +315,14 @@ def build_part(
     if not inventory:
         source = register_source(
             pdf_path, part_number=part_number, doc_type="datasheet",
-            vendor=vendor or None,
+            vendor=vendor or None, revision_label=revision_label,
         )
         inventory = append_to_inventory([source], part_dir)
+    elif revision_label:
+        inventory = _register_revision(
+            pdf_path, part_number=part_number, part_dir=part_dir,
+            inventory=inventory, vendor=vendor, revision_label=revision_label,
+        )
     if vendor and pin_vendor(inventory, vendor):
         save_inventory(inventory, part_dir)
 

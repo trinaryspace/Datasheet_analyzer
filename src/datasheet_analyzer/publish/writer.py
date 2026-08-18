@@ -3,9 +3,11 @@
 Layout per part:
     parts/<PART>/
       INDEX.md
+      REVISION_DIFF.md        (written by `dsa diff-rev`, not by a build)
       sources.json            (written by acquire)
       manifest.json
-      docs/<doc_type>-<hash8>/
+      docs/<doc_type>-<hash8>[-rev<label>]/   (the suffix only for a document
+                              filed with `dsa build --rev`)
         sections/*.md
         tables/*.csv
         specs.json / plots.json / pins.json / registers.json  (when there is one)
@@ -16,6 +18,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from pathlib import Path
 
 from datasheet_analyzer.cards import CardDoc, build_cards, render_card
@@ -46,6 +49,7 @@ from datasheet_analyzer.models import (
 )
 from datasheet_analyzer.protocol import build_part_agent_markdown, write_agent_doc
 from datasheet_analyzer.publish.search_index import build_search_index, write_search_index
+from datasheet_analyzer.revdiff.render import REVISION_DIFF_FILENAME
 from datasheet_analyzer.structure.confidence import mix as confidence_mix
 from datasheet_analyzer.structure.corpus import SectionPlan
 from datasheet_analyzer.tokens import count_tokens
@@ -59,14 +63,41 @@ log = logging.getLogger(__name__)
 CARDS_DIRNAME = "cards"
 
 
+#: What a revision label contributes to a document directory name, once
+#: slugged: `datasheet-a1b2c3d4-revf`. Phase 7, ticket 03.
+REV_DIR_MARKER = "-rev"
+
+
+def revision_slug(label: str) -> str:
+    """A revision label as a directory-name fragment; `""` when it has none.
+
+    Lowercased and reduced to `[a-z0-9-]`, because this becomes a path segment
+    on three filesystems and a segment of every `source` reference the document's
+    records carry. A label of only punctuation slugs to nothing and is therefore
+    *not* a label — the caller registers the document unlabelled rather than
+    under a directory named for a stray character.
+    """
+    return re.sub(r"[^a-z0-9]+", "-", label.strip().lower()).strip("-")
+
+
 def doc_dir_name_for_source(source: SourceDocument) -> str:
     """Corpus directory name of one source document (`datasheet-a1b2c3d4`).
 
     Takes the `SourceDocument` rather than the `RawDocument` so a reader that
     only has a manifest — the batch skip gate, say — can name the same
     directory the publisher wrote, without re-extracting.
+
+    A document filed under a revision label (`dsa build --rev F`, phase 7 ticket
+    03) gains a `-revf` suffix. The content hash already guarantees two
+    revisions cannot collide — that is what makes them coexist under one part —
+    so the suffix buys **legibility**, not uniqueness: a reader listing `docs/`
+    can tell which directory is which revision without opening a file, and so
+    can every citation those records carry. It is strictly additive: a document
+    with no label is named exactly as it always was, so no built corpus moves.
     """
-    return f"{source.doc_type.value}-{source.content_hash[:8]}"
+    slug = revision_slug(source.revision_label)
+    suffix = f"{REV_DIR_MARKER}{slug}" if slug else ""
+    return f"{source.doc_type.value}-{source.content_hash[:8]}{suffix}"
 
 
 def doc_dir_name(raw: RawDocument) -> str:
@@ -183,6 +214,26 @@ def write_cards(part_dir: Path, cards: list[DesignCard]) -> list[Path]:
         if path.is_file() and path not in written:
             path.unlink(missing_ok=True)
     return written
+
+
+def write_revision_diff(part_dir: Path, markdown: str) -> Path:
+    """Write `REVISION_DIFF.md` beside the part's `INDEX.md`; return the path.
+
+    Takes the rendered markdown rather than the diff, so the publish stage never
+    learns how a revision diff is laid out: `revdiff.render` owns that, and what
+    `dsa diff-rev` prints and what lands on disk are then the same string by
+    construction.
+
+    Unlike every other file here it is written by a **command**, not by a build:
+    it is a report of one comparison a person asked for, not a corpus artifact a
+    rebuild must keep current — which is why no `*_current` gate reads it and why
+    a stale one is simply overwritten by the next run.
+    """
+    part_dir = Path(part_dir)
+    part_dir.mkdir(parents=True, exist_ok=True)
+    path = part_dir / REVISION_DIFF_FILENAME
+    path.write_text(markdown, encoding="utf-8")
+    return path
 
 
 def registers_current(doc_dir: Path) -> bool:

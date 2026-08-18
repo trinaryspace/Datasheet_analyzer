@@ -36,6 +36,12 @@ from datasheet_analyzer.retrieve.retriever import (
     Retriever,
     gap_axis,
 )
+from datasheet_analyzer.retrieve.revdiff import (
+    RevisionDoc,
+    RevisionPair,
+    revision_documents,
+    select_revision,
+)
 from datasheet_analyzer.retrieve.search import ScoredSection, score_sections
 
 # Imported after `retriever`: `pack` composes `Retriever`, which reaches back
@@ -85,6 +91,8 @@ __all__ = [
     "ProjectRetriever",
     "RegisterHit",
     "Retriever",
+    "RevisionDoc",
+    "RevisionPair",
     "ScoredSection",
     "SearchHit",
     "SectionHit",
@@ -95,6 +103,8 @@ __all__ = [
     "clear_index_cache",
     "discover_parts",
     "gap_axis",
+    "revision_documents",
     "score_sections",
+    "select_revision",
     "validate_pack",
 ]

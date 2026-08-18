@@ -245,7 +245,7 @@ def _cmd_check_revisions(args: argparse.Namespace) -> int:
 
 def _cmd_build(args: argparse.Namespace) -> int:
     from datasheet_analyzer.extract import BackendUnavailableError
-    from datasheet_analyzer.pipeline import build_part
+    from datasheet_analyzer.pipeline import BuildRefused, build_part
 
     if not _known_vendor_or_error(args.vendor or ""):
         return 2
@@ -258,8 +258,12 @@ def _cmd_build(args: argparse.Namespace) -> int:
             vendor=args.vendor,
             use_cache=not args.no_cache,
             use_llm=not args.no_llm,
+            revision_label=getattr(args, "rev", "") or "",
         )
     except BackendUnavailableError as exc:
+        print(f"build error: {exc}", file=sys.stderr)
+        return 2
+    except BuildRefused as exc:
         print(f"build error: {exc}", file=sys.stderr)
         return 2
     stats = result.manifest.stats
@@ -761,6 +765,57 @@ def _cmd_compare(args: argparse.Namespace) -> int:
     return 1 if not comparison.rows else 0
 
 
+def _cmd_diff_rev(args: argparse.Namespace) -> int:
+    """Print and write one revision diff — the corpus's own report, not a re-layout.
+
+    The diff renders itself (`revdiff.render_revision_diff`), for the same reason
+    a design card, an answer pack and a comparison do. This command chooses the
+    two sides, the format and the destination, and owns the exit codes.
+
+    Exit codes: 0 the diff ran (an empty diff is a valid, successful answer — it
+    is the determinism check the ticket asks for), 2 the two sides could not be
+    chosen.
+    """
+    import json
+
+    from datasheet_analyzer.publish import write_revision_diff
+    from datasheet_analyzer.retrieve.revdiff import RevisionPair
+
+    settings = get_settings()
+    part_dir = settings.parts_dir / args.part
+    if not (part_dir / "manifest.json").exists():
+        print(
+            f"diff-rev error: no corpus for {args.part} under {settings.parts_dir}"
+            f" — build both revisions first: `dsa build <pdf> --part {args.part}"
+            f" --rev <revision>`",
+            file=sys.stderr,
+        )
+        return 2
+
+    pair, error = RevisionPair.for_part(
+        part_dir, before=args.from_rev or "", after=args.to_rev or ""
+    )
+    if pair is None:
+        print(f"diff-rev error: {error}", file=sys.stderr)
+        return 2
+
+    diff = pair.diff()
+    from datasheet_analyzer.revdiff import render_revision_diff
+
+    markdown = render_revision_diff(diff)
+    written = None
+    if not args.no_write:
+        written = write_revision_diff(part_dir, markdown)
+
+    if args.json:
+        print(json.dumps(diff.model_dump(mode="json"), ensure_ascii=False, indent=2))
+    else:
+        print(markdown)
+    if written is not None:
+        print(f"written: {written}", file=sys.stderr)
+    return 0
+
+
 def _cmd_plots(args: argparse.Namespace) -> int:
     import json
 
@@ -1186,6 +1241,15 @@ def main(argv: list[str] | None = None) -> int:
         default="",
         help="explicit vendor override, e.g. adi (default: detected + pinned)",
     )
+    p_build.add_argument(
+        "--rev",
+        default="",
+        help=(
+            "file this PDF as a named revision of the part (e.g. --rev F), so a "
+            "second revision coexists under its own document directory and "
+            "`dsa diff-rev` can compare them"
+        ),
+    )
     p_build.add_argument("--no-cache", action="store_true")
     p_build.add_argument("--no-llm", action="store_true")
     p_build.set_defaults(func=_cmd_build)
@@ -1351,6 +1415,32 @@ def main(argv: list[str] | None = None) -> int:
         help="emit the comparison as JSON (every value in its provenance envelope)",
     )
     p_compare.set_defaults(func=_cmd_compare)
+
+    p_diff = sub.add_parser(
+        "diff-rev",
+        help="diff two revisions of one part: specs, sections, pins, registers",
+    )
+    p_diff.add_argument("--part", required=True, help="part number, e.g. AFE7950")
+    # `--from` is a Python keyword, so argparse stores it under an explicit dest.
+    p_diff.add_argument(
+        "--from", dest="from_rev", default="",
+        help="the earlier revision: its --rev label, printed revision, or doc dir",
+    )
+    p_diff.add_argument(
+        "--to", dest="to_rev", default="",
+        help="the later revision (omit both to diff a part holding exactly two)",
+    )
+    p_diff.add_argument(
+        "--json",
+        action="store_true",
+        help="emit the diff as JSON (every value in its provenance envelope)",
+    )
+    p_diff.add_argument(
+        "--no-write",
+        action="store_true",
+        help="print the report without writing parts/<PART>/REVISION_DIFF.md",
+    )
+    p_diff.set_defaults(func=_cmd_diff_rev)
 
     p_plots = sub.add_parser("plots", help="deterministic plot lookup")
     _add_scope(p_plots)

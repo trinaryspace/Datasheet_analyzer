@@ -76,6 +76,12 @@ CARDS_SCHEMA_VERSION = "1"
 # never written to disk, so there is no stale file for a version to invalidate.
 # It exists so a machine consumer can tell one payload shape from the next.
 COMPARE_SCHEMA_VERSION = "1"
+# "1": phase 7, ticket 03 — the shape `dsa diff-rev` returns and writes as
+# `REVISION_DIFF.md`. Like a comparison it is derived live from records the two
+# revisions already publish, so it is no part of a publish cache key either; the
+# written markdown is a report of one run, not a corpus artifact a build must
+# keep current.
+REVDIFF_SCHEMA_VERSION = "1"
 
 # The version of the *derivation rules* (ADR 0005 / invariant 8). Derived
 # artifacts — design cards and anything else computed from records by a named

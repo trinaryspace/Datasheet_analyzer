@@ -49,12 +49,19 @@ def register_source(
     doc_type: DocType | None = None,
     nda: bool = False,
     vendor: str | None = None,
+    revision_label: str = "",
 ) -> SourceDocument:
     """Register one input document (identity = sha256 of its bytes).
 
     ``vendor`` None = evidence-pinned detection at acquire time; given =
     explicit override, recorded in ``vendor_evidence`` (never a silent
     guess on the routing path).
+
+    ``revision_label`` is the name a human filed *this copy* under (`dsa build
+    --rev F`, phase 7 ticket 03). It is recorded as given and never derived from
+    the document: `revision` is what the page printed, and conflating a filing
+    label with a reading of the page is how a diff ends up naming the wrong two
+    revisions.
     """
     src = make_source(
         Path(path),
@@ -62,15 +69,17 @@ def register_source(
         doc_type=doc_type or detect_doc_type(Path(path)),
         nda=nda,
     )
+    src.revision_label = revision_label.strip()
     if vendor is not None:
         src.vendor = vendor
         src.vendor_evidence = override_evidence(vendor)
     else:
         src.vendor, src.vendor_evidence = detect_vendor(Path(path))
     log.info(
-        "registered %s: type=%s rev=%s pages=%d hash=%s… vendor=%s (%s)",
+        "registered %s: type=%s rev=%s label=%s pages=%d hash=%s… vendor=%s (%s)",
         Path(path).name, src.doc_type.value, src.revision or "?",
-        src.page_count, src.content_hash[:10], src.vendor, src.vendor_evidence,
+        src.revision_label or "-", src.page_count, src.content_hash[:10],
+        src.vendor, src.vendor_evidence,
     )
     return src
 
