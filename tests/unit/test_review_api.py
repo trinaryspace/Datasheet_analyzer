@@ -344,15 +344,24 @@ def test_blank_inference_evidence_is_backfilled(client, tmp_path, monkeypatch):
 
 
 def test_results_stay_sorted_when_completion_order_is_reversed(client, tmp_path, monkeypatch):
-    delays = {"a.pdf": 0.20, "b.pdf": 0.12, "c.pdf": 0.05, "d.pdf": 0.0}
+    # Completion order is forced to the exact reverse of submission order by a
+    # chain of events rather than by sleeps: d finishes first and releases c, c
+    # releases b, b releases a. A loaded machine cannot reorder that, where
+    # sleep-derived ordering it can. The chain needs all four calls in flight at
+    # once, which `analyze_workers=4` over four files guarantees.
+    order = ["d.pdf", "c.pdf", "b.pdf", "a.pdf"]
+    released = {name: threading.Event() for name in order}
     finished: list[str] = []
     lock = threading.Lock()
 
-    def slow(pdf_path, *, first_page_text="", known_parts=None, client=None):
+    def chained(pdf_path, *, first_page_text="", known_parts=None, client=None):
         name = Path(pdf_path).name
-        time.sleep(delays[name])
+        position = order.index(name)
+        if position:
+            released[order[position - 1]].wait(timeout=10)
         with lock:
             finished.append(name)
+        released[name].set()
         return DocProposal(
             pdf_path=str(pdf_path),
             part_number=name.split(".")[0].upper(),
@@ -360,16 +369,16 @@ def test_results_stay_sorted_when_completion_order_is_reversed(client, tmp_path,
             evidence="stub",
         )
 
-    stub_infer(monkeypatch, slow)
+    stub_infer(monkeypatch, chained)
     scan_dir = tmp_path / "inbox"
-    for name in delays:
+    for name in order:
         make_pdf(scan_dir / name, f"{name} contents")
 
     resp = client.post("/api/analyze/scan", json={"directory": str(scan_dir)})
     assert resp.status_code == 200, resp.text
     out = ScanOut.model_validate(resp.json())
 
-    assert finished[0] == "d.pdf", "the last file really did finish first"
+    assert finished == order, "the files really did finish in reverse order"
     assert [p.filename for p in out.proposals] == ["a.pdf", "b.pdf", "c.pdf", "d.pdf"]
 
 

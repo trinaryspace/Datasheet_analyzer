@@ -37,3 +37,14 @@ __pycache__/
 # Built frontend assets (`npm run build` in web/), served by `dsa serve`.
 /web/dist/
 /web/node_modules/
+
+# Claude Code worktrees. Each is a checkout of this same repository, so
+# committing one would nest the tree inside itself.
+/.claude/worktrees/
+
+# Quarantined records left by pre-isolation test runs: 206 library documents
+# and the sessions alongside them, all pointing at `Temp\pytest-of-afpim\...`
+# paths that no longer exist. Moved rather than deleted, in case a real record
+# was swept up with them.
+/.scratch/library-pytest-junk/
+/.scratch/sessions-test-junk/
