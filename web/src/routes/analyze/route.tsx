@@ -10,7 +10,7 @@
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 
-import { getProjects } from '../../api/client';
+import { getProjects, patchProject } from '../../api/client';
 import type { ScanOut } from '../../api/types';
 import { useWorkingSet } from '../../shell/workingSet';
 import { nothingToBuild } from './proposals';
@@ -94,9 +94,23 @@ export default function AnalyzeScreen() {
 
       {step.name === 'pick' ? (
         <PickStep
-          key={project}
+          // `PickStep` seeds its input from `initialDirectory` on mount, and
+          // the project's recorded directory arrives from a later fetch — so
+          // the key includes it, or the prefill would always lose the race.
+          key={`${project}:${projectDirectory}`}
           initialDirectory={step.directory || projectDirectory}
-          onScanned={(scan) => setStep(afterScan(scan))}
+          onScanned={(scan) => {
+            // Scanning a directory while a project is active is what tells
+            // the project where it lives. Recorded server-side, so reopening
+            // the shelf survives this browser — and fire-and-forget, because
+            // a failed bookkeeping write must never block the scan result.
+            if (project && scan.directory && scan.directory !== projectDirectory) {
+              void patchProject(project, { directory: scan.directory })
+                .then(() => setProjectDirectory(scan.directory))
+                .catch(() => undefined);
+            }
+            setStep(afterScan(scan));
+          }}
         />
       ) : null}
 
