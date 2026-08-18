@@ -417,7 +417,11 @@
     <div class="observed">
       <b>Observed</b>
       <code>1663 passed, 1 skipped</code> in 202 s at the Phase 6 baseline, ruff clean.
-      After Phase 7 ticket 01 the suite reads <code>1708 passed</code>.
+      Phase 7 raises it ticket by ticket — <code>1708</code> after ticket 01,
+      <code>1760</code> after 02, <code>1810</code> after 03,
+      <code>1875 passed, 1 skipped</code> after ticket 04. Expect a higher number
+      than whatever is printed here; check <code>git log --oneline</code> for where
+      the phase actually stopped.
     </div>
     <p><code>dsa status</code> prints <code>llm: NO KEY (deterministic mode)</code>.
     That is the <em>correct</em> mode for this test — every number below is reproducible.</p>
@@ -614,21 +618,48 @@
 <article class="stage">
   <div class="rail"><span class="num">07</span>Phase 7/8</div>
   <div class="body">
-    <h2>Capabilities still landing</h2>
-    <p class="dur">check status before running</p>
-    <p>At the time of writing, <strong>Phase 7 ticket 01 had landed</strong> (document registry
-    and <code>dsa fetch</code>, 45 new tests); tickets 02–08 and all of Phase 8 were still
-    running. Check <code>git log --oneline</code> and <code>Reports/PHASE_7_REPORT.md</code>
-    first — a command whose ticket has not landed simply will not exist.</p>
-<pre><code><span class="prompt">$</span> dsa fetch AFE7950                      <span class="cmt"># expect a hash mismatch — see F4</span>
-<span class="prompt">$</span> dsa fetch AFE7950 --accept-new-revision
-<span class="prompt">$</span> dsa check-revisions --all
-<span class="prompt">$</span> dsa audit --all</code></pre>
+    <h2>Revision awareness — does this corpus still match upstream?</h2>
+    <p class="dur">20 min · verified live 2026-08-18</p>
+    <p><strong>Landed and verified:</strong> tickets 01–04 — document registry and
+    <code>dsa fetch</code>, revision awareness and staleness, <code>dsa diff-rev</code>,
+    errata cross-linking. <strong>Still running:</strong> tickets 05–08 and all of Phase 8.
+    Run <code>git log --oneline</code> first — a command whose ticket has not landed
+    simply will not exist.</p>
+    <p>Every line below was <em>observed</em> against live TI, not copied from
+    <code>--help</code>.</p>
+<pre><code><span class="prompt">$</span> dsa check-revisions --all
+STALE     LMX1204 (datasheet): upstream reports SNAS800B; this corpus is built from SYSREFOUT0
+current   AFE7950 (datasheet): upstream reports SBASA41E, unchanged — but the bytes
+          differ: the document was regenerated, not revised
+unchecked AD9081 (datasheet): no registry URL for this datasheet — nothing to check
+          against. Record one with `dsa fetch --url &lt;URL&gt; --part AD9081 --doc-type datasheet`
+3 checked, 1 stale, 2 content-drift, 4 could not be checked      <span class="cmt"># exit 1</span></code></pre>
+    <p>Three things to look at, because they are the point of the phase:</p>
+    <ol>
+      <li><strong>Content drift is worded “regenerated, not revised.”</strong> TI re-stamps a
+      dated package-materials page daily, so the sha256 churns on an unchanged document.
+      A hash difference alone must never read as a new revision.</li>
+      <li><strong><code>unchecked</code> is loud and prints the command that fixes it</strong> —
+      it is not folded into a pass count.</li>
+      <li><strong>Exit is 1 when anything is stale</strong>, 0 when clean — usable as a gate.</li>
+    </ol>
     <div class="warn">
-      <b>Expect the first fetch of every TI part to report a hash mismatch</b>
-      That is correct, not a bug. TI regenerates a datasheet’s “PACKAGE MATERIALS
-      INFORMATION” page with the current date on every download, so the bytes change daily
-      while the revision identifier does not. The warning is written to say so explicitly.
+      <b>Corpora built before <code>f32d9a9</code> must be rebuilt</b>
+      That <code>STALE LMX1204</code> line is not an outdated corpus. <code>SYSREFOUT0</code> is a
+      real pin name in the part, and the old doc-ID regex grabbed the first token that looked
+      like a TI literature number anywhere in the text. The wrong value was baked into
+      <code>sources.json</code> at build time, so the part reports STALE forever until rebuilt.
+      Rebuild and re-check: <code>current LMX1204 … unchanged</code>, exit 0,
+      <code>content_drift false</code>, and an upstream sha256 matching the local build byte
+      for byte. Verified end to end.
+    </div>
+    <div class="warn">
+      <b>Errata cross-linking is the one feature you cannot fully exercise today</b>
+      No real vendor errata PDF exists in this repo, so its gate used a real datasheet with
+      synthetic errata prose. Two caveats the implementer recorded honestly: the errata banner
+      is inserted <em>into the section body</em>, so an answer pack’s “Supporting excerpt” can
+      quote errata prose under the datasheet’s page citation and displace the verbatim text it
+      meant to support; and an erratum’s page is a <em>range</em>, not a point.
     </div>
   </div>
 </article>
@@ -647,7 +678,8 @@
           <tr><td class="mono">F12</td><td><span class="chip c-high">HIGH</span></td><td>Multi-document part scores 2/12 with the wrong <code>--pdf</code></td><td>Real defect — resolve the PDF per record</td></tr>
           <tr><td class="mono">F2</td><td><span class="chip c-high">HIGH</span></td><td>TI build dies with a raw traceback on a 404</td><td>Real defect — breaches invariant 7</td></tr>
           <tr><td class="mono">F4</td><td><span class="chip c-high">HIGH</span></td><td>TI sha256 changes daily</td><td>Upstream behaviour — must not read as a new revision</td></tr>
-          <tr><td class="mono">F8</td><td><span class="chip c-high">HIGH</span></td><td><code>sniff_revision</code> → <code>SYSREFOUT0</code> for LMX1204</td><td>Real defect — regex too loose</td></tr>
+          <tr><td class="mono">F8</td><td><span class="chip c-high">HIGH</span></td><td><code>sniff_revision</code> → <code>SYSREFOUT0</code> for LMX1204</td><td><strong>FIXED</strong> in <code>f32d9a9</code> — verified live</td></tr>
+          <tr><td class="mono">F13</td><td><span class="chip c-high">MED-HIGH</span></td><td><code>check-revisions --all</code> on a missing parts dir prints <code>0 checked, 0 stale…</code> and exits 0</td><td>Real defect — a typo’d <code>DSA_PARTS_DIR</code> reads as “fleet current”</td></tr>
           <tr><td class="mono">F3</td><td><span class="chip c-med">MED</span></td><td><code>dsa batch</code> has no <code>--vendor</code> override</td><td>Gap — blocks offline batch of TI parts</td></tr>
           <tr><td class="mono">F6</td><td><span class="chip c-med">MED</span></td><td>LM741 pin table not extracted, no reason recorded</td><td>Real defect — and the message points nowhere</td></tr>
           <tr><td class="mono">F10</td><td><span class="chip c-med">MED</span></td><td>Two revision parsers disagree</td><td>Duplication — should share one</td></tr>
@@ -657,9 +689,14 @@
         </tbody>
       </table>
     </div>
-    <p>F4 and F8 are already written into
+    <p>F4 and F8 were written into
     <code>.scratch/reach-and-trust/issues/02-revision-awareness.md</code> as blocking criteria
-    with the measured evidence, so the Phase 7 workflow fixes them rather than you.</p>
+    with the measured evidence. <strong>Both are now fixed and verified against live TI</strong> —
+    see the revision-awareness stage above. F13 was found on 2026-08-18 while verifying that
+    fix and is not yet ticketed; the remedy is for <code>check-revisions</code> to exit non-zero,
+    or print <code>no parts found under &lt;resolved path&gt;</code>, when the scan set is empty.</p>
+    <p>Before trusting any clean <code>check-revisions</code> result, confirm your parts
+    directory resolves — <code>dsa status</code> prints it.</p>
   </div>
 </article>
 
