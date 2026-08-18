@@ -38,6 +38,7 @@ from datasheet_analyzer.retrieve.results import (
     SpecHit,
 )
 from datasheet_analyzer.retrieve.retriever import Retriever, gap_axis
+from datasheet_analyzer.staleness import CorpusStaleness, project_staleness
 
 if TYPE_CHECKING:  # pragma: no cover - import cycle guard, typing only
     from datasheet_analyzer.retrieve.pack import AnswerPack
@@ -68,6 +69,16 @@ class ProjectRetriever:
     def missing_parts(self) -> tuple[str, ...]:
         """Members with no corpus on disk — reported, never silently skipped."""
         return tuple(m.part for m in self.members if m.index.manifest is None)
+
+    def staleness(self) -> CorpusStaleness:
+        """The design's freshness: its least fresh member, named (ticket 02).
+
+        A project answer draws on several corpora and is only as trustworthy as
+        the worst of them, so the reading returned here *is* that member's —
+        part number included. "Something in this design is stale" without a
+        part number is a warning a designer cannot act on.
+        """
+        return project_staleness([m.staleness() for m in self.members])
 
     def specs(self, *, symbol: str = "", name: str = "", section: str = "") -> list[SpecHit]:
         """Every member's spec ladder, run independently, in member order.

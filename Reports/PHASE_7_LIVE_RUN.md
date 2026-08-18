@@ -103,3 +103,76 @@ If a genuinely recorded vendor PDF response is wanted as a committed fixture,
 record it during L1/L2 by copying the file `CachingBinaryFetcher` wrote under
 `.cache/http-bin/` into `tests/fixtures/recorded_http_bin/`. Note the size cost
 before doing so (a datasheet is megabytes; the current fixtures are kilobytes).
+
+---
+
+## Ticket 02 — revision awareness + staleness surfacing
+
+The whole ticket is *about* asking upstream a question, and this run had no
+network. Every mechanism is built and tested against synthetic PDFs served
+through the existing `ReplayBinaryFetcher` seam under `example.invalid` URLs.
+No vendor response was fabricated, no upstream revision was invented, and no
+`revision_checked_at` was back-filled — which is why every corpus in this repo
+currently reads `unknown`, and says so on all four surfaces.
+
+### L4. Run the first real freshness check
+
+```bash
+dsa check-revisions --all --json > .scratch/tmp/first-check.json
+```
+
+Only the four parts whose registry entries carry a URL can be checked at all
+(AFE7950, AFE7953, LM741, LMX1204 — the derived TI literature URLs from L1);
+AD9081, HMC520A, QPA1003P and the LMX1204 register map will report
+`status: no-url` and leave their recorded state untouched, which is correct.
+Note that this command downloads through an **uncached** fetcher on purpose, so
+it does not answer a freshness question out of `.cache/http-bin`.
+
+**Expected from the owner's own 2026-08-18 measurement**, and worth confirming
+because it is the assumption the design rests on:
+
+| Part | Expected outcome | Why |
+|---|---|---|
+| LM741 | `current`, `content_drift: true` | same revision SNOSC25D, different sha256 |
+| AFE7950 | `current`, `content_drift: true` | same revision SBASA41E, different sha256 |
+| AFE7953 | `current`, `content_drift: true` | same revision, different sha256 |
+| LMX1204 | `current`, `content_drift: false` | same revision SNAS800B, identical sha256 |
+
+If any of the four instead reports `stale`, that is a real finding about the
+part, not a bug: read the named upstream revision, then
+`dsa fetch <PART> --accept-new-revision` and rebuild.
+
+**Record afterwards:** the four `INDEX.md` banners and `dsa status` will change
+from "Revision not checked" to "Revision current: … (checked <date>)". Commit
+the updated `parts/*/sources.json` and `parts/*/INDEX.md` if those corpora are
+tracked, and paste the `--json` output into `Reports/PHASE_7_REPORT.md` under
+ticket 02 so the first live reading is on the record.
+
+### L5. Confirm the derived-URL flag flips only on a fetch
+
+`dsa check-revisions` deliberately does **not** rewrite
+`registry/datasheets.yaml`: asking what is upstream is a different act from
+putting bytes on disk, and `url_verified` records the latter. After L4 the four
+TI entries will therefore still read `url_verified: false` even though the URL
+demonstrably resolved. Flipping it is L1's `dsa fetch --accept-new-revision`.
+
+If that split turns out to be unhelpful in practice, the change is a few lines
+in `acquire/revisions.py` — but make it deliberately, and record it, because a
+read-only command that writes a checked-in file is a surprise.
+
+### L6. Confirm the staleness path end to end on a real new revision
+
+Nothing in this repo has a *genuinely* superseded document, so the `stale`
+path is proven only against a synthetic fixture whose revision moved
+(`tests/unit/test_revisions.py::TestCheckRevisions::test_a_stale_corpus_is_detected_and_recorded`).
+The first time a real TI part revises upstream (SBASA41E → SBASA41F, say),
+re-run L4 and check that:
+
+- `dsa status` shows `revision: stale` and names both revisions;
+- the `INDEX.md` banner block was refreshed in place (one banner, not two);
+- `dsa ask --part AFE7950 "…"` carries the warning in its footer **at every
+  budget**, including one far below the pack's citation floor;
+- the MCP `staleness` envelope field reads `stale` on every scoped tool.
+
+Record the measured output in `Reports/PHASE_7_REPORT.md`; that is the one
+observation this phase could not make for itself.

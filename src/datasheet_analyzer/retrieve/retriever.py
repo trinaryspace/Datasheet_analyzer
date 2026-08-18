@@ -74,6 +74,7 @@ from datasheet_analyzer.retrieve.results import (
     record_confidence,
 )
 from datasheet_analyzer.retrieve.search import ScoredSection, score_sections, snippet
+from datasheet_analyzer.staleness import CorpusStaleness
 from datasheet_analyzer.structure.aliases import (
     FUZZY_MIN_TOKENS,
     FUZZY_THRESHOLD,
@@ -179,6 +180,16 @@ class Retriever:
     @property
     def lexicon(self) -> AliasLexicon:
         return load_lexicon()
+
+    def staleness(self) -> CorpusStaleness:
+        """Is this corpus still the current revision? `unknown` until checked.
+
+        A lookup method rather than a field so every caller reads the same
+        record through the same rule — and a *method*, not a network call:
+        nothing on the retrieval path may reach upstream. The reading comes
+        from `sources.json`, which `dsa check-revisions` wrote.
+        """
+        return self.index.staleness
 
     def specs(
         self,

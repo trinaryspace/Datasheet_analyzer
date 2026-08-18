@@ -115,7 +115,11 @@ def build_server(settings: Settings | None = None) -> MCPServer:
             "`find_plots` to narrow. Every value carries a page citation and "
             "a confidence grade; open the printed page when a grade is `low`. "
             f"Every response is capped at {cap} tokens (DSA_MCP_MAX_TOKENS) "
-            "and says so when it truncated."
+            "and says so when it truncated. Every response also carries "
+            "`staleness`: `current`, `stale`, or `unknown` — `unknown` means "
+            "nobody has checked this corpus against upstream, NOT that it is "
+            "current. On `stale`, say so in your answer before quoting a "
+            "number; `get_index` and `ask` carry the full wording."
         ),
     )
 
@@ -159,7 +163,9 @@ def build_server(settings: Settings | None = None) -> MCPServer:
                 "get_index", error, max_tokens=cap, part=part,
                 revision="", file="", text="",
             )
-        payload = envelope("get_index", max_tokens=cap, part=scope.part)
+        payload = envelope(
+            "get_index", max_tokens=cap, part=scope.part, staleness=_staleness(scope)
+        )
         payload["revision"] = _revision(scope)
         payload["file"] = INDEX_FILENAME
         payload["text"] = scope.index_markdown()
@@ -188,7 +194,10 @@ def build_server(settings: Settings | None = None) -> MCPServer:
                 "search", unavailable, max_tokens=cap, part=part, project=project,
                 hits=[], count=0, total=0,
             )
-        payload = envelope("search", max_tokens=cap, part=part, project=project)
+        payload = envelope(
+            "search", max_tokens=cap, part=part, project=project,
+            staleness=_staleness(scope),
+        )
         # A design where only *some* members are searchable can still answer;
         # what it must not do is let the result read as the whole design. That
         # is a warning, not an error: the call succeeded, the coverage did not.
@@ -214,7 +223,10 @@ def build_server(settings: Settings | None = None) -> MCPServer:
                 hits=[], suggestions=[], count=0, total=0,
             )
         hits = scope.specs(symbol=symbol, name=name, section=section)
-        payload = envelope("find_spec", max_tokens=cap, part=part, project=project)
+        payload = envelope(
+            "find_spec", max_tokens=cap, part=part, project=project,
+            staleness=_staleness(scope),
+        )
         payload["hits"] = [hit.as_dict() for hit in hits]
         term = (symbol or name).strip()
         payload["suggestions"] = [] if hits else scope.suggest_specs(term)
@@ -254,7 +266,10 @@ def build_server(settings: Settings | None = None) -> MCPServer:
                 "find_plots", error, max_tokens=cap, part=part, project=project,
                 hits=[], count=0, total=0,
             )
-        payload = envelope("find_plots", max_tokens=cap, part=part, project=project)
+        payload = envelope(
+            "find_plots", max_tokens=cap, part=part, project=project,
+            staleness=_staleness(scope),
+        )
         payload["hits"] = [
             hit.as_dict()
             for hit in scope.plots(
@@ -308,7 +323,10 @@ def build_server(settings: Settings | None = None) -> MCPServer:
                 "find_pin", gap, max_tokens=cap, part=part, project=project,
                 hits=[], count=0, total=0,
             )
-        payload = envelope("find_pin", max_tokens=cap, part=part, project=project)
+        payload = envelope(
+            "find_pin", max_tokens=cap, part=part, project=project,
+            staleness=_staleness(scope),
+        )
         payload["hits"] = [
             hit.as_dict()
             for hit in scope.pins(pin=pin, name=name, type=type, q=q)
@@ -355,7 +373,10 @@ def build_server(settings: Settings | None = None) -> MCPServer:
                 "find_register", gap, max_tokens=cap, part=part, project=project,
                 hits=[], field_gap="", count=0, total=0,
             )
-        payload = envelope("find_register", max_tokens=cap, part=part, project=project)
+        payload = envelope(
+            "find_register", max_tokens=cap, part=part, project=project,
+            staleness=_staleness(scope),
+        )
         payload["hits"] = [
             hit.as_dict()
             for hit in scope.registers(addr=addr, name=name, field=field, q=q)
@@ -388,7 +409,10 @@ def build_server(settings: Settings | None = None) -> MCPServer:
             )
         names = scope.card_names()
         if not card:
-            payload = envelope("get_card", max_tokens=cap, part=scope.part)
+            payload = envelope(
+                "get_card", max_tokens=cap, part=scope.part,
+                staleness=_staleness(scope),
+            )
             payload.update({"card": None, "rows": [], "names": names})
             return fit_list(payload, "rows", cap)
         doc = scope.card(card)
@@ -400,7 +424,10 @@ def build_server(settings: Settings | None = None) -> MCPServer:
                 max_tokens=cap, part=scope.part,
                 card=None, rows=[], names=names, count=0, total=0,
             )
-        payload = envelope("get_card", max_tokens=cap, part=scope.part)
+        payload = envelope(
+            "get_card", max_tokens=cap, part=scope.part,
+            staleness=_staleness(scope),
+        )
         body = doc.model_dump(mode="json")
         payload["rows"] = body.pop("rows")
         payload["card"] = body
@@ -436,7 +463,10 @@ def build_server(settings: Settings | None = None) -> MCPServer:
                 part=scope.part,
                 **_EMPTY_SECTION,
             )
-        payload = envelope("read_section", max_tokens=cap, part=scope.part)
+        payload = envelope(
+            "read_section", max_tokens=cap, part=scope.part,
+            staleness=_staleness(scope),
+        )
         payload["section"] = hit.section.number
         payload["title"] = hit.section.title
         payload["file"] = hit.section.file
@@ -505,7 +535,10 @@ def build_server(settings: Settings | None = None) -> MCPServer:
                 cap=cap,
             )
 
-        payload = envelope("get_figure", max_tokens=cap, part=scope.part)
+        payload = envelope(
+            "get_figure", max_tokens=cap, part=scope.part,
+            staleness=_staleness(scope),
+        )
         payload["figure"] = {
             "part": scope.part,
             "file": hit.file,
@@ -733,6 +766,7 @@ def build_server(settings: Settings | None = None) -> MCPServer:
                 "part": part_dir.name, "built": False, "revision": "", "vendor": "",
                 "backends": [], "sections": 0, "specs": 0, "plots": 0, "tokens": 0,
                 "searchable": False, "spec_confidence": {}, "plot_confidence": {},
+                "staleness": scope.staleness().state.value,
             }
         stats = manifest.stats
         return {
@@ -750,6 +784,9 @@ def build_server(settings: Settings | None = None) -> MCPServer:
             "searchable": not scope.search_unavailable(),
             "spec_confidence": dict(stats.spec_confidence),
             "plot_confidence": dict(stats.plot_confidence),
+            # The fleet view's freshness column: an agent choosing which corpus
+            # to ask should be able to see `stale` before it asks (ticket 02).
+            "staleness": scope.staleness().state.value,
         }
 
     def _project_summary(name: str) -> dict[str, Any]:
@@ -786,6 +823,17 @@ _EMPTY_SECTION: dict[str, Any] = {
     "page_end": None, "citation": "", "confidence": "unknown", "matched_via": "",
     "text": "",
 }
+
+
+def _staleness(scope) -> str:
+    """The scope's three-state revision reading, for the response envelope.
+
+    Works for a part and for a project (a design reads as its least fresh
+    member), because both `Retriever` and `ProjectRetriever` publish
+    `staleness()` — the server reports a reading it did not compute, the same
+    rule it follows for every citation it prints.
+    """
+    return scope.staleness().state.value
 
 
 def _revision(scope: Retriever) -> str:
@@ -851,7 +899,10 @@ def _ask_within_cap(
     attempt = min(wanted, cap)
     while True:
         pack = scope.ask(question, budget=attempt)
-        payload = envelope("ask", max_tokens=cap, part=part, project=project)
+        payload = envelope(
+            "ask", max_tokens=cap, part=part, project=project,
+            staleness=_staleness(scope),
+        )
         payload["pack"] = pack.as_dict()
         payload["citations"] = list(pack.citations)
         # `truncated` is the pack's own answer: a budget lowered to fit the

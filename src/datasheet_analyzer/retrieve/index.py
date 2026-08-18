@@ -23,6 +23,7 @@ import logging
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from datasheet_analyzer.acquire.inventory import SOURCES_FILE, load_inventory
 from datasheet_analyzer.config import PIPELINE_VERSION
 from datasheet_analyzer.models import (
     CorpusManifest,
@@ -34,9 +35,11 @@ from datasheet_analyzer.models import (
     RegisterSet,
     SearchIndex,
     SectionFile,
+    SourceDocument,
     SpecRecord,
     SpecSet,
 )
+from datasheet_analyzer.staleness import CorpusStaleness, corpus_staleness
 
 log = logging.getLogger(__name__)
 
@@ -108,6 +111,13 @@ class CorpusIndex:
     manifest: CorpusManifest | None = None
     docs: tuple[IndexedDoc, ...] = ()
     sections: tuple[SectionFile, ...] = ()
+    # The acquire-time inventory (`sources.json`), read here because it is the
+    # *live* record: `dsa check-revisions` writes staleness onto it after the
+    # build, and the manifest's copy of a `SourceDocument` is a snapshot of
+    # what was true when the corpus was published. A retrieval surface that
+    # read the snapshot would keep reporting `unknown` after a check had
+    # already found the corpus stale (phase 7, ticket 02).
+    sources: tuple[SourceDocument, ...] = ()
     # Lazily-read section markdown, keyed by corpus-relative path. Section
     # bodies are the expensive part of a corpus; nothing reads them unless a
     # caller asks.
@@ -165,7 +175,18 @@ class CorpusIndex:
             manifest=manifest,
             docs=tuple(docs),
             sections=tuple(manifest.sections) if manifest else (),
+            sources=tuple(load_inventory(part_dir)),
         )
+
+    @property
+    def staleness(self) -> CorpusStaleness:
+        """This corpus's freshness reading — `unknown` until somebody checks.
+
+        Read off the inventory by `staleness.corpus_staleness`, so the CLI, the
+        MCP server and the answer pack all report the same reading of the same
+        record instead of each deciding what "current" means.
+        """
+        return corpus_staleness(self.sources, self.part_number or self.part_dir.name)
 
     def doc_for_hash(self, doc_hash: str) -> IndexedDoc | None:
         """The loaded document whose spec/plot sets carry `doc_hash`."""
@@ -231,13 +252,32 @@ class CorpusIndex:
         return target
 
 
-def _cache_key(part_dir: Path) -> tuple | None:
-    """Cache identity, or None for a part that has no manifest to key on."""
+def _stamp(path: Path) -> tuple:
+    """`(mtime_ns, size)` of a file, or `(0, 0)` when it is not there."""
     try:
-        st = (part_dir / "manifest.json").stat()
+        st = path.stat()
     except OSError:
+        return (0, 0)
+    return (st.st_mtime_ns, st.st_size)
+
+
+def _cache_key(part_dir: Path) -> tuple | None:
+    """Cache identity, or None for a part that has no manifest to key on.
+
+    `sources.json` is part of the identity as well as `manifest.json` (phase 7,
+    ticket 02): `dsa check-revisions` rewrites the inventory *without*
+    rebuilding, so a key that watched only the manifest would keep serving a
+    cached index whose staleness reading predates the check that just ran.
+    """
+    manifest = _stamp(part_dir / "manifest.json")
+    if manifest == (0, 0):
         return None
-    return (str(part_dir.resolve()), st.st_mtime_ns, st.st_size, PIPELINE_VERSION)
+    return (
+        str(part_dir.resolve()),
+        manifest,
+        _stamp(part_dir / SOURCES_FILE),
+        PIPELINE_VERSION,
+    )
 
 
 def _load_manifest(path: Path) -> CorpusManifest | None:

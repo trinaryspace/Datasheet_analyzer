@@ -137,6 +137,36 @@ class CachingBinaryFetcher:
         return resp.content
 
 
+class DirectBinaryFetcher:
+    """Bytes with **no cache** — the fetcher a freshness check must use.
+
+    Phase 7, ticket 02. `dsa check-revisions` asks "what does upstream say
+    *now*", and `CachingBinaryFetcher` would answer it out of
+    `.cache/http-bin` — reporting yesterday's bytes as today's upstream and
+    turning the one warning that protects silicon into an echo of a previous
+    run. It is the same injectable `BinaryFetcher` seam (tests still replay),
+    just without a layer whose whole purpose is to avoid asking again.
+    """
+
+    def __init__(self, *, timeout_s: int = 60, delay_s: float = 0.25,
+                 user_agent: str = "datasheet-analyzer/0.1"):
+        self.timeout_s = timeout_s
+        self.delay_s = delay_s
+        self.user_agent = user_agent
+        self.n_fetches = 0
+
+    def __call__(self, url: str) -> bytes:
+        log.info("fetch binary (uncached): %s", url[:110])
+        resp = requests.get(
+            url, timeout=self.timeout_s, headers={"User-Agent": self.user_agent}
+        )
+        resp.raise_for_status()
+        self.n_fetches += 1
+        if self.delay_s:
+            time.sleep(self.delay_s)
+        return resp.content
+
+
 class ReplayBinaryFetcher:
     """Hermetic test binary fetcher: serves only pre-recorded byte files.
 

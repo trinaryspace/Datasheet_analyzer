@@ -80,6 +80,11 @@ dsa fetch --project rf-frontend                                    # only what i
 # Build the corpus (first run fetches TI pages + plot images, cached forever)
 dsa build afe7950.pdf --part AFE7950
 
+# Is that corpus still the current revision? Explicit, opt-in, and the only
+# command that asks upstream — a build never does, so builds stay offline.
+dsa check-revisions AFE7950
+dsa check-revisions --all --json   # exit 1 when anything is stale or unchecked
+
 # Verify against the golden Q&A set (citations + page truth)
 dsa verify --part AFE7950 --pdf afe7950.pdf
 
@@ -115,6 +120,29 @@ sha256 that disagrees stops the fetch and names its likely cause — and it
 decides that cause from the *parsed revision*, not from the hash, because some
 vendors regenerate a datasheet's package-materials addendum on every download
 (the bytes move; the revision does not).
+
+**Every corpus says whether it is current.** A part's inventory carries a
+three-state `staleness` — `current`, `stale`, `unknown` — and `unknown` is the
+default for every corpus nobody has checked. It is deliberately *not* the same
+as `current`: an answer drawn from a superseded datasheet reads exactly like a
+correct one, page cite and all, so silence must never pass for currency. The
+reading surfaces in four places — a banner at the top of `INDEX.md`, a line in
+`dsa status`, the `revision freshness` metric of the corpus scorecard, and a
+footer on **every answer pack**, where it is part of the reserved tail and no
+budget can remove it:
+
+```
+⚠ Built from SBASA41E; SBASA41F is available upstream (checked 2026-08-15).
+  Verify before committing to silicon.
+```
+
+Staleness is decided by the printed **revision identifier**, never by a hash. A
+vendor that regenerates a datasheet's package-materials addendum with the
+current date changes the bytes daily without revising anything; that is
+reported as *content drift* — "regenerated, not revised" — because a false
+alarm every day would teach you to click past the one warning that matters. A
+check that cannot run (no URL, no network) leaves the recorded state exactly as
+it was and says why: it can never turn `stale` into `current`.
 
 Useful flags: `fetch --accept-new-revision` (record the hash and revision that
 arrived, after you have looked at the upstream document), `fetch --json`;

@@ -158,10 +158,23 @@ def build_index_markdown(
     sections: list[SectionMeta],
     *,
     token_budget: int,
+    staleness_banner: str = "",
 ) -> str:
     """Render INDEX.md. If the section map would blow the budget, section
-    descriptions are progressively truncated until it fits."""
+    descriptions are progressively truncated until it fits.
+
+    `staleness_banner` (phase 7, ticket 02) is the marker-delimited block
+    `staleness.index_banner` renders. It goes **above the title**, inside the
+    header, for two reasons: `INDEX.md` is the file an agent is told to read
+    first, so a warning below the section map would be read after the answer
+    had formed; and the header is the one part of this file the budget ladder
+    never degrades, so the warning cannot be what a tight budget removes.
+    `dsa check-revisions` refreshes the same block in place afterwards via
+    `staleness.apply_index_banner`, which is why it is delimited rather than
+    just written.
+    """
     header = [
+        *([staleness_banner, ""] if staleness_banner else []),
         f"# {part_number} — datasheet corpus",
         "",
         f"> {brief}" if brief else "",

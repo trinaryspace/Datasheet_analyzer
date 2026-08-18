@@ -340,6 +340,38 @@ ever composed from a part number, because a plausible URL that resolves to the
 wrong document is indistinguishable from a right one at the point it matters.
 _Avoid_: index, catalog, database, source list, manifest
 
+**Staleness**:
+Whether a corpus's document is still the current upstream revision —
+`current`, `stale`, or `unknown`. It is a fact about the *document*, recorded
+on the inventory by `dsa check-revisions` (an explicit, opt-in, network
+command; a build never sets it), and it is decided by the **printed revision
+identifier**, never by a hash: a vendor that regenerates a datasheet's
+package-materials addendum with the current date changes the bytes daily
+without revising anything, and a false alarm every day trains a designer to
+ignore the one warning here that protects silicon. Bytes that moved under an
+unchanged identifier are **content drift** — a regenerated document, said in
+words that cannot read as a new revision. `unknown` is the honest default and
+is emphatically not `current`: a corpus nobody has checked says "revision not
+checked" on every surface that shows it, because an answer drawn from a
+superseded datasheet reads exactly like a correct one, page cite and all. A
+part is only as fresh as its least fresh document, and a design only as fresh
+as its worst member — which is named, because an unattributed warning cannot
+be acted on.
+_Avoid_: outdated, expired, cache, freshness score, version
+
+**Staleness banner**:
+The one sentence that says what a corpus's staleness means, rendered in the
+four places it can still change a decision: the top of `INDEX.md`, `dsa
+status`, the `dsa audit` scorecard, and the footer of every answer pack. It is
+written once and rendered four times rather than composed per surface — a
+warning present in three of four is the failure this design guards against —
+and in the answer pack it is **reserved tail**, laid down before any
+discretionary row, so a tight budget can cost extra rows and excerpt prose but
+never the warning. Its length scales with the danger: `stale` carries the full
+sentence with both revisions and the date, `unknown` carries one short line
+naming the command that clears it.
+_Avoid_: warning, notice, alert, flag, disclaimer
+
 **SourceDocument**:
 A registered input file of a part (datasheet, register map, errata, app
 note). Identity is the sha256 of its bytes.

@@ -2,6 +2,7 @@
 
 Commands:
   fetch PART                resolve, download, hash-verify and register a part's documents
+  check-revisions PART      ask upstream whether a corpus is still current (opt-in, network)
   build <pdf> --part NAME   full pipeline: acquire -> extract -> corpus
   batch <dir>               build every PDF in a directory as its own part (unchanged parts skipped; --force rebuilds; --workers N parallel, default 4)
   verify --part NAME        golden Q&A citation verification (deterministic)
@@ -168,6 +169,76 @@ def _cmd_fetch(args: argparse.Namespace) -> int:
         print(
             f"{len(report.fetched)} fetched, {len(report.skipped)} skipped, "
             f"{len(report.failed)} failed"
+        )
+    return 0 if report.ok else 1
+
+
+def _cmd_check_revisions(args: argparse.Namespace) -> int:
+    """`dsa check-revisions` — the explicit, opt-in, network freshness check.
+
+    Nothing else in this tool calls it: `build`, `ask`, `query`, `search` and
+    `verify` never touch the network, and a check that ran implicitly would
+    make every lookup depend on a vendor's web server. It writes the three-state
+    reading onto `sources.json` and refreshes the `INDEX.md` banner, so the
+    result reaches `dsa status`, the index, the audit metric and every answer
+    pack footer without a rebuild.
+
+    The download deliberately goes through an **uncached** fetcher: asking
+    "what does upstream say now" and answering it out of `.cache/http-bin`
+    would report a previous run's bytes as today's upstream.
+
+    Exit codes: 0 everything checked and current, 1 something is stale or a
+    check could not run, 2 the invocation does not make sense.
+    """
+    import json as _json
+
+    from datasheet_analyzer.acquire.registry import registry_path
+    from datasheet_analyzer.acquire.revisions import (
+        CHECKED,
+        check_all,
+        check_part,
+    )
+    from datasheet_analyzer.extract.http import DirectBinaryFetcher
+    from datasheet_analyzer.models import Staleness
+
+    part = args.part_pos or args.part
+    if bool(args.all) == bool(part):
+        print(
+            "check-revisions takes either a part (`dsa check-revisions AFE7950`) "
+            "or --all, not both and not neither",
+            file=sys.stderr,
+        )
+        return 2
+
+    settings = get_settings()
+    fetcher = DirectBinaryFetcher(
+        timeout_s=settings.http_timeout_s,
+        delay_s=settings.http_delay_s,
+        user_agent=settings.user_agent,
+    )
+    reg_file = registry_path(settings.registry_dir)
+    if args.all:
+        report = check_all(fetcher=fetcher, settings=settings, registry_file=reg_file)
+    else:
+        report = check_part(
+            part, fetcher=fetcher, settings=settings, registry_file=reg_file
+        )
+
+    if args.json:
+        print(_json.dumps(report.as_dict(), indent=2))
+    else:
+        for check in report.checks:
+            label = f"{check.part_number} ({check.doc_type.value})"
+            if check.status != CHECKED:
+                print(f"unchecked {label}: {check.message}", file=sys.stderr)
+            elif check.state is Staleness.STALE:
+                print(f"STALE {label}: {check.message}", file=sys.stderr)
+            else:
+                print(f"{check.state.value} {label}: {check.message}")
+        print(
+            f"{len([c for c in report.checks if c.completed])} checked, "
+            f"{len(report.stale)} stale, {len(report.drifted)} content-drift, "
+            f"{len(report.failed)} could not be checked"
         )
     return 0 if report.ok else 1
 
@@ -934,6 +1005,7 @@ def _part_vendor_info(part: Path) -> tuple[str, str, list[str], list[str]]:
     from datasheet_analyzer.acquire import load_inventory
     from datasheet_analyzer.models import DocType
     from datasheet_analyzer.retrieve import CorpusIndex
+    from datasheet_analyzer.staleness import corpus_staleness, status_lines
 
     sources = load_inventory(part) if (part / "sources.json").exists() else []
     vendor, evidence = "", ""
@@ -942,6 +1014,12 @@ def _part_vendor_info(part: Path) -> tuple[str, str, list[str], list[str]]:
         vendor, evidence = ds.vendor, ds.vendor_evidence
     backends: list[str] = []
     doc_lines: list[str] = []
+    # Revision freshness first (phase 7, ticket 02): of everything `status`
+    # prints about a part, this is the only line that can invalidate the rest.
+    # A part with no registered documents still gets one — `unknown` there
+    # means "nothing to check", and it says so.
+    if sources:
+        doc_lines.extend(status_lines(corpus_staleness(sources, part.name)))
     m = CorpusIndex.load(part).manifest
     if m is not None:
         backends = list(
@@ -1083,6 +1161,22 @@ def main(argv: list[str] | None = None) -> int:
     )
     p_fetch.add_argument("--json", action="store_true")
     p_fetch.set_defaults(func=_cmd_fetch)
+
+    p_check = sub.add_parser(
+        "check-revisions",
+        help="ask upstream whether a built corpus is still the current revision "
+             "(explicit, opt-in, network — never part of build)",
+    )
+    p_check.add_argument(
+        "part_pos", nargs="?", default="", metavar="PART",
+        help="part number, e.g. AFE7950 (or --all)",
+    )
+    p_check.add_argument("--part", default="", help="part number")
+    p_check.add_argument(
+        "--all", action="store_true", help="check every part under parts_dir"
+    )
+    p_check.add_argument("--json", action="store_true")
+    p_check.set_defaults(func=_cmd_check_revisions)
 
     p_build = sub.add_parser("build", help="build a part corpus from a datasheet PDF")
     p_build.add_argument("pdf")

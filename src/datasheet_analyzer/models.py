@@ -111,6 +111,35 @@ class AxisScale(str, Enum):
     LOG = "log"
 
 
+class Staleness(str, Enum):
+    """Whether a corpus's document is still the current upstream revision.
+
+    Three states, and the default is the one that protects the designer:
+
+    - `CURRENT` — a check ran and the upstream revision identifier matched;
+    - `STALE` — a check ran and upstream reports a **different** revision;
+    - `UNKNOWN` — nobody has checked, or the check could not complete.
+
+    `UNKNOWN` is the honest default for every corpus that has never run
+    `dsa check-revisions`, and it is deliberately *not* `CURRENT`: reading "no
+    news" as "still current" would let a superseded datasheet answer a design
+    question with full confidence and a valid page cite. That inversion is the
+    whole safety argument of phase 7, ticket 02.
+
+    A **hash** difference alone never moves this field. Measured against the
+    live TI servers, a TI datasheet's bytes change on every download because
+    the package-materials addendum is regenerated with the current date, while
+    the revision identifier stays put; a design that read that as staleness
+    would raise a false alarm on every TI part every day and train the user to
+    ignore the one warning here that protects silicon. Bytes that moved under
+    an unchanged revision are recorded as `content_drift` instead.
+    """
+
+    CURRENT = "current"
+    STALE = "stale"
+    UNKNOWN = "unknown"
+
+
 class ParseConfidence(str, Enum):
     """Whether the numeric layer could read a record's printed value.
 
@@ -149,6 +178,30 @@ class SourceDocument(BaseModel):
     vendor: str = "ti"
     vendor_evidence: str = ""
     registered_at: datetime = Field(default_factory=_utcnow)
+    # --- revision awareness (phase 7, ticket 02) -------------------------------
+    # Additive and written only by `dsa check-revisions`, which is an explicit,
+    # opt-in, network command. `dsa build` never fills these in — that is what
+    # keeps a build offline by construction — so a freshly built corpus reads
+    # `UNKNOWN` until somebody checks, and says so everywhere it is surfaced.
+    #: Three-state freshness of *this* document. See `Staleness`.
+    staleness: Staleness = Staleness.UNKNOWN
+    #: When the last check actually completed. `None` until one does — never
+    #: back-filled with the build date or a plausible one.
+    revision_checked_at: datetime | None = None
+    #: The revision identifier the upstream document reported at that check.
+    #: `""` when no check has run, or when upstream printed none we could read.
+    upstream_revision: str = ""
+    #: sha256 of the upstream bytes at that check. Recorded because it is a
+    #: fact, *not* because it decides staleness: see `content_drift`.
+    upstream_sha256: str = ""
+    #: Upstream's bytes differ while the revision identifier does **not**. A
+    #: regenerated document, not a revised one — reported distinctly so the
+    #: wording never implies a new revision exists.
+    content_drift: bool = False
+    #: Why the state is what it is when that needs saying: the reason a check
+    #: could not run (no registry URL, network unavailable), or the drift note.
+    #: Read back verbatim by every surface rather than re-derived per front end.
+    revision_check_note: str = ""
 
 
 class TOCEntry(BaseModel):
