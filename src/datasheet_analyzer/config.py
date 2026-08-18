@@ -127,6 +127,13 @@ class Settings(BaseSettings):
     # Projects: the noun above `part`. One directory per project, holding
     # `project.json` (the explicit part list) and `PROJECT_INDEX.md`.
     projects_dir: Path = Path("projects")
+    # Checked-in data (`aliases.yaml`, `cards.yaml`, `pin_types.yaml`,
+    # `device_tables.yaml` and — phase 7, ticket 01 — `datasheets.yaml`).
+    # `None` means the packaged directory beside the code, which is what every
+    # lexicon has always read; `DSA_REGISTRY_DIR` points the *document*
+    # registry somewhere else, which is how a test grows a registry without
+    # writing into the repo's own checked-in copy.
+    registry_dir: Path | None = None
 
     # LLM enrichment (INDEX.md descriptions). Without a key the pipeline
     # falls back to deterministic extractive descriptions and says so.
@@ -177,6 +184,8 @@ class Settings(BaseSettings):
         self.parts_dir = self.parts_dir.resolve()
         self.cache_dir = self.cache_dir.resolve()
         self.projects_dir = self.projects_dir.resolve()
+        if self.registry_dir is not None:
+            self.registry_dir = self.registry_dir.resolve()
         return self
 
     @property

@@ -1,0 +1,102 @@
+# Curated document registry (phase 7, ticket 01). GENERATED — edit via
+# `dsa fetch --url … --part X`, or re-run `scripts/seed_datasheet_registry.py`.
+#
+#   url             where the document comes from. `null` means nobody has
+#                   supplied one; `url_reason` says so. Never guessed.
+#   url_verified    true only once bytes have actually arrived from that URL.
+#                   A `url_derivation` entry is a *derived* hypothesis until then.
+#   sha256          the hash of real bytes. `sha256_origin` says whose:
+#                   `local_file:<repo path>` for a document committed here,
+#                   `fetch:<url>` for one recorded off the wire.
+#   retrieved_at    stamped by a fetch that happened. `null` otherwise.
+#
+# A `local_file:` hash will not always survive a fresh download of the *same*
+# revision — a vendor that regenerates a datasheet's package-materials addendum
+# on every download changes the bytes without changing the revision identifier.
+# `dsa fetch` therefore decides a mismatch's cause from the parsed revision, not
+# from the hash, and says so.
+schema_version: '1'
+parts:
+  AD9081:
+    vendor: adi
+    document:
+      doc_type: datasheet
+      url: null
+      url_reason: no adi document-URL pattern is encoded in this repo, and this tool never guesses one
+      revision: Rev. 0
+      sha256: a15af6a3385caf7f131080b24dff4fe4ae6b6e184db2c6496eee2404860189fe
+      sha256_origin: local_file:ad9081.pdf
+      retrieved_at: null
+  AFE7950:
+    vendor: ti
+    document:
+      doc_type: datasheet
+      url: https://www.ti.com/lit/ds/sbasa41e/sbasa41e.pdf
+      url_verified: false
+      url_derivation: ti_lit_ds(SBASA41E)
+      revision: SBASA41E
+      sha256: c1b4663b0b8088eff44c45e96683fbac0b611d9299722a21613dc0dfd774f512
+      sha256_origin: local_file:afe7950.pdf
+      retrieved_at: null
+  AFE7953:
+    vendor: ti
+    document:
+      doc_type: datasheet
+      url: https://www.ti.com/lit/ds/sbasan1a/sbasan1a.pdf
+      url_verified: false
+      url_derivation: ti_lit_ds(SBASAN1A)
+      revision: SBASAN1A
+      sha256: 52d435c0095ec0b002e36dcbc56711ecc7c909945cc756768ed168907be3b131
+      sha256_origin: local_file:afe7953.pdf
+      retrieved_at: null
+  HMC520A:
+    vendor: adi
+    document:
+      doc_type: datasheet
+      url: null
+      url_reason: no adi document-URL pattern is encoded in this repo, and this tool never guesses one
+      revision: Rev. A
+      sha256: a187cc0d33913f3d9f5a77ea32559d3810e7e2956b2b078bf755bce7a6da5454
+      sha256_origin: local_file:hmc520a.pdf
+      retrieved_at: null
+  LM741:
+    vendor: ti
+    document:
+      doc_type: datasheet
+      url: https://www.ti.com/lit/ds/snosc25d/snosc25d.pdf
+      url_verified: false
+      url_derivation: ti_lit_ds(SNOSC25D)
+      revision: SNOSC25D
+      sha256: e0d1e5a2f2ecf5ce318fadb27a088319fb55e4268c94a1aca4fbbb9caa1ede5e
+      sha256_origin: local_file:lm741.pdf
+      retrieved_at: null
+  LMX1204:
+    vendor: ti
+    document:
+      doc_type: datasheet
+      url: https://www.ti.com/lit/ds/snas800b/snas800b.pdf
+      url_verified: false
+      url_derivation: ti_lit_ds(SNAS800B)
+      revision: SNAS800B
+      sha256: acd53c1fbc131e09d73a83afedc27015991e385fd06714041e726648286545d4
+      sha256_origin: local_file:tests/fixtures/pdf/lmx1204.pdf
+      retrieved_at: null
+    companions:
+    - doc_type: register_map
+      url: null
+      url_reason: the only literature-path pattern this repo carries is TI's datasheet path (lit/ds);
+        SNAU269A is a register_map and its path is not encoded here, so no URL is guessed
+      revision: SNAU269A
+      sha256: 0e7de32d5518d68b928027aba7d82ae9ead5406ece9dacbd45046e5f562a593c
+      sha256_origin: local_file:tests/fixtures/pdf/LMX1204_registermap.pdf
+      retrieved_at: null
+  QPA1003P:
+    vendor: qorvo
+    document:
+      doc_type: datasheet
+      url: null
+      url_reason: no qorvo document-URL pattern is encoded in this repo, and this tool never guesses one
+      revision: Rev. I
+      sha256: 31985b228cd1d6aaaa415b347afd40e53b43d21d6957171f62a6f98f665d8844
+      sha256_origin: local_file:QPA1003P.pdf
+      retrieved_at: null

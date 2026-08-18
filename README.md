@@ -70,6 +70,13 @@ Everything else works without it.
 ## Quickstart
 
 ```bash
+# Onboard a document: resolve it in the curated registry, download it,
+# verify its sha256, and register it into the part's inventory.
+# `fetch` is the only command that acquires a document — builds never do.
+dsa fetch AFE7950
+dsa fetch --url https://vendor.example/ds/part.pdf --part MYPART   # grows the registry
+dsa fetch --project rf-frontend                                    # only what is missing
+
 # Build the corpus (first run fetches TI pages + plot images, cached forever)
 dsa build afe7950.pdf --part AFE7950
 
@@ -98,7 +105,20 @@ dsa verify --part AD9081 --pdf tests/fixtures/pdf/ad9081.pdf --specs
 dsa batch datasheets/
 ```
 
-Useful flags: `build --no-cache` (re-extract), `build --no-llm` (deterministic
+`registry/datasheets.yaml` is checked in and ships seeded with the seven parts
+whose PDFs live in this repo — every `sha256` in it computed from those bytes,
+every URL either supplied by a `--url` fetch or *derived* from a literature
+number parsed out of the document and marked `url_verified: false` until a live
+fetch confirms it. A part the registry does not know is an error naming
+`--url`; nothing guesses a vendor URL and nothing falls back to a search. A
+sha256 that disagrees stops the fetch and names its likely cause — and it
+decides that cause from the *parsed revision*, not from the hash, because some
+vendors regenerate a datasheet's package-materials addendum on every download
+(the bytes move; the revision does not).
+
+Useful flags: `fetch --accept-new-revision` (record the hash and revision that
+arrived, after you have looked at the upstream document), `fetch --json`;
+`build --no-cache` (re-extract), `build --no-llm` (deterministic
 descriptions even with a key set); `batch` accepts the same `--no-cache` /
 `--no-llm` options plus `--force` (rebuild even when up to date) and
 `--workers N` (parallel jobs; `DSA_BATCH_WORKERS` env default, 1 = serial).

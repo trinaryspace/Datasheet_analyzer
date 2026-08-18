@@ -396,3 +396,60 @@ publish-cache key: editing the rule text without bumping the version leaves the
 staleness undetectable, and bumping it republishes the `AGENT.md` of every
 corpus on the next build — a behaviour change to the skip gate that belongs in
 its own ticket rather than in a phase gate.
+
+## Document registry + `dsa fetch` (phase 7, ticket 01)
+
+### 1. Four of the eight seeded URLs are derived, and none of them is confirmed
+
+`registry/datasheets.yaml` ships with URLs for AFE7950, AFE7953, LM741 and
+LMX1204 that this repo has **never fetched**. They were derived by applying the
+one literature-path pattern the repo carries
+(`https://www.ti.com/lit/ds/<lit>/<lit>.pdf`) to a literature number parsed out
+of each PDF's own first pages. That is a hypothesis, not a lookup, and it ships
+as one: `url_verified: false`, with the rule in `url_derivation`, and `dsa
+fetch` reports it as unconfirmed until bytes arrive. The other four documents
+(AD9081, HMC520A, QPA1003P, and LMX1204's programmer's guide) carry `url: null`
+plus the reason, because no URL pattern for those vendors — or for TI's *user
+guide* path — is encoded anywhere in this repo, and guessing one would put a
+wrong document in front of a designer under a citation that looks exactly as
+trustworthy as a right one.
+
+**What would change it** is `Reports/PHASE_7_LIVE_RUN.md` L1–L2: one
+`dsa fetch` per part on a machine with a connection, which flips the flag,
+records `sha256_origin: fetch:<url>` and stamps a real `retrieved_at`.
+
+### 2. A seeded sha256 will mismatch a fresh fetch of the *same* revision
+
+Every seeded hash carries `sha256_origin: local_file:<repo path>` — it is the
+hash of the copy committed here, not one recorded off the wire. Measured by the
+repo owner with network (2026-08-18): TI regenerates a datasheet's "PACKAGE
+MATERIALS INFORMATION" addendum with the current date on every download, so a TI
+PDF's bytes change daily while its revision identifier stays put (LM741's
+upstream p.15 reads `10-Aug-2026` against `15-Jul-2025` locally; of the four,
+only LMX1204 hashed identically). A first `dsa fetch` of a TI part will
+therefore stop with a mismatch.
+
+The stop is the designed behaviour rather than a bug, and the warning is written
+not to overstate it: `mismatch_cause` decides from the **parsed revision**, so
+an unchanged identifier is reported as *"NOT evidence of a new revision"* and
+`NEW UPSTREAM REVISION` is reserved for one that actually moved. What remains a
+shortcoming is that a seeded hash is not yet a wire hash, so the first fetch of
+each TI part costs a human read of the warning.
+
+**What would change it** is the same live run: after `--accept-new-revision` the
+entry holds a wire hash, and a later mismatch means something sharper.
+
+### 3. `sniff_revision` reads LMX1204's datasheet as `SYSREFOUT0`
+
+`extract/pdf_structure._TI_DOC_ID` matches any capitalised S-word containing a
+digit (`\bS[A-Z]{2}[A-Z0-9]*\d[A-Z0-9]*\b`), and LMX1204's page 1 prints
+`SYSREFOUT0` before it prints `SNAS800B`. The seed generator side-steps this
+with a closed list of TI series codes, so the registry records `SNAS800B`
+correctly — but `dsa fetch LMX1204 --accept-new-revision` would overwrite it
+with `SYSREFOUT0`, because acceptance records what `register_source` sniffed
+from the bytes that arrived. The same pattern is why a fresh `dsa build` of that
+part records a revision AGENTS.md's table does not.
+
+**What would change it** is a closed series list in `_TI_DOC_ID` itself. It was
+not done here because that pattern is the shared revision lexicon every part's
+recorded revision flows through, and ticket 02 (revision awareness) owns it.

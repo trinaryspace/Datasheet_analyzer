@@ -324,6 +324,22 @@ drops its least-important block first and says that it did; the part list and
 the index pointers are the product and are never what a budget removes.
 _Avoid_: summary, dashboard, manifest, catalog
 
+**Registry entry**:
+One part's row in the curated document registry
+(`registry/datasheets.yaml`): where its datasheet and companions come from,
+which revision and sha256 were recorded, and when they were last retrieved.
+It is checked-in data a human or an agent edits by *using* it — `dsa fetch
+--url` writes an entry — and never the output of a scraper or a search. Every
+field is a recorded fact or an explicit absence: a URL nobody has supplied is
+null **with the reason**, so a miss tells the caller which flag fixes it
+rather than reading as "this part does not exist"; a URL that has never been
+fetched is unverified even when a named rule derived it from a literature
+number printed in the document; a hash records the file it was taken from; and
+a retrieval date exists only for a retrieval that happened. Nothing here is
+ever composed from a part number, because a plausible URL that resolves to the
+wrong document is indistinguishable from a right one at the point it matters.
+_Avoid_: index, catalog, database, source list, manifest
+
 **SourceDocument**:
 A registered input file of a part (datasheet, register map, errata, app
 note). Identity is the sha256 of its bytes.

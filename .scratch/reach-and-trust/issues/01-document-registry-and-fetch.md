@@ -16,19 +16,34 @@ not already present — the BOM → corpora path, end to end.
 
 **Status:** ready-for-agent
 
-- [ ] `dsa fetch AFE7950` resolves, downloads, verifies sha256, registers into
+> **Measured note added mid-run by the repo owner (2026-08-18, with network).**
+> All four derived `ti_lit_ds(<LIT>)` URLs in the seeded registry resolve
+> HTTP 200, so the derivation rule is sound. But TI **regenerates the
+> "PACKAGE MATERIALS INFORMATION" addendum with the current date on every
+> download**, so a TI datasheet's sha256 changes daily while its revision
+> identifier stays put (LM741 p.15 reads `10-Aug-2026` upstream vs
+> `15-Jul-2025` locally; only LMX1204 hashed identically).
+>
+> A `sha256` recorded with `sha256_origin: local_file:` will therefore
+> mismatch a fresh fetch of the same revision, essentially always, for TI
+> parts. Treat "hash differs" as *document regenerated*, not *new revision*:
+> the mismatch warning must not assert a new revision when the parsed
+> revision identifier is unchanged. Ticket 02 carries the full evidence table
+> and owns the staleness decision.
+
+- [x] `dsa fetch AFE7950` resolves, downloads, verifies sha256, registers into
       the part inventory, and is ready for `dsa build`
-- [ ] A sha256 mismatch **warns loudly and stops**, naming the likely cause (a
+- [x] A sha256 mismatch **warns loudly and stops**, naming the likely cause (a
       new upstream revision); `--accept-new-revision` records the new hash and
       revision — asserted against a recorded fixture
-- [ ] A registry miss errors with a message naming `--url`; it never guesses a
+- [x] A registry miss errors with a message naming `--url`; it never guesses a
       URL and never falls back to a search
-- [ ] `--url` writes a well-formed registry entry including the fetched
+- [x] `--url` writes a well-formed registry entry including the fetched
       revision and hash
-- [ ] `dsa fetch --project X` fetches only what is missing, and reports what
+- [x] `dsa fetch --project X` fetches only what is missing, and reports what
       it skipped
-- [ ] All tests run through `ReplayFetcher`; an unrecorded URL is a hard error
-- [ ] Registry entries for the six existing parts are seeded, so the registry
+- [x] All tests run through `ReplayFetcher`; an unrecorded URL is a hard error
+- [x] Registry entries for the six existing parts are seeded, so the registry
       ships non-empty
 
 ---
