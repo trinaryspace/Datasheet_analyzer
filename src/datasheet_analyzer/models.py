@@ -14,10 +14,15 @@ Design rules baked into the models:
 
 from __future__ import annotations
 
+import re
 from datetime import datetime, timezone
 from enum import Enum
+from typing import TYPE_CHECKING, Literal
 
 from pydantic import BaseModel, Field
+
+if TYPE_CHECKING:  # pragma: no cover - typing only, never imported at runtime
+    from datasheet_analyzer.retrieve.results import Citation
 
 
 def _utcnow() -> datetime:
@@ -77,6 +82,309 @@ class SourceDocument(BaseModel):
     vendor: str = "ti"
     vendor_evidence: str = ""
     registered_at: datetime = Field(default_factory=_utcnow)
+
+
+# `Applicability.family` wildcards: a trailing (or embedded) run of `x`/`X`
+# stands for one character each, the way vendors print a family — `AFE79xx`
+# covers AFE7950 and AFE7952, `AD90x1` covers AD9081 and AD9091.
+_FAMILY_WILDCARD = re.compile(r"[xX]")
+# What may follow a matched family stem: a package/temperature suffix
+# (`AFE7950A`, `LM741-N`) is still the same family.
+_FAMILY_SUFFIX = r"[A-Z0-9\-]*"
+
+
+class Applicability(BaseModel):
+    """The set of parts a document is *about* (ADR 0005).
+
+    Containment ("a part owns its documents") cannot express an application
+    note titled "AFE79xx JESD204C Interface Guide", so a document instead
+    carries the set of parts it applies to and a Part becomes the *view* of
+    the documents that cover it. Three kinds, and no fourth:
+
+    | kind | field read | means |
+    |---|---|---|
+    | `parts` | `parts` | exactly these part numbers |
+    | `family` | `family` | every part matching the prefix (`AFE79xx`) |
+    | `all` | — | every part in the library |
+
+    `all` is the default *and* the honest fallback: a document whose
+    applicability cannot be determined degrades to the previous flat
+    behaviour rather than to a wrong owner.
+
+    `evidence` records how the decision was reached — the matched title-block
+    line, `llm:<model>`, `fallback: no part token found`, or
+    `migrated from sources.json`. It is never blank in practice, the same
+    discipline `SourceDocument.vendor_evidence` carries on the routing path:
+    an inferred value that cannot say why is not correctable by a human.
+
+    This model lives on `LibraryDocument`, never on `SourceDocument`:
+    `SourceDocument` is embedded in every cached `RawDocument` under
+    `.cache/extract/`, and a new required field there would invalidate every
+    cached extraction.
+    """
+
+    kind: Literal["parts", "family", "all"] = "all"
+    parts: list[str] = Field(default_factory=list)  # kind == "parts"
+    family: str = ""  # kind == "family", e.g. "AFE79xx"
+    evidence: str = ""  # how it was decided; never blank in practice
+
+    @classmethod
+    def for_parts(cls, parts: list[str] | tuple[str, ...], *, evidence: str = "") -> Applicability:
+        """Applicability naming exactly these part numbers."""
+        return cls(kind="parts", parts=list(parts), evidence=evidence)
+
+    @classmethod
+    def for_family(cls, family: str, *, evidence: str = "") -> Applicability:
+        """Applicability covering a family prefix such as `AFE79xx`."""
+        return cls(kind="family", family=family, evidence=evidence)
+
+    @classmethod
+    def for_all(cls, *, evidence: str = "") -> Applicability:
+        """The honest default: a document that applies to every part."""
+        return cls(kind="all", evidence=evidence)
+
+    def covers(self, part_number: str) -> bool:
+        """True when this document applies to `part_number`.
+
+        Case-insensitive throughout — part numbers are printed both ways and a
+        corpus keyed on `AD9081` must not miss a document that wrote `ad9081`.
+        A blank part number is covered by nothing: a part is an identity, and
+        "applies to the nameless part" is never a useful answer.
+        """
+        wanted = (part_number or "").strip().upper()
+        if not wanted:
+            return False
+        if self.kind == "all":
+            return True
+        if self.kind == "parts":
+            return any(wanted == p.strip().upper() for p in self.parts)
+        stem = (self.family or "").strip().upper()
+        if not stem:
+            return False
+        if not _FAMILY_WILDCARD.search(stem):
+            return wanted.startswith(stem)
+        pattern = "".join("." if ch in "xX" else re.escape(ch) for ch in stem)
+        return re.fullmatch(pattern + _FAMILY_SUFFIX, wanted) is not None
+
+    @property
+    def label(self) -> str:
+        """Human-readable one-liner: `AD9081`, `AFE79xx`, `all parts`."""
+        if self.kind == "all":
+            return "all parts"
+        if self.kind == "family":
+            return self.family or "unnamed family"
+        return ", ".join(self.parts) if self.parts else "no parts"
+
+    @property
+    def is_valid(self) -> bool:
+        """False for the two shapes the API refuses (ticket 09).
+
+        `kind="parts"` with an empty list and `kind="family"` with a blank
+        family are inert writes that would silently narrow a document to
+        nothing; they are a 400, never a stored value.
+        """
+        if self.kind == "parts":
+            return bool([p for p in self.parts if p.strip()])
+        if self.kind == "family":
+            return bool(self.family.strip())
+        return True
+
+
+class LibraryDocument(BaseModel):
+    """A `SourceDocument` in the flat Library, plus what a user may change.
+
+    The Library is the authoritative inventory keyed by `content_hash` (the
+    sha256 of the PDF's bytes, already a `SourceDocument`'s identity); a
+    part's `sources.json` becomes a derived view of it.
+
+    Only two fields here are user-writable: `applicability` (inference is a
+    proposal, never the last word) and `labels`. A **Label** is user text
+    (`reviewed`, `thermal`); the machine-derived `PlotRecord.tags` are
+    **Tags**. A build never writes labels and never overwrites them.
+
+    `schema_version` is stamped by the store with `LIBRARY_SCHEMA_VERSION`;
+    a file carrying an unknown version is skipped rather than guessed at.
+    """
+
+    source: SourceDocument
+    applicability: Applicability = Field(default_factory=Applicability)
+    labels: list[str] = Field(default_factory=list)
+    added_at: datetime = Field(default_factory=_utcnow)
+    schema_version: str = ""
+
+    @property
+    def content_hash(self) -> str:
+        """The document's identity — the store's key."""
+        return self.source.content_hash
+
+    @property
+    def filename(self) -> str:
+        """The recorded path's basename, for display."""
+        return self.source.path.replace("\\", "/").rsplit("/", 1)[-1]
+
+    def covers(self, part_number: str) -> bool:
+        """Shorthand for `self.applicability.covers(part_number)`."""
+        return self.applicability.covers(part_number)
+
+
+class ScopeRef(BaseModel):
+    """Exactly one Part or one Project — the only scopes retrieval accepts.
+
+    ADR 0006: there is no "all parts" scope. A question is resolved to one of
+    these, and the resolved scope is *shown* on the answer so the scope of an
+    answer is never implicit.
+    """
+
+    kind: Literal["part", "project"] = "part"
+    name: str = ""
+
+    @property
+    def label(self) -> str:
+        """`AD9081` or `project: rx-frontend`."""
+        return self.name if self.kind == "part" else f"project: {self.name}"
+
+    def __str__(self) -> str:  # pragma: no cover - convenience only
+        return self.label
+
+
+class CitationOut(BaseModel):
+    """`retrieve.results.Citation` as JSON, plus its two derived strings.
+
+    Mirrors the dataclass field for field so a citation crossing the HTTP
+    boundary is the same thing the retrieval core built, and carries `pages`
+    and `label` as *fields* because a browser cannot call a Python property.
+    Front ends print `label` (`§4.5, p.7`) and never assemble `p.N`
+    themselves — that is what keeps the citation format from drifting between
+    the CLI, the MCP server and this application.
+    """
+
+    doc: str = ""
+    doc_hash: str = ""
+    section: str = ""
+    page_start: int | None = None
+    page_end: int | None = None
+    part: str = ""
+    pages: str = "p.?"
+    label: str = ""
+    needle: str = ""
+
+    @classmethod
+    def from_citation(cls, citation: Citation) -> CitationOut:
+        """Build from a `retrieve.results.Citation` without importing it.
+
+        Duck-typed on purpose: `retrieve.results` imports this module, so a
+        runtime import back the other way would be a cycle. `needle` is read
+        defensively for the same reason a corpus built before it existed must
+        still load: a citation without one opens the page unhighlighted.
+        """
+        return cls(
+            doc=citation.doc,
+            doc_hash=citation.doc_hash,
+            section=citation.section,
+            page_start=citation.page_start,
+            page_end=citation.page_end,
+            part=citation.part,
+            pages=citation.pages,
+            label=citation.label,
+            needle=getattr(citation, "needle", "") or "",
+        )
+
+
+class JobState(str, Enum):
+    """Where one analyze job is, in the order it passes through.
+
+    The five working states mirror `batch.py`'s event vocabulary
+    (`extracting | structuring | enriching | publishing`) so the GUI reports
+    the stages the runner already emits rather than inventing a second
+    vocabulary. `DONE`, `FAILED` and `SKIPPED` are terminal.
+    """
+
+    QUEUED = "queued"
+    EXTRACTING = "extracting"
+    STRUCTURING = "structuring"
+    ENRICHING = "enriching"
+    PUBLISHING = "publishing"
+    DONE = "done"
+    FAILED = "failed"
+    SKIPPED = "skipped"
+
+    @property
+    def terminal(self) -> bool:
+        """True once the job will emit no further state."""
+        return self in (JobState.DONE, JobState.FAILED, JobState.SKIPPED)
+
+
+# The working stages in the order a job passes through them, exported so a
+# progress UI and a test can assert the sequence without hardcoding it twice.
+JOB_STAGE_ORDER: tuple[JobState, ...] = (
+    JobState.QUEUED,
+    JobState.EXTRACTING,
+    JobState.STRUCTURING,
+    JobState.ENRICHING,
+    JobState.PUBLISHING,
+)
+JOB_TERMINAL_STATES: tuple[JobState, ...] = (
+    JobState.DONE,
+    JobState.FAILED,
+    JobState.SKIPPED,
+)
+
+
+class AnalyzeJob(BaseModel):
+    """One PDF being built into a part, with the applicability the user confirmed.
+
+    `applicability` is what came back from the review screen, not what
+    inference proposed: a correction the user made must reach the library, so
+    the job carries it rather than re-inferring it at build time.
+    """
+
+    id: str
+    pdf_path: str
+    part_number: str
+    applicability: Applicability = Field(default_factory=Applicability)
+    state: JobState = JobState.QUEUED
+    error: str = ""
+    detail: str = ""
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
+
+    @property
+    def terminal(self) -> bool:
+        return self.state.terminal
+
+
+class ChatMessage(BaseModel):
+    """One turn of a conversation, with the citations that back it.
+
+    Citations are collected from the `Citation` objects inside the tool
+    results the agent actually executed — never parsed out of the model's
+    prose — so a claim the model invented carries no citation.
+    """
+
+    role: Literal["user", "assistant"]
+    text: str
+    citations: list[CitationOut] = Field(default_factory=list)
+    created_at: datetime = Field(default_factory=_utcnow)
+
+
+class ChatSession(BaseModel):
+    """A saved conversation: its messages, their citations, and its scope.
+
+    Persisted as one JSON file per session so a week-old question and the
+    pages it cited are still there after a restart. The scope is stored
+    because an answer without the scope it was drawn from is not verifiable.
+    """
+
+    id: str
+    title: str
+    scope: ScopeRef
+    messages: list[ChatMessage] = Field(default_factory=list)
+    created_at: datetime = Field(default_factory=_utcnow)
+    updated_at: datetime = Field(default_factory=_utcnow)
+
+    @property
+    def n_messages(self) -> int:
+        return len(self.messages)
 
 
 class TOCEntry(BaseModel):
@@ -271,6 +579,15 @@ class CorpusManifest(BaseModel):
     pipeline_version: str = ""
     # Part-level vendor record: the datasheet's pinned vendor.
     vendor: str = ""
+    # Where this corpus's `@library/…` references hang off, as a path
+    # *relative to the part directory* (POSIX separators). Empty — and so for
+    # every corpus written before the shared document store existed — means
+    # every document is published under the part and there is no second root.
+    # Recorded here because a reader is often handed a part directory and
+    # nothing else; without it, following a shared reference would mean
+    # guessing at the `Settings` that produced the build. See
+    # `datasheet_analyzer.corpus_ref`.
+    library_root: str = ""
     # Per-document extraction stats keyed by content_hash.
     extraction_stats: dict[str, ExtractionStats] = Field(default_factory=dict)
     generated_at: datetime = Field(default_factory=_utcnow)

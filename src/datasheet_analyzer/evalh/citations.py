@@ -33,7 +33,7 @@ from pathlib import Path
 import yaml
 
 from datasheet_analyzer.models import GoldenQuestion, SpecRecord
-from datasheet_analyzer.retrieve import AnswerPack, PlotHit, Retriever, SpecHit
+from datasheet_analyzer.retrieve import AnswerPack, CorpusIndex, PlotHit, Retriever, SpecHit
 
 _NONALNUM = re.compile(r"[^a-z0-9]+")
 
@@ -102,9 +102,15 @@ def verify_questions(
                 files.add(s["file"])
         res.matched_files = sorted(files)
         corpus_texts: list[str] = []
+        index = CorpusIndex.load(part_dir)
         for rel in res.matched_files:
-            f = part_dir / rel
-            if f.exists():
+            # Through the corpus index, not `part_dir / rel`: a document
+            # published once into the shared store (ticket 04) is referenced
+            # as `@library/docs/…` and joining that onto the part directory
+            # would name a file that is not there — silently turning every
+            # golden answer into "the corpus does not contain it".
+            f = index.corpus_path(rel)
+            if f is not None and f.exists():
                 corpus_texts.append(f.read_text(encoding="utf-8"))
         corpus_blob = "\n".join(corpus_texts)
         res.corpus_contains = bool(corpus_texts) and all(
@@ -357,9 +363,18 @@ def verify_search_queries(
 
 
 def _plot_file_present(part_dir: Path, rel_file: str) -> bool:
+    """Whether a `PlotRecord.file` names real image bytes for this part.
+
+    Resolved through the corpus index rather than joined onto `part_dir`:
+    `PlotRecord.file` is anchored to the root its `plots.json` sits under, and
+    ticket 04 moves that root to the shared store for a document published
+    once and referenced by many parts.
+    """
     if not rel_file:
         return False
-    path = part_dir / rel_file
+    path = CorpusIndex.load(part_dir).corpus_path(rel_file)
+    if path is None:
+        return False
     try:
         return path.exists() and path.stat().st_size > 1024
     except OSError:

@@ -19,6 +19,7 @@ from datasheet_analyzer.evalh.citations import (
     summarize,
 )
 from datasheet_analyzer.models import GoldenQuestion
+from datasheet_analyzer.retrieve import CorpusIndex
 from datasheet_analyzer.tokens import count_tokens
 
 
@@ -147,19 +148,27 @@ def estimate_lookup_tokens(part_dir: Path, results: list[QuestionResult]) -> dic
     Compares against dumping the whole extracted text into context."""
     part_dir = Path(part_dir)
     index_tokens = count_tokens((part_dir / "INDEX.md").read_text(encoding="utf-8"))
+    # Both halves of the measurement have to follow the part's documents to
+    # wherever they were published: ticket 04 writes a shared document once
+    # into the library and references it from the part, so an `rglob` under
+    # the part would measure the "whole corpus" as zero and make the
+    # comparison below trivially true.
+    index = CorpusIndex.load(part_dir)
 
     per_question: list[int] = []
     for r in results:
         section_tokens = 0
         for rel in r.matched_files[:1]:  # agent opens the first covering section
-            f = part_dir / rel
-            if f.exists():
+            f = index.corpus_path(rel)
+            if f is not None and f.exists():
                 section_tokens += count_tokens(f.read_text(encoding="utf-8"))
         per_question.append(index_tokens + section_tokens)
 
     total_section_tokens = sum(
         count_tokens(f.read_text(encoding="utf-8"))
-        for f in part_dir.rglob("sections/*.md")
+        for doc in index.docs
+        if doc.directory is not None
+        for f in sorted(doc.directory.glob("sections/*.md"))
     )
     return {
         "index_tokens": index_tokens,

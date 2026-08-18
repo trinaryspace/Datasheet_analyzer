@@ -1,0 +1,218 @@
+/*
+ * Design tokens — the single source of colour, space, type and motion.
+ *
+ * Ticket 16 owns this file and every screen consumes it. Three rules make it
+ * safe for five concurrent frontend authors:
+ *
+ * 1. **Every colour a component uses is a token, and every token has its
+ *    complete definition on bare `:root`.** A colour whose only definition
+ *    lives inside a media query renders as nothing when that query does not
+ *    match, which is exactly the "unset system preference" case.
+ * 2. **The dark palette redefines tokens, never introduces them.** The
+ *    override blocks below are a value swap; the token set is identical.
+ * 3. **The dark media block is guarded with `:root:not([data-theme='light'])`
+ *    and mirrored by `:root[data-theme='dark']`**, so an explicit in-app
+ *    choice wins in both directions: light beats a dark OS, dark beats a
+ *    light OS.
+ *
+ * Contrast: every foreground/background pair named here clears WCAG AA
+ * (4.5:1) in all three states, and `tests/web/shell.test.ts` recomputes the
+ * ratios from this file rather than trusting the comment.
+ */
+
+:root {
+  color-scheme: light;
+
+  /* --- ground and ink ----------------------------------------------------- */
+  --color-bg: #ffffff;
+  --color-bg-raised: #f7f8fa;
+  --color-bg-sunken: #eceef2;
+  --color-fg: #14181f;
+  --color-fg-muted: #4a5261;
+  --color-fg-subtle: #6b7484;
+  --color-border: #d7dbe2;
+  --color-border-strong: #aeb5c0;
+  --color-overlay: rgba(15, 18, 22, 0.45);
+  --color-shadow: rgba(15, 18, 22, 0.12);
+  --color-focus: #1d4ed8;
+
+  /* --- accent ------------------------------------------------------------- */
+  --color-accent: #1d4ed8;
+  --color-accent-fg: #ffffff;
+  --color-accent-soft: #e6edfd;
+  --color-accent-soft-fg: #17307a;
+
+  /* --- status ------------------------------------------------------------- */
+  --color-danger: #b42318;
+  --color-danger-fg: #ffffff;
+  --color-danger-soft: #fee4e2;
+  --color-danger-soft-fg: #8a1c13;
+  --color-warn: #b54708;
+  --color-warn-fg: #ffffff;
+  --color-warn-soft: #fef0c7;
+  --color-warn-soft-fg: #7a2e0e;
+  --color-ok: #067647;
+  --color-ok-fg: #ffffff;
+  --color-ok-soft: #d1fadf;
+  --color-ok-soft-fg: #054f31;
+
+  /* --- confidence --------------------------------------------------------- */
+  /* `low` is deliberately the loudest thing on the screen: a low-confidence
+   * spec is precisely when the user should open the page and read the row. */
+  --color-confidence-high-bg: #d1fadf;
+  --color-confidence-high-fg: #054f31;
+  --color-confidence-medium-bg: #fef0c7;
+  --color-confidence-medium-fg: #7a2e0e;
+  --color-confidence-low-bg: #b42318;
+  --color-confidence-low-fg: #ffffff;
+  --color-confidence-unknown-bg: #eceef2;
+  --color-confidence-unknown-fg: #3f4654;
+
+  /* --- space -------------------------------------------------------------- */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.5rem;
+  --space-6: 2rem;
+
+  /* --- radius and elevation ------------------------------------------------ */
+  --radius-sm: 3px;
+  --radius-md: 6px;
+  --radius-lg: 10px;
+  --radius-pill: 999px;
+  --shadow-1: 0 1px 2px var(--color-shadow);
+  --shadow-2: 0 8px 24px var(--color-shadow);
+
+  /* --- type --------------------------------------------------------------- */
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, "Cascadia Mono", Menlo, monospace;
+  --text-xs: 0.75rem;
+  --text-sm: 0.8125rem;
+  --text-md: 0.9375rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.375rem;
+  --leading-tight: 1.25;
+  --leading-normal: 1.55;
+
+  /* --- motion ------------------------------------------------------------- */
+  --motion-fast: 90ms;
+  --motion-base: 160ms;
+  --easing: cubic-bezier(0.2, 0, 0.2, 1);
+
+  /* --- layout ------------------------------------------------------------- */
+  /* The stacking breakpoint is also a JS constant (`STACK_BREAKPOINT_PX` in
+   * `shell/useMediaQuery.ts`); the test asserts the two agree. */
+  --breakpoint-stack: 720px;
+  --pane-min: 22%;
+  --pane-max: 78%;
+  --divider-size: 10px;
+  --nav-height: 3rem;
+  --focus-ring-width: 2px;
+  --focus-ring-offset: 2px;
+}
+
+/* Dark, from the OS — but only while no explicit light choice is stamped. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+
+    --color-bg: #0f1216;
+    --color-bg-raised: #171b21;
+    --color-bg-sunken: #0a0c0f;
+    --color-fg: #e8ecf2;
+    --color-fg-muted: #a7b0be;
+    --color-fg-subtle: #7d8798;
+    --color-border: #262c35;
+    --color-border-strong: #3a424e;
+    --color-overlay: rgba(4, 6, 9, 0.6);
+    --color-shadow: rgba(0, 0, 0, 0.5);
+    --color-focus: #6f9dff;
+
+    --color-accent: #6f9dff;
+    --color-accent-fg: #08122b;
+    --color-accent-soft: #17233f;
+    --color-accent-soft-fg: #b6ccff;
+
+    --color-danger: #f97066;
+    --color-danger-fg: #2b0907;
+    --color-danger-soft: #45140f;
+    --color-danger-soft-fg: #ffb4a8;
+    --color-warn: #fdb022;
+    --color-warn-fg: #2e1a00;
+    --color-warn-soft: #4a2c05;
+    --color-warn-soft-fg: #ffd591;
+    --color-ok: #47cd89;
+    --color-ok-fg: #05291a;
+    --color-ok-soft: #0d3323;
+    --color-ok-soft-fg: #a6f4c5;
+
+    --color-confidence-high-bg: #0d3323;
+    --color-confidence-high-fg: #a6f4c5;
+    --color-confidence-medium-bg: #4a2c05;
+    --color-confidence-medium-fg: #ffd591;
+    --color-confidence-low-bg: #f04438;
+    --color-confidence-low-fg: #1a0503;
+    --color-confidence-unknown-bg: #232a33;
+    --color-confidence-unknown-fg: #b8c1cf;
+  }
+}
+
+/* Dark, chosen in the app — wins over a light OS preference. */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --color-bg: #0f1216;
+  --color-bg-raised: #171b21;
+  --color-bg-sunken: #0a0c0f;
+  --color-fg: #e8ecf2;
+  --color-fg-muted: #a7b0be;
+  --color-fg-subtle: #7d8798;
+  --color-border: #262c35;
+  --color-border-strong: #3a424e;
+  --color-overlay: rgba(4, 6, 9, 0.6);
+  --color-shadow: rgba(0, 0, 0, 0.5);
+  --color-focus: #6f9dff;
+
+  --color-accent: #6f9dff;
+  --color-accent-fg: #08122b;
+  --color-accent-soft: #17233f;
+  --color-accent-soft-fg: #b6ccff;
+
+  --color-danger: #f97066;
+  --color-danger-fg: #2b0907;
+  --color-danger-soft: #45140f;
+  --color-danger-soft-fg: #ffb4a8;
+  --color-warn: #fdb022;
+  --color-warn-fg: #2e1a00;
+  --color-warn-soft: #4a2c05;
+  --color-warn-soft-fg: #ffd591;
+  --color-ok: #47cd89;
+  --color-ok-fg: #05291a;
+  --color-ok-soft: #0d3323;
+  --color-ok-soft-fg: #a6f4c5;
+
+  --color-confidence-high-bg: #0d3323;
+  --color-confidence-high-fg: #a6f4c5;
+  --color-confidence-medium-bg: #4a2c05;
+  --color-confidence-medium-fg: #ffd591;
+  --color-confidence-low-bg: #f04438;
+  --color-confidence-low-fg: #1a0503;
+  --color-confidence-unknown-bg: #232a33;
+  --color-confidence-unknown-fg: #b8c1cf;
+}
+
+/* Light, chosen in the app — wins over a dark OS preference by re-stating the
+ * base palette at a specificity the media block cannot reach. */
+:root[data-theme="light"] {
+  color-scheme: light;
+}
+
+/* Motion is a token too, so suppressing it is a value swap and not a
+ * per-component override. `shell.css` also hard-stops any animation. */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --motion-fast: 0ms;
+    --motion-base: 0ms;
+  }
+}

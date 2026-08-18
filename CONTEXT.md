@@ -204,11 +204,14 @@ acquire → extract → structure → enrich → publish.
 _Avoid_: run, compile, generate
 
 **Job**:
-One unit of work in a batch: build one part from one PDF. The part number
-is the PDF's filename stem, uppercased.
+One unit of work in a batch: one PDF taken through the Build. Which Parts it
+contributes to is its Applicability's answer, not the job's — one job may
+serve many Parts — and the part number it carries is read from the document's
+own text, falling back to the filename stem only when the text yields none.
 _Avoid_: task, item, work item
 
 **Batch**:
 The set of PDFs in one directory (e.g. `datasheets/`), each becoming a job;
-the directory is the batch's identity and its only specification.
+the directory is the batch's identity and its only specification. How many
+Parts it yields is a fact about its documents, never a count of its jobs.
 _Avoid_: bulk, campaign, queue, spec file

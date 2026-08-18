@@ -1,0 +1,334 @@
+/*
+ * Chat pane styling.
+ *
+ * Colours are taken from the shell's custom properties where they exist
+ * (ticket 16 owns the theme) and fall back to values that read correctly on
+ * their own, so this pane renders sanely with no shell installed.
+ */
+
+.chat-pane {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+  gap: 0.75rem;
+}
+
+.chat-transcript {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-anchor: none; /* the pin is explicit; the browser's guess fights it */
+  padding: 0.5rem 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.chat-empty,
+.chat-restoring {
+  color: var(--dsa-muted, #6b7280);
+  font-style: italic;
+}
+
+.chat-turn {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.chat-question-text {
+  font-weight: 600;
+  margin: 0;
+}
+
+.chat-answer {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  border-left: 2px solid var(--dsa-rule, #d1d5db);
+  padding-left: 0.75rem;
+}
+
+.chat-answer-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.chat-text {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+/* --- the rendered answer ---------------------------------------------------
+   Markdown, so `white-space: pre-wrap` would double every blank line the
+   renderer has already turned into a paragraph. Spacing comes from the block
+   elements instead. */
+.chat-answer-body > :first-child {
+  margin-top: 0;
+}
+
+.chat-answer-body > :last-child {
+  margin-bottom: 0;
+}
+
+.chat-answer-body p,
+.chat-answer-body ul,
+.chat-answer-body ol {
+  margin: 0 0 0.7em;
+  line-height: 1.55;
+}
+
+.chat-answer-body ul,
+.chat-answer-body ol {
+  padding-left: 1.35rem;
+}
+
+.chat-answer-body li {
+  margin-bottom: 0.25em;
+}
+
+.chat-answer-body h3,
+.chat-answer-body h4 {
+  margin: 1em 0 0.4em;
+  font-size: 1em;
+  font-weight: 650;
+}
+
+.chat-answer-body code {
+  padding: 0.1em 0.35em;
+  border-radius: 4px;
+  background: var(--dsa-code-bg, rgb(0 0 0 / 6%));
+  font-size: 0.92em;
+}
+
+/* A wide comparison table scrolls inside itself rather than widening the
+   chat column and pushing the PDF pane off-screen. */
+.chat-table-scroll {
+  overflow-x: auto;
+  margin: 0 0 0.8em;
+}
+
+.chat-answer-body table {
+  border-collapse: collapse;
+  font-size: 0.92em;
+}
+
+.chat-answer-body th,
+.chat-answer-body td {
+  padding: 0.3em 0.65em;
+  border: 1px solid var(--dsa-border, #d8dee6);
+  text-align: left;
+  vertical-align: top;
+  white-space: nowrap;
+}
+
+.chat-answer-body th {
+  background: var(--dsa-subtle, rgb(0 0 0 / 3%));
+  font-weight: 600;
+}
+
+/* An inline chip sits in running prose, so it must not inherit the block
+   spacing of the trailing row. */
+.chat-answer-body .chat-citation {
+  margin: 0 0.1em;
+}
+
+.chat-citations-label {
+  margin-right: 0.4rem;
+  font-size: 0.82em;
+  color: var(--dsa-muted, #6b7280);
+}
+
+.chat-tool,
+.chat-resolving {
+  margin: 0;
+  font-size: 0.85em;
+  color: var(--dsa-muted, #6b7280);
+}
+
+.chat-stopped {
+  font-size: 0.8em;
+  color: var(--dsa-muted, #6b7280);
+}
+
+/* --- scope chip ------------------------------------------------------------ */
+
+.chat-scope {
+  position: relative;
+  display: inline-block;
+}
+
+.chat-scope-chip {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.35rem;
+  border: 1px solid var(--dsa-rule, #d1d5db);
+  border-radius: 999px;
+  background: var(--dsa-chip-bg, #f3f4f6);
+  color: inherit;
+  padding: 0.1rem 0.6rem;
+  font: inherit;
+  font-size: 0.8em;
+  cursor: pointer;
+}
+
+.chat-scope-chip[disabled] {
+  cursor: default;
+  opacity: 0.7;
+}
+
+.chat-scope-kind {
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 0.75em;
+  color: var(--dsa-muted, #6b7280);
+}
+
+.chat-scope-name {
+  font-weight: 600;
+}
+
+.chat-scope-picker {
+  position: absolute;
+  z-index: 20;
+  top: 100%;
+  left: 0;
+  margin-top: 0.25rem;
+  min-width: 16rem;
+  max-height: 18rem;
+  overflow-y: auto;
+  padding: 0.5rem;
+  border: 1px solid var(--dsa-rule, #d1d5db);
+  border-radius: 0.5rem;
+  background: var(--dsa-surface, #ffffff);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 12%);
+}
+
+.chat-scope-filter {
+  width: 100%;
+  font: inherit;
+  padding: 0.25rem 0.4rem;
+  margin-bottom: 0.4rem;
+}
+
+.chat-scope-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.chat-scope-option {
+  display: flex;
+  gap: 0.4rem;
+  width: 100%;
+  text-align: left;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  padding: 0.2rem 0.3rem;
+  border-radius: 0.25rem;
+  cursor: pointer;
+}
+
+.chat-scope-option:hover,
+.chat-scope-option[aria-selected='true'] {
+  background: var(--dsa-chip-bg, #f3f4f6);
+}
+
+.chat-scope-error {
+  color: var(--dsa-danger, #b91c1c);
+}
+
+/* --- citations ------------------------------------------------------------- */
+
+.chat-citations {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.chat-citation {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.25rem;
+}
+
+.chat-citation-link {
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  font-size: 0.85em;
+  color: var(--dsa-accent, #1d4ed8);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.chat-confidence-low {
+  font-size: 0.7em;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border-radius: 0.25rem;
+  padding: 0 0.3rem;
+  background: var(--dsa-warn-bg, #fef3c7);
+  color: var(--dsa-warn-fg, #92400e);
+}
+
+/* --- ambiguity and errors --------------------------------------------------- */
+
+.chat-ambiguous-prompt {
+  margin: 0 0 0.3rem;
+}
+
+.chat-candidates {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 0;
+  padding: 0;
+}
+
+.chat-candidate {
+  font: inherit;
+  cursor: pointer;
+  border: 1px solid var(--dsa-rule, #d1d5db);
+  border-radius: 999px;
+  background: var(--dsa-surface, #ffffff);
+  color: inherit;
+  padding: 0.1rem 0.7rem;
+}
+
+.chat-error,
+.chat-session-error {
+  margin: 0;
+  color: var(--dsa-danger, #b91c1c);
+}
+
+/* --- composer --------------------------------------------------------------- */
+
+.chat-composer {
+  flex: 0 0 auto;
+  display: flex;
+  gap: 0.5rem;
+  align-items: flex-end;
+  padding: 0.5rem 0.75rem;
+  border-top: 1px solid var(--dsa-rule, #d1d5db);
+}
+
+.chat-question {
+  flex: 1 1 auto;
+  font: inherit;
+  resize: vertical;
+  padding: 0.4rem;
+}
+
+.chat-composer-actions {
+  display: flex;
+  gap: 0.4rem;
+}

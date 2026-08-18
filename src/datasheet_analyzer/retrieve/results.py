@@ -30,6 +30,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from datasheet_analyzer.corpus_ref import corpus_relative
 from datasheet_analyzer.models import PlotRecord, SectionFile, SpecRecord
 
 # An ungraded record is honestly ungraded rather than optimistically "high".
@@ -48,6 +49,31 @@ def record_confidence(record: object) -> str:
     return str(getattr(value, "value", value) or "") or CONFIDENCE_UNKNOWN
 
 
+#: A needle shorter than this matches half the page; `locate` refuses it, and
+#: so do we, rather than send a request we know will come back a miss.
+MIN_NEEDLE_CHARS = 4
+
+
+def spec_needle(record: SpecRecord) -> str:
+    """The most findable printed string for a spec row.
+
+    The parameter *name* wins over the joined `row_verbatim`: the row's cells
+    are separated on the page by table rules and column gaps, not by the
+    single spaces a join produces, so the whole row rarely matches as one
+    string while the name almost always does. Falls back to the symbol, then
+    to the joined row, then to nothing — an empty needle opens the page with
+    no highlight, which is the honest miss.
+    """
+    name = (record.name or "").strip()
+    if len(name) >= MIN_NEEDLE_CHARS:
+        return name
+    symbol = (record.symbol or "").strip()
+    if len(symbol) >= MIN_NEEDLE_CHARS:
+        return symbol
+    joined = " ".join(cell for cell in getattr(record, "row_verbatim", []) if cell).strip()
+    return joined if len(joined) >= MIN_NEEDLE_CHARS else ""
+
+
 @dataclass(frozen=True)
 class Citation:
     """Where a hit came from: document, section, printed page or page range.
@@ -62,6 +88,14 @@ class Citation:
     does not say which datasheet it read is not cited. `label` deliberately
     does not print it: the citation format is what `dsa verify` measures, and
     naming the part is a front end's decision.
+
+    `needle` is the record's *own printed text* — the parameter name of a spec
+    row, a figure's caption, a section's title — carried so a reader can find
+    the thing on the page rather than the heading above it. Without it the
+    most distinctive string a front end has is the section number, and
+    searching a page for `"4.1"` highlights the heading of a section that may
+    run for eight pages. It is never parsed and never printed in `label`; it
+    exists to be handed to `/locate`, which is free to miss.
     """
 
     doc: str = ""
@@ -70,6 +104,7 @@ class Citation:
     page_start: int | None = None
     page_end: int | None = None
     part: str = ""
+    needle: str = ""
 
     @property
     def pages(self) -> str:
@@ -101,6 +136,7 @@ class Citation:
             page_start=record.page,
             page_end=record.page,
             part=part,
+            needle=spec_needle(record),
         )
 
     @classmethod
@@ -114,6 +150,7 @@ class Citation:
             page_start=record.page_start,
             page_end=record.page_end,
             part=part,
+            needle=record.caption,
         )
 
     @classmethod
@@ -125,12 +162,19 @@ class Citation:
             page_start=section.page_start,
             page_end=section.page_end,
             part=part,
+            needle=section.title,
         )
 
 
 def _doc_from_file(rel_path: str) -> str:
-    """`docs/datasheet-a1b2c3d4/sections/4-5.md` -> `datasheet-a1b2c3d4`."""
-    parts = rel_path.replace("\\", "/").split("/")
+    """`docs/datasheet-a1b2c3d4/sections/4-5.md` -> `datasheet-a1b2c3d4`.
+
+    A shared reference (`@library/docs/…`, ticket 04) names the same document
+    directory under a different root, so the marker is stripped first: a
+    citation identifies the *document*, and where its bytes are published is
+    not part of that identity.
+    """
+    parts = corpus_relative(rel_path).split("/")
     if len(parts) >= 2 and parts[0] == "docs":
         return parts[1]
     return ""
@@ -167,6 +211,7 @@ class SpecHit:
             "page": self.citation.page_start,
             "part": self.citation.part,
             "doc": self.citation.doc,
+            "doc_hash": self.citation.doc_hash,
             "citation": self.citation.label,
             "matched_via": self.matched_via,
             "confidence": self.confidence,
@@ -204,6 +249,7 @@ class PlotHit:
             "page_end": self.citation.page_end,
             "part": self.citation.part,
             "doc": self.citation.doc,
+            "doc_hash": self.citation.doc_hash,
             "citation": self.citation.label,
             "file": rec.file,
             "tags": list(rec.tags),
@@ -220,6 +266,29 @@ class SectionHit:
     citation: Citation
     matched_via: str = ""
     confidence: str = CONFIDENCE_UNKNOWN
+
+    def as_dict(self) -> dict:
+        """JSON-ready view: the section, where it is, and how it matched.
+
+        The same key set `SearchHit.as_dict()` emits, minus the three fields
+        that only a full-text hit has (`score`, `snippet`, `terms`) — a
+        section hit is the section itself, not an excerpt ranked against a
+        query. Sharing the shape is the point: an adapter that had to
+        hand-serialize a `SectionHit` would be the place the two drift.
+        """
+        return {
+            "section": self.section.number,
+            "title": self.section.title,
+            "file": self.section.file,
+            "part": self.citation.part,
+            "doc": self.citation.doc,
+            "doc_hash": self.citation.doc_hash,
+            "page_start": self.citation.page_start,
+            "page_end": self.citation.page_end,
+            "citation": self.citation.label,
+            "matched_via": self.matched_via,
+            "confidence": self.confidence,
+        }
 
 
 @dataclass(frozen=True)
@@ -259,6 +328,7 @@ class SearchHit:
             "file": self.section.file,
             "part": self.citation.part,
             "doc": self.citation.doc,
+            "doc_hash": self.citation.doc_hash,
             "page_start": self.citation.page_start,
             "page_end": self.citation.page_end,
             "citation": self.citation.label,

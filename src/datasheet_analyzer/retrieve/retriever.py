@@ -43,6 +43,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from datasheet_analyzer.config import SEARCH_SCHEMA_VERSION
+from datasheet_analyzer.corpus_ref import corpus_relative
 from datasheet_analyzer.models import PlotRecord, SearchIndex, SectionFile, SpecRecord
 from datasheet_analyzer.retrieve.index import CorpusIndex, IndexedDoc
 from datasheet_analyzer.retrieve.results import (
@@ -391,7 +392,13 @@ class Retriever:
         indexes = self._search_indexes()
         if not indexes:
             return []
-        sections_by_file = {sec.file: sec for sec in self.index.sections}
+        # Keyed on the corpus-relative form (`docs/<doc>/<file>`), which is
+        # what `ScoredSection.section_file` spells: a document published once
+        # into the shared store is named `@library/docs/<doc>/…` in the
+        # manifest but indexed under the same document directory, and a hit
+        # that failed this join would cite `p.?` for a section whose pages the
+        # manifest knows perfectly well.
+        sections_by_file = {corpus_relative(sec.file): sec for sec in self.index.sections}
         hits: list[SearchHit] = []
         for scored in score_sections(indexes, query, limit=limit):
             section = sections_by_file.get(scored.section_file) or _orphan_section(
@@ -465,7 +472,10 @@ class Retriever:
         if not ref:
             return None
         low = ref.lower()
-        norm = low.replace("\\", "/")
+        # `@library/` is a root marker, not part of the name: a caller
+        # echoing back a `file` a search hit reported must resolve whether or
+        # not the document happens to be published in the shared store.
+        norm = corpus_relative(low.replace("\\", "/"))
         rungs = (
             (lambda s: s.number.lower() == low, "number"),
             (lambda s: _file_matches(s, norm), "file"),
@@ -517,8 +527,13 @@ def _orphan_section(scored: ScoredSection, index: CorpusIndex) -> SectionFile:
 
 
 def _file_matches(sec: SectionFile, norm: str) -> bool:
-    """Whole corpus-relative path or bare filename, slash-normalized."""
-    path = sec.file.replace("\\", "/").lower()
+    """Whole corpus-relative path or bare filename, slash-normalized.
+
+    The `@library/` root marker is stripped first: a caller naming a section
+    by its path says `docs/<doc>/sections/4-5.md`, and whether that document
+    happens to be shared is not something it should have to know.
+    """
+    path = corpus_relative(sec.file).lower()
     return path == norm or path.rsplit("/", 1)[-1] == norm
 
 

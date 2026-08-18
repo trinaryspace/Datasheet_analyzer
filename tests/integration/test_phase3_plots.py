@@ -12,6 +12,7 @@ from datasheet_analyzer.extract import get_backend
 from datasheet_analyzer.extract.http import ReplayBinaryFetcher, ReplayFetcher
 from datasheet_analyzer.models import PlotSet
 from datasheet_analyzer.pipeline import build_part
+from datasheet_analyzer.publish import artifact_root, document_dirs
 from datasheet_analyzer.query import find_plots
 from datasheet_analyzer.tokens import count_tokens
 
@@ -66,20 +67,43 @@ def monkeymodule():
     mp.undo()
 
 
+def _doc_dir(result, doc=None):
+    """Where this document's artifacts landed — under the part, or shared.
+
+    Ticket 04 publishes a document once into the library and has every part
+    that references it point there, so the directory is a fact of the
+    manifest rather than a path a test can spell.
+    """
+    doc = doc or result.manifest.documents[0]
+    return document_dirs(result.manifest, part_dir=result.part_dir)[doc.content_hash]
+
+
+def _plot_path(result, rel: str) -> Path:
+    """`PlotRecord.file` against the root its `plots.json` sits under.
+
+    A plot reference deliberately carries no root marker, because
+    `plots.json` lives inside the document directory and therefore already
+    names its own root (`publish.plots.artifact_root`).
+    """
+    return artifact_root(_doc_dir(result)) / rel
+
+
 @pytest.mark.integration
 class TestPhase3Plots:
     def test_plots_json_exists_and_validates(self, built):
         result, _ = built
         doc = result.manifest.documents[0]
-        plots_path = (
-            result.part_dir / f"docs/datasheet-{doc.content_hash[:8]}" / "plots.json"
-        )
+        plots_path = _doc_dir(result, doc) / "plots.json"
         assert plots_path.exists()
         plotset = PlotSet.model_validate_json(
             plots_path.read_text(encoding="utf-8")
         )
         assert plotset.schema_version
-        assert plotset.part_number == "AFE7950"
+        # A shared document is part-*neutral* (ticket 04): the part
+        # identity lives in the manifest that references it, never in the
+        # bytes of an artifact forty parts may share.
+        assert plotset.part_number == ""
+        assert result.manifest.part_number == "AFE7950"
         assert plotset.doc_hash == doc.content_hash
         assert len(plotset.plots) == 514
 
@@ -87,16 +111,14 @@ class TestPhase3Plots:
         result, _ = built
         doc = result.manifest.documents[0]
         plotset = PlotSet.model_validate_json(
-            (
-                result.part_dir / f"docs/datasheet-{doc.content_hash[:8]}" / "plots.json"
-            ).read_text(encoding="utf-8")
+            (_doc_dir(result, doc) / "plots.json").read_text(encoding="utf-8")
         )
         missing = []
         for rec in plotset.plots:
             if not rec.file:
                 missing.append(rec.id)
                 continue
-            fpath = result.part_dir / rec.file
+            fpath = _plot_path(result, rec.file)
             if not fpath.exists():
                 missing.append(rec.id)
         assert missing == [], f"missing plot files: {missing[:10]}"
@@ -122,7 +144,7 @@ class TestPhase3Plots:
                     continue
                 if not r.file:
                     continue
-                fpath = result.part_dir / r.file
+                fpath = _plot_path(result, r.file)
                 if fpath.exists() and fpath.stat().st_size > 1024:
                     file_hits.append(r)
             text = " ".join(r.caption + " " + r.conditions for r in file_hits)
@@ -133,18 +155,14 @@ class TestPhase3Plots:
     def test_golden_plot_files_are_real_size(self, built):
         result, _ = built
         plotset = PlotSet.model_validate_json(
-            (
-                result.part_dir
-                / f"docs/datasheet-{result.manifest.documents[0].content_hash[:8]}"
-                / "plots.json"
-            ).read_text(encoding="utf-8")
+            (_doc_dir(result) / "plots.json").read_text(encoding="utf-8")
         )
         # The three golden plots must be the real (>5 KB) recordings, not tiny GIFs.
         golden_ids = {"4.12.1-f001", "4.12.1-f003", "4.12.8-f017"}
         for rec in plotset.plots:
             if rec.id not in golden_ids:
                 continue
-            fpath = result.part_dir / rec.file
+            fpath = _plot_path(result, rec.file)
             assert fpath.stat().st_size > 5000, f"{rec.id} is not a real recording"
 
     def test_plot_question_token_cost(self, built):
@@ -186,14 +204,10 @@ class TestPhase3VisionSmoke:
         from datasheet_analyzer.enrich.llm import AnthropicClient
 
         plotset = PlotSet.model_validate_json(
-            (
-                result.part_dir
-                / f"docs/datasheet-{result.manifest.documents[0].content_hash[:8]}"
-                / "plots.json"
-            ).read_text(encoding="utf-8")
+            (_doc_dir(result) / "plots.json").read_text(encoding="utf-8")
         )
         rec = next(p for p in plotset.plots if p.id == "4.12.1-f001")
-        fpath = result.part_dir / rec.file
+        fpath = _plot_path(result, rec.file)
         image_bytes = fpath.read_bytes()
         client = AnthropicClient(settings.anthropic_api_key, settings.model)
         answer = client.complete(

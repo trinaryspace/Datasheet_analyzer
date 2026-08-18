@@ -22,8 +22,17 @@ PIPELINE_VERSION = "0.4.0"
 # once instead of skipping it forever — the same publish-cache-key rule
 # `SEARCH_SCHEMA_VERSION` already carries for `search_index.json`.
 SPECS_SCHEMA_VERSION = "2"
+# "2" also carries the GUI change: `PlotRecord.file` is *library*-relative
+# once a document is published into the shared store, not part-relative. A
+# `plots.json` still at "1" predates both changes and must be republished
+# rather than resolved against the wrong root.
 PLOTS_SCHEMA_VERSION = "2"
 SEARCH_SCHEMA_VERSION = "1"
+# On-disk schema of one `<library_dir>/<content_hash>.json` record. Every
+# `LibraryDocument` file carries it; a file with an unknown version is
+# skipped with a warning rather than guessed at, the same rule the other
+# schema versions carry.
+LIBRARY_SCHEMA_VERSION = "1"
 
 
 class Settings(BaseSettings):
@@ -40,6 +49,14 @@ class Settings(BaseSettings):
     # Projects: the noun above `part`. One directory per project, holding
     # `project.json` (the explicit part list) and `PROJECT_INDEX.md`.
     projects_dir: Path = Path("projects")
+    # The Library: one `<content_hash>.json` per registered document, holding
+    # its `SourceDocument`, its applicability and its user labels (ADR 0005).
+    # This is the authoritative inventory; per-part `sources.json` is a
+    # derived view regenerated at publish time.
+    library_dir: Path = Path("library")
+    # Saved conversations: one `<session_id>.json` each, so a week-old
+    # question and the pages it cited survive a restart.
+    sessions_dir: Path = Path("sessions")
 
     # LLM enrichment (INDEX.md descriptions). Without a key the pipeline
     # falls back to deterministic extractive descriptions and says so.
@@ -80,10 +97,31 @@ class Settings(BaseSettings):
     # value is the default; 4 is the fallback.
     batch_workers: int = Field(default=4, ge=1)
 
+    # --- `dsa serve` (the local GUI) ----------------------------------------
+    # The chat agent's model. Deliberately *not* `model`: index writing is a
+    # cheap per-section summarization job that `claude-haiku-4-5` does well,
+    # and an agentic tool loop answering an engineer's question is not.
+    chat_model: str = "claude-opus-5"
+    # One assistant turn's output budget, and the cap one tool response may
+    # spend inside that turn. The tool cap is *not* `mcp_max_tokens`: an MCP
+    # response is capped for a model reading over a wire, and this consumer
+    # renders full result sets in a browser.
+    chat_max_tokens: int = Field(default=16000, ge=1)
+    chat_tool_max_tokens: int = Field(default=8000, ge=1)
+    # A local, single-user tool binds loopback. Listening on 0.0.0.0 would
+    # publish an unauthenticated corpus browser to the network.
+    serve_host: str = "127.0.0.1"
+    serve_port: int = Field(default=8765, ge=1, le=65535)
+    # Analyze-run worker pool, the same shape as `batch_workers`: the GUI's
+    # background jobs and its directory scan are both bounded by it.
+    analyze_workers: int = Field(default=4, ge=1)
+
     def resolve(self) -> Settings:
         self.parts_dir = self.parts_dir.resolve()
         self.cache_dir = self.cache_dir.resolve()
         self.projects_dir = self.projects_dir.resolve()
+        self.library_dir = self.library_dir.resolve()
+        self.sessions_dir = self.sessions_dir.resolve()
         return self
 
     @property

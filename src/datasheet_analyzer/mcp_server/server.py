@@ -67,26 +67,19 @@ from datasheet_analyzer.projects import (
     is_built,
     list_projects,
     load_project,
-    part_dirs,
     project_dir,
 )
 from datasheet_analyzer.retrieve import (
     INDEX_FILENAME,
-    ProjectRetriever,
     Retriever,
     discover_parts,
 )
+from datasheet_analyzer.retrieve.scope import resolve_part, resolve_scope
 
 SERVER_NAME = "datasheet-analyzer"
 #: Resource URIs, also the templates a client may fill in itself.
 PART_INDEX_URI = "dsa://part/{part}/" + INDEX_FILENAME
 PROJECT_INDEX_URI = "dsa://project/{name}/" + PROJECT_INDEX_FILENAME
-
-_SCOPE_ERROR = (
-    "name exactly one of `part` or `project` — a lookup has to know what it "
-    "is asking, and defaulting to 'everything' would make the scope of an "
-    "answer implicit"
-)
 
 
 def build_server(settings: Settings | None = None) -> MCPServer:
@@ -456,37 +449,17 @@ def build_server(settings: Settings | None = None) -> MCPServer:
     def _scope(part: str, project: str):
         """`(Retriever | ProjectRetriever, "")`, or `(None, reason)`.
 
-        The MCP twin of `cli._scope`: it chooses a scope and nothing else.
-        Both branches hand back an object from `retrieve/`, which is why this
-        server can format an answer without knowing how one is found.
+        Bound to this server's settings and otherwise nothing but a call into
+        `retrieve.scope.resolve_scope` — the one implementation the CLI, this
+        server and the web application share. It chooses a scope and nothing
+        else; both branches hand back an object from `retrieve/`, which is why
+        this server can format an answer without knowing how one is found.
         """
-        part, project = (part or "").strip(), (project or "").strip()
-        if bool(part) == bool(project):
-            return None, _SCOPE_ERROR
-        if project:
-            try:
-                loaded = load_project(project, settings.projects_dir)
-            except ProjectError as exc:
-                return None, str(exc)
-            return (
-                ProjectRetriever.for_parts(
-                    loaded.name, part_dirs(loaded, settings.parts_dir)
-                ),
-                "",
-            )
-        return _part_scope(part)
+        return resolve_scope(part, project, settings=settings)
 
     def _part_scope(part: str):
         """`(Retriever, "")` for one built part, or `(None, reason)`."""
-        part = (part or "").strip()
-        if not part:
-            return None, "name a `part`"
-        if not is_built(part, settings.parts_dir):
-            return None, (
-                f"no corpus for part {part} under {settings.parts_dir} — build "
-                f"it first: `dsa build <pdf> --part {part}`"
-            )
-        return Retriever.for_part(settings.parts_dir / part), ""
+        return resolve_part(part, settings=settings)
 
     def _part_summary(part_dir: Path) -> dict[str, Any]:
         """One row of `list_parts`, read off the manifest the publisher wrote."""

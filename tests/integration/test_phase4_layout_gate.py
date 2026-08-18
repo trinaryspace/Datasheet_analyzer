@@ -29,7 +29,9 @@ from typing import ClassVar
 import pytest
 
 from datasheet_analyzer.config import Settings
+from datasheet_analyzer.corpus_ref import corpus_relative
 from datasheet_analyzer.pipeline import build_part
+from datasheet_analyzer.publish import artifact_root, document_dirs
 
 
 def _squash_text(text: str) -> str:
@@ -98,9 +100,46 @@ def gate(tmp_path_factory):
     return results
 
 
+def _doc_dirs(result) -> list[Path]:
+    """Every published document directory of a build, wherever it landed.
+
+    Ticket 04 publishes a document *once* — under the shared store when the
+    build is given one — and has each part's manifest reference that
+    location, so `parts/<PART>/docs/` is no longer where a corpus's artifacts
+    are guaranteed to be. The manifest is the only thing that knows.
+    """
+    return sorted(document_dirs(result.manifest, part_dir=result.part_dir).values())
+
+
+def _doc_glob(result, pattern: str) -> list[Path]:
+    """`glob` inside this build's document directories, in a stable order."""
+    return sorted(hit for d in _doc_dirs(result) for hit in d.glob(pattern))
+
+
+def _artifact(result, ref: str) -> Path:
+    """One artifact reference resolved against the root it names.
+
+    Section references carry the `@library/` marker; a `PlotRecord.file` (and
+    the `file` a tool payload echoes back) deliberately does not, because
+    `plots.json` lives inside the document directory and therefore already
+    names its own root. Both hang off the root this build's documents sit in.
+    """
+    return artifact_root(_doc_dirs(result)[0]) / corpus_relative(ref)
+
+
+def _corpus_files(result) -> list[Path]:
+    """Every file of the corpus: the part directory plus its documents."""
+    seen: dict[Path, Path] = {}
+    for root in [result.part_dir, *_doc_dirs(result)]:
+        for f in root.rglob("*"):
+            if f.is_file():
+                seen[f.resolve()] = f
+    return list(seen.values())
+
+
 def _blob(result) -> str:
     return "\n".join(
-        (result.part_dir / sec.file).read_text(encoding="utf-8")
+        _artifact(result, sec.file).read_text(encoding="utf-8")
         for sec in result.manifest.sections
     )
 
@@ -113,14 +152,17 @@ class TestGateCorpora:
             assert len(result.manifest.sections) >= 20, name
             for sec in result.manifest.sections:
                 assert sec.page_start is not None, f"{name}: {sec.title} lacks pages"
-                assert (result.part_dir / sec.file).exists(), f"{name}: {sec.file}"
+                assert _artifact(result, sec.file).exists(), f"{name}: {sec.file}"
             assert (result.part_dir / "INDEX.md").exists(), name
 
             doc = result.manifest.documents[0]
             assert result.manifest.extraction_stats[doc.content_hash].backend == "pdf_layout"
             sources = json.loads((result.part_dir / "sources.json").read_text(encoding="utf-8"))
-            assert sources[0]["vendor"] == spec["vendor"], name
-            assert sources[0]["vendor_evidence"], f"{name}: no vendor evidence"
+            # `sources.json` is a derived view of the Library now (ADR
+            # 0005): the generated wrapper object, not a bare list.
+            assert sources["generated"] is True, name
+            assert sources["sources"][0]["vendor"] == spec["vendor"], name
+            assert sources["sources"][0]["vendor_evidence"], f"{name}: no vendor evidence"
 
             blob = _blob(result)
             for golden in spec["noise"]:
@@ -134,12 +176,12 @@ class TestGateCorpora:
         nums = [s.number for s in result.manifest.sections]
         assert nums[:3] == ["1", "2", "3"]
         assert "12" in nums
-        assert list((result.part_dir / "docs").glob("**/1-features.md")), "1-features.md missing"
+        assert _doc_glob(result, "**/1-features.md"), "1-features.md missing"
 
     def test_ad9081_unnumbered_sections_stay_honest_and_slugged(self, gate):
         result = gate["AD9081"]
         assert all(s.number == "" for s in result.manifest.sections)
-        files = {p.name for p in (result.part_dir / "docs").glob("**/sections/*.md")}
+        files = {p.name for p in _doc_glob(result, "sections/*.md")}
         assert "features.md" in files
         assert "general-description.md" in files
         index = (result.part_dir / "INDEX.md").read_text(encoding="utf-8")
@@ -150,12 +192,12 @@ class TestGateCorpora:
         result = gate["QPA1003P"]
         assert len(result.manifest.sections) == 20
         assert [s.title for s in result.manifest.sections[:2]] == ["Page 1", "Page 2"]
-        assert list((result.part_dir / "docs").glob("**/1-page-1.md"))
+        assert _doc_glob(result, "**/1-page-1.md")
 
     def test_hmc520a_unnumbered_outline_slugged(self, gate):
         result = gate["HMC520A"]
         assert all(s.number == "" for s in result.manifest.sections)
-        files = {p.name for p in (result.part_dir / "docs").glob("**/sections/*.md")}
+        files = {p.name for p in _doc_glob(result, "sections/*.md")}
         assert "features.md" in files
         assert "revision-history.md" in files
 
@@ -171,7 +213,7 @@ class TestGateCorpora:
             result = gate[name]
             sources = json.loads(
                 (result.part_dir / "sources.json").read_text(encoding="utf-8"))
-            assert sources[0]["revision"] == rev, name
+            assert sources["sources"][0]["revision"] == rev, name
 
 
 class TestGateTables:
@@ -194,7 +236,7 @@ class TestGateTables:
         blob = _blob(result)
         assert "| Parameter | Test Conditions/Comments | Min | Typ | Max | Unit |" in blob
         assert "Table 3. DAC DC Specifications" in blob
-        csvs = list((result.part_dir / "docs").glob("**/tables/*.csv"))
+        csvs = _doc_glob(result, "tables/*.csv")
         assert len(csvs) >= 15, "CSV twins missing"
 
     def test_ad9081_spec_records_resolve_via_query(self, gate):
@@ -237,8 +279,7 @@ class TestGateTables:
             for p in fitz.open(str(pdf))
         }
         specs = json.loads(
-            next((result.part_dir / "docs").glob("*/specs.json")).read_text(
-                encoding="utf-8"))
+            _doc_glob(result, "specs.json")[0].read_text(encoding="utf-8"))
         checked = verified = 0
         misses = []
         for rec in specs["records"]:
@@ -308,12 +349,12 @@ class TestGateTables:
         assert result.manifest.stats.n_specs >= 20
         assert result.manifest.stats.n_figures >= 4
         assert result.manifest.stats.n_plot_files >= 4
-        spec_files = list((result.part_dir / "docs").glob("*/specs.json"))
+        spec_files = _doc_glob(result, "specs.json")
         assert spec_files and all(
             json.loads(p.read_text(encoding="utf-8"))["records"]
             for p in spec_files
         )
-        plot_files = list((result.part_dir / "docs").glob("*/plots.json"))
+        plot_files = _doc_glob(result, "plots.json")
         assert plot_files and all(
             json.loads(p.read_text(encoding="utf-8"))["plots"]
             for p in plot_files
@@ -344,7 +385,7 @@ class TestGateFootnotesAndFigures:
         from datasheet_analyzer.query import SpecQuery, format_answer
 
         result = gate["AD9081"]
-        doc_dir = next((result.part_dir / "docs").glob("datasheet-*"))
+        doc_dir = next(d for d in _doc_dirs(result) if d.name.startswith("datasheet-"))
         specs = json.loads((doc_dir / "specs.json").read_text(encoding="utf-8"))
         row = next(r for r in specs["records"]
                    if "Full-Scale Sine Wave Output Power with AC Coupling2" in r["symbol"])
@@ -368,38 +409,36 @@ class TestGateFootnotesAndFigures:
 
         result = gate["AD9081"]
         assert result.manifest.stats.n_figures >= 100
-        files = list((result.part_dir / "docs").glob("*/figures/*/*.png"))
+        files = _doc_glob(result, "figures/*/*.png")
         assert len(files) >= 100
         assert all(f.stat().st_size > 1024 for f in files)
 
         found = find_plots(result.part_dir,
                            q="HD2 vs. fOUT over Digital Scale, 6 GSPS")
         assert found, "dsa plots query must resolve the vector figure"
-        assert found[0].file and (result.part_dir / found[0].file).stat().st_size > 1024
+        assert found[0].file and _artifact(result, found[0].file).stat().st_size > 1024
 
     def test_hmc520a_figures_render_under_captions(self, gate):
         result = gate["HMC520A"]
         assert result.manifest.stats.n_figures >= 100
-        files = list((result.part_dir / "docs").glob("*/figures/*/*.png"))
+        files = _doc_glob(result, "figures/*/*.png")
         assert len(files) >= 100
         plots = json.loads(
-            next((result.part_dir / "docs").glob("*/plots.json")).read_text(
-                encoding="utf-8"))
+            _doc_glob(result, "plots.json")[0].read_text(encoding="utf-8"))
         caption = "Conversion Gain vs. RF Frequency at Various Temperatures"
         hits = [p for p in plots["plots"] if caption in p["caption"]]
-        assert hits and (result.part_dir / hits[0]["file"]).exists()
+        assert hits and _artifact(result, hits[0]["file"]).exists()
 
     def test_lm741_old_ti_figures_render(self, gate):
         # old-TI section pages carry captioned vector figures too — they get
         # image files even though lm741 has no "Table N." captions at all
         result = gate["LM741"]
         plots = json.loads(
-            next((result.part_dir / "docs").glob("*/plots.json")).read_text(
-                encoding="utf-8"))["plots"]
-        files = list((result.part_dir / "docs").glob("*/figures/*/*.png"))
+            _doc_glob(result, "plots.json")[0].read_text(encoding="utf-8"))["plots"]
+        files = _doc_glob(result, "figures/*/*.png")
         assert len(plots) >= 3 and len(files) == len(plots)
         for rec in plots:
-            assert rec["file"] and (result.part_dir / rec["file"]).stat().st_size > 1024
+            assert rec["file"] and _artifact(result, rec["file"]).stat().st_size > 1024
 
 
 class TestAliasSeedInventory:
@@ -454,15 +493,10 @@ class TestSearchIndexEconomics:
         for name in GATE:
             result = gate[name]
             stats = result.manifest.stats
-            on_disk = sum(
-                p.stat().st_size
-                for p in (result.part_dir / "docs").glob(f"*/{INDEX_FILENAME}")
-            )
+            on_disk = sum(p.stat().st_size for p in _doc_glob(result, INDEX_FILENAME))
             assert on_disk == stats.search_index_bytes, name
             assert stats.section_bytes > 0, name
-            corpus_bytes = sum(
-                p.stat().st_size for p in result.part_dir.rglob("*") if p.is_file()
-            )
+            corpus_bytes = sum(p.stat().st_size for p in _corpus_files(result))
             of_corpus = stats.search_index_bytes / corpus_bytes
             of_text = stats.search_index_bytes / stats.section_bytes
             rows.append(
@@ -501,7 +535,7 @@ class TestSearchIndexEconomics:
             top = hits[0]
             assert top.citation.page_start is not None, name
             assert top.snippet, name
-            body = (result.part_dir / top.section.file).read_text(encoding="utf-8")
+            body = _artifact(result, top.section.file).read_text(encoding="utf-8")
             probe = top.snippet.strip("…").split(" ")[1:6]
             assert " ".join(probe) in " ".join(body.split()), name
 
@@ -1163,8 +1197,8 @@ class TestMcpOverTheGateCorpora:
             section = payload_of(call(server, "read_section", part=name, ref=top["file"]))
             assert R.validate_response(section, "read_section") == [], name
             assert section["text"], name
-            assert section["text"] == (
-                gate[name].part_dir / top["file"]
+            assert section["text"] == _artifact(
+                gate[name], top["file"]
             ).read_text(encoding="utf-8")
 
             # the ask tool lands the golden's cited page, inside its budget
@@ -1176,7 +1210,7 @@ class TestMcpOverTheGateCorpora:
             ), f"{name}: the MCP pack missed the cited page"
 
             # narrow the catalog, then receive the one figure as an image
-            figure = self._first_figure(gate[name].part_dir, payloads["find_plots"])
+            figure = self._first_figure(gate[name], payloads["find_plots"])
             image = call(server, "get_figure", part=name, file=figure)
             blocks = [c for c in image.content if c.type == "image"]
             assert blocks and blocks[0].data, f"{name}: no image content block"
@@ -1194,11 +1228,13 @@ class TestMcpOverTheGateCorpora:
                 + "\n".join(rows) + "\n"
             )
 
-    def _first_figure(self, part_dir, find_plots_payload) -> str:
+    def _first_figure(self, result, find_plots_payload) -> str:
         for hit in find_plots_payload["hits"]:
-            if hit["file"] and (part_dir / hit["file"]).exists():
+            if hit["file"] and _artifact(result, hit["file"]).exists():
                 return hit["file"]
-        raise AssertionError(f"{part_dir.name}: no cataloged figure has pixels on disk")
+        raise AssertionError(
+            f"{result.part_dir.name}: no cataloged figure has pixels on disk"
+        )
 
     def test_a_traversal_attempt_is_refused_for_that_reason(self, servers):
         """The one refusal that must hold on a real corpus too: a caller's

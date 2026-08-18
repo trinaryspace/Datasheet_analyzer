@@ -268,14 +268,15 @@ SPEC_HIT_SCHEMA = {
     "additionalProperties": False,
     "required": [
         "symbol", "name", "conditions", "min", "typ", "max", "value", "unit",
-        "unit_canonical", "section", "page", "part", "doc", "citation",
+        "unit_canonical", "section", "page", "part", "doc", "doc_hash", "citation",
         "matched_via", "confidence",
     ],
     "properties": {
         "symbol": _STR, "name": _STR, "conditions": _STR, "min": _STR, "typ": _STR,
         "max": _STR, "value": _STR, "unit": _STR, "unit_canonical": _STR,
         "section": _STR, "page": _INT_OR_NULL, "part": _STR, "doc": _STR,
-        "citation": _STR, "matched_via": _STR, "confidence": _CONFIDENCE,
+        "doc_hash": _STR, "citation": _STR, "matched_via": _STR,
+        "confidence": _CONFIDENCE,
     },
 }
 
@@ -285,13 +286,13 @@ PLOT_HIT_SCHEMA = {
     "additionalProperties": False,
     "required": [
         "id", "caption", "figure_number", "conditions", "section", "page_start",
-        "page_end", "part", "doc", "citation", "file", "tags", "matched_via",
-        "confidence",
+        "page_end", "part", "doc", "doc_hash", "citation", "file", "tags",
+        "matched_via", "confidence",
     ],
     "properties": {
         "id": _STR, "caption": _STR, "figure_number": _STR, "conditions": _STR,
         "section": _STR, "page_start": _INT_OR_NULL, "page_end": _INT_OR_NULL,
-        "part": _STR, "doc": _STR, "citation": _STR, "file": _STR,
+        "part": _STR, "doc": _STR, "doc_hash": _STR, "citation": _STR, "file": _STR,
         "tags": {"type": "array", "items": _STR}, "matched_via": _STR,
         "confidence": _CONFIDENCE,
     },
@@ -302,11 +303,13 @@ SEARCH_HIT_SCHEMA = {
     "type": "object",
     "additionalProperties": False,
     "required": [
-        "section", "title", "file", "part", "doc", "page_start", "page_end",
-        "citation", "score", "snippet", "terms", "matched_via", "confidence",
+        "section", "title", "file", "part", "doc", "doc_hash", "page_start",
+        "page_end", "citation", "score", "snippet", "terms", "matched_via",
+        "confidence",
     ],
     "properties": {
         "section": _STR, "title": _STR, "file": _STR, "part": _STR, "doc": _STR,
+        "doc_hash": _STR,
         "page_start": _INT_OR_NULL, "page_end": _INT_OR_NULL, "citation": _STR,
         "score": {"type": "number"}, "snippet": _STR,
         "terms": {"type": "array", "items": _STR}, "matched_via": _STR,

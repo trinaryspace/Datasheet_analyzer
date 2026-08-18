@@ -67,6 +67,7 @@ from datasheet_analyzer.pipeline import build_part
 from datasheet_analyzer.protocol import agent_doc_current
 from datasheet_analyzer.publish import (
     doc_dir_name_for_source,
+    document_dirs,
     plots_current,
     search_index_current,
     specs_current,
@@ -302,8 +303,14 @@ def _publish_artifacts_stale(part_dir: Path, manifest: CorpusManifest) -> bool:
     """
     if not agent_doc_current(part_dir):
         return True
+    # Where each document's artifacts live is a fact of the manifest, not of
+    # the layout: ticket 04 publishes a document once into the shared store
+    # and points every part that references it there. Looking under the part
+    # unconditionally would find nothing for a shared document and report
+    # every part stale forever, so the gate would never skip.
+    dirs = document_dirs(manifest, part_dir=part_dir)
     for doc in manifest.documents:
-        doc_dir = part_dir / "docs" / doc_dir_name_for_source(doc)
+        doc_dir = dirs.get(doc.content_hash) or part_dir / "docs" / doc_dir_name_for_source(doc)
         if not search_index_current(doc_dir):
             return True
         if not specs_current(doc_dir) or not plots_current(doc_dir):

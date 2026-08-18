@@ -43,6 +43,63 @@ def fresh_retrieval_cache():
     clear_index_cache()
 
 
+def _point_dsa_at(root: Path):
+    """Point the Library and the session store at `root`, undoing on exit."""
+    from _pytest.monkeypatch import MonkeyPatch
+
+    from datasheet_analyzer.config import reset_settings_cache
+
+    mp = MonkeyPatch()
+    mp.setenv("DSA_LIBRARY_DIR", str(root / "library"))
+    mp.setenv("DSA_SESSIONS_DIR", str(root / "sessions"))
+    reset_settings_cache()
+    yield root
+    mp.undo()
+    reset_settings_cache()
+
+
+@pytest.fixture(scope="module", autouse=True)
+def isolated_library_for_module(tmp_path_factory, request):
+    """A private Library per *module*, for corpora built by module fixtures.
+
+    The Library is the authoritative inventory now (ADR 0005): a build for
+    part `P` asks it which documents apply to `P` instead of reading a
+    per-part `sources.json`. `Settings.library_dir` defaults to `./library`,
+    so without this a test run would write into the working tree and every
+    part in the suite would share one store.
+
+    Two scopes are needed because pytest instantiates the higher one first: a
+    module-scoped `built` fixture is created *before* any function-scoped
+    fixture the test also asks for, so a function-scoped override alone would
+    arrive too late and the module's build would land in the repo's real
+    library. This fixture covers those builds; `isolated_library` below
+    narrows it to one directory per test for everything else.
+    """
+    yield from _point_dsa_at(tmp_path_factory.mktemp(f"lib-{request.node.name[:24]}"))
+
+
+@pytest.fixture(autouse=True)
+def isolated_library(tmp_path):
+    """A private Library and session store per test (ADR 0005, ticket 03).
+
+    Narrower than the per-module fixture above, because within one module two
+    tests routinely build the same part name from different PDFs — and with a
+    shared store the second build would resolve *both* documents and publish
+    them into one corpus. (Observed before this existed: "12 datasheet records
+    apply to this part".)
+
+    `parts_dir` and `cache_dir` are already per-test because tests pass them
+    explicitly; `library_dir` and `sessions_dir` are not, because most tests
+    construct `Settings` without naming them. Setting the environment covers
+    both the explicit `Settings(...)` a test builds and the `get_settings()`
+    a code path reaches for, which is why it is done here rather than at every
+    call site. A corpus built under one of these roots stays readable
+    afterwards regardless: `CorpusManifest.library_root` records which store a
+    part was published against.
+    """
+    yield from _point_dsa_at(tmp_path)
+
+
 @pytest.fixture
 def make_synthetic_pdf():
     """Factory for the shared synthetic part PDF: 2 pages, TOC with

@@ -59,11 +59,30 @@ If you skip the activation line, call `.venv/Scripts/dsa.exe` and
 `.venv/Scripts/python.exe` directly — all commands below work either way.
 
 Optional: put `ANTHROPIC_API_KEY=...` in a `.env` file to enable LLM-written
-INDEX descriptions (one batched call per build; falls back safely without it).
+INDEX descriptions (one batched call per build; falls back safely without it),
+and the chat agent behind `dsa serve`.
 
-Optional: `uv pip install --python .venv/Scripts/python.exe -e ".[mcp]"` adds
-the MCP SDK for `dsa serve --mcp` (see [Use it from an agent](#use-it-from-an-agent-mcp)).
-Everything else works without it.
+> **Check that your `.env` is not tracked.** `.gitignore` lists it, but git
+> keeps tracking a file it already tracks, so a repo that committed one before
+> the rule existed is still committing your key on every change. Run
+> `git ls-files --error-unmatch .env`; if that *succeeds*, untrack it with
+> `git rm --cached .env` and commit. The file stays on disk — only the index
+> entry goes. (Rotate the key too if it was ever pushed.)
+
+Two optional extras, each kept out of the core install so a plain one stays
+lean. Everything else works without either:
+
+```bash
+# the MCP SDK, for `dsa serve --mcp`
+uv pip install --python .venv/Scripts/python.exe -e ".[mcp]"
+
+# FastAPI + uvicorn + sse-starlette, for the local workbench `dsa serve`
+uv pip install --python .venv/Scripts/python.exe -e ".[web]"
+```
+
+See [Use it from an agent](#use-it-from-an-agent-mcp) and
+[Use it in a browser](#use-it-in-a-browser-dsa-serve). Running either command
+without its extra prints an install hint, not a traceback.
 
 ## Quickstart
 
@@ -378,6 +397,81 @@ names the setting. `get_figure`'s image block is atomic and is not trimmed:
 truncating base64 makes a corrupt PNG, not a shorter one, so the cap governs
 the JSON that cites it and the payload reports the image's byte size.
 
+### Use it in a browser (`dsa serve`)
+
+Everything above is the product; the workbench is a **third front end** onto
+it, beside the CLI and the MCP server. It adds no retrieval of its own — same
+`retrieve/` core, same `Citation`, same confidence grades — and the CLI remains
+the surface the golden Q&A and the test suite exercise. What it adds is the one
+step a terminal cannot make cheap: **clicking a citation and landing on the
+printed page it names, with the cited block highlighted.**
+
+```bash
+uv pip install --python .venv/Scripts/python.exe -e ".[web]"
+npm --prefix web install && npm --prefix web run build   # builds web/dist, served by dsa serve
+dsa serve
+# datasheet workbench: http://127.0.0.1:8765
+```
+
+Local and single-user by construction: it binds `127.0.0.1` (override with
+`DSA_SERVE_HOST` / `DSA_SERVE_PORT`), there is no authentication, and there is
+nothing to log into. The chat agent uses `ANTHROPIC_API_KEY` from your `.env`
+and `DSA_CHAT_MODEL`; the rest of the app — analyze, review, library, PDF,
+citations — works with no key at all.
+
+The path through it is four steps.
+
+**1. Analyze.** Point at a directory of PDFs and start. Every file in it is
+analyzed in the background with live per-part progress, so a 40-PDF shelf can
+be left running. One bad file fails its own job and leaves the rest going, and
+re-analyzing an unchanged directory is near-free — the same hash-gated skip
+`dsa batch` uses. Parts that finish are askable while the others are still
+building.
+
+**2. Review.** Before anything is built, a review screen shows what was
+inferred from each document: its **part number**, read from the title block
+rather than the filename (so `sbas123e.pdf` proposes `AFE7950`, not
+`SBAS123E`), and its **applicability** — the set of parts the document is
+about. A datasheet names one part; an application note may name a family
+prefix like `AFE79xx`; a layout-guidelines note may apply to everything. A
+document that cannot be classified defaults to *all parts*, which is the
+honest, non-lossy answer rather than a wrong owner. Every proposal is editable
+here, and correctable later from the Library screen. Nothing is inferred that
+you did not see.
+
+This is why one PDF no longer means one part: a register map, an errata and a
+datasheet all apply to the same device, so a question whose answer is in the
+register map and whose context is in the datasheet can finally be asked at all
+(`docs/adr/0005-documents-apply-to-parts.md`). Your own **labels**
+(`reviewed`, `thermal`, `jesd204`) attach to a document on the same screen and
+are never touched by a rebuild.
+
+**3. Ask.** Type the question without choosing a part first. The scope is
+resolved for you — to exactly one part or one project — and shown as an
+editable control on the answer, so what the answer was drawn from is always on
+screen. An ambiguous question asks which device you meant instead of guessing,
+and there is no "everything" scope to fall back to
+(`docs/adr/0006-auto-resolved-scope.md`). Answers stream token by token and
+carry the same citations, match reasons and confidence grades the CLI prints.
+
+**4. Verify.** Click a citation. The PDF opens in the pane beside the answer,
+at that page, with the cited block highlighted. The highlight is found on
+demand by searching the printed page for the record's own text — nothing is
+precomputed, and no extraction cache is invalidated to support it. **A block
+that cannot be located opens the page with no highlight**, because a box around
+the wrong row is worse than no box, exactly as an unpinned page stays honestly
+blank rather than guessed.
+
+Conversations are saved and reloadable, and an answer plus its citations
+exports to markdown for a design review — or to a
+`tests/fixtures/golden_qa_<PART>.yaml` entry, which is how a fact you verified
+by hand becomes a regression test.
+
+For development, `npm --prefix web run dev` serves the UI on `:5173` and
+proxies `/api` to `dsa serve` on `:8765`, so both halves reload independently.
+`web/dist/` is gitignored; so are `library/` (the document inventory and your
+labels) and `sessions/` (saved conversations).
+
 ### Add companion documents
 
 ```bash
@@ -405,6 +499,8 @@ Environment variables (prefix `DSA_`, or `.env` file):
 |---|---|---|
 | `DSA_PARTS_DIR` | `parts` | where corpora are written |
 | `DSA_PROJECTS_DIR` | `projects` | where projects are written |
+| `DSA_LIBRARY_DIR` | `library` | the document inventory: one record per `content_hash`, holding its applicability and your labels |
+| `DSA_SESSIONS_DIR` | `sessions` | saved `dsa serve` conversations |
 | `DSA_CACHE_DIR` | `.cache` | HTTP + extraction caches |
 | `DSA_INDEX_TOKEN_BUDGET` | `3000` | hard INDEX.md budget |
 | `DSA_ASK_BUDGET` | `4000` | default `dsa ask` pack budget (`--budget` overrides) |
@@ -412,6 +508,11 @@ Environment variables (prefix `DSA_`, or `.env` file):
 | `DSA_MCP_MAX_TOKENS` | `6000` | hard cap on every `dsa serve --mcp` response |
 | `DSA_LLM_DESCRIPTIONS` | `true` | use LLM for INDEX descriptions |
 | `DSA_MODEL` | `claude-haiku-4-5` | Anthropic model for descriptions |
+| `DSA_CHAT_MODEL` | `claude-opus-5` | Anthropic model for the `dsa serve` chat agent |
+| `DSA_CHAT_MAX_TOKENS` | `16000` | one assistant turn's output budget |
+| `DSA_SERVE_HOST` | `127.0.0.1` | `dsa serve` bind address (no auth — keep it loopback) |
+| `DSA_SERVE_PORT` | `8765` | `dsa serve` port |
+| `DSA_ANALYZE_WORKERS` | `4` | parallel jobs in a workbench analyze run |
 | `ANTHROPIC_API_KEY` | — | enables LLM enrichment |
 | `DSA_PLOT_IMAGE_DPI` | `150` | DPI for PDF-rendered plot fallback |
 
@@ -420,9 +521,12 @@ Token counts everywhere are `chars/4` (see `tokens.py`).
 ## Development
 
 ```bash
-python -m pytest tests/ -q    # 868 tests, ~90 s, fully offline (the
-                              # phase-4 gate builds four real PDFs)
+python -m pytest tests/ -q    # ~90 s, fully offline (the phase-4 gate
+                              # builds four real PDFs)
 python -m ruff check src tests
+
+npm --prefix web run typecheck   # frontend types
+npm --prefix web test            # vitest + jsdom; tests live in tests/web/
 ```
 
 Tests are hermetic: TI pages replay from `tests/fixtures/recorded_http/`
@@ -430,7 +534,9 @@ Tests are hermetic: TI pages replay from `tests/fixtures/recorded_http/`
 and the LLM is a fake client. Integration tests use the real `afe7950.pdf` /
 `afe7953.pdf` (skip-guarded) plus recorded fixtures. The MCP server is driven
 in-process over the SDK's memory transport — a real client session, no
-subprocess and no port.
+subprocess and no port. The workbench is held to the same rule: its backend is
+tested in-process against a temp `parts_dir` / `library_dir` / `sessions_dir`
+and its frontend under jsdom — no browser, no live server, no real model.
 
 Per-part goldens in `tests/fixtures/golden_qa_<PART>.yaml` are the
 objective function: hand-verified answers and page cites covering direct
@@ -488,6 +594,12 @@ ran establishes nothing.
 ## Repository docs
 
 - `AGENTS.md` — architecture contract, invariants, module map
+- `CONTEXT.md` — the domain glossary: Part, SourceDocument, Library,
+  Applicability, Tag, Label, Job, Batch
+- `docs/adr/` — architecture decision records, including
+  `0005-documents-apply-to-parts.md` (why a document applies to parts instead
+  of belonging to one) and `0006-auto-resolved-scope.md` (why there is still no
+  "all parts" scope)
 - `PHASE_1_REPORT.md` / `PHASE_2_REPORT.md` / `PHASE_3_REPORT.md` /
   `PHASE_4_REPORT.md` / `PHASE_5_REPORT.md` — measured results per phase (all
   five phases are shipped; PHASE 4 covers the vendor-neutral layout core +

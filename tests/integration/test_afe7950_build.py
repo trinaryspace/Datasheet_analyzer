@@ -36,7 +36,8 @@ from datasheet_analyzer.models import (
     TableBlock,
 )
 from datasheet_analyzer.pipeline import build_part
-from datasheet_analyzer.publish import doc_dir_name_for_source
+from datasheet_analyzer.publish import document_dirs
+from datasheet_analyzer.retrieve import CorpusIndex
 from datasheet_analyzer.structure.confidence import (
     grade_plot_record,
     grade_spec_record,
@@ -113,10 +114,18 @@ class TestRealBuild:
 
     def test_every_manifest_file_exists(self, built):
         result, _ = built
+        # Resolved per the root each reference names: ticket 04 publishes a
+        # document once into the shared store and points the part at it, so a
+        # section reference is `@library/docs/…` and a plain join onto the
+        # part directory would name a file that was never written there.
+        index = CorpusIndex.load(result.part_dir)
         for s in result.manifest.sections:
-            assert (result.part_dir / s.file).exists(), s.file
+            path = index.corpus_path(s.file)
+            assert path is not None and path.exists(), s.file
         # Phase 2: specs.json written next to the sections dir
-        doc_dir = result.part_dir / f"docs/datasheet-{result.manifest.documents[0].content_hash[:8]}"
+        doc_dir = document_dirs(result.manifest, part_dir=result.part_dir)[
+            result.manifest.documents[0].content_hash
+        ]
         assert (doc_dir / "specs.json").exists()
 
     def test_manifest_schema_roundtrip(self, built):
@@ -143,8 +152,11 @@ class TestRealBuild:
 
     def test_exact_spec_values_in_corpus_files(self, built):
         result, _ = built
+        doc_dir = document_dirs(result.manifest, part_dir=result.part_dir)[
+            result.manifest.documents[0].content_hash
+        ]
         tx45 = next(
-            f for f in result.part_dir.rglob("4-5-transmitter-electrical-characteristics.md")
+            f for f in doc_dir.rglob("4-5-transmitter-electrical-characteristics.md")
         )
         text = tx45.read_text(encoding="utf-8")
         for needle in ["DAC resolution", "14", "DSA Attenuation range", "±0.1",
@@ -224,8 +236,9 @@ class TestRealBuild:
 def _committed_nodes(part_dir: Path, manifest: CorpusManifest) -> list[SectionNode]:
     """Rebuild each published section as a `SectionNode` carrying its grids."""
     nodes: list[SectionNode] = []
+    dirs = document_dirs(manifest, part_dir=part_dir)
     for doc in manifest.documents:
-        doc_dir = part_dir / "docs" / doc_dir_name_for_source(doc)
+        doc_dir = dirs[doc.content_hash]
         for sec in manifest.sections:
             if sec.doc_hash != doc.content_hash:
                 continue
@@ -267,8 +280,9 @@ def regrade_committed_corpus(part_dir: Path, pdf: Path) -> dict:
     by_number = {node.number: node for node in nodes}
 
     specs, plots, unmatched = [], [], 0
+    dirs = document_dirs(manifest, part_dir=part_dir)
     for doc in manifest.documents:
-        doc_dir = part_dir / "docs" / doc_dir_name_for_source(doc)
+        doc_dir = dirs[doc.content_hash]
         specset = SpecSet.model_validate_json(
             (doc_dir / "specs.json").read_text(encoding="utf-8")
         )

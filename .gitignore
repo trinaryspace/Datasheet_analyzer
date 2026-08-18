@@ -1,4 +1,7 @@
-# Secrets — never tracked (ANTHROPIC_API_KEY lives here)
+# Secrets — never tracked (ANTHROPIC_API_KEY lives here).
+# If `git ls-files --error-unmatch .env` succeeds, this rule is not yet in
+# effect for you: an already-tracked file keeps being tracked. Untrack it with
+# `git rm --cached .env` (see the README's Install section).
 .env
 
 # Virtualenv
@@ -16,3 +19,21 @@
 # Python bytecode
 __pycache__/
 *.pyc
+
+# The Library: one `<content_hash>.json` per registered document
+# (DSA_LIBRARY_DIR, default `library/`). It is a local shelf — whose PDFs it
+# describes differs per machine — and it is regenerable by re-analyzing.
+# User labels live here too, so do not delete it casually; just do not commit it.
+#
+# Leading slash, deliberately: an unanchored `library/` would also match
+# `src/datasheet_analyzer/library/`, the store's own source package, and
+# silently untrack it. Same for `/sessions/`.
+/library/
+
+# Saved conversations (DSA_SESSIONS_DIR, default `sessions/`). Personal
+# working state, and they can quote NDA material.
+/sessions/
+
+# Built frontend assets (`npm run build` in web/), served by `dsa serve`.
+/web/dist/
+/web/node_modules/

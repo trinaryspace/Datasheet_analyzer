@@ -9,8 +9,9 @@ import pytest
 
 from datasheet_analyzer.config import Settings
 from datasheet_analyzer.pipeline import build_part
+from datasheet_analyzer.publish.writer import document_dirs
 
-SYN = Path(__file__).parent.parent / "fixtures" / "synthetic"
+SYN =Path(__file__).parent.parent / "fixtures" / "synthetic"
 
 
 @pytest.fixture
@@ -52,7 +53,12 @@ def test_full_build_produces_navigable_corpus(synthetic_env):
     assert (part / "sources.json").exists()
     assert (part / "manifest.json").exists()
 
-    doc = part / "docs" / f"datasheet-{result.manifest.documents[0].content_hash[:8]}"
+    # Where the document's artifacts landed is a fact of the manifest, not of
+    # the layout: ticket 04 publishes a document once into the shared store
+    # and points every part that references it there.
+    doc = document_dirs(result.manifest, part_dir=part)[
+        result.manifest.documents[0].content_hash
+    ]
     features = (doc / "sections" / "1-features.md").read_text(encoding="utf-8")
     absmax = (doc / "sections" / "4-1-absolute-maximum-ratings.md").read_text(encoding="utf-8")
 

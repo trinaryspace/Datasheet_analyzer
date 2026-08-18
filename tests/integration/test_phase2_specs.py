@@ -15,6 +15,7 @@ from datasheet_analyzer.extract.http import ReplayBinaryFetcher, ReplayFetcher
 from datasheet_analyzer.extract.pdf_structure import page_texts
 from datasheet_analyzer.models import CorpusManifest, SpecSet
 from datasheet_analyzer.pipeline import build_part
+from datasheet_analyzer.publish import document_dirs
 from datasheet_analyzer.query import SpecQuery
 
 RECORDED = Path(__file__).parent.parent / "fixtures" / "recorded_http"
@@ -64,20 +65,33 @@ def monkeymodule():
     mp.undo()
 
 
+def _doc_dir(result, doc):
+    """Where this document's artifacts landed — under the part, or shared.
+
+    Ticket 04 publishes a document once into the library and has every part
+    that references it point there, so the directory is a fact of the
+    manifest rather than a path a test can spell.
+    """
+    return document_dirs(result.manifest, part_dir=result.part_dir)[doc.content_hash]
+
+
 @pytest.mark.integration
 class TestPhase2Specs:
     def test_specs_json_exists_and_validates(self, built):
         result, _ = built
         doc = result.manifest.documents[0]
-        specs_path = (
-            result.part_dir / f"docs/datasheet-{doc.content_hash[:8]}" / "specs.json"
-        )
+        specs_path = _doc_dir(result, doc) / "specs.json"
         assert specs_path.exists()
         specset = SpecSet.model_validate_json(
             specs_path.read_text(encoding="utf-8")
         )
         assert specset.schema_version
-        assert specset.part_number == "AFE7950"
+        # A document published once into the shared store is part-*neutral*
+        # (ticket 04): which part published it first is an accident of
+        # ordering, and stamping it here would make two parts rewrite the file
+        # forever. The part identity lives in the manifest that references it.
+        assert specset.part_number == ""
+        assert result.manifest.part_number == "AFE7950"
         assert specset.doc_hash == doc.content_hash
         assert len(specset.records) >= 150
 
@@ -93,9 +107,7 @@ class TestPhase2Specs:
         }
         doc = result.manifest.documents[0]
         specset = SpecSet.model_validate_json(
-            (
-                result.part_dir / f"docs/datasheet-{doc.content_hash[:8]}" / "specs.json"
-            ).read_text(encoding="utf-8")
+            (_doc_dir(result, doc) / "specs.json").read_text(encoding="utf-8")
         )
         bad = []
         for rec in specset.records:

@@ -1,4 +1,4 @@
-# 0002 — Vendor-neutral layout core replaces the "no layout analysis" stance
+# 0003 — Vendor-neutral layout core replaces the "no layout analysis" stance
 
 The project documented a hard stance: "layout analysis of dense parametric
 tables from raw PDF text is the failure mode this project avoids" — TCP/IP

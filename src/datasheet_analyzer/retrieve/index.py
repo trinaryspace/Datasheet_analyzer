@@ -24,6 +24,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from datasheet_analyzer.config import PIPELINE_VERSION
+from datasheet_analyzer.corpus_ref import (
+    corpus_relative,
+    is_library_ref,
+    library_root_of,
+    resolve_artifact_ref,
+)
 from datasheet_analyzer.models import (
     CorpusManifest,
     PlotRecord,
@@ -75,6 +81,10 @@ class IndexedDoc:
     doc_hash: str = ""
     specs: tuple[SpecRecord, ...] = ()
     plots: tuple[PlotRecord, ...] = ()
+    # Where this document's artifacts actually live — under the part, or once
+    # in the shared store (ticket 04). `None` only for a document loaded from
+    # a bare fixture directory with no manifest to place it.
+    directory: Path | None = None
     # `search_index.json`, or None for a corpus built before full-text search
     # existed. None is what `Retriever.search_unavailable()` reports on, so an
     # older corpus is told to rebuild rather than silently answering nothing.
@@ -90,6 +100,10 @@ class CorpusIndex:
     manifest: CorpusManifest | None = None
     docs: tuple[IndexedDoc, ...] = ()
     sections: tuple[SectionFile, ...] = ()
+    # The shared document store this corpus references, read off the
+    # manifest's own `library_root` (ticket 04's publish-once layout). `None`
+    # for a corpus whose every document lives under the part.
+    library_dir: Path | None = None
     # Lazily-read section markdown, keyed by corpus-relative path. Section
     # bodies are the expensive part of a corpus; nothing reads them unless a
     # caller asks.
@@ -112,30 +126,31 @@ class CorpusIndex:
     @classmethod
     def _read(cls, part_dir: Path) -> CorpusIndex:
         manifest = _load_manifest(part_dir / "manifest.json")
+        library_dir = library_root_of(manifest, part_dir)
         docs: list[IndexedDoc] = []
-        docs_dir = part_dir / "docs"
-        if docs_dir.is_dir():
-            # sorted(): document order must not depend on filesystem order, or
-            # the same query would rank differently on two machines.
-            for doc_dir in sorted(d for d in docs_dir.iterdir() if d.is_dir()):
-                specset = _load_json_model(doc_dir / "specs.json", SpecSet)
-                plotset = _load_json_model(doc_dir / "plots.json", PlotSet)
-                search = _load_json_model(doc_dir / "search_index.json", SearchIndex)
-                docs.append(
-                    IndexedDoc(
-                        name=doc_dir.name,
-                        doc_hash=(
-                            (specset.doc_hash if specset else "")
-                            or (plotset.doc_hash if plotset else "")
-                            or (search.doc_hash if search else "")
-                        ),
-                        specs=tuple(specset.records) if specset else (),
-                        plots=tuple(plotset.plots) if plotset else (),
-                        search=search,
-                    )
+        # sorted(): document order must not depend on filesystem order, or the
+        # same query would rank differently on two machines.
+        for name, doc_dir in sorted(_doc_dirs(manifest, part_dir, library_dir).items()):
+            specset = _load_json_model(doc_dir / "specs.json", SpecSet)
+            plotset = _load_json_model(doc_dir / "plots.json", PlotSet)
+            search = _load_json_model(doc_dir / "search_index.json", SearchIndex)
+            docs.append(
+                IndexedDoc(
+                    name=name,
+                    doc_hash=(
+                        (specset.doc_hash if specset else "")
+                        or (plotset.doc_hash if plotset else "")
+                        or (search.doc_hash if search else "")
+                    ),
+                    specs=tuple(specset.records) if specset else (),
+                    plots=tuple(plotset.plots) if plotset else (),
+                    directory=doc_dir,
+                    search=search,
                 )
+            )
         return cls(
             part_dir=part_dir,
+            library_dir=library_dir,
             part_number=manifest.part_number if manifest else part_dir.name,
             manifest=manifest,
             docs=tuple(docs),
@@ -166,7 +181,14 @@ class CorpusIndex:
         cached = self._section_text.get(rel)
         if cached is not None:
             return cached
-        path = self.part_dir / rel
+        try:
+            path = resolve_artifact_ref(
+                rel, part_dir=self.part_dir, library_dir=self.library_dir
+            )
+        except ValueError as exc:
+            log.warning("skipping unresolvable %s %s: %s", kind, rel, exc)
+            self._section_text[rel] = ""
+            return ""
         try:
             text = path.read_text(encoding="utf-8")
         except OSError as exc:
@@ -175,6 +197,13 @@ class CorpusIndex:
         self._section_text[rel] = text
         return text
 
+    def doc_dir(self, name: str) -> Path | None:
+        """Where document `name`'s artifacts live, shared store included."""
+        for doc in self.docs:
+            if doc.name == name and doc.directory is not None:
+                return doc.directory
+        return None
+
     def corpus_path(self, rel: str) -> Path | None:
         """Absolute path of a corpus-relative file, or None when it escapes.
 
@@ -182,10 +211,18 @@ class CorpusIndex:
         corpus file reference (`docs/<doc>/figures/4.12.1-f001.png`) is data
         the corpus itself produced; anything absolute, drive-qualified, null-
         byte-bearing or containing `..` is refused outright rather than
-        normalized, and the resolved target is checked back against the part
-        directory so a symlink cannot escape either. Refusing beats rewriting:
-        silently resolving `../../secrets` to *something* would hand a caller
-        bytes from outside the part it asked about.
+        normalized, and the resolved target is checked back against the root
+        it belongs to so a symlink cannot escape either. Refusing beats
+        rewriting: silently resolving `../../secrets` to *something* would
+        hand a caller bytes from outside the part it asked about.
+
+        **Which root.** A document published once into the shared store
+        (ticket 04) is named by the same `docs/<doc>/…` string, because
+        `plots.json` sits inside the document directory and therefore names
+        its own root. The document's real directory is known from the
+        manifest, so the reference is anchored there and the containment check
+        runs against *that* root — a shared figure resolves, and a traversal
+        out of it is refused exactly as it is under a part.
 
         Existence is deliberately not checked here — "outside this part" and
         "not in this corpus" are different findings and a caller should be
@@ -194,16 +231,78 @@ class CorpusIndex:
         rel = (rel or "").strip().replace("\\", "/")
         if not rel or "\0" in rel:
             return None
+        shared = is_library_ref(rel)
+        rel = corpus_relative(rel)
         candidate = Path(rel)
         if rel.startswith("/") or candidate.is_absolute() or candidate.drive:
             return None
         if any(part == ".." for part in candidate.parts):
             return None
-        root = self.part_dir.resolve()
+        root = self._root_for(candidate, shared=shared)
+        if root is None:
+            return None
+        root = root.resolve()
         target = (root / candidate).resolve()
         if target != root and root not in target.parents:
             return None
         return target
+
+    def _root_for(self, candidate: Path, *, shared: bool) -> Path | None:
+        """The directory `docs/<doc>/…` hangs off for this corpus."""
+        if shared:
+            return Path(self.library_dir) if self.library_dir else None
+        parts = candidate.parts
+        if len(parts) >= 2 and parts[0] == "docs":
+            directory = self.doc_dir(parts[1])
+            # `docs/<doc>` is the last two segments of the document's own
+            # directory in both layouts, so the root is what sits above them.
+            if directory is not None:
+                return directory.parent.parent
+        return self.part_dir
+
+
+def _doc_dirs(
+    manifest: CorpusManifest | None, part_dir: Path, library_dir: Path | None
+) -> dict[str, Path]:
+    """`<doc dir name>` -> the directory holding that document's artifacts.
+
+    Two sources, in that order of authority:
+
+    1. every directory under `parts/<PART>/docs/` — the historical layout, and
+       still what a bare spec/plot fixture with no manifest at all looks like;
+    2. every document the manifest references, which under ticket 04's
+       publish-once layout resolves into the shared store instead.
+
+    A corpus of mixed provenance (some documents shared, some published under
+    the part before the shared store existed) therefore loads completely, and
+    a part-local copy wins over a shared one of the same name — it is the more
+    specific answer to "where is *this part's* copy".
+    """
+    dirs: dict[str, Path] = {}
+    docs_dir = part_dir / "docs"
+    if docs_dir.is_dir():
+        for doc_dir in docs_dir.iterdir():
+            if doc_dir.is_dir():
+                dirs[doc_dir.name] = doc_dir
+    if manifest is None:
+        return dirs
+    for section in manifest.sections:
+        rel = corpus_relative(section.file)
+        if "/sections/" not in rel:
+            continue
+        base = rel.split("/sections/", 1)[0]
+        name = base.rsplit("/", 1)[-1]
+        if name in dirs:
+            continue
+        try:
+            dirs[name] = resolve_artifact_ref(
+                section.file.split("/sections/", 1)[0],
+                part_dir=part_dir,
+                library_dir=library_dir,
+            )
+        except ValueError as exc:
+            log.warning("skipping unresolvable document reference: %s", exc)
+    return dirs
 
 
 def _cache_key(part_dir: Path) -> tuple | None:

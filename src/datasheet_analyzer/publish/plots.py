@@ -3,16 +3,45 @@
 This is the only place network bytes for figures are fetched. Every
 successful download is cached on disk; failures are logged and leave
 ``PlotRecord.file`` empty so the caller can fall back to PDF rendering.
+
+**Where a figure path is anchored** (ticket 04). Every image is written to
+``<doc_dir>/figures/<section-stem>/<id>.<ext>`` and ``PlotRecord.file``
+records that path *relative to the root the document directory was published
+under* — the parent of the ``docs/`` directory holding it, which
+``artifact_root()`` names:
+
+| published into | root | `PlotRecord.file` |
+|---|---|---|
+| `parts/<PART>/docs/<doc>/` | the part dir | part-relative |
+| `<library>/docs/<doc>/` (shared) | the library dir | library-relative |
+
+The string is identical in both cases; only the root differs, and the root is
+recoverable from where ``plots.json`` itself sits — it is always
+``<root>/docs/<doc>/plots.json``. That is why ``resolve_plot_file()`` takes
+the document directory rather than a root: a record can never be resolved
+against a root the file it came from does not sit under.
+
+What it *cannot* survive is a file written by the old code, whose paths were
+always part-relative. Such a file resolved against a library root points at
+nothing, or worse at another part's figure of the same name. So the schema
+version is the gate: ``PLOTS_SCHEMA_VERSION == "2"`` means "these paths are
+anchored at this file's own root", and anything older is rejected by
+``load_plotset()`` with a message that says to republish, never silently
+resolved. See `docs/adr/0005-documents-apply-to-parts.md` for why documents
+are published once and referenced by many parts at all.
 """
 
 from __future__ import annotations
 
+import json
 import logging
+import os
 import re
 from pathlib import Path
 
 import fitz
 
+from datasheet_analyzer.config import PLOTS_SCHEMA_VERSION
 from datasheet_analyzer.extract.http import BinaryFetcher
 from datasheet_analyzer.extract.pdf_layout import (
     figure_anchor_map,
@@ -22,6 +51,30 @@ from datasheet_analyzer.extract.pdf_layout import (
 from datasheet_analyzer.models import PlotRecord, PlotSet
 
 log = logging.getLogger(__name__)
+
+PLOTS_FILENAME = "plots.json"
+
+
+class StalePlotsSchemaError(ValueError):
+    """A ``plots.json`` too old for its figure paths to be resolvable.
+
+    Raised rather than returned: a caller that ignores a return value would
+    go on to join a part-relative path onto a library root and read (or fail
+    to read) the wrong file, which is the one outcome ticket 04 forbids.
+    """
+
+
+def artifact_root(doc_dir: Path | str) -> Path:
+    """The root a published document's artifact paths are relative to.
+
+    A document directory is always ``<root>/docs/<doc_type>-<hash8>``, so the
+    root is two levels up — the part directory for a per-part publish, the
+    library directory for a shared one. Named here so that the writer, the
+    renderers and the resolver all agree on one rule instead of each
+    re-deriving it.
+    """
+    return Path(doc_dir).parent.parent
+
 
 # TI image URLs commonly end in "-low.gif"; probe the likely variants and
 # keep the largest successful response.
@@ -52,8 +105,20 @@ def _section_stem(number: str) -> str:
 
 
 def _plot_file_path(doc_dir: Path, record: PlotRecord, ext: str) -> Path:
+    """Absolute destination of one record's pixels inside ``doc_dir``.
+
+    Unchanged in shape by ticket 04 — a figure still lives beside its
+    document — but it is now the single place that shape is written down, so
+    that a shared document directory and a per-part one lay out identically
+    and a record copied between them stays valid.
+    """
     stem = _section_stem(record.section)
-    return doc_dir / "figures" / stem / f"{record.id}{ext}"
+    return Path(doc_dir) / "figures" / stem / f"{record.id}{ext}"
+
+
+def plot_file_path(record: PlotRecord, *, doc_dir: Path, ext: str = ".png") -> Path:
+    """Public twin of ``_plot_file_path`` — where this record's pixels belong."""
+    return _plot_file_path(Path(doc_dir), record, ext)
 
 
 def _extension_from_url(url: str) -> str:
@@ -70,9 +135,74 @@ def _absolute_url(url: str, base: str = "https://www.ti.com") -> str:
 
 
 def _set_record_file(record: PlotRecord, dest: Path, doc_dir: Path) -> None:
-    # Record a path relative to the part dir (doc_dir's parent's parent).
-    rel = dest.relative_to(doc_dir.parent.parent)
+    """Record where the pixels landed, relative to the document's own root.
+
+    Ticket 04: the root is ``artifact_root(doc_dir)`` — the part directory
+    for a per-part publish and the *library* directory for a shared one — so
+    a document published once into the shared store is referenced by every
+    part that applies to it without any part holding a copy. The written
+    string is the same either way (`docs/<doc>/figures/...`); which root it
+    hangs off is carried by `PLOTS_SCHEMA_VERSION == "2"` and by the location
+    of the `plots.json` the record is read back out of.
+    """
+    rel = Path(dest).relative_to(artifact_root(doc_dir))
     record.file = str(rel).replace("\\", "/")
+
+
+def load_plotset(doc_dir: Path | str) -> PlotSet | None:
+    """Read ``<doc_dir>/plots.json``; `None` when the document has none.
+
+    Raises `StalePlotsSchemaError` for a file written before figure paths
+    became root-anchored (schema `"1"`). A missing file is not an error — a
+    `pdf_text` register map legitimately catalogs no figures — but a file at
+    the wrong version is, because nothing downstream can tell which root its
+    paths were meant for.
+    """
+    path = Path(doc_dir) / PLOTS_FILENAME
+    if not path.exists():
+        return None
+    data = json.loads(path.read_text(encoding="utf-8"))
+    version = data.get("schema_version", "") if isinstance(data, dict) else ""
+    if version != PLOTS_SCHEMA_VERSION:
+        raise StalePlotsSchemaError(
+            f"{path}: plots schema {version or '(unset)'}, expected "
+            f"{PLOTS_SCHEMA_VERSION}. Its figure paths are part-relative and "
+            f"would resolve against the wrong root — republish this document "
+            f"instead of reading it."
+        )
+    return PlotSet.model_validate(data)
+
+
+def resolve_plot_file(
+    record: PlotRecord,
+    *,
+    doc_dir: Path | str,
+    schema_version: str = PLOTS_SCHEMA_VERSION,
+) -> Path | None:
+    """Absolute path of a record's image, or `None` when it has none.
+
+    `None` covers the three honest cases — a record cataloged without pixels,
+    a file that has since been removed from the (possibly shared) store, and
+    a path that tries to escape its root. A *stale* schema is not one of
+    them: that raises, because resolving it would silently pick the wrong
+    root.
+    """
+    if schema_version != PLOTS_SCHEMA_VERSION:
+        raise StalePlotsSchemaError(
+            f"plots schema {schema_version or '(unset)'}, expected "
+            f"{PLOTS_SCHEMA_VERSION}: figure paths from an older publish are "
+            f"part-relative and cannot be resolved against a library root."
+        )
+    if not record.file:
+        return None
+    root = artifact_root(doc_dir)
+    candidate = Path(os.path.normpath(str(root / record.file)))
+    try:
+        candidate.relative_to(Path(os.path.normpath(str(root))))
+    except ValueError:
+        log.warning("figure path escapes its root: %s", record.file)
+        return None
+    return candidate if candidate.is_file() else None
 
 
 def fetch_plot_images(plotset: PlotSet, doc_dir: Path, *, fetcher: BinaryFetcher,

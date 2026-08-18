@@ -24,6 +24,7 @@ session-driven half lives in `test_mcp_server.py`, behind an `importorskip`.
 from __future__ import annotations
 
 import sys
+import types
 from importlib.util import find_spec
 from pathlib import Path
 
@@ -195,6 +196,38 @@ class TestTheOptionalExtra:
         assert '".[mcp]"' in err
         assert "pip install" in err
 
-    def test_serve_without_mcp_flag_states_the_only_transport(self, capsys):
-        assert cli.main(["serve"]) == 2
-        assert "--mcp" in capsys.readouterr().err
+    def test_serve_without_the_mcp_flag_never_starts_the_mcp_server(
+        self, monkeypatch, capsys
+    ):
+        """`--mcp` selects the MCP transport and nothing else selects it.
+
+        `dsa serve` used to be an error that named `--mcp` as the only
+        transport; the workbench (ticket 05) gave the flagless form its own
+        meaning. What still has to hold is that the MCP server is reached
+        **only** through the explicit flag, so the runner and the app factory
+        are faked here rather than started — a real `uvicorn.run` would block
+        the suite forever.
+        """
+        started: list[str] = []
+        monkeypatch.setattr(
+            "datasheet_analyzer.cli._serve_mcp",
+            lambda: started.append("mcp") or 0,
+        )
+
+        class _FakeUvicorn:
+            def __init__(self) -> None:
+                self.calls: list[dict] = []
+
+            def run(self, app, **kwargs):
+                self.calls.append({"app": app, **kwargs})
+
+        fake_app_main = types.ModuleType("datasheet_analyzer.app.main")
+        fake_app_main.create_app = lambda settings: "app"  # type: ignore[attr-defined]
+        uvicorn = _FakeUvicorn()
+        monkeypatch.setitem(sys.modules, "uvicorn", uvicorn)
+        monkeypatch.setitem(sys.modules, "datasheet_analyzer.app.main", fake_app_main)
+
+        assert cli.main(["serve"]) == 0
+        assert started == []
+        assert len(uvicorn.calls) == 1
+        assert "http://" in capsys.readouterr().out

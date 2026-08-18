@@ -71,6 +71,7 @@ dsa project build rf-frontend                          # PROJECT_INDEX.md under 
 dsa project status                                     # projects + their parts
 dsa ask --project rf-frontend "does anything here need a 1.8 V rail?"
 dsa search --project rf-frontend "sysref"              # --project also on query / plots; hits labelled [PART]
+dsa serve                                              # the local workbench in a browser on 127.0.0.1:8765 (needs the [web] extra)
 dsa serve --mcp                                        # the corpus as MCP tools over local stdio (needs the [mcp] extra)
 dsa status                                             # vendor + evidence + confidence mix + per-doc extraction stats + projects
 
@@ -126,6 +127,7 @@ codes, not colors.
 | `pipeline.py` | Orchestration + extraction cache (`.cache/extract/<hash>__<backend>.json`, atomic write-temp + rename with a Windows rename retry). Vendor routing via the pinned vendor; `--vendor` repins the inventory; drift warnings never re-route. `build_part` takes an additive `on_progress` stage-boundary callback (extracting/structuring/enriching/publishing; no-op default — existing callers unchanged; batch's event emitter wires into it). | `build_part` |
 | `batch.py` | Batch runner: flat `*.pdf` scan of a directory, one job per PDF (part = uppercase stem), failure isolation, per-job summary + `BatchReport`. Hash-gated skip (`skip_reason`: manifest + `PIPELINE_VERSION` + inventory sha256; `--force` / `--no-cache` disable it; changed PDFs re-register). Stage events: every transition (queued/extracting/structuring/enriching/publishing/done/failed/skipped) emits one prefixed terminal line AND one JSONL record (`.cache/batches/<dirstem>-<run>/batch.jsonl`; header event carries the job list) via `EventEmitter` — the JSONL is the monitoring source of truth; `build_part`'s additive `on_progress` callback (no-op default) is what fired inside jobs. Parallel dispatch: bounded `ThreadPoolExecutor` (`--workers N`, env `DSA_BATCH_WORKERS` default 4; `workers=1` is the exact serial path), job-scoped wiring (backend/fetchers/LLM client created per job — no shared mutable pipeline state), final events as jobs complete, report in run order; extraction-cache writes are atomic (write-temp + rename) so identical PDF bytes can never corrupt `.cache/extract/<hash>__<backend>.json`. | `run_batch`, `run_job`, `discover_jobs`, `skip_reason`, `EventEmitter`, `log_path_for`, `BatchReport`, `BatchError`, `STATUS_*` |
 | `mcp_server/` | **The second front end** (`dsa serve --mcp`, Phase 5 ticket 07): the corpus as MCP tools over **local stdio** — no HTTP, no auth, no multi-tenancy. `server.py` registers nine tools (`list_parts`, `list_projects`, `get_index`, `search`, `find_spec`, `read_section`, `find_plots`, `get_figure`, `ask`) and two index resources (`dsa://part/<PART>/INDEX.md`, `dsa://project/<NAME>/PROJECT_INDEX.md`, registered as templates *and* as concrete resources for what is on disk at start-up). It is bound by the same seam `cli.py` is: every lookup goes through `retrieve/`, every citation comes from `Citation`, every hit shape from that hit's own `as_dict()`, and the pack from `retrieve/pack.py`. `responses.py` is deliberately **SDK-free** — the envelope (`tool`, `scope`, `error` vs `warning`, `truncated`, `over_cap`, `notice`, `citations`, `tokens`), the declared per-tool `SCHEMAS` (checked with `retrieve.pack.validate_pack`, not a second validator) and the response cap live there, because the `[mcp]` extra is optional and the rule that bounds a response must not vanish with it. `DSA_MCP_MAX_TOKENS` (default 6000) caps every tool response *and* every resource read: list bodies fill greedily in retrieval order, text bodies trim to what is left, and any drop carries a notice naming the setting. Two exceptions are stated rather than hidden: an **image block is atomic** (trimming base64 corrupts a PNG, so the cap governs the JSON that cites it), and an **answer pack shrinks by re-asking at a lower budget**, never by deleting rows from the pack it already built — below a few hundred tokens no pack fits, and the response says `over_cap` instead of shipping a mutilated answer. The `mcp` SDK is imported lazily via the package `__getattr__`, so a core install works and `dsa serve --mcp` without the extra prints an install hint. | `build_server`, `serve_stdio`, `SCHEMAS`, `validate_response`, `response_tokens`, `CAP_SETTING`, `PART_INDEX_URI`, `PROJECT_INDEX_URI` |
+| `app/` + `web/` | **The third front end** (`dsa serve`, the local workbench): a FastAPI application plus a React + Vite + TypeScript UI, one process, loopback only (`serve_host` defaults to `127.0.0.1` — there is no authentication, so binding `0.0.0.0` would publish an unauthenticated corpus browser and every NDA document in it). Bound by the **same seam** `cli.py` and `mcp_server/` are, and for the same reason: no retrieval logic, no citation formatting, no JSON shapes of its own. It consumes `retrieve.Retriever` / `ProjectRetriever` **in process** — it does not shell out to the MCP server, whose `DSA_MCP_MAX_TOKENS` cap is correct for a model reading over a wire and wrong for a UI rendering full result sets. `contracts.py` is the frozen HTTP surface: its docstring holds the endpoint table and every request/response model, it imports no FastAPI (so `acquire/applicability.py` stays importable in a plain install), and a router may not invent a shape that is not in it. `main.py` auto-discovers `routers/*.py`; `static.py` serves `web/dist` when it exists and says how to build it when it does not. Two one-way SSE streams (analyze progress, chat tokens) — server-to-client only, so no WebSocket. `app/tools.py` mirrors the nine MCP tools as the chat agent's tool surface; `_scope` is shared from `retrieve/scope.py` rather than copied a third time. `locate.py` derives highlight geometry **on demand** from the PDF and never persists it (see the `SourceDocument` rule below). The `web` extra is optional exactly as `mcp` is — `dsa serve` without it prints an install hint. | `create_app`, `contracts` (the endpoint table), `JobRegistry`, `resolve_scope`, `locate_citation`, `SessionStore` |
 | `protocol.py` | **The corpus agent protocol — one rule text, three destinations** (Phase 5, ticket 08). `RULES`, `CONFIDENCE_HEADER`/`CONFIDENCE_ROWS` and `FALLBACK_RULE` are the canonical strings; `build_part_agent_markdown` (written by `publish/writer.py`), `build_project_agent_markdown` (written by `projects/index.py`) and `build_skill_markdown` (the checked-in `.claude/skills/datasheet-corpus/SKILL.md`, regenerated by `scripts/write_skill.py`) render *those exact strings* and add only their own worked examples — the CLI path and the MCP path, scoped to that part or project. `AGENT.md` is bounded like `INDEX.md` is (`AGENT_DOC_TOKEN_BUDGET` = 1700; measured 1,420 for a part and 1,496 for a three-part project, recorded per part in `CorpusStats.agent_doc_tokens`) and carries `PROTOCOL_MARKER`, its embedded version, so `agent_doc_current()` can tell the batch skip gate to republish a corpus written before the protocol existed. | `RULES`, `CONFIDENCE_HEADER`, `CONFIDENCE_ROWS`, `FALLBACK_RULE`, `AGENT_FILENAME`, `AGENT_DOC_TOKEN_BUDGET`, `PROTOCOL_VERSION`, `PROTOCOL_MARKER`, `SKILL_NAME`, `SKILL_RELPATH`, `rules_block`, `confidence_block`, `build_part_agent_markdown`, `build_project_agent_markdown`, `build_skill_markdown`, `write_agent_doc`, `agent_doc_current` |
 | `cli.py` | argparse CLI, **formatting only** — it holds no retrieval logic (see the seam under Conventions). `_scope()` turns `--part` / `--project` (mutually exclusive, one required) into a `Retriever` or a `ProjectRetriever` and nothing else; project-scoped output labels each hit `[PART]` via the renderers' `show_part`. Reconfigures stdout/stderr to UTF-8 (Windows cp1252). | `main` |
 
@@ -149,7 +151,17 @@ projects/<name>/
 ├── project.json           # Project: explicit parts[] (+ role), interfaces, notes, timestamps
 ├── PROJECT_INDEX.md       # always-loadable design index (hard budget, default 4000 tok)
 └── AGENT.md               # the same retrieval protocol, scoped to the design
+
+library/                   # DSA_LIBRARY_DIR — the authoritative document inventory
+└── <content_hash>.json    # LibraryDocument: SourceDocument + applicability + user labels
+
+sessions/                  # DSA_SESSIONS_DIR — saved conversations
+└── <session_id>.json      # ChatSession: messages, citations, resolved scope
 ```
+
+`library/` and `sessions/` are gitignored: the first is a local shelf and the
+second is personal working state, and both can describe NDA material. Neither
+is part of the product a corpus ships — `parts/` and `projects/` are.
 
 The protocol also ships in-repo as the Claude Code skill
 `.claude/skills/datasheet-corpus/SKILL.md` — rendered, not written by hand
@@ -172,7 +184,11 @@ The protocol also ships in-repo as the Claude Code skill
    PDFs (`tests/fixtures/pdf/` — committed, **ungated**: a missing fixture
    is a hard test failure; `pdf_layout` is offline by construction; the
    repo-root copies stay the documented `dsa build` working files).
-   Synthetic PDFs are built in-test via fitz.
+   Synthetic PDFs are built in-test via fitz. The workbench inherits this
+   unchanged: **no browser** either. Its backend seam is tested in-process
+   against a temp `parts_dir` / `library_dir` / `sessions_dir` (the
+   `reset_settings_cache` hook), and the frontend against jsdom — never a
+   live server, a real model, or a real driver.
 5. **Golden Q&A is the objective function.** Per-part benchmarks at
    `tests/fixtures/golden_qa_<PART>.yaml` (the AFE7950 set — 21 questions —
    is the historical benchmark; no public one exists). `dsa verify`
@@ -220,11 +236,18 @@ The protocol also ships in-repo as the Claude Code skill
   freely). PyMuPDF is AGPL-3.0 — it *is* the offline `pdf_layout` extraction floor
   (fonts, spans, rulings, vector figure regions); TI's HTML path uses it for
   structure/verification only.
-- **No retrieval logic in a front end.** `cli.py` and `mcp_server/server.py`
-  may only format what `retrieve/` returns: no corpus walk, no
+- **No retrieval logic in a front end.** There are now **three** front ends —
+  `cli.py`, `mcp_server/server.py` and `app/` (the `dsa serve` workbench) — and
+  the rule is the same for all three: they may only format what `retrieve/`
+  returns. No corpus walk, no
   `specs.json` / `plots.json` parsing, no hand-built `p.N` or `§N` string.
-  Citations come from `Citation`, so the CLI and the MCP server can never drift
-  apart in what they cite. `tests/unit/test_retrieve.py::TestCliIsFormatOnly`
+  Citations come from `Citation`, so the CLI, the MCP server and the GUI can
+  never drift apart in what they cite. The GUI is the easiest of the three to
+  break this in, because a browser wants a JSON shape and it is one line to
+  hand-roll one: it must not. Response bodies are built from the hits' own
+  `as_dict()` and declared in `app/contracts.py`, which is why `SectionHit`
+  gained an `as_dict()` rather than the GUI gaining a serializer.
+  `tests/unit/test_retrieve.py::TestCliIsFormatOnly`
   and `tests/unit/test_mcp_responses.py::TestMcpServerIsFormatOnly` fail the
   moment that creeps back in — the same grep-shaped guard over both sources.
   The MCP half of that guard deliberately lives in the **SDK-free** test
@@ -235,6 +258,38 @@ The protocol also ships in-repo as the Claude Code skill
   `as_dict()` and `AnswerPack.as_dict()` own the JSON shapes, and the MCP
   server's declared `SCHEMAS` are asserted *against those very dicts* so a
   declared contract cannot drift from the data it describes.
+- **`SourceDocument`'s shape is frozen by the extraction cache.**
+  `SourceDocument` is embedded in `RawDocument`, and `RawDocument` is exactly
+  what `.cache/extract/<hash>__<backend>.json` serializes. Adding a required
+  field to it therefore fails validation on every cache file already on disk,
+  and that cache is the most expensive artifact in the repo to rebuild. This is
+  why applicability and labels are **not** fields on `SourceDocument`: they
+  live on a `LibraryDocument` that wraps it (`source` + `applicability` +
+  `labels`), stored once per `content_hash` under `library_dir`, with per-part
+  `sources.json` regenerated at publish as a derived read-only view.
+  `SourceDocument.part_number` keeps its meaning — the part a document was
+  registered under — and becomes advisory rather than authoritative. See
+  `docs/adr/0005-documents-apply-to-parts.md`.
+- **GUI work does not touch the extraction layer.**
+  `extract/pdf_layout.py` is not edited and `PdfLayoutBackend.output_version`
+  is not bumped by anything in the workbench, for the reason above: an
+  `output_version` bump is a cache invalidation, and re-extracting the shelf is
+  not a side effect a UI feature gets to have. Citation highlighting is what
+  makes this tempting and what proves it unnecessary — geometry is **derived on
+  demand** by `app/locate.py` (open the cited page with PyMuPDF, search for the
+  record's own text using the distinctive-needle approach already in
+  `structure/pagemap.pin_table_pages`), never persisted into `RawDocument`. A
+  miss opens the page with **no** highlight; a box around the wrong row is the
+  one outcome worse than no box, and it is the same honesty rule as an unpinned
+  page staying `None`.
+- **The GUI's scope is resolved and shown, never widened.** There is still no
+  "all parts" scope: a question resolves to exactly one Part or Project by
+  matching it against built part and project names, the resolution is rendered
+  as an editable control attached to the answer, and ambiguity raises a
+  question to the user instead of a guess. The invariant that a lookup must
+  know what it is asking is satisfied because the scope is on screen, not
+  because a picker was forced on the user. See
+  `docs/adr/0006-auto-resolved-scope.md`.
 - **A caller's string becomes a path in exactly one place.**
   `CorpusIndex.corpus_path` (via `Retriever.corpus_path`) is the only
   translation from a corpus-relative reference to a file, and it *refuses*

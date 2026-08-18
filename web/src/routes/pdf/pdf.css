@@ -1,0 +1,144 @@
+/*
+ * PDF pane styling.
+ *
+ * Colours come from the shell's custom properties where they exist, with a
+ * literal fallback so the pane is legible on its own (it is rendered
+ * standalone in tests, and during a partial build-out). Nothing here is
+ * fetched: no @import, no web font, no remote image.
+ */
+
+.pdf-pane {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  background: var(--dsa-surface-sunken, #f4f4f5);
+  color: var(--dsa-text, #18181b);
+}
+
+.pdf-pane--empty {
+  align-items: center;
+  justify-content: center;
+}
+
+.pdf-empty {
+  max-width: 32ch;
+  text-align: center;
+  color: var(--dsa-text-muted, #6b7280);
+}
+
+.pdf-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.35rem 0.5rem;
+  border-bottom: 1px solid var(--dsa-border, #d4d4d8);
+  background: var(--dsa-surface, #ffffff);
+}
+
+.pdf-toolbar button {
+  min-width: 2rem;
+  padding: 0.2rem 0.5rem;
+  border: 1px solid var(--dsa-border, #d4d4d8);
+  border-radius: 0.25rem;
+  background: var(--dsa-surface, #ffffff);
+  color: inherit;
+  cursor: pointer;
+}
+
+.pdf-toolbar button[disabled] {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.pdf-toolbar button[aria-pressed='true'] {
+  background: var(--dsa-accent-soft, #e0e7ff);
+  border-color: var(--dsa-accent, #4f46e5);
+}
+
+.pdf-toolbar-gap {
+  flex: 1 1 auto;
+}
+
+.pdf-page-input {
+  width: 4rem;
+  padding: 0.2rem 0.3rem;
+  border: 1px solid var(--dsa-border, #d4d4d8);
+  border-radius: 0.25rem;
+  background: var(--dsa-surface, #ffffff);
+  color: inherit;
+}
+
+.pdf-page-count,
+.pdf-zoom,
+.pdf-doc-label {
+  font-size: 0.85rem;
+  color: var(--dsa-text-muted, #6b7280);
+  white-space: nowrap;
+}
+
+.pdf-doc-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 16ch;
+}
+
+.pdf-highlight-status {
+  margin: 0;
+  padding: 0.25rem 0.6rem;
+  min-height: 1.4rem;
+  font-size: 0.8rem;
+  color: var(--dsa-text-muted, #6b7280);
+}
+
+.pdf-error {
+  margin: 0;
+  padding: 0.6rem;
+  color: var(--dsa-danger-text, #7f1d1d);
+  background: var(--dsa-danger-soft, #fee2e2);
+  border-bottom: 1px solid var(--dsa-danger, #dc2626);
+}
+
+.pdf-loading {
+  padding: 1rem;
+  color: var(--dsa-text-muted, #6b7280);
+}
+
+.pdf-scroll {
+  flex: 1 1 auto;
+  overflow: auto;
+  padding: 0.75rem;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+}
+
+.pdf-scroll:focus-visible {
+  outline: 2px solid var(--dsa-accent, #4f46e5);
+  outline-offset: -2px;
+}
+
+.pdf-page {
+  position: relative;
+  box-shadow: 0 1px 6px rgb(0 0 0 / 25%);
+  background: #ffffff;
+}
+
+.pdf-canvas {
+  display: block;
+}
+
+/* The overlay is its own layer above the canvas, sized to the same box. */
+.pdf-highlight-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.pdf-highlight {
+  position: absolute;
+  background: var(--dsa-highlight, rgb(250 204 21 / 38%));
+  outline: 1px solid var(--dsa-highlight-edge, rgb(202 138 4 / 85%));
+  border-radius: 1px;
+}

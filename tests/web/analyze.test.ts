@@ -1,0 +1,623 @@
+/**
+ * Ticket 17 — the analyze and review screens.
+ *
+ * Hermetic by construction: the API client is mocked, so no request leaves
+ * the process and no SSE connection is opened; the shell's
+ * `ApplicabilityControl` (ticket 16, built concurrently) is injected through
+ * the screen's own resolver module. One test asserts by reading the source
+ * that no local copy of that control exists — the property the ticket cares
+ * about is structural, not behavioural, so it is checked structurally.
+ */
+import { readFileSync, readdirSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+// This file lives outside the Vite root (`web/`), and the repository has no
+// root-level `node_modules`, so a bare specifier does not resolve from here.
+// Until the scaffold grows an alias, the packages are addressed by path.
+// `describe`/`it`/`expect`/`vi` need no import: `test.globals` is on.
+import { act, cleanup, fireEvent, render, screen, waitFor } from '../../web/node_modules/@testing-library/react';
+import { createElement } from '../../web/src/test-kit';
+import type { ReactElement } from '../../web/src/test-kit';
+import { MemoryRouter } from '../../web/node_modules/react-router-dom';
+
+import type { AnalyzeStreamHandlers } from '../../web/src/api/client';
+import type {
+  AnalyzeJob,
+  Applicability,
+  DocProposal,
+  JobEvent,
+  RunSnapshot,
+  ScanOut,
+} from '../../web/src/api/types';
+
+const mocks = vi.hoisted(() => ({
+  scanDirectory: vi.fn(),
+  startAnalyze: vi.fn(),
+  openAnalyzeStream: vi.fn(),
+}));
+
+vi.mock('../../web/src/api/client', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../web/src/api/client')>();
+  return {
+    ...actual,
+    scanDirectory: mocks.scanDirectory,
+    startAnalyze: mocks.startAnalyze,
+    openAnalyzeStream: mocks.openAnalyzeStream,
+  };
+});
+
+/**
+ * Stand in for the shell primitive.
+ *
+ * The real control belongs to `web/src/shell/**` and is resolved at runtime
+ * by `shellPrimitives.ts`; mocking that resolver is how this screen is tested
+ * without depending on another wave-1 ticket's files existing yet.
+ */
+vi.mock('../../web/src/routes/analyze/shellPrimitives', async () => {
+  const react = await import('../../web/src/test-kit');
+  type Props = {
+    value: Applicability;
+    onChange: (next: Applicability) => void;
+    id?: string;
+    label?: string;
+    disabled?: boolean;
+  };
+  const Fake = ({ value, onChange, id, label, disabled }: Props) =>
+    react.createElement(
+      'div',
+      { 'data-testid': id },
+      react.createElement(
+        'span',
+        null,
+        `applies:${value.kind}:${value.parts.join('|')}${value.family}`,
+      ),
+      react.createElement(
+        'button',
+        {
+          type: 'button',
+          disabled,
+          onClick: () =>
+            onChange({
+              kind: 'parts',
+              parts: ['AFE7950', 'AFE7951'],
+              family: '',
+              evidence: 'confirmed by user',
+            }),
+        },
+        `Set applicability: ${label ?? ''}`,
+      ),
+    );
+  return { getApplicabilityControl: () => Fake };
+});
+
+import { ApiError } from '../../web/src/api/client';
+import AnalyzeScreen from '../../web/src/routes/analyze/route';
+
+const ANALYZE_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '../../web/src/routes/analyze');
+
+// --- fixtures -----------------------------------------------------------------
+
+function applicability(patch: Partial<Applicability> = {}): Applicability {
+  return { kind: 'all', parts: [], family: '', evidence: '', ...patch };
+}
+
+function proposal(patch: Partial<DocProposal> = {}): DocProposal {
+  return {
+    pdf_path: '/shelf/sbas123e.pdf',
+    filename: 'sbas123e.pdf',
+    part_number: 'AFE7950',
+    applicability: applicability({
+      kind: 'parts',
+      parts: ['AFE7950'],
+      evidence: 'title block: AFE7950 Quad RF Transceiver',
+    }),
+    evidence: 'page 1 title: AFE7950',
+    page_count: 210,
+    doc_type: 'datasheet',
+    content_hash: 'hash-a',
+    ...patch,
+  };
+}
+
+function scanOut(proposals: DocProposal[], directory = '/shelf'): ScanOut {
+  return { directory, proposals, count: proposals.length };
+}
+
+function job(patch: Partial<AnalyzeJob> = {}): AnalyzeJob {
+  return {
+    id: 'job-1',
+    pdf_path: '/shelf/sbas123e.pdf',
+    part_number: 'AFE7950',
+    applicability: applicability(),
+    state: 'queued',
+    error: '',
+    detail: '',
+    started_at: null,
+    finished_at: null,
+    ...patch,
+  };
+}
+
+function snapshot(jobs: AnalyzeJob[], patch: Partial<RunSnapshot> = {}): RunSnapshot {
+  return { run_id: 'run-1', directory: '/shelf', jobs, done: false, ...patch };
+}
+
+function jobEvent(patch: Partial<JobEvent> = {}): JobEvent {
+  return {
+    run_id: 'run-1',
+    job_id: 'job-1',
+    part_number: 'AFE7950',
+    pdf_path: '/shelf/sbas123e.pdf',
+    state: 'extracting',
+    detail: '',
+    at: '2026-01-01T00:00:00Z',
+    ...patch,
+  };
+}
+
+// --- fake stream --------------------------------------------------------------
+
+interface FakeStream {
+  runId: string;
+  handlers: AnalyzeStreamHandlers;
+  closed: boolean;
+}
+
+let streams: FakeStream[] = [];
+let fetchSpy: ReturnType<typeof vi.fn>;
+
+function latest(): FakeStream {
+  const stream = streams[streams.length - 1];
+  if (!stream) throw new Error('no analyze stream was opened');
+  return stream;
+}
+
+async function emit(fn: () => void): Promise<void> {
+  await act(async () => {
+    fn();
+  });
+}
+
+function ui(): ReactElement {
+  return createElement(
+    MemoryRouter,
+    { initialEntries: ['/analyze'] },
+    createElement(AnalyzeScreen),
+  );
+}
+
+/** Scan a directory and land on the review screen. */
+async function toReview(scan: ScanOut): Promise<void> {
+  mocks.scanDirectory.mockResolvedValue(scan);
+  render(ui());
+  fireEvent.change(screen.getByLabelText('Directory path'), {
+    target: { value: scan.directory },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Scan' }));
+  await screen.findByRole('heading', { name: /Review/ });
+}
+
+/** Scan, confirm, and land on the progress screen with a live stream. */
+async function toProgress(scan: ScanOut): Promise<void> {
+  await toReview(scan);
+  mocks.startAnalyze.mockResolvedValue({ run_id: 'run-1', n_jobs: scan.count });
+  fireEvent.click(screen.getByRole('button', { name: /^Build/ }));
+  await screen.findByRole('heading', { name: /Building/ });
+  // The heading commits before the subscription effect flushes, so wait for
+  // the stream itself rather than racing it.
+  await waitFor(() => expect(streams.length).toBeGreaterThan(0));
+}
+
+beforeEach(() => {
+  streams = [];
+  mocks.scanDirectory.mockReset();
+  mocks.startAnalyze.mockReset();
+  mocks.openAnalyzeStream.mockReset();
+  mocks.openAnalyzeStream.mockImplementation((runId: string, handlers: AnalyzeStreamHandlers) => {
+    const stream: FakeStream = { runId, handlers, closed: false };
+    streams.push(stream);
+    return {
+      close: () => {
+        stream.closed = true;
+      },
+    };
+  });
+  window.localStorage.clear();
+  fetchSpy = vi.fn(() => Promise.reject(new Error('no screen may hand-build a fetch')));
+  vi.stubGlobal('fetch', fetchSpy);
+});
+
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+  vi.unstubAllGlobals();
+});
+
+// --- pick ---------------------------------------------------------------------
+
+describe('picking a directory', () => {
+  it('scans a valid directory and advances to review', async () => {
+    await toReview(scanOut([proposal()]));
+
+    expect(mocks.scanDirectory).toHaveBeenCalledWith({ directory: '/shelf' });
+    expect(screen.getByText('sbas123e.pdf')).toBeInTheDocument();
+  });
+
+  it("shows the server's message inline for an invalid directory and stays put", async () => {
+    mocks.scanDirectory.mockRejectedValue(new ApiError(400, 'not a directory: /nope'));
+    render(ui());
+
+    fireEvent.change(screen.getByLabelText('Directory path'), { target: { value: '/nope' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Scan' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('not a directory: /nope');
+    expect(screen.getByRole('heading', { name: 'Analyze a directory' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: /Review/ })).not.toBeInTheDocument();
+  });
+
+  it('says there is no directory picker rather than showing one that cannot work', () => {
+    render(ui());
+
+    expect(screen.getByText(/browser cannot hand the server a folder/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /browse/i })).not.toBeInTheDocument();
+  });
+
+  it('has a loading state while scanning and an empty state for recent directories', async () => {
+    mocks.scanDirectory.mockReturnValue(new Promise(() => {}));
+    render(ui());
+
+    expect(screen.getByText(/No directories yet/)).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText('Directory path'), { target: { value: '/shelf' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Scan' }));
+
+    expect(await screen.findByRole('status')).toHaveTextContent('Scanning /shelf for PDFs…');
+  });
+
+  it('remembers a scanned directory and re-scans it from the recent list', async () => {
+    await toReview(scanOut([proposal()]));
+    cleanup();
+
+    mocks.scanDirectory.mockResolvedValue(scanOut([proposal()]));
+    render(ui());
+    fireEvent.click(screen.getByRole('button', { name: '/shelf' }));
+
+    await screen.findByRole('heading', { name: /Review/ });
+    expect(mocks.scanDirectory).toHaveBeenLastCalledWith({ directory: '/shelf' });
+  });
+});
+
+// --- review -------------------------------------------------------------------
+
+describe('reviewing proposals', () => {
+  it('renders the part number, the applicability and both evidences for every row', async () => {
+    await toReview(
+      scanOut([
+        proposal(),
+        proposal({
+          pdf_path: '/shelf/an-jesd.pdf',
+          filename: 'an-jesd.pdf',
+          content_hash: 'hash-b',
+          part_number: 'AFE7950',
+          evidence: 'page 1 title: AFE79xx JESD204C Interface Guide',
+          applicability: applicability({
+            kind: 'family',
+            family: 'AFE79xx',
+            evidence: 'title names a family prefix',
+          }),
+        }),
+      ]),
+    );
+
+    expect(screen.getByLabelText('Part number', { selector: '#part-hash-a' })).toHaveValue(
+      'AFE7950',
+    );
+    expect(screen.getByText('applies:parts:AFE7950')).toBeInTheDocument();
+    expect(screen.getByText('applies:family:AFE79xx')).toBeInTheDocument();
+    expect(screen.getByText(/page 1 title: AFE7950/)).toBeInTheDocument();
+    expect(screen.getByText(/title block: AFE7950 Quad RF Transceiver/)).toBeInTheDocument();
+    expect(screen.getByText(/title names a family prefix/)).toBeInTheDocument();
+  });
+
+  it('posts edited part numbers and applicability verbatim to /api/analyze/start', async () => {
+    const first = proposal();
+    const second = proposal({
+      pdf_path: '/shelf/an-jesd.pdf',
+      filename: 'an-jesd.pdf',
+      content_hash: 'hash-b',
+      part_number: 'SBAA999',
+      applicability: applicability({ evidence: 'fallback: no part token found' }),
+    });
+    await toReview(scanOut([first, second]));
+
+    fireEvent.change(screen.getByLabelText('Part number', { selector: '#part-hash-b' }), {
+      target: { value: 'AFE7951' },
+    });
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Set applicability: Applicability for an-jesd.pdf' }),
+    );
+
+    mocks.startAnalyze.mockResolvedValue({ run_id: 'run-1', n_jobs: 2 });
+    fireEvent.click(screen.getByRole('button', { name: /^Build/ }));
+
+    await waitFor(() => expect(mocks.startAnalyze).toHaveBeenCalledTimes(1));
+    expect(mocks.startAnalyze).toHaveBeenCalledWith({
+      directory: '/shelf',
+      proposals: [
+        first,
+        {
+          ...second,
+          part_number: 'AFE7951',
+          applicability: {
+            kind: 'parts',
+            parts: ['AFE7950', 'AFE7951'],
+            family: '',
+            evidence: 'confirmed by user',
+          },
+        },
+      ],
+    });
+  });
+
+  it('imports ApplicabilityControl from the shell and keeps no local copy', () => {
+    const files: string[] = readdirSync(ANALYZE_DIR).filter((name: string) =>
+      /\.(ts|tsx)$/.test(name),
+    );
+    expect(files.length).toBeGreaterThan(0);
+
+    // A local copy would be a *definition*. Binding the shell's component to
+    // a capitalized name so JSX can render it is not one, so the pattern
+    // matches function/class declarations and component expressions only.
+    const definition =
+      /(?:function|class)\s+ApplicabilityControl\b|const\s+ApplicabilityControl\s*=\s*(?:\(|function\b|memo\b|forwardRef\b)/;
+    for (const name of files) {
+      const source = readFileSync(join(ANALYZE_DIR, name), 'utf8');
+      expect(definition.test(source), `${name} defines its own ApplicabilityControl`).toBe(false);
+    }
+    expect(readFileSync(join(ANALYZE_DIR, 'ReviewStep.tsx'), 'utf8')).toContain(
+      'getApplicabilityControl()',
+    );
+
+    const resolver = readFileSync(join(ANALYZE_DIR, 'shellPrimitives.ts'), 'utf8');
+    expect(resolver).toContain('../../shell/');
+    expect(resolver).toContain('ApplicabilityControl');
+  });
+
+  it('floats rows needing attention above multi-part rows above confident ones', async () => {
+    await toReview(
+      scanOut([
+        proposal({
+          filename: 'confident.pdf',
+          content_hash: 'hash-confident',
+          applicability: applicability({ kind: 'parts', parts: ['AFE7950'] }),
+        }),
+        proposal({
+          filename: 'family.pdf',
+          content_hash: 'hash-family',
+          applicability: applicability({ kind: 'family', family: 'AFE79xx' }),
+        }),
+        proposal({
+          filename: 'unresolved.pdf',
+          content_hash: 'hash-unresolved',
+          applicability: applicability({ kind: 'all' }),
+        }),
+        proposal({
+          filename: 'two-parts.pdf',
+          content_hash: 'hash-two',
+          applicability: applicability({ kind: 'parts', parts: ['AFE7950', 'AFE7951'] }),
+        }),
+        proposal({
+          filename: 'no-part.pdf',
+          content_hash: 'hash-nopart',
+          part_number: '',
+          applicability: applicability({ kind: 'parts', parts: ['AFE7950'] }),
+        }),
+      ]),
+    );
+
+    const names = screen
+      .getAllByRole('heading', { level: 3 })
+      .map((node) => node.textContent ?? '');
+    expect(names).toEqual([
+      'no-part.pdf',
+      'unresolved.pdf',
+      'family.pdf',
+      'two-parts.pdf',
+      'confident.pdf',
+    ]);
+  });
+
+  it('blocks the build while a row has no part number', async () => {
+    await toReview(scanOut([proposal({ part_number: '' })]));
+
+    expect(screen.getByRole('button', { name: /^Build/ })).toBeDisabled();
+    expect(screen.getByRole('alert')).toHaveTextContent('have no part number');
+
+    fireEvent.change(screen.getByLabelText('Part number', { selector: '#part-hash-a' }), {
+      target: { value: 'AFE7950' },
+    });
+    expect(screen.getByRole('button', { name: /^Build/ })).toBeEnabled();
+  });
+
+  it('has an empty state for a directory with no PDFs', async () => {
+    await toReview(scanOut([]));
+
+    expect(screen.getByText(/No PDFs were found directly inside \/shelf/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Build/ })).not.toBeInTheDocument();
+  });
+
+  it('has a loading state while starting and shows a start failure inline', async () => {
+    await toReview(scanOut([proposal()]));
+
+    mocks.startAnalyze.mockReturnValue(new Promise(() => {}));
+    fireEvent.click(screen.getByRole('button', { name: /^Build/ }));
+    expect(await screen.findByRole('status')).toHaveTextContent('Starting the build…');
+
+    cleanup();
+    await toReview(scanOut([proposal()]));
+    mocks.startAnalyze.mockRejectedValue(new ApiError(400, 'parts_dir is not writable'));
+    fireEvent.click(screen.getByRole('button', { name: /^Build/ }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('parts_dir is not writable');
+    expect(screen.getByRole('heading', { name: /Review/ })).toBeInTheDocument();
+  });
+});
+
+// --- progress -----------------------------------------------------------------
+
+describe('watching the run', () => {
+  const twoDocs = scanOut([
+    proposal(),
+    proposal({
+      pdf_path: '/shelf/an-jesd.pdf',
+      filename: 'an-jesd.pdf',
+      content_hash: 'hash-b',
+      part_number: 'AFE7951',
+    }),
+  ]);
+
+  const twoJobs = [
+    job({ id: 'job-1', part_number: 'AFE7950' }),
+    job({ id: 'job-2', part_number: 'AFE7951', pdf_path: '/shelf/an-jesd.pdf' }),
+  ];
+
+  it('shows a loading state until the first snapshot arrives', async () => {
+    await toProgress(twoDocs);
+
+    expect(mocks.openAnalyzeStream).toHaveBeenCalledWith('run-1', expect.anything());
+    expect(screen.getByRole('status')).toHaveTextContent('Connecting to the run…');
+  });
+
+  it('has an empty state for a run with no jobs', async () => {
+    await toProgress(twoDocs);
+    await emit(() => latest().handlers.onSnapshot?.(snapshot([])));
+
+    expect(screen.getByText(/This run has no jobs/)).toBeInTheDocument();
+  });
+
+  it('reflects live per-job state from the stream', async () => {
+    await toProgress(twoDocs);
+    await emit(() => latest().handlers.onSnapshot?.(snapshot(twoJobs)));
+
+    const rows = () => Array.from(document.querySelectorAll('.analyze-job'));
+    expect(rows().map((row) => row.getAttribute('data-state'))).toEqual(['queued', 'queued']);
+
+    await emit(() =>
+      latest().handlers.onJob?.(jobEvent({ job_id: 'job-1', state: 'extracting' })),
+    );
+    await emit(() =>
+      latest().handlers.onJob?.(
+        jobEvent({ job_id: 'job-2', state: 'structuring', detail: 'page 40 of 92' }),
+      ),
+    );
+
+    expect(rows().map((row) => row.getAttribute('data-state'))).toEqual([
+      'extracting',
+      'structuring',
+    ]);
+    expect(screen.getByText('page 40 of 92')).toBeInTheDocument();
+  });
+
+  it('offers "Ask about this" as soon as one part is done, while others still run', async () => {
+    await toProgress(twoDocs);
+    await emit(() => latest().handlers.onSnapshot?.(snapshot(twoJobs)));
+    await emit(() =>
+      latest().handlers.onJob?.(jobEvent({ job_id: 'job-2', state: 'enriching' })),
+    );
+    await emit(() => latest().handlers.onJob?.(jobEvent({ job_id: 'job-1', state: 'done' })));
+
+    const ask = screen.getByRole('link', { name: 'Ask about AFE7950' });
+    expect(ask).toHaveAttribute('href', '/chat?part=AFE7950');
+    expect(screen.queryByRole('link', { name: 'Ask about AFE7951' })).not.toBeInTheDocument();
+    expect(document.querySelector('.analyze-job--enriching')).not.toBeNull();
+  });
+
+  it('shows a failed job’s error inline and lets the rest keep going', async () => {
+    await toProgress(twoDocs);
+    await emit(() => latest().handlers.onSnapshot?.(snapshot(twoJobs)));
+    await emit(() =>
+      latest().handlers.onJob?.(
+        jobEvent({ job_id: 'job-2', state: 'failed', detail: 'PDF is encrypted' }),
+      ),
+    );
+    await emit(() =>
+      latest().handlers.onJob?.(jobEvent({ job_id: 'job-1', state: 'publishing' })),
+    );
+
+    expect(screen.getByRole('alert')).toHaveTextContent('PDF is encrypted');
+    expect(document.querySelector('.analyze-job--publishing')).not.toBeNull();
+    expect(document.querySelectorAll('.analyze-job')).toHaveLength(2);
+  });
+
+  it('reconnects after a dropped stream and re-renders from the snapshot with no gap', async () => {
+    await toProgress(twoDocs);
+    await emit(() => latest().handlers.onSnapshot?.(snapshot(twoJobs)));
+    await emit(() =>
+      latest().handlers.onJob?.(jobEvent({ job_id: 'job-1', state: 'extracting' })),
+    );
+    expect(mocks.openAnalyzeStream).toHaveBeenCalledTimes(1);
+
+    vi.useFakeTimers();
+    const dropped = latest();
+    await emit(() => dropped.handlers.onError?.(new Event('error')));
+
+    // No gap: the rows are still on screen while the stream is rebuilt.
+    expect(document.querySelectorAll('.analyze-job')).toHaveLength(2);
+    expect(dropped.closed).toBe(true);
+    expect(screen.getByRole('status')).toHaveTextContent('reconnecting');
+
+    await emit(() => {
+      vi.advanceTimersByTime(500);
+    });
+    expect(mocks.openAnalyzeStream).toHaveBeenCalledTimes(2);
+    expect(latest()).not.toBe(dropped);
+
+    await emit(() =>
+      latest().handlers.onSnapshot?.(
+        snapshot([
+          { ...twoJobs[0], state: 'done' },
+          { ...twoJobs[1], state: 'publishing' },
+        ]),
+      ),
+    );
+    const states = Array.from(document.querySelectorAll('.analyze-job')).map((row) =>
+      row.getAttribute('data-state'),
+    );
+    expect(states).toEqual(['done', 'publishing']);
+    expect(screen.queryByText(/reconnecting/)).not.toBeInTheDocument();
+  });
+
+  it('closes the stream when the screen unmounts', async () => {
+    await toProgress(twoDocs);
+    const stream = latest();
+
+    cleanup();
+
+    expect(stream.closed).toBe(true);
+  });
+});
+
+// --- the client is the only door ----------------------------------------------
+
+describe('every server call goes through the client', () => {
+  it('never hand-builds a fetch across the whole flow', async () => {
+    await toProgress(scanOut([proposal()]));
+    await emit(() => latest().handlers.onSnapshot?.(snapshot([job()])));
+    await emit(() => latest().handlers.onJob?.(jobEvent({ state: 'done' })));
+
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(mocks.scanDirectory).toHaveBeenCalled();
+    expect(mocks.startAnalyze).toHaveBeenCalled();
+    expect(mocks.openAnalyzeStream).toHaveBeenCalled();
+  });
+
+  it('opens no EventSource of its own', async () => {
+    const source = vi.fn();
+    vi.stubGlobal('EventSource', source);
+
+    await toProgress(scanOut([proposal()]));
+
+    expect(source).not.toHaveBeenCalled();
+  });
+});

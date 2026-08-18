@@ -14,6 +14,7 @@ from datasheet_analyzer.extract import get_backend as _original_get_backend
 from datasheet_analyzer.extract.http import ReplayBinaryFetcher, ReplayFetcher
 from datasheet_analyzer.models import DocType
 from datasheet_analyzer.pipeline import build_part
+from datasheet_analyzer.publish import document_dirs
 
 RECORDED = Path(__file__).parent.parent / "fixtures" / "recorded_http"
 RECORDED_BIN = Path(__file__).parent.parent / "fixtures" / "recorded_http_bin"
@@ -107,14 +108,20 @@ class TestPhase3MultiDoc:
 
     def test_both_section_trees_on_disk(self, built):
         result, _settings, _reg_source = built
-        doc_dirs = list((result.part_dir / "docs").iterdir())
+        # Through the manifest: ticket 04 publishes each document once
+        # into the shared store, so `parts/<PART>/docs/` is not where a
+        # multi-document part's trees necessarily are.
+        doc_dirs = document_dirs(result.manifest, part_dir=result.part_dir)
         assert len(doc_dirs) == 2
-        for d in doc_dirs:
+        for d in doc_dirs.values():
             assert (d / "sections").exists()
 
     def test_register_map_has_pdf_text_provenance(self, built):
         result, _settings, reg_source = built
-        reg_dir = result.part_dir / f"docs/register_map-{reg_source.content_hash[:8]}"
+        reg_dir = document_dirs(result.manifest, part_dir=result.part_dir)[
+            reg_source.content_hash
+        ]
+        assert reg_dir.name == f"register_map-{reg_source.content_hash[:8]}"
         assert reg_dir.exists()
         # No specs.json for pdf_text documents.
         assert not (reg_dir / "specs.json").exists()
@@ -127,7 +134,10 @@ class TestPhase3MultiDoc:
     def test_datasheet_still_has_specs(self, built):
         result, _settings, _reg_source = built
         ds_doc = next(d for d in result.manifest.documents if d.doc_type.value == "datasheet")
-        specs_path = result.part_dir / f"docs/datasheet-{ds_doc.content_hash[:8]}" / "specs.json"
+        specs_path = (
+            document_dirs(result.manifest, part_dir=result.part_dir)[ds_doc.content_hash]
+            / "specs.json"
+        )
         assert specs_path.exists()
 
     def test_add_doc_idempotence(self, tmp_path):

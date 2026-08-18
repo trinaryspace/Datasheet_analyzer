@@ -9,6 +9,7 @@ Commands:
   ask --part NAME "..."     one cited answer pack inside a token budget (--json)
   plots --part NAME         deterministic plot lookup (--json)
   project new|add|remove|build|status   the noun above `part`: a design
+  serve                     the local workbench (browser) on DSA_SERVE_HOST/PORT
   serve --mcp               the corpus as MCP tools over local stdio
   status                    configuration + detected parts + projects
   version                   print version
@@ -229,41 +230,32 @@ def _cmd_verify(args: argparse.Namespace) -> int:
 def _scope(args: argparse.Namespace):
     """`(scope, show_part)` for a `--part` / `--project` command, or `(None, …)`.
 
-    Both branches hand back an object from `retrieve/` — a `Retriever` for one
-    part, a `ProjectRetriever` for a design — so a command below only chooses
-    a scope and formats what it returns. Returning `None` means the reason has
-    already been printed and the caller should exit 2.
+    Resolution itself is `retrieve.scope.resolve_scope` — the one place the
+    `--part` XOR `--project` precondition of ADR 0006 is written down, shared
+    with the MCP server and the web application. This wrapper is the CLI's
+    *formatting* of that decision and nothing more: it prints the refusal to
+    stderr (the caller then exits 2) and decides that a project lookup labels
+    each hit with the part it came from.
     """
-    from datasheet_analyzer.projects import ProjectError, is_built, load_project, part_dirs
-    from datasheet_analyzer.retrieve import ProjectRetriever, Retriever
+    from datasheet_analyzer.retrieve.scope import (
+        missing_corpus_warning,
+        resolve_scope,
+        unbuilt_members,
+    )
 
     settings = get_settings()
-    if getattr(args, "project", ""):
-        try:
-            project = load_project(args.project, settings.projects_dir)
-        except ProjectError as exc:
-            print(f"project error: {exc}", file=sys.stderr)
-            return None, True
+    project = getattr(args, "project", "")
+    scope, reason = resolve_scope(getattr(args, "part", ""), project, settings=settings)
+    if scope is None:
+        print(f"project error: {reason}" if project else reason, file=sys.stderr)
+        return None, bool(project)
+    if project:
         # A member whose corpus is gone is named, never silently skipped: the
         # answer would otherwise be quietly missing one device.
-        missing = [p for p in project.part_numbers if not is_built(p, settings.parts_dir)]
-        if missing:
-            print(
-                f"warning: no corpus for {', '.join(missing)} — build them "
-                f"(`dsa build <pdf> --part {missing[0]}`) or remove them from "
-                f"the project; their answers are missing from this result",
-                file=sys.stderr,
-            )
-        return (
-            ProjectRetriever.for_parts(project.name, part_dirs(project, settings.parts_dir)),
-            True,
-        )
-
-    part_dir = settings.parts_dir / args.part
-    if not (part_dir / "manifest.json").exists():
-        print(f"no corpus at {part_dir} — run `dsa build` first", file=sys.stderr)
-        return None, False
-    return Retriever.for_part(part_dir), False
+        warning = missing_corpus_warning(unbuilt_members(project, settings=settings))
+        if warning:
+            print(f"warning: {warning}", file=sys.stderr)
+    return scope, bool(project)
 
 
 def _cmd_query(args: argparse.Namespace) -> int:
@@ -398,26 +390,71 @@ MCP_INSTALL_HINT = (
 )
 
 
-def _cmd_serve(args: argparse.Namespace) -> int:
-    """`dsa serve --mcp` — the corpus as MCP tools over local stdio.
+#: The same, for the optional web extra. `dsa serve` with no flag is the
+#: workbench, and FastAPI/uvicorn are as optional as the MCP SDK is — a plain
+#: install must not pay for either, and must not fail with a traceback when a
+#: user asks for one it does not have.
+WEB_INSTALL_HINT = (
+    "serve error: the local workbench needs the optional `web` extra "
+    "(fastapi, uvicorn, sse-starlette), which is not installed. Install the "
+    'extra: `pip install -e ".[web]"` (or '
+    "`uv pip install --python .venv/Scripts/python.exe -e \".[web]\"`). "
+    "Everything else in `dsa` works without it."
+)
 
-    Local stdio is the only transport (Phase 5 plan, Out of Scope: HTTP,
-    auth, multi-tenancy), so `--mcp` is stated explicitly rather than assumed:
-    a later transport must be a new flag, not a silent change of meaning.
+
+def _cmd_serve(args: argparse.Namespace) -> int:
+    """`dsa serve` — the local workbench; `dsa serve --mcp` — MCP over stdio.
+
+    Two transports, each stated explicitly. `--mcp` was never a default and
+    does not become one now: an MCP client speaks over the pipe it already
+    owns, a person opens a browser, and silently switching between the two on
+    a flag's absence would make `dsa serve` mean different things over time.
     """
-    if not args.mcp:
-        print(
-            "serve: pass --mcp — local stdio is the only transport this "
-            "server speaks (no HTTP, no auth, no multi-tenancy)",
-            file=sys.stderr,
-        )
-        return 2
+    return _serve_mcp() if args.mcp else _serve_web()
+
+
+def _serve_mcp() -> int:
+    """The corpus as MCP tools over local stdio.
+
+    Local stdio is the only MCP transport (Phase 5 plan, Out of Scope: HTTP,
+    auth, multi-tenancy).
+    """
     try:
         from datasheet_analyzer.mcp_server import serve_stdio
     except ImportError as exc:
         print(f"{MCP_INSTALL_HINT} ({exc})", file=sys.stderr)
         return 2
     serve_stdio(get_settings())
+    return 0
+
+
+def _serve_web() -> int:
+    """The local workbench: the FastAPI app on `serve_host` / `serve_port`.
+
+    The app is imported *inside* the handler so a plain install never pays
+    for FastAPI, and a missing web extra is an install hint rather than a
+    traceback — exactly how the MCP branch above already behaves.
+
+    The bind address is `settings.serve_host`, which defaults to `127.0.0.1`.
+    This is a single-user local tool with no authentication: binding
+    `0.0.0.0` would publish an unauthenticated corpus browser, and every
+    document in it, to the network.
+    """
+    settings = get_settings()
+    try:
+        import uvicorn
+
+        from datasheet_analyzer.app.main import create_app
+    except ImportError as exc:
+        print(f"{WEB_INSTALL_HINT} ({exc})", file=sys.stderr)
+        return 2
+    print(f"datasheet workbench: http://{settings.serve_host}:{settings.serve_port}")
+    uvicorn.run(
+        create_app(settings),
+        host=settings.serve_host,
+        port=settings.serve_port,
+    )
     return 0
 
 
@@ -812,12 +849,13 @@ def main(argv: list[str] | None = None) -> int:
     p_project.set_defaults(func=_cmd_project)
 
     p_serve = sub.add_parser(
-        "serve", help="expose the corpus as MCP tools over local stdio"
+        "serve",
+        help="run the local workbench in a browser (--mcp: MCP tools over stdio)",
     )
     p_serve.add_argument(
         "--mcp",
         action="store_true",
-        help="speak MCP on stdin/stdout (the only supported transport)",
+        help="speak MCP on stdin/stdout instead of serving the workbench",
     )
     p_serve.set_defaults(func=_cmd_serve)
 

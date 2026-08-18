@@ -29,6 +29,7 @@ import fitz
 
 from datasheet_analyzer.config import Settings
 from datasheet_analyzer.pipeline import build_part
+from datasheet_analyzer.publish.writer import document_dirs
 
 PAGE_W, PAGE_H = 612.0, 792.0
 
@@ -70,7 +71,16 @@ def _build(tmp_path, name: str, pages, toc: list[list] | None = None, *,
 
 
 def _doc_dir(result) -> Path:
-    return result.part_dir / "docs" / f"datasheet-{result.manifest.documents[0].content_hash[:8]}"
+    """Where this build actually published the document's artifacts.
+
+    Resolved through the manifest rather than assumed to be
+    `part_dir/docs/<doc>`: ticket 04 publishes a document *once* into the
+    shared store and has every part that references it point there, so the
+    directory a build wrote to is a fact of the manifest, not of the layout.
+    """
+    return document_dirs(result.manifest, part_dir=result.part_dir)[
+        result.manifest.documents[0].content_hash
+    ]
 
 
 def _section_md(result, stem: str) -> str:
@@ -341,6 +351,11 @@ class TestMechanics:
         assert stats.backend == "pdf_layout"
         assert result.manifest.pipeline_version == "0.4.0"
         assert result.manifest.vendor == "unknown"
+        # `sources.json` is now a *derived* view of the Library (ADR 0005),
+        # so it is the generated wrapper object rather than a bare list. What
+        # is asserted is unchanged: the pinned vendor and its evidence travel
+        # into the published record.
         sources = json.loads((result.part_dir / "sources.json").read_text(encoding="utf-8"))
-        assert sources[0]["vendor"] == "unknown"
-        assert sources[0]["vendor_evidence"] == "cli-override: --vendor unknown"
+        assert sources["generated"] is True
+        assert sources["sources"][0]["vendor"] == "unknown"
+        assert sources["sources"][0]["vendor_evidence"] == "cli-override: --vendor unknown"

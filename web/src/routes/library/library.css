@@ -1,0 +1,192 @@
+/**
+ * The condensed library.
+ *
+ * The shelf is read at two densities: a part is one line you can scan a whole
+ * project in, and a document is the detail you open when you want it. Almost
+ * everything here serves that split — the summary row stays on one line at any
+ * plausible part count, and the body only exists once expanded.
+ *
+ * Separators between metadata are `gap`, not characters, so the DOM text a
+ * test asserts on is unchanged by how it is spaced.
+ */
+
+.library-projects {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin: 0 0 1rem;
+  padding: 0.7rem 0.85rem;
+  border: 1px solid var(--dsa-border, #d8dee6);
+  border-radius: 8px;
+  background: var(--dsa-subtle, rgb(0 0 0 / 2%));
+}
+
+.library-projects-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.library-projects-row label {
+  font-size: 0.85em;
+  font-weight: 600;
+  color: var(--dsa-muted, #6b7280);
+}
+
+.library-projects-error {
+  margin: 0;
+  color: var(--dsa-danger, #b42318);
+  font-size: 0.88em;
+}
+
+.library-filters {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.6rem;
+  font-size: 0.9em;
+}
+
+.library-count {
+  margin: 0 0 0.6rem;
+  font-size: 0.85em;
+  color: var(--dsa-muted, #6b7280);
+}
+
+.library-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+/* --- the part row ---------------------------------------------------------- */
+
+.library-part {
+  border: 1px solid var(--dsa-border, #d8dee6);
+  border-radius: 8px;
+  background: var(--dsa-surface, transparent);
+}
+
+.library-part-summary {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.5rem 0.75rem;
+  cursor: pointer;
+  list-style: none;
+  border-radius: 8px;
+}
+
+/* The disclosure triangle, drawn rather than inherited, so it can sit in the
+   flex row with the rest instead of before it. */
+.library-part-summary::-webkit-details-marker {
+  display: none;
+}
+
+.library-part-summary::before {
+  content: '▸';
+  flex: none;
+  width: 0.8em;
+  color: var(--dsa-muted, #6b7280);
+  transition: transform 120ms ease;
+}
+
+.library-part[open] > .library-part-summary::before {
+  content: '▾';
+}
+
+.library-part-summary:hover {
+  background: var(--dsa-subtle, rgb(0 0 0 / 3%));
+}
+
+.library-part-summary:focus-visible {
+  outline: 2px solid var(--dsa-focus, #2563eb);
+  outline-offset: -2px;
+}
+
+.library-part-name {
+  font-weight: 650;
+  /* A part number is an identifier: never let it wrap mid-string. */
+  white-space: nowrap;
+}
+
+.library-part-meta {
+  font-size: 0.85em;
+  color: var(--dsa-muted, #6b7280);
+  white-space: nowrap;
+}
+
+.library-part-unbuilt,
+.library-part-label {
+  padding: 0.05em 0.45em;
+  border-radius: 999px;
+  font-size: 0.75em;
+  white-space: nowrap;
+}
+
+.library-part-unbuilt {
+  border: 1px solid var(--dsa-warn-border, #e5c07b);
+  color: var(--dsa-warn-text, #8a6100);
+  background: var(--dsa-warn-bg, rgb(229 192 123 / 18%));
+}
+
+.library-part-label {
+  border: 1px solid var(--dsa-border, #d8dee6);
+  color: var(--dsa-muted, #6b7280);
+}
+
+/* Pushed to the right edge so it is never mistaken for one of the labels. */
+.library-part-remove {
+  margin-left: auto;
+  font-size: 0.8em;
+}
+
+.library-part-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 0.25rem 0.75rem 0.75rem;
+  border-top: 1px solid var(--dsa-border, #d8dee6);
+}
+
+/* --- the document, inside an expanded part --------------------------------- */
+
+.library-row {
+  padding: 0.6rem 0.7rem;
+  border: 1px solid var(--dsa-border, #d8dee6);
+  border-radius: 6px;
+}
+
+.library-row h3 {
+  margin: 0;
+  font-size: 0.95em;
+}
+
+.library-row-meta {
+  display: flex;
+  gap: 0.85rem;
+  flex-wrap: wrap;
+  margin: 0.15rem 0 0.5rem;
+  font-size: 0.82em;
+  color: var(--dsa-muted, #6b7280);
+}
+
+.library-row h4 {
+  margin: 0.6rem 0 0.25rem;
+  font-size: 0.85em;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--dsa-muted, #6b7280);
+}
+
+.library-row p {
+  margin: 0.2rem 0;
+  font-size: 0.9em;
+}
+
+.library-empty {
+  margin: 0.5rem 0;
+  color: var(--dsa-muted, #6b7280);
+}

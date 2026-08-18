@@ -1,0 +1,149 @@
+/*
+ * Layout only. Every colour comes from a shell token (ticket 16) through a
+ * `var()` with an inherited fallback, so this screen never defines a colour
+ * of its own and never needs a second definition inside a media query.
+ */
+
+.analyze-screen {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 1rem;
+  max-width: 72rem;
+}
+
+.analyze-breadcrumb {
+  display: flex;
+  gap: 1rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.analyze-breadcrumb li[aria-current='step'] {
+  font-weight: 600;
+  text-decoration: underline;
+}
+
+.analyze-step {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.analyze-pick-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.analyze-pick-form input {
+  flex: 1 1 24rem;
+  min-width: 12rem;
+  padding: 0.4rem 0.5rem;
+}
+
+.analyze-hint,
+.analyze-empty,
+.analyze-evidence {
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+.analyze-rows,
+.analyze-jobs,
+.analyze-recents ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.analyze-row {
+  display: grid;
+  grid-template-columns: minmax(12rem, 1fr) auto;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  border: 1px solid var(--dsa-border, currentColor);
+  border-radius: 0.375rem;
+}
+
+.analyze-row-name {
+  margin: 0;
+  font-size: 1rem;
+  overflow-wrap: anywhere;
+}
+
+.analyze-row-badge {
+  justify-self: end;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.analyze-row--unresolved .analyze-row-badge {
+  font-weight: 700;
+}
+
+.analyze-field {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.analyze-field-label {
+  font-weight: 600;
+}
+
+.analyze-evidence {
+  flex: 1 1 100%;
+  overflow-wrap: anywhere;
+}
+
+.analyze-evidence-label {
+  font-weight: 600;
+}
+
+.analyze-job {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.5rem 1rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--dsa-border, currentColor);
+  border-radius: 0.375rem;
+}
+
+.analyze-job-part {
+  font-weight: 600;
+  min-width: 8rem;
+}
+
+.analyze-job-file {
+  overflow-wrap: anywhere;
+}
+
+.analyze-job-error {
+  flex: 1 1 100%;
+  overflow-wrap: anywhere;
+}
+
+.analyze-job--failed {
+  border-width: 2px;
+}
+
+.analyze-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+@media (max-width: 40rem) {
+  .analyze-row {
+    grid-template-columns: 1fr;
+  }
+}

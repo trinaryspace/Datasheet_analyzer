@@ -16,12 +16,18 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
-from datasheet_analyzer.acquire import (
-    append_to_inventory,
-    load_inventory,
+from datasheet_analyzer.acquire.inventory import (
+    default_store,
+    ensure_covers,
+    get_document,
     pin_vendor,
-    register_source,
+    register_into_library,
+    relocate,
+    resolve_documents,
     save_inventory,
+    single_datasheet,
+    sort_sources,
+    sync_to_library,
 )
 from datasheet_analyzer.config import PIPELINE_VERSION, Settings
 from datasheet_analyzer.enrich import (
@@ -33,8 +39,16 @@ from datasheet_analyzer.enrich import (
 )
 from datasheet_analyzer.extract import get_backend
 from datasheet_analyzer.extract.http import CachingBinaryFetcher, CachingFetcher
-from datasheet_analyzer.extract.pdf_structure import page_texts, read_toc
-from datasheet_analyzer.models import CorpusManifest, DocType, PlotSet, RawDocument, SourceDocument
+from datasheet_analyzer.extract.pdf_structure import compute_content_hash, page_texts, read_toc
+from datasheet_analyzer.library.store import LibraryStore
+from datasheet_analyzer.models import (
+    Applicability,
+    CorpusManifest,
+    DocType,
+    PlotSet,
+    RawDocument,
+    SourceDocument,
+)
 from datasheet_analyzer.publish import write_corpus
 from datasheet_analyzer.publish.plots import (
     fetch_plot_images,
@@ -162,6 +176,84 @@ def _backfill_vendor_evidence(sources: list[SourceDocument]) -> bool:
     return changed
 
 
+def _reconcile_named_pdf(
+    inventory: list[SourceDocument],
+    pdf_path: Path,
+    *,
+    part_number: str,
+    vendor: str,
+    store: LibraryStore | None,
+) -> list[SourceDocument]:
+    """Make sure the PDF the caller named is one of the part's documents.
+
+    Three cases, keyed on the file's bytes because that is what identity is:
+
+    - already resolved under this path — nothing to do;
+    - already resolved under a *different* path — the document moved, so the
+      record follows it rather than a second identity being invented;
+    - not resolved at all — the caller named it as this part's document, so it
+      is registered as applying to this part (or, if the Library already knows
+      the document under a different applicability, that record is widened
+      rather than replaced). A part with no datasheet yet gets one; otherwise
+      the filename decides the type, the way `add-doc` does, because a
+      register map named on the command line is still a register map.
+    """
+    current = compute_content_hash(pdf_path)
+    for i, src in enumerate(inventory):
+        if src.content_hash == current:
+            inventory[i] = relocate(src, pdf_path, store=store)
+            return inventory
+
+    known = get_document(store, current)
+    if known is not None:
+        src = ensure_covers(known, part_number, store=store)
+        return sort_sources([*inventory, relocate(src, pdf_path, store=store)])
+
+    has_datasheet = any(s.doc_type == DocType.DATASHEET for s in inventory)
+    doc = register_into_library(
+        pdf_path,
+        applicability=Applicability.for_parts(
+            [part_number], evidence=f"registered at acquire for {part_number}"
+        ),
+        doc_type=None if has_datasheet else DocType.DATASHEET,
+        vendor=vendor or None,
+        store=store,
+        part_number=part_number,
+    )
+    return sort_sources([*inventory, doc.source])
+
+
+def _acquire(
+    pdf_path: Path,
+    part_dir: Path,
+    *,
+    part_number: str,
+    vendor: str,
+    store: LibraryStore | None,
+) -> list[SourceDocument]:
+    """The document set this build runs over, and its pinned vendor records.
+
+    The Library answers "which documents apply to this part" (ADR 0005);
+    `sources.json` is not read here except by the migration inside
+    `resolve_documents()`, which is what makes hand-editing the derived file
+    have no effect on a build.
+    """
+    inventory = resolve_documents(part_dir, part_number=part_number, store=store)
+    inventory = _reconcile_named_pdf(
+        inventory, pdf_path, part_number=part_number, vendor=vendor, store=store
+    )
+    inventory = single_datasheet(inventory, keep=compute_content_hash(pdf_path))
+
+    # Vendor is decided at acquire and pinned with evidence; a repin or a
+    # legacy backfill is written straight back to the authoritative record.
+    changed = bool(vendor) and pin_vendor(inventory, vendor)
+    if not vendor and _backfill_vendor_evidence(inventory):
+        changed = True
+    if changed:
+        sync_to_library(inventory, part_number=part_number, store=store)
+    return inventory
+
+
 def _extract_document(
     source: SourceDocument,
     pdf_path: Path,
@@ -223,6 +315,7 @@ def build_part(
     use_cache: bool = True,
     use_llm: bool = True,
     on_progress: Callable[[str], None] | None = None,
+    store: LibraryStore | None = None,
 ) -> BuildResult:
     """Build one part corpus end to end.
 
@@ -233,27 +326,28 @@ def build_part(
     stage boundary (``extracting``, ``structuring``, ``enriching``,
     ``publishing``) before that stage's work starts. Callers that omit it get
     the exact behavior they always had.
+
+    ``store`` is the Library this build resolves its documents through (ADR
+    0005): the part is the *view* of the documents whose applicability covers
+    it, not the contents of a folder. `None` constructs the store named by
+    ``settings``. `parts/<PART>/sources.json` is regenerated from the resolved
+    set at publish time and is never read back as the source of truth.
     """
     pdf_path = Path(pdf_path)
     part_dir = settings.parts_dir / part_number
+    if store is None:
+        store = default_store(settings)
 
     def _progress(stage: str) -> None:
         if on_progress is not None:
             on_progress(stage)
 
-    # acquire: load inventory or bootstrap from the CLI pdf
-    inventory = load_inventory(part_dir)
-    if not inventory:
-        source = register_source(
-            pdf_path, part_number=part_number, doc_type="datasheet",
-            vendor=vendor or None,
-        )
-        inventory = append_to_inventory([source], part_dir)
-    if vendor and pin_vendor(inventory, vendor):
-        save_inventory(inventory, part_dir)
-
-    if not vendor and _backfill_vendor_evidence(inventory):
-        save_inventory(inventory, part_dir)
+    # acquire: ask the Library which documents apply to this part, migrating a
+    # legacy sources.json in on first touch; bootstrap from the CLI pdf when
+    # nothing applies yet.
+    inventory = _acquire(
+        pdf_path, part_dir, part_number=part_number, vendor=vendor, store=store
+    )
 
     # identity drift: a detection contradicting a pin warns loudly but never
     # re-routes (the pinned value stays authoritative).
@@ -289,6 +383,16 @@ def build_part(
     elif use_llm and not settings.llm_available:
         log.warning("no ANTHROPIC_API_KEY — using deterministic descriptions")
 
+    # publish once, reference many: a document that applies to several parts
+    # is extracted once (the cache is keyed by content hash) and published
+    # once, under the library's shared document store; each part's manifest
+    # references it. Plot pixels are rendered into the root the publisher will
+    # use, so a figure is never orphaned from the record that names it.
+    shared_docs_dir = settings.library_dir / "docs"
+
+    def _doc_out_dir(raw: RawDocument) -> Path:
+        return shared_docs_dir / doc_dir_name(raw)
+
     all_plans: list[tuple[RawDocument, list[SectionPlan], dict[str, str]]] = []
     _progress("structuring")
     specsets: list[PlotSet] = []
@@ -306,14 +410,14 @@ def build_part(
         # pixel fetch only for html-derived docs; pdf_layout figures are
         # clip-rendered from their vector regions (never fetched)
         if raw.extractor == "pdf_layout":
-            doc_abs = part_dir / f"docs/{doc_dir_name(raw)}"
+            doc_abs = _doc_out_dir(raw)
             rendered = render_figure_regions(
                 plotset, doc_abs, Path(raw.source.path),
                 dpi=settings.plot_image_dpi,
             )
             log.info("plot pixels: %d clip-rendered (pdf_layout)", rendered)
         elif raw.extractor != "pdf_text":
-            doc_abs = part_dir / f"docs/{doc_dir_name(raw)}"
+            doc_abs = _doc_out_dir(raw)
             plot_fetcher = CachingBinaryFetcher(
                 settings.cache_dir / "http-bin",
                 timeout_s=settings.http_timeout_s,
@@ -378,7 +482,12 @@ def build_part(
         vendor=part_vendor,
         specsets=specsets,
         plotsets=plotsets,
+        shared_docs_dir=shared_docs_dir,
     )
+    # sources.json is derived: regenerated here from the resolved document
+    # set so `dsa status` and the batch skip gate keep reading what they
+    # always read, and a hand edit never survives a build.
+    save_inventory(inventory, part_dir)
     return BuildResult(
         part_dir=part_dir, manifest=manifest, index_md=index_md,
         used_llm=used_llm, cached_extraction=any_cached,

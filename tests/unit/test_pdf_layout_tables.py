@@ -35,7 +35,10 @@ from typing import ClassVar
 import fitz
 
 from datasheet_analyzer.config import Settings
+from datasheet_analyzer.corpus_ref import corpus_relative
 from datasheet_analyzer.pipeline import build_part
+from datasheet_analyzer.publish.plots import artifact_root
+from datasheet_analyzer.publish.writer import document_dirs
 from datasheet_analyzer.query import SpecQuery
 
 PAGE_W, PAGE_H = 612.0, 792.0
@@ -118,7 +121,29 @@ def _build(tmp_path, name: str, pages, toc=None) -> object:
 
 
 def _doc_dir(result) -> Path:
-    return result.part_dir / "docs" / f"datasheet-{result.manifest.documents[0].content_hash[:8]}"
+    """Where this build actually published the document's artifacts.
+
+    Resolved through the manifest rather than assumed to be
+    `part_dir/docs/<doc>`: ticket 04 publishes a document *once* into the
+    shared store and has every part that references it point there, so the
+    directory a build wrote to is a fact of the manifest, not of the layout.
+    """
+    return document_dirs(result.manifest, part_dir=result.part_dir)[
+        result.manifest.documents[0].content_hash
+    ]
+
+def _artifact(result, ref: str) -> Path:
+    """Absolute path of one artifact reference, per the root it hangs off.
+
+    Ticket 04 gave a document two possible homes — under the part, or once in
+    the shared store — so a reference is no longer a plain join onto
+    `part_dir`. Section references carry the `@library/` marker; a
+    `PlotRecord.file` deliberately does not, because `plots.json` lives inside
+    the document directory and therefore already names its own root
+    (`publish.plots.artifact_root`). Both resolve against the root this
+    build's document directory sits in.
+    """
+    return artifact_root(_doc_dir(result)) / corpus_relative(ref)
 
 
 def _section_md(result, stem: str) -> str:
@@ -129,7 +154,7 @@ def _section_md(result, stem: str) -> str:
 
 def _blob(result) -> str:
     return "\n".join(
-        (result.part_dir / sec.file).read_text(encoding="utf-8")
+        _artifact(result, sec.file).read_text(encoding="utf-8")
         for sec in result.manifest.sections
     )
 

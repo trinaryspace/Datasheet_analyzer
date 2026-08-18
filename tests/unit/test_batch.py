@@ -28,6 +28,7 @@ from datasheet_analyzer.batch import (
     run_batch,
 )
 from datasheet_analyzer.config import Settings
+from datasheet_analyzer.publish import document_dirs, read_manifest
 
 SYN = Path(__file__).parent.parent / "fixtures" / "synthetic"
 
@@ -82,22 +83,55 @@ def test_skip_gate_survives_path_spelling_change(batch_env, make_synthetic_pdf):
     assert report.counts == {STATUS_DONE: 0, STATUS_FAILED: 0, STATUS_SKIPPED: 3}
 
 
-def test_corrupt_inventory_fails_that_part_isolated(batch_env):
-    """An unreadable inventory cannot be verified: the job fails alone and the
-    rest of the batch carries on (SPEC: failure isolation)."""
+def test_corrupt_derived_inventory_cannot_break_a_part(batch_env):
+    """A wrecked `sources.json` is a wrecked *copy* (ADR 0005).
+
+    This used to assert the opposite — an unreadable inventory failed that
+    part alone — and that was right while `sources.json` *was* the inventory.
+    The Library is now the authoritative record and `sources.json` is a
+    derived view regenerated at publish time, so the file cannot carry a
+    build's fate any more: the run must be unmoved by whatever is in it, and
+    the next publish must overwrite it with the truth.
+
+    Failure isolation itself is still pinned, by the extraction-failure tests
+    above and below this one; what changed is that a derived file is no longer
+    one of the things that can fail.
+    """
     pdfs, settings = batch_env
     assert run_batch(pdfs, settings=settings, use_llm=False).ok
-    (settings.parts_dir / "PLAIN" / "sources.json").write_text(
-        "{ not valid json", encoding="utf-8"
-    )
+    sources = settings.parts_dir / "PLAIN" / "sources.json"
+    sources.write_text("{ not valid json", encoding="utf-8")
 
     report = run_batch(pdfs, settings=settings, use_llm=False)
     by_part = {j.part: j for j in report.jobs}
-    assert by_part["PLAIN"].status == STATUS_FAILED
-    assert by_part["PLAIN"].error
+    assert by_part["PLAIN"].status == STATUS_SKIPPED
     assert by_part["TEST9000"].status == STATUS_SKIPPED
     assert by_part["TEST9001"].status == STATUS_SKIPPED
-    assert not report.ok
+    assert report.ok
+
+    # ...and a run that does publish restores the derived view.
+    forced = run_batch(pdfs, settings=settings, use_llm=False, force=True)
+    assert forced.ok
+    assert json.loads(sources.read_text(encoding="utf-8"))["generated"] is True
+
+
+def _published(settings, part: str, filename: str) -> list[Path]:
+    """Every `<doc>/<filename>` this part published, wherever it landed.
+
+    Not a glob under `parts/<PART>/docs/`: ticket 04 publishes a document
+    *once* into the shared store and has every part that references it point
+    there, so the manifest is the only thing that knows where a part's
+    artifacts are. A glob would silently return `[]` in shared mode and make
+    every gate test below vacuous.
+    """
+    part_dir = Path(settings.parts_dir) / part
+    manifest = read_manifest(part_dir)
+    assert manifest is not None, f"{part} has no manifest to read documents from"
+    return [
+        doc_dir / filename
+        for doc_dir in sorted(document_dirs(manifest, part_dir=part_dir).values())
+        if (doc_dir / filename).is_file()
+    ]
 
 
 def _wire_ti_backend(monkeypatch, mapping: dict[str, str]) -> None:
@@ -338,7 +372,9 @@ def test_missing_search_index_rebuilds_part(batch_env):
 
     pdfs, settings = batch_env
     assert run_batch(pdfs, settings=settings, use_llm=False).ok
-    for path in (settings.parts_dir / "PLAIN" / "docs").glob(f"*/{INDEX_FILENAME}"):
+    indexes = _published(settings, "PLAIN", INDEX_FILENAME)
+    assert indexes, "PLAIN published no search index — the test would be vacuous"
+    for path in indexes:
         path.unlink()
 
     report = run_batch(pdfs, settings=settings, use_llm=False)
@@ -357,7 +393,9 @@ def test_stale_search_index_schema_rebuilds_part(batch_env):
 
     pdfs, settings = batch_env
     assert run_batch(pdfs, settings=settings, use_llm=False).ok
-    for path in (settings.parts_dir / "PLAIN" / "docs").glob(f"*/{INDEX_FILENAME}"):
+    indexes = _published(settings, "PLAIN", INDEX_FILENAME)
+    assert indexes, "PLAIN published no search index — the test would be vacuous"
+    for path in indexes:
         data = json.loads(path.read_text(encoding="utf-8"))
         data["schema_version"] = "0"
         path.write_text(json.dumps(data), encoding="utf-8")
@@ -381,7 +419,7 @@ def test_stale_spec_or_plot_schema_rebuilds_part(batch_env, artifact):
     """
     pdfs, settings = batch_env
     assert run_batch(pdfs, settings=settings, use_llm=False).ok
-    staled = list((settings.parts_dir / "PLAIN" / "docs").glob(f"*/{artifact}"))
+    staled = _published(settings, "PLAIN", artifact)
     assert staled, f"PLAIN published no {artifact} — the test would be vacuous"
     for path in staled:
         data = json.loads(path.read_text(encoding="utf-8"))
@@ -407,7 +445,7 @@ def test_absent_spec_or_plot_file_does_not_force_a_rebuild(batch_env, artifact):
 
     pdfs, settings = batch_env
     assert run_batch(pdfs, settings=settings, use_llm=False).ok
-    removed = list((settings.parts_dir / "PLAIN" / "docs").glob(f"*/{artifact}"))
+    removed = _published(settings, "PLAIN", artifact)
     assert removed, f"PLAIN published no {artifact} — the test would be vacuous"
     for path in removed:
         path.unlink()
