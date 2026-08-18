@@ -232,3 +232,195 @@
   gap: 0.5rem;
   margin-top: 1rem;
 }
+
+/* --- opening a folder (round 3) --------------------------------------------- */
+
+.analyze-head {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.75rem;
+}
+
+.analyze-head h1 {
+  margin: 0;
+}
+
+.analyze-open-path {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.85em;
+  color: var(--dsa-muted, #6b7280);
+}
+
+.analyze-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin: 0 0 0.75rem;
+  padding: 0.45rem 0.75rem;
+  border: 1px solid var(--dsa-border, #d8dee6);
+  border-radius: 8px;
+  background: var(--dsa-subtle, rgb(0 0 0 / 3%));
+  font-size: 0.9em;
+}
+
+.folder-picker-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.folder-picker-row input[type='text'] {
+  flex: 1 1 22rem;
+  min-width: 12rem;
+}
+
+.folder-picker-note {
+  margin: 0.35rem 0;
+  font-size: 0.85em;
+  color: var(--dsa-muted, #6b7280);
+}
+
+.folder-picker-browser {
+  margin: 0.5rem 0;
+  padding: 0.5rem 0.7rem;
+  border: 1px solid var(--dsa-border, #d8dee6);
+  border-radius: 8px;
+}
+
+.folder-picker-here {
+  margin: 0 0 0.4rem;
+  font-size: 0.85em;
+  color: var(--dsa-muted, #6b7280);
+  word-break: break-all;
+}
+
+.folder-picker-browser ul {
+  /* Long trees scroll inside the control rather than pushing the page down. */
+  max-height: 15rem;
+  overflow-y: auto;
+  margin: 0 0 0.5rem;
+  padding: 0;
+  list-style: none;
+}
+
+.folder-picker-browser li button {
+  display: block;
+  width: 100%;
+  padding: 0.2rem 0.3rem;
+  border: 0;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+}
+
+.folder-picker-browser li button:hover {
+  background: var(--dsa-subtle, rgb(0 0 0 / 4%));
+}
+
+.analyze-recents ul {
+  margin: 0.3rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.analyze-recents li button {
+  display: flex;
+  gap: 0.75rem;
+  align-items: baseline;
+  width: 100%;
+  padding: 0.35rem 0.4rem;
+  border: 0;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+}
+
+.analyze-recents li button:hover {
+  background: var(--dsa-subtle, rgb(0 0 0 / 4%));
+}
+
+.analyze-recent-name {
+  font-weight: 600;
+}
+
+.analyze-recent-path {
+  font-size: 0.82em;
+  color: var(--dsa-muted, #6b7280);
+}
+
+/* --- the grouped, tickable review -------------------------------------------- */
+
+.analyze-folder {
+  margin-bottom: 1rem;
+}
+
+.analyze-folder-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0 0 0.4rem;
+  font-size: 0.9em;
+  font-weight: 650;
+}
+
+.analyze-folder-count {
+  font-weight: 400;
+  color: var(--dsa-muted, #6b7280);
+}
+
+.analyze-row-pick {
+  margin-right: 0.4rem;
+}
+
+/* An unticked row stays readable but recedes: it is context, not the work. */
+.analyze-row[data-selected='false'] {
+  opacity: 0.62;
+}
+
+.analyze-not-source {
+  justify-self: start;
+  width: fit-content;
+  padding: 0.05em 0.5em;
+  border: 1px dashed var(--dsa-border, #d8dee6);
+  border-radius: 999px;
+  font-size: 0.75em;
+  color: var(--dsa-muted, #6b7280);
+}
+
+.analyze-skipped {
+  margin: 0 0 0.75rem;
+  font-size: 0.85em;
+  color: var(--dsa-muted, #6b7280);
+}
+
+.analyze-skipped summary {
+  cursor: pointer;
+}
+
+/* The row header is one flex line across the row's grid, so the tick, the
+   filename and the badges read left to right instead of being distributed
+   into the two-column grid the fields below need. */
+.analyze-row-head {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.analyze-row-head .analyze-row-name {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.analyze-row-head .analyze-row-badge {
+  justify-self: auto;
+  color: var(--dsa-muted, #6b7280);
+}

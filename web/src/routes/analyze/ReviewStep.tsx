@@ -19,11 +19,13 @@ import type { Applicability, DocProposal, ScanOut } from '../../api/types';
 import {
   ATTENTION_LABEL,
   attentionReason,
+  defaultSelection,
   describeApplicability,
   displayName,
+  groupByFolder,
   isCurrent,
   proposalKey,
-  sortProposals,
+  selectionKey,
   summarise,
 } from './proposals';
 import { getApplicabilityControl } from './shellPrimitives';
@@ -32,6 +34,14 @@ export interface ReviewStepProps {
   scan: ScanOut;
   onStarted: (runId: string, directory: string) => void;
   onBack: () => void;
+  /** Content hashes this project has already rejected; those start unticked. */
+  excluded?: readonly string[];
+  /**
+   * Persist the rejections. Called with every content hash left unticked that
+   * the user could have ticked — a recursive walk re-proposes rejected files
+   * on every scan, so an exclusion that did not stick would be re-made forever.
+   */
+  onExclude?: (hashes: string[]) => void;
 }
 
 function messageFor(error: unknown): string {
@@ -40,7 +50,13 @@ function messageFor(error: unknown): string {
   return 'The build could not be started.';
 }
 
-export default function ReviewStep({ scan, onStarted, onBack }: ReviewStepProps) {
+export default function ReviewStep({
+  scan,
+  onStarted,
+  onBack,
+  excluded = [],
+  onExclude,
+}: ReviewStepProps) {
   // Scan order is preserved for what gets posted; the sort below is display
   // only, so the payload stays recognisably the thing the server sent back.
   const [proposals, setProposals] = useState<DocProposal[]>(scan.proposals);
@@ -48,8 +64,38 @@ export default function ReviewStep({ scan, onStarted, onBack }: ReviewStepProps)
   const [error, setError] = useState('');
 
   const ApplicabilityControl = useMemo(() => getApplicabilityControl(), []);
-  const rows = useMemo(() => sortProposals(proposals), [proposals]);
-  const missingPartNumber = proposals.filter((p) => !p.part_number.trim()).length;
+  const folders = useMemo(() => groupByFolder(proposals), [proposals]);
+
+  // Ticked rows. Seeded once from the scan so a later edit to a part number
+  // does not silently re-tick something the user turned off.
+  const [selected, setSelected] = useState<Set<string>>(() =>
+    defaultSelection(scan.proposals, excluded),
+  );
+  const chosen = useMemo(
+    () => proposals.filter((p) => selected.has(selectionKey(p))),
+    [proposals, selected],
+  );
+  const missingPartNumber = chosen.filter((p) => !p.part_number.trim()).length;
+
+  function toggle(key: string, on: boolean) {
+    setSelected((current) => {
+      const next = new Set(current);
+      if (on) next.add(key);
+      else next.delete(key);
+      return next;
+    });
+  }
+
+  function toggleFolder(rows: DocProposal[], on: boolean) {
+    setSelected((current) => {
+      const next = new Set(current);
+      for (const row of rows) {
+        if (on) next.add(selectionKey(row));
+        else next.delete(selectionKey(row));
+      }
+      return next;
+    });
+  }
 
   function update(key: string, patch: Partial<DocProposal>) {
     setProposals((current) =>
@@ -63,8 +109,16 @@ export default function ReviewStep({ scan, onStarted, onBack }: ReviewStepProps)
     setStarting(true);
     setError('');
     try {
-      // Verbatim: whatever the user confirmed is what the server builds.
-      const started = await startAnalyze({ directory: scan.directory, proposals });
+      // Verbatim, and only what is ticked: whatever the user confirmed is what
+      // the server builds.
+      const started = await startAnalyze({ directory: scan.directory, proposals: chosen });
+      // Everything left unticked is a rejection worth remembering — otherwise
+      // the next recursive scan proposes all of it again.
+      onExclude?.(
+        proposals
+          .filter((p) => !selected.has(selectionKey(p)) && p.content_hash)
+          .map((p) => p.content_hash),
+      );
       onStarted(started.run_id, scan.directory);
     } catch (caught) {
       setError(messageFor(caught));
@@ -100,7 +154,7 @@ export default function ReviewStep({ scan, onStarted, onBack }: ReviewStepProps)
       {/* Not `role="status"`: it is rendered once with the table rather than
           announced, and a second live region competes with the real one. */}
       <p className="analyze-summary" data-testid="analyze-summary">
-        {summarise(proposals)}
+        {`${summarise(proposals)} — ${chosen.length} ticked`}
       </p>
 
       {ApplicabilityControl ? null : (
@@ -111,69 +165,130 @@ export default function ReviewStep({ scan, onStarted, onBack }: ReviewStepProps)
         </p>
       )}
 
-      <ul className="analyze-rows">
-        {rows.map((proposal) => {
-          const key = proposalKey(proposal);
-          const reason = attentionReason(proposal);
-          return (
-            <li
-              key={key}
-              className={`analyze-row analyze-row--${reason}`}
-              data-attention={reason}
-              data-build-state={proposal.build_state}
-            >
-              <h3 className="analyze-row-name">{displayName(proposal)}</h3>
-              <span className="analyze-row-badge">{ATTENTION_LABEL[reason]}</span>
-              {/* Why this row will or will not do work. `current` is the only
-                  state that costs nothing, so it is the one worth de-emphasising. */}
-              <span
-                className={`analyze-build-state analyze-build-state--${proposal.build_state}`}
-                title={proposal.build_reason}
-              >
-                {isCurrent(proposal) ? 'already built' : proposal.build_state}
-              </span>
+      {scan.skipped.length > 0 ? (
+        <details className="analyze-skipped">
+          <summary>{`${scan.skipped.length} folder(s) not searched`}</summary>
+          <ul>
+            {scan.skipped.map((line) => (
+              <li key={line}>{line}</li>
+            ))}
+          </ul>
+        </details>
+      ) : null}
 
-              <div className="analyze-field">
-                <label htmlFor={`part-${key}`}>Part number</label>
-                <input
-                  id={`part-${key}`}
-                  type="text"
-                  value={proposal.part_number}
-                  disabled={starting}
-                  onChange={(event) => update(key, { part_number: event.target.value })}
-                />
-                <p className="analyze-evidence">
-                  <span className="analyze-evidence-label">Part evidence:</span>{' '}
-                  {proposal.evidence || 'none recorded'}
-                </p>
-              </div>
+      {folders.map((folder) => {
+        const rows = folder.proposals;
+        const allOn = rows.every((row) => selected.has(selectionKey(row)));
+        const folderId = `folder-${folder.directory || 'root'}`;
+        return (
+          <section
+            key={folder.directory}
+            className="analyze-folder"
+            data-directory={folder.directory}
+            aria-labelledby={folderId}
+          >
+            <h3 className="analyze-folder-head">
+              {/* One click to reject a whole `reference/` folder, which is the
+                  reason grouping exists at all. */}
+              <input
+                type="checkbox"
+                checked={allOn}
+                disabled={starting}
+                aria-label={`Include everything in ${folder.directory || 'the top level'}`}
+                onChange={(event) => toggleFolder(rows, event.target.checked)}
+              />
+              <span id={folderId}>{folder.directory || 'top level'}</span>
+              <span className="analyze-folder-count">{`${rows.length} document(s)`}</span>
+            </h3>
 
-              <div className="analyze-field">
-                <span className="analyze-field-label" id={`applicability-label-${key}`}>
-                  Applies to
-                </span>
-                {ApplicabilityControl ? (
-                  <ApplicabilityControl
-                    id={`applicability-${key}`}
-                    label={`Applicability for ${displayName(proposal)}`}
-                    value={proposal.applicability}
-                    disabled={starting}
-                    onChange={(next: Applicability) => update(key, { applicability: next })}
-                  />
-                ) : (
-                  <span className="analyze-applicability-readonly">
-                    {describeApplicability(proposal.applicability)}
-                  </span>
-                )}
-                <p className="analyze-evidence">
-                  <span className="analyze-evidence-label">Applicability evidence:</span>{' '}
-                  {proposal.applicability.evidence || 'none recorded'}
-                </p>
-              </div>
-            </li>
-          );
-        })}
-      </ul>
+            <ul className="analyze-rows">
+              {rows.map((proposal) => {
+                const key = proposalKey(proposal);
+                const pick = selectionKey(proposal);
+                const reason = attentionReason(proposal);
+                const on = selected.has(pick);
+                return (
+                  <li
+                    key={key}
+                    className={`analyze-row analyze-row--${reason}`}
+                    data-attention={reason}
+                    data-build-state={proposal.build_state}
+                    data-selected={on}
+                  >
+                    {/* One flex line spanning the row's grid: tick, name, then
+                        the badges. Left to right, in the order a reader scans. */}
+                    <div className="analyze-row-head">
+                      <input
+                        type="checkbox"
+                        className="analyze-row-pick"
+                        checked={on}
+                        disabled={starting}
+                        aria-label={`Build ${displayName(proposal)}`}
+                        onChange={(event) => toggle(pick, event.target.checked)}
+                      />
+                      <h4 className="analyze-row-name">{displayName(proposal)}</h4>
+                      <span
+                        className={`analyze-build-state analyze-build-state--${proposal.build_state}`}
+                        title={proposal.build_reason}
+                      >
+                        {isCurrent(proposal) ? 'already built' : proposal.build_state}
+                      </span>
+                      {proposal.is_datasheet ? null : (
+                        <span className="analyze-not-source" title="Unticked by default">
+                          not a datasheet?
+                        </span>
+                      )}
+                      <span className="analyze-row-badge">{ATTENTION_LABEL[reason]}</span>
+                    </div>
+
+                    <div className="analyze-field">
+                      <label htmlFor={`part-${key}`}>Part number</label>
+                      <input
+                        id={`part-${key}`}
+                        type="text"
+                        value={proposal.part_number}
+                        disabled={starting || !on}
+                        onChange={(event) => update(key, { part_number: event.target.value })}
+                      />
+                      <p className="analyze-evidence">
+                        <span className="analyze-evidence-label">Part evidence:</span>{' '}
+                        {proposal.evidence || 'none recorded'}
+                      </p>
+                    </div>
+
+                    <div className="analyze-field">
+                      <span className="analyze-field-label" id={`applicability-label-${key}`}>
+                        Applies to
+                      </span>
+                      {ApplicabilityControl ? (
+                        <ApplicabilityControl
+                          id={`applicability-${key}`}
+                          label={`Applicability for ${displayName(proposal)}`}
+                          value={proposal.applicability}
+                          disabled={starting || !on}
+                          onChange={(next: Applicability) =>
+                            update(key, { applicability: next })
+                          }
+                        />
+                      ) : (
+                        <span className="analyze-applicability-readonly">
+                          {describeApplicability(proposal.applicability)}
+                        </span>
+                      )}
+                      <p className="analyze-evidence">
+                        <span className="analyze-evidence-label">
+                          Applicability evidence:
+                        </span>{' '}
+                        {proposal.applicability.evidence || 'none recorded'}
+                      </p>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
+        );
+      })}
 
       {missingPartNumber > 0 ? (
         <p role="alert" className="analyze-error">

@@ -41,6 +41,7 @@ from datasheet_analyzer.app.contracts import (
 )
 from datasheet_analyzer.app.deps import get_settings_dep
 from datasheet_analyzer.app.routers import review
+from datasheet_analyzer.app.routers.review import MAX_SCAN_DEPTH
 from datasheet_analyzer.config import Settings, reset_settings_cache
 
 # --- fixtures -----------------------------------------------------------------
@@ -211,18 +212,72 @@ def test_scan_writes_nothing(client, tmp_path, settings, monkeypatch):
     make_pdf(scan_dir / "one.pdf", "AD9081 Data Sheet")
     make_pdf(scan_dir / "two.pdf", "LM741 Op Amp")
 
-    before = snapshot(settings.parts_dir, settings.library_dir, settings.cache_dir, scan_dir)
+    # The corpus, the library, the *extraction* cache and the scanned files
+    # themselves. Deliberately not the whole of `cache_dir`: a scan now stores
+    # the proposal it inferred under `cache_dir/proposals/`, which is the
+    # narrowing this invariant took when the walk became recursive — see the
+    # test below. What must not move is anything a question is answered from.
+    before = snapshot(settings.parts_dir, settings.library_dir, extract_cache, scan_dir)
     resp = client.post("/api/analyze/scan", json={"directory": str(scan_dir)})
     assert resp.status_code == 200, resp.text
-    after = snapshot(settings.parts_dir, settings.library_dir, settings.cache_dir, scan_dir)
+    after = snapshot(settings.parts_dir, settings.library_dir, extract_cache, scan_dir)
 
     assert before == after
+
+
+def test_a_scan_may_only_write_its_own_proposal_cache(
+    client, tmp_path, settings, monkeypatch
+):
+    """The narrowing, pinned explicitly rather than left as an absence.
+
+    Recursion made a model call per PDF per scan unaffordable, so a proposal
+    is remembered by content hash. That is derived data, reconstructible from
+    the PDF and invalidated by `INFERENCE_VERSION` — but it *is* a write, and
+    the old invariant said a scan wrote nothing at all. This says exactly how
+    much it may now write, so a future change that widens it fails here.
+    """
+    stub_infer(monkeypatch)
+    scan_dir = tmp_path / "inbox"
+    make_pdf(scan_dir / "one.pdf", "AD9081 Data Sheet")
+
+    client.post("/api/analyze/scan", json={"directory": str(scan_dir)})
+
+    written = {
+        p.relative_to(settings.cache_dir).parts[0]
+        for p in settings.cache_dir.rglob("*")
+        if p.is_file()
+    }
+    assert written <= {"proposals"}, f"a scan wrote outside its proposal cache: {written}"
+
+
+def test_a_second_scan_reuses_the_proposal_and_does_not_infer_again(
+    client, tmp_path, monkeypatch
+):
+    """The point of the cache: reopening a folder is a walk, not N model calls."""
+    calls = stub_infer(monkeypatch)
+
+    scan_dir = tmp_path / "inbox"
+    make_pdf(scan_dir / "one.pdf", "AD9081 Data Sheet")
+    make_pdf(scan_dir / "two.pdf", "LM741 Op Amp")
+
+    client.post("/api/analyze/scan", json={"directory": str(scan_dir)})
+    assert len(calls) == 2
+
+    client.post("/api/analyze/scan", json={"directory": str(scan_dir)})
+    assert len(calls) == 2, "the second scan inferred again instead of reusing"
 
 
 # --- what counts as a PDF -----------------------------------------------------
 
 
-def test_subdirectories_are_not_descended_into(client, tmp_path, monkeypatch):
+def test_subdirectories_are_descended_into(client, tmp_path, monkeypatch):
+    """The workbench walks the tree; `batch.discover_jobs` still does not.
+
+    A person points this at the folder their design lives in, and the
+    datasheets are usually *inside* it — in a `datasheets/` beside the
+    schematic rather than at the top. Each proposal carries where it was
+    found so the review can group by folder.
+    """
     stub_infer(monkeypatch)
     scan_dir = tmp_path / "inbox"
     make_pdf(scan_dir / "top.pdf", "AD9081 Data Sheet")
@@ -233,7 +288,50 @@ def test_subdirectories_are_not_descended_into(client, tmp_path, monkeypatch):
     resp = client.post("/api/analyze/scan", json={"directory": str(scan_dir)})
     assert resp.status_code == 200, resp.text
     out = ScanOut.model_validate(resp.json())
-    assert [p.filename for p in out.proposals] == ["top.pdf"]
+    assert sorted(p.filename for p in out.proposals) == ["deep.pdf", "top.pdf"]
+    found = {p.filename: p.relative_dir for p in out.proposals}
+    assert found == {"top.pdf": "", "deep.pdf": "nested"}
+
+
+def test_the_walk_skips_what_could_not_be_a_source_document_and_says_so(
+    client, tmp_path, monkeypatch
+):
+    """Skips are reported, never swallowed.
+
+    A scan that silently ignored half a shelf is indistinguishable from one
+    that found everything, and the corpus directories are the sharp case: a
+    folder that *contains* `parts/` would otherwise offer to rebuild from the
+    PDFs the tool itself published.
+    """
+    stub_infer(monkeypatch)
+    scan_dir = tmp_path / "inbox"
+    make_pdf(scan_dir / "real.pdf", "AD9081 Data Sheet")
+    for hidden in (".git", ".venv", "node_modules", "parts", "library", "projects", ".cache"):
+        make_pdf(scan_dir / hidden / "not-mine.pdf", "LM741 Op Amp")
+
+    out = ScanOut.model_validate(
+        client.post("/api/analyze/scan", json={"directory": str(scan_dir)}).json()
+    )
+
+    assert [p.filename for p in out.proposals] == ["real.pdf"]
+    reported = " ".join(out.skipped)
+    for skipped in (".git", "node_modules", "parts", "library", "projects", ".cache"):
+        assert skipped in reported, f"{skipped} was skipped without saying so"
+
+
+def test_the_walk_stops_at_the_depth_limit(client, tmp_path, monkeypatch):
+    stub_infer(monkeypatch)
+    scan_dir = tmp_path / "inbox"
+    make_pdf(scan_dir / "top.pdf", "AD9081 Data Sheet")
+    deep = scan_dir.joinpath(*[f"d{n}" for n in range(MAX_SCAN_DEPTH + 2)])
+    make_pdf(deep / "too-deep.pdf", "LM741 Op Amp")
+
+    out = ScanOut.model_validate(
+        client.post("/api/analyze/scan", json={"directory": str(scan_dir)}).json()
+    )
+
+    assert "too-deep.pdf" not in [p.filename for p in out.proposals]
+    assert any("levels" in line for line in out.skipped)
 
 
 def test_non_pdf_files_are_ignored_silently(client, tmp_path, monkeypatch):

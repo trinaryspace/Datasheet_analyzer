@@ -84,6 +84,14 @@ export function WorkingSetProvider({ children }: { children: ReactNode }) {
     [setSearchParams],
   );
 
+  // The tab title names the open project. With switching-in-place rather than
+  // a window per project, the title bar is the only place that says which
+  // shelf you are looking at.
+  useEffect(() => {
+    const base = 'Datasheet Workbench';
+    document.title = project ? `${project} — ${base}` : base;
+  }, [project]);
+
   const value = useMemo(() => ({ project, setProject }), [project, setProject]);
   return <WorkingSetContext.Provider value={value}>{children}</WorkingSetContext.Provider>;
 }

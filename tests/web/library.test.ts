@@ -92,6 +92,7 @@ function projectOut(name: string, parts: string[] = []): ProjectOut {
     interfaces: '',
     notes: '',
     directory: '',
+    excluded: [],
     built: false,
     error: '',
   };

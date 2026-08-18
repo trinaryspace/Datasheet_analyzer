@@ -27,6 +27,7 @@ import type {
   Applicability,
   DocProposal,
   JobEvent,
+  ProjectOut,
   RunSnapshot,
   ScanOut,
 } from '../../web/src/api/types';
@@ -35,6 +36,11 @@ const mocks = vi.hoisted(() => ({
   scanDirectory: vi.fn(),
   startAnalyze: vi.fn(),
   openAnalyzeStream: vi.fn(),
+  openProject: vi.fn(),
+  getProjects: vi.fn(),
+  setProjectExclusions: vi.fn(),
+  openFolderDialog: vi.fn(),
+  listDirectory: vi.fn(),
 }));
 
 vi.mock('../../web/src/api/client', async (importOriginal) => {
@@ -44,6 +50,11 @@ vi.mock('../../web/src/api/client', async (importOriginal) => {
     scanDirectory: mocks.scanDirectory,
     startAnalyze: mocks.startAnalyze,
     openAnalyzeStream: mocks.openAnalyzeStream,
+    openProject: mocks.openProject,
+    getProjects: mocks.getProjects,
+    setProjectExclusions: mocks.setProjectExclusions,
+    openFolderDialog: mocks.openFolderDialog,
+    listDirectory: mocks.listDirectory,
   };
 });
 
@@ -118,6 +129,8 @@ function proposal(patch: Partial<DocProposal> = {}): DocProposal {
     content_hash: 'hash-a',
     build_state: 'new',
     build_reason: 'no corpus for AFE7950 yet',
+    relative_dir: '',
+    is_datasheet: true,
     ...patch,
   };
 }
@@ -125,7 +138,7 @@ function proposal(patch: Partial<DocProposal> = {}): DocProposal {
 function scanOut(proposals: DocProposal[], directory = '/shelf'): ScanOut {
   const states: Partial<Record<DocProposal['build_state'], number>> = {};
   for (const p of proposals) states[p.build_state] = (states[p.build_state] ?? 0) + 1;
-  return { directory, proposals, count: proposals.length, states };
+  return { directory, proposals, count: proposals.length, states, skipped: [] };
 }
 
 function job(patch: Partial<AnalyzeJob> = {}): AnalyzeJob {
@@ -191,14 +204,41 @@ function ui(): ReactElement {
   );
 }
 
-/** Scan a directory and land on the review screen. */
-async function toReview(scan: ScanOut): Promise<void> {
+/** A project row, as `POST /api/projects/open` returns it. */
+function projectOut(directory: string, over: Partial<ProjectOut> = {}): ProjectOut {
+  return {
+    name: 'shelf',
+    parts: [],
+    interfaces: '',
+    notes: '',
+    directory,
+    excluded: [],
+    built: false,
+    error: '',
+    ...over,
+  };
+}
+
+/**
+ * Open a folder and land wherever the scan sends us.
+ *
+ * The flow is "open a project folder", so every test that needs the review
+ * screen goes through opening one — that *is* the entry point now, and a
+ * harness that skipped it would be testing a path no user takes.
+ */
+async function openFolder(scan: ScanOut, project?: ProjectOut): Promise<void> {
   mocks.scanDirectory.mockResolvedValue(scan);
+  mocks.openProject.mockResolvedValue(project ?? projectOut(scan.directory));
   render(ui());
-  fireEvent.change(screen.getByLabelText('Directory path'), {
+  fireEvent.change(screen.getByLabelText('Project folder'), {
     target: { value: scan.directory },
   });
-  fireEvent.click(screen.getByRole('button', { name: 'Scan' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Open' }));
+}
+
+/** Open a folder and land on the review screen. */
+async function toReview(scan: ScanOut, project?: ProjectOut): Promise<void> {
+  await openFolder(scan, project);
   await screen.findByRole('heading', { name: /Review/ });
 }
 
@@ -218,6 +258,20 @@ beforeEach(() => {
   mocks.scanDirectory.mockReset();
   mocks.startAnalyze.mockReset();
   mocks.openAnalyzeStream.mockReset();
+  mocks.openProject.mockReset();
+  mocks.getProjects.mockReset();
+  mocks.getProjects.mockResolvedValue({ projects: [], count: 0 });
+  mocks.setProjectExclusions.mockReset();
+  mocks.setProjectExclusions.mockImplementation(async () => projectOut('/shelf'));
+  mocks.openFolderDialog.mockReset();
+  mocks.openFolderDialog.mockResolvedValue({
+    available: true,
+    picked: false,
+    directory: '',
+    reason: '',
+  });
+  mocks.listDirectory.mockReset();
+  mocks.listDirectory.mockResolvedValue({ path: '', parent: '', entries: [] });
   mocks.openAnalyzeStream.mockImplementation((runId: string, handlers: AnalyzeStreamHandlers) => {
     const stream: FakeStream = { runId, handlers, closed: false };
     streams.push(stream);
@@ -238,57 +292,79 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-// --- pick ---------------------------------------------------------------------
+// --- opening a folder ----------------------------------------------------------
 
-describe('picking a directory', () => {
-  it('scans a valid directory and advances to review', async () => {
+describe('opening a project folder', () => {
+  it('opens the folder, scans it recursively, and lands on review', async () => {
     await toReview(scanOut([proposal()]));
 
+    expect(mocks.openProject).toHaveBeenCalledWith({ directory: '/shelf' });
     expect(mocks.scanDirectory).toHaveBeenCalledWith({ directory: '/shelf' });
     expect(screen.getByText('sbas123e.pdf')).toBeInTheDocument();
   });
 
-  it("shows the server's message inline for an invalid directory and stays put", async () => {
-    mocks.scanDirectory.mockRejectedValue(new ApiError(400, 'not a directory: /nope'));
+  it("shows the server's message when the folder cannot be opened", async () => {
+    mocks.openProject.mockRejectedValue(new ApiError(400, 'directory not found: /nope'));
     render(ui());
 
-    fireEvent.change(screen.getByLabelText('Directory path'), { target: { value: '/nope' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Scan' }));
+    fireEvent.change(screen.getByLabelText('Project folder'), { target: { value: '/nope' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Open' }));
 
-    expect(await screen.findByRole('alert')).toHaveTextContent('not a directory: /nope');
-    expect(screen.getByRole('heading', { name: 'Analyze a directory' })).toBeInTheDocument();
+    expect(await screen.findByRole('alert')).toHaveTextContent('directory not found: /nope');
     expect(screen.queryByRole('heading', { name: /Review/ })).not.toBeInTheDocument();
   });
 
-  it('says there is no directory picker rather than showing one that cannot work', () => {
+  it('offers a real folder dialog, because the app is local', async () => {
+    mocks.openFolderDialog.mockResolvedValue({
+      available: true,
+      picked: true,
+      directory: '/picked/shelf',
+      reason: '',
+    });
+    mocks.scanDirectory.mockResolvedValue(scanOut([proposal()], '/picked/shelf'));
+    mocks.openProject.mockResolvedValue(projectOut('/picked/shelf'));
     render(ui());
 
-    expect(screen.getByText(/browser cannot hand the server a folder/i)).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /browse/i })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Browse…' }));
+
+    await waitFor(() =>
+      expect(mocks.openProject).toHaveBeenCalledWith({ directory: '/picked/shelf' }),
+    );
   });
 
-  it('has a loading state while scanning and an empty state for recent directories', async () => {
-    mocks.scanDirectory.mockReturnValue(new Promise(() => {}));
+  it('cancelling the dialog does nothing at all', async () => {
     render(ui());
+    fireEvent.click(screen.getByRole('button', { name: 'Browse…' }));
 
-    expect(screen.getByText(/No directories yet/)).toBeInTheDocument();
-
-    fireEvent.change(screen.getByLabelText('Directory path'), { target: { value: '/shelf' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Scan' }));
-
-    expect(await screen.findByRole('status')).toHaveTextContent('Scanning /shelf for PDFs…');
+    await waitFor(() => expect(mocks.openFolderDialog).toHaveBeenCalled());
+    expect(mocks.openProject).not.toHaveBeenCalled();
   });
 
-  it('remembers a scanned directory and re-scans it from the recent list', async () => {
-    await toReview(scanOut([proposal()]));
-    cleanup();
-
-    mocks.scanDirectory.mockResolvedValue(scanOut([proposal()]));
+  it('falls back to the in-app browser when no dialog can open', async () => {
+    // A headless host has no dialog. The button must not silently do nothing.
+    mocks.openFolderDialog.mockResolvedValue({
+      available: false,
+      picked: false,
+      directory: '',
+      reason: 'no native dialog: no display',
+    });
     render(ui());
-    fireEvent.click(screen.getByRole('button', { name: '/shelf' }));
 
-    await screen.findByRole('heading', { name: /Review/ });
-    expect(mocks.scanDirectory).toHaveBeenLastCalledWith({ directory: '/shelf' });
+    fireEvent.click(screen.getByRole('button', { name: 'Browse…' }));
+
+    expect(await screen.findByRole('status')).toHaveTextContent(/browse below/i);
+    await waitFor(() => expect(mocks.listDirectory).toHaveBeenCalled());
+  });
+
+  it('lists recent projects, which come from the server and not the browser', async () => {
+    mocks.getProjects.mockResolvedValue({
+      projects: [projectOut('/work/radar', { name: 'radar' })],
+      count: 1,
+    });
+    render(ui());
+
+    const recent = await screen.findByRole('button', { name: /radar/ });
+    expect(recent).toHaveTextContent('/work/radar');
   });
 });
 
@@ -420,8 +496,10 @@ describe('reviewing proposals', () => {
       ]),
     );
 
+    // Rows are `h4` now: they sit inside a folder section whose heading is the
+    // `h3`. Level 3 would pick up the folder header, not the documents.
     const names = screen
-      .getAllByRole('heading', { level: 3 })
+      .getAllByRole('heading', { level: 4 })
       .map((node) => node.textContent ?? '');
     expect(names).toEqual([
       'no-part.pdf',
@@ -629,14 +707,9 @@ describe('every server call goes through the client', () => {
 // --- ticket 29: analyze collapses when there is nothing to do --------------------
 
 describe('a rescan with nothing to do', () => {
-  /** Scan a directory whose every document is already current. */
+  /** Open a folder whose every document is already current. */
   async function toUpToDate(scan: ScanOut): Promise<void> {
-    mocks.scanDirectory.mockResolvedValue(scan);
-    render(ui());
-    fireEvent.change(screen.getByLabelText('Directory path'), {
-      target: { value: scan.directory },
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Scan' }));
+    await openFolder(scan);
     await screen.findByRole('heading', { name: 'Nothing to build' });
   }
 
@@ -660,9 +733,9 @@ describe('a rescan with nothing to do', () => {
       ]),
     );
 
-    expect(screen.getByRole('status')).toHaveTextContent(
-      'All 2 documents in this directory are already built and current.',
-    );
+    expect(
+      screen.getByText('All 2 documents in this directory are already built and current.'),
+    ).toBeInTheDocument();
     // Skipped entirely, not rendered empty.
     expect(screen.queryByRole('heading', { name: /^Review/ })).toBeNull();
   });
@@ -698,5 +771,90 @@ describe('a rescan with nothing to do', () => {
     // What costs time is not buried under what does not.
     const rows = document.querySelectorAll('.analyze-row');
     expect(rows[0].getAttribute('data-build-state')).toBe('stale');
+  });
+});
+
+// --- selection and exclusions ----------------------------------------------------
+
+describe('choosing what to build', () => {
+  const junk = () =>
+    proposal({
+      pdf_path: '/shelf/reference/po-4471.pdf',
+      filename: 'po-4471.pdf',
+      content_hash: 'hash-po',
+      relative_dir: 'reference',
+      is_datasheet: false,
+      build_reason: 'no corpus yet',
+    });
+
+  it('ticks the work that needs doing and leaves the rest alone', async () => {
+    await toReview(
+      scanOut([
+        proposal(),
+        proposal({
+          filename: 'built.pdf',
+          content_hash: 'hash-built',
+          build_state: 'current',
+          build_reason: 'already built',
+        }),
+        junk(),
+      ]),
+    );
+
+    // `new` is ticked; `current` and not-a-datasheet are not.
+    expect(screen.getByRole('checkbox', { name: 'Build sbas123e.pdf' })).toBeChecked();
+    expect(screen.getByRole('checkbox', { name: 'Build built.pdf' })).not.toBeChecked();
+    expect(screen.getByRole('checkbox', { name: 'Build po-4471.pdf' })).not.toBeChecked();
+  });
+
+  it('starts a build for only the ticked rows', async () => {
+    await toReview(scanOut([proposal(), junk()]));
+    mocks.startAnalyze.mockResolvedValue({ run_id: 'run-1', n_jobs: 1 });
+
+    fireEvent.click(screen.getByRole('button', { name: /^Build/ }));
+
+    await waitFor(() => expect(mocks.startAnalyze).toHaveBeenCalled());
+    const sent = mocks.startAnalyze.mock.calls[0][0];
+    expect(sent.proposals.map((p: DocProposal) => p.filename)).toEqual(['sbas123e.pdf']);
+  });
+
+  it('remembers what was left unticked, so a rescan does not re-propose it', async () => {
+    await toReview(scanOut([proposal(), junk()]));
+    mocks.startAnalyze.mockResolvedValue({ run_id: 'run-1', n_jobs: 1 });
+
+    fireEvent.click(screen.getByRole('button', { name: /^Build/ }));
+
+    await waitFor(() => expect(mocks.setProjectExclusions).toHaveBeenCalled());
+    expect(mocks.setProjectExclusions.mock.calls[0][1]).toEqual({ excluded: ['hash-po'] });
+  });
+
+  it('starts a previously excluded document unticked', async () => {
+    await toReview(scanOut([proposal(), junk()]), projectOut('/shelf', { excluded: ['hash-a'] }));
+
+    // `hash-a` is this project's rejection from a previous scan.
+    expect(screen.getByRole('checkbox', { name: 'Build sbas123e.pdf' })).not.toBeChecked();
+  });
+
+  it('groups by subdirectory and excludes a whole folder in one click', async () => {
+    await toReview(scanOut([proposal(), junk()]));
+
+    const folders = [...document.querySelectorAll('.analyze-folder')].map((n) =>
+      n.getAttribute('data-directory'),
+    );
+    expect(folders).toEqual(['', 'reference']);
+
+    // One click rejects the folder, not twelve clicks rejecting its contents.
+    fireEvent.click(
+      screen.getByRole('checkbox', { name: 'Include everything in the top level' }),
+    );
+    expect(screen.getByRole('checkbox', { name: 'Build sbas123e.pdf' })).not.toBeChecked();
+  });
+
+  it('reports the folders the walk did not search', async () => {
+    const scan = scanOut([proposal()]);
+    await toReview({ ...scan, skipped: ['parts (not a source directory)'] });
+
+    expect(screen.getByText(/1 folder\(s\) not searched/)).toBeInTheDocument();
+    expect(screen.getByText('parts (not a source directory)')).toBeInTheDocument();
   });
 });

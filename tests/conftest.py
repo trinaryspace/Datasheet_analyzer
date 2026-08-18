@@ -44,7 +44,20 @@ def fresh_retrieval_cache():
 
 
 def _point_dsa_at(root: Path):
-    """Point the Library and the session store at `root`, undoing on exit."""
+    """Point the Library, sessions and corpus at `root`, undoing on exit.
+
+    `DSA_PARTS_DIR` is here because "tests pass `parts_dir` explicitly" was
+    only *nearly* true: a handful reach `get_settings()` instead, and those
+    built into the repository's own `parts/` — silently rewriting the two
+    committed reference corpora and breaking the test that depends on
+    AFE7953 predating full-text search. A suite that edits the fixtures it
+    asserts against fails in a way that looks like a code regression.
+
+    `DSA_CACHE_DIR` is deliberately *not* redirected: `.cache/extract` and
+    `.cache/http-bin` are committed recorded fixtures, and pointing the cache
+    at a temporary directory would send the integration builds to the network
+    for pages that are already on disk.
+    """
     from _pytest.monkeypatch import MonkeyPatch
 
     from datasheet_analyzer.config import reset_settings_cache
@@ -52,6 +65,7 @@ def _point_dsa_at(root: Path):
     mp = MonkeyPatch()
     mp.setenv("DSA_LIBRARY_DIR", str(root / "library"))
     mp.setenv("DSA_SESSIONS_DIR", str(root / "sessions"))
+    mp.setenv("DSA_PARTS_DIR", str(root / "parts"))
     reset_settings_cache()
     yield root
     mp.undo()

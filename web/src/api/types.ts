@@ -193,6 +193,8 @@ export interface ProjectOut {
   notes: string;
   /** The directory this project was scanned from; `''` when not recorded. */
   directory: string;
+  /** Content hashes this project will never build. Excluding is not deleting. */
+  excluded: string[];
   built: boolean;
   error: string;
 }
@@ -211,6 +213,16 @@ export interface ProjectCreateIn {
   notes?: string;
 }
 
+/** `POST /api/projects/open` — adopt a directory as a working set. */
+export interface ProjectOpenIn {
+  directory: string;
+}
+
+/** `PUT /api/projects/{name}/exclusions` — the full set, not a delta. */
+export interface ProjectExcludeIn {
+  excluded: string[];
+}
+
 /** `POST /api/projects/{name}/parts` — parts to bring into the project. */
 export interface ProjectPartsIn {
   parts: string[];
@@ -221,6 +233,35 @@ export interface ProjectPartsIn {
 export interface ProjectsOut {
   projects: ProjectOut[];
   count: number;
+}
+
+// --- browsing for a folder ------------------------------------------------------
+
+/**
+ * `POST /api/browse/dialog` — a native folder picker on the server's machine.
+ *
+ * Three distinct outcomes: a folder was chosen, the user cancelled, or no
+ * dialog could open. Only `available: false` is a reason to fall back to the
+ * in-app listing — cancelling means they changed their mind.
+ */
+export interface BrowsePickOut {
+  available: boolean;
+  picked: boolean;
+  directory: string;
+  reason: string;
+}
+
+/** One selectable directory in the in-app browser. */
+export interface BrowseEntry {
+  name: string;
+  path: string;
+}
+
+/** `GET /api/browse/list`. `parent` is `''` at a filesystem root. */
+export interface BrowseListOut {
+  path: string;
+  parent: string;
+  entries: BrowseEntry[];
 }
 
 // --- scan and review ----------------------------------------------------------
@@ -251,6 +292,10 @@ export interface DocProposal {
   content_hash: string;
   build_state: BuildState;
   build_reason: string;
+  /** Where it sits under the scanned folder; `''` at the top level. */
+  relative_dir: string;
+  /** False when this does not read like a source document at all. */
+  is_datasheet: boolean;
 }
 
 /** `POST /api/analyze/scan` — a server-side directory path. */
@@ -265,6 +310,12 @@ export interface ScanOut {
   count: number;
   /** Tally of `DocProposal.build_state`, so a caller need not walk the rows. */
   states: Partial<Record<BuildState, number>>;
+  /**
+   * Directories the walk deliberately did not descend into, with reasons.
+   * Reported rather than swallowed: a scan that silently ignored half a shelf
+   * looks exactly like one that found everything.
+   */
+  skipped: string[];
 }
 
 /** `POST /api/analyze/start` — the confirmed proposals, used verbatim. */

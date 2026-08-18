@@ -13,6 +13,10 @@ in parallel against the same contract.
 | POST | `/api/projects/{name}/parts` | `ProjectPartsIn` | `ProjectOut` | — |
 | DELETE | `/api/projects/{name}/parts/{part}` | — | `ProjectOut` | — |
 | PATCH | `/api/projects/{name}` | `ProjectPatchIn` | `ProjectOut` | — |
+| POST | `/api/projects/open` | `ProjectOpenIn` | `ProjectOut` | — |
+| PUT | `/api/projects/{name}/exclusions` | `ProjectExcludeIn` | `ProjectOut` | — |
+| POST | `/api/browse/dialog` | — | `BrowsePickOut` | — |
+| GET | `/api/browse/list` | query `path` | `BrowseListOut` | — |
 | POST | `/api/analyze/scan` | `ScanIn` | `ScanOut` | 08 |
 | POST | `/api/analyze/start` | `StartIn` | `StartOut` | 07 |
 | GET | `/api/analyze/{run_id}/events` | — | SSE of `JobEvent` | 07 |
@@ -84,6 +88,9 @@ __all__ = [
     "SSE_HEARTBEAT_SECONDS",
     "AnalyzeJob",
     "Applicability",
+    "BrowseEntry",
+    "BrowseListOut",
+    "BrowsePickOut",
     "BuildState",
     "ChatEvent",
     "ChatEventType",
@@ -105,6 +112,8 @@ __all__ = [
     "PartOut",
     "PartsOut",
     "ProjectCreateIn",
+    "ProjectExcludeIn",
+    "ProjectOpenIn",
     "ProjectOut",
     "ProjectPartOut",
     "ProjectPartsIn",
@@ -215,8 +224,33 @@ class ProjectOut(BaseModel):
     notes: str = ""
     #: The directory this project was scanned from; `""` when not recorded.
     directory: str = ""
+    #: Content hashes this project will never build. See `Exclusion` in
+    #: CONTEXT.md — excluding is not deleting, and not removing a part.
+    excluded: list[str] = Field(default_factory=list)
     built: bool = False
     error: str = ""
+
+
+class ProjectOpenIn(BaseModel):
+    """`POST /api/projects/open` — adopt a directory as a working set.
+
+    The folder is the Batch; the project is named after it. Opening is
+    idempotent: the same directory always resolves to the same project, so
+    reopening is a load and never a second project pointing at one shelf.
+    """
+
+    directory: str
+
+
+class ProjectExcludeIn(BaseModel):
+    """`PUT /api/projects/{name}/exclusions` — the full set, not a delta.
+
+    Sent whole because the review screen already holds the complete tick
+    state; a delta API would make "untick two, tick one back" three round
+    trips and leave the two out of step if one failed.
+    """
+
+    excluded: list[str] = Field(default_factory=list)
 
 
 class ProjectPatchIn(BaseModel):
@@ -260,6 +294,43 @@ class ProjectsOut(BaseModel):
     count: int = 0
 
 
+# --- browsing for a folder ----------------------------------------------------
+
+
+class BrowsePickOut(BaseModel):
+    """`POST /api/browse/dialog` — the result of a native folder picker.
+
+    Three outcomes, deliberately distinct: a folder was chosen, the user
+    cancelled, or no dialog could be opened at all. Only the third is a reason
+    for the client to fall back to the in-app listing; cancelling means the
+    user changed their mind and should be left alone.
+    """
+
+    available: bool = True
+    picked: bool = False
+    directory: str = ""
+    reason: str = ""
+
+
+class BrowseEntry(BaseModel):
+    """One selectable directory in the in-app browser."""
+
+    name: str
+    path: str
+
+
+class BrowseListOut(BaseModel):
+    """`GET /api/browse/list` — sub-directories of one path.
+
+    `parent` is `""` at a filesystem root, which is how the UI knows not to
+    offer "up".
+    """
+
+    path: str = ""
+    parent: str = ""
+    entries: list[BrowseEntry] = Field(default_factory=list)
+
+
 # --- scan and review (tickets 02, 08) ----------------------------------------
 
 
@@ -293,6 +364,16 @@ class DocProposal(BaseModel):
     #: work rather than promising there is none.
     build_state: BuildState = "new"
     build_reason: str = ""
+    #: Where this PDF sits under the scanned directory (`""` at the top), so
+    #: the review can group by folder — a recursive walk makes folder
+    #: structure meaningful, and two `datasheet.pdf` files in different
+    #: subdirectories are otherwise indistinguishable.
+    relative_dir: str = ""
+    #: False when the classifier judged this is not a source document at all.
+    #: A recursive walk finds purchase orders and mechanical drawings; those
+    #: start unticked rather than hidden, so the user confirms rather than
+    #: hunts.
+    is_datasheet: bool = True
 
 
 class ScanIn(BaseModel):
@@ -318,6 +399,10 @@ class ScanOut(BaseModel):
     proposals: list[DocProposal] = Field(default_factory=list)
     count: int = 0
     states: dict[str, int] = Field(default_factory=dict)
+    #: Directories the walk deliberately did not descend into, each with its
+    #: reason. Reported rather than swallowed: a scan that silently ignored
+    #: half a shelf is indistinguishable from one that found everything.
+    skipped: list[str] = Field(default_factory=list)
 
     @property
     def rebuild_count(self) -> int:

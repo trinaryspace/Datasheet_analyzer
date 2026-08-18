@@ -118,3 +118,71 @@ export function displayName(proposal: DocProposal): string {
 export function proposalKey(proposal: DocProposal): string {
   return proposal.content_hash || proposal.pdf_path;
 }
+
+// --- selection (tickets 26-30) ---------------------------------------------------
+
+/** The identity a selection and an exclusion are both keyed on. */
+export function selectionKey(proposal: DocProposal): string {
+  return proposal.content_hash || proposal.pdf_path;
+}
+
+/**
+ * Which rows start ticked.
+ *
+ * The default click should build exactly the work that needs doing, so the
+ * three states that end in a build start on and everything else starts off:
+ *
+ * - `current` — already built and current; ticking it costs time for nothing.
+ * - previously excluded — the user already said no to this document in this
+ *   project, and a recursive walk re-proposes it on every single scan.
+ * - not a source document — a purchase order that happens to live beside the
+ *   datasheets. Unticked rather than hidden, so a wrong guess costs one click.
+ */
+export function defaultSelection(
+  proposals: DocProposal[],
+  excluded: readonly string[],
+): Set<string> {
+  const rejected = new Set(excluded);
+  const chosen = new Set<string>();
+  for (const proposal of proposals) {
+    const key = selectionKey(proposal);
+    if (rejected.has(proposal.content_hash)) continue;
+    if (isCurrent(proposal)) continue;
+    if (!proposal.is_datasheet) continue;
+    chosen.add(key);
+  }
+  return chosen;
+}
+
+/** One group of the review: the documents found in one subdirectory. */
+export interface FolderGroup {
+  /** Relative to the folder opened; `''` is the top level. */
+  directory: string;
+  proposals: DocProposal[];
+}
+
+/**
+ * Group by the subdirectory a document was found in.
+ *
+ * A recursive walk makes folder structure carry the user's intent —
+ * `reference/` and `competitors/` are junk wholesale — so excluding a folder
+ * of twelve should be one click, not twelve. Top level first, then
+ * alphabetical; within a group, whatever will rebuild comes first.
+ */
+export function groupByFolder(proposals: DocProposal[]): FolderGroup[] {
+  const groups = new Map<string, DocProposal[]>();
+  for (const proposal of proposals) {
+    const key = proposal.relative_dir ?? '';
+    const bucket = groups.get(key);
+    if (bucket) bucket.push(proposal);
+    else groups.set(key, [proposal]);
+  }
+  return [...groups.entries()]
+    .sort(([a], [b]) => {
+      if (a === b) return 0;
+      if (a === '') return -1;
+      if (b === '') return 1;
+      return a.localeCompare(b);
+    })
+    .map(([directory, rows]) => ({ directory, proposals: sortProposals(rows) }));
+}

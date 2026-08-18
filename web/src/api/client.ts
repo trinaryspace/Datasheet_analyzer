@@ -26,10 +26,14 @@ import type {
   LocateOut,
   LocateQuery,
   MessageIn,
+  BrowseListOut,
+  BrowsePickOut,
   PartsOut,
   ProjectCreateIn,
   ProjectOut,
   ProjectPartsIn,
+  ProjectExcludeIn,
+  ProjectOpenIn,
   ProjectPatchIn,
   ProjectsOut,
   ResolveIn,
@@ -134,6 +138,46 @@ export function removeProjectPart(name: string, partNumber: string): Promise<Pro
     `/projects/${encodeURIComponent(name)}/parts/${encodeURIComponent(partNumber)}`,
     { method: 'DELETE' },
   );
+}
+
+/**
+ * `POST /api/projects/open` — adopt a directory as the working set.
+ *
+ * Idempotent by directory: opening the same folder always resolves to the
+ * same project, so this is both "create" and "reopen".
+ */
+export function openProject(body: ProjectOpenIn): Promise<ProjectOut> {
+  return request<ProjectOut>('/projects/open', jsonBody(body));
+}
+
+/** `PUT /api/projects/{name}/exclusions` — the whole set, not a delta. */
+export function setProjectExclusions(
+  name: string,
+  body: ProjectExcludeIn,
+): Promise<ProjectOut> {
+  return request<ProjectOut>(`/projects/${encodeURIComponent(name)}/exclusions`, {
+    method: 'PUT',
+    body: JSON.stringify(body),
+  });
+}
+
+// --- browsing for a folder ------------------------------------------------------
+
+/**
+ * `POST /api/browse/dialog` — ask the server to open a native folder picker.
+ *
+ * Only meaningful because this application is local: the dialog opens on the
+ * machine running the server. Check `available` before trusting it — a
+ * headless host has no dialog to open, and that is the signal to fall back to
+ * `listDirectory`.
+ */
+export function openFolderDialog(): Promise<BrowsePickOut> {
+  return request<BrowsePickOut>('/browse/dialog', { method: 'POST' });
+}
+
+/** `GET /api/browse/list` — sub-directories of `path`; `''` lists the roots. */
+export function listDirectory(path: string): Promise<BrowseListOut> {
+  return request<BrowseListOut>(`/browse/list?path=${encodeURIComponent(path)}`);
 }
 
 // --- analyze ------------------------------------------------------------------

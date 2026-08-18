@@ -212,3 +212,92 @@ def test_patching_an_unknown_project_is_a_404_naming_it(client: TestClient) -> N
     response = client.patch("/api/projects/nope", json={"directory": "D:/x"})
     assert response.status_code == 404
     assert "nope" in response.json()["detail"]
+
+
+# --- opening a folder as a working set -------------------------------------------
+
+
+def test_opening_a_folder_creates_a_project_named_after_it(
+    client: TestClient, tmp_path: Path
+) -> None:
+    shelf = tmp_path / "radar-frontend"
+    shelf.mkdir()
+    opened = client.post("/api/projects/open", json={"directory": str(shelf)})
+    assert opened.status_code == 200
+    assert opened.json()["name"] == "radar-frontend"
+    assert opened.json()["directory"] == str(shelf)
+
+
+def test_opening_the_same_folder_twice_is_the_same_project(
+    client: TestClient, tmp_path: Path
+) -> None:
+    """Idempotent by directory — this is what makes reopening safe to repeat."""
+    shelf = tmp_path / "radar"
+    shelf.mkdir()
+    first = client.post("/api/projects/open", json={"directory": str(shelf)}).json()
+    second = client.post("/api/projects/open", json={"directory": str(shelf)}).json()
+
+    assert first["name"] == second["name"]
+    assert client.get("/api/projects").json()["count"] == 1
+
+
+def test_a_folder_name_that_is_not_a_legal_project_name_is_slugified(
+    client: TestClient, tmp_path: Path
+) -> None:
+    """`Radar 7-8G` is an ordinary folder name and an illegal project name."""
+    shelf = tmp_path / "Radar 7-8G"
+    shelf.mkdir()
+    opened = client.post("/api/projects/open", json={"directory": str(shelf)}).json()
+    assert opened["name"] == "radar-7-8g"
+
+
+def test_a_name_collision_never_adopts_someone_elses_project(
+    client: TestClient, tmp_path: Path
+) -> None:
+    """Two folders called `radar` must not silently share one working set."""
+    first = tmp_path / "a" / "radar"
+    second = tmp_path / "b" / "radar"
+    first.mkdir(parents=True)
+    second.mkdir(parents=True)
+
+    one = client.post("/api/projects/open", json={"directory": str(first)}).json()
+    two = client.post("/api/projects/open", json={"directory": str(second)}).json()
+
+    assert one["name"] != two["name"]
+    assert one["directory"] == str(first)
+    assert two["directory"] == str(second)
+
+
+def test_opening_a_directory_that_does_not_exist_is_a_400(client: TestClient) -> None:
+    response = client.post("/api/projects/open", json={"directory": "Z:/nope/nope"})
+    assert response.status_code == 400
+    assert "not found" in response.json()["detail"]
+
+
+# --- exclusions ------------------------------------------------------------------
+
+
+def test_exclusions_round_trip_and_replace_wholesale(client: TestClient) -> None:
+    client.post("/api/projects", json={"name": "rx-chain"})
+    put = client.put("/api/projects/rx-chain/exclusions", json={"excluded": ["aaa", "bbb"]})
+    assert put.status_code == 200
+    assert put.json()["excluded"] == ["aaa", "bbb"]
+
+    # The whole set, not a delta: sending one leaves exactly one.
+    again = client.put("/api/projects/rx-chain/exclusions", json={"excluded": ["bbb"]})
+    assert again.json()["excluded"] == ["bbb"]
+
+
+def test_excluding_never_touches_a_part_or_the_library(
+    client: TestClient, settings: Settings
+) -> None:
+    """Excluding is not deleting, and not removing a part."""
+    part_dir = build_part(settings, "AFE7950")
+    manifest = (part_dir / "manifest.json").read_bytes()
+    client.post("/api/projects", json={"name": "rx-chain"})
+    client.post("/api/projects/rx-chain/parts", json={"parts": ["AFE7950"]})
+
+    row = client.put("/api/projects/rx-chain/exclusions", json={"excluded": ["aaa"]}).json()
+
+    assert [p["part_number"] for p in row["parts"]] == ["AFE7950"]
+    assert (part_dir / "manifest.json").read_bytes() == manifest

@@ -174,6 +174,9 @@ export function LibraryScreen({ applicabilityControl = null }: LibraryScreenProp
         content_hash: doc.content_hash,
         build_state: 'new',
         build_reason: `${group.part_number} has no corpus yet`,
+        relative_dir: '',
+        // The user chose this part explicitly; it is not a heuristic's guess.
+        is_datasheet: true,
       }));
       // The run view shows the directory; use the one the documents actually
       // live in rather than a blank, which would read as "nowhere".

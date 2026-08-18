@@ -148,14 +148,16 @@ named by them.
 _Avoid_: device, chip, family
 
 **Project**:
-A design: an explicit, human-curated list of parts plus the free text that
-joins them (each part's one-line role, an `interfaces` note, project notes),
-stored as `projects/<name>/project.json`. It is the noun above `part` — the
-unit a designer actually works in. Membership is chosen, never inferred: no
-BOM or netlist is parsed, and a part with no built corpus is refused rather
-than pointed at. Asking a project a question fans the lookup out across its
-members and labels every hit with the part it came from.
-_Avoid_: board, design file, group, BOM, assembly
+A design: a human-curated list of parts plus the free text that joins them
+(each part's one-line role, an `interfaces` note, project notes), stored as
+`projects/<name>/project.json`. It is the noun above `part` — the unit a
+designer actually works in. Membership may be *seeded* by opening a Batch
+directory, which names the project after the folder and adds what it built;
+it is never inferred from a design artifact, no BOM or netlist is parsed, and
+every seeded member can be removed by hand. A part with no built corpus is
+refused rather than pointed at. Asking a project a question fans the lookup
+out across its members and labels every hit with the part it came from.
+_Avoid_: board, design file, group, BOM, assembly, folder, workspace
 
 **Project index**:
 `PROJECT_INDEX.md`: the single always-loadable file for a whole project —
@@ -198,6 +200,17 @@ what a human thinks, never what the pipeline derived. Its machine
 counterpart is a Tag.
 _Avoid_: tag, keyword, annotation, category
 
+**Exclusion**:
+A SourceDocument a person has told one Project never to build, recorded on
+that project by content hash. It is the answer to "this PDF is in my folder
+but is not mine" — a competitor's app note, a purchase order, a mechanical
+drawing — and it survives a rescan, because a recursive walk would otherwise
+re-propose the same rejected files every time. Scoped to the project on
+purpose: the same document may be noise in one design and the subject of
+another. Excluding is not deleting and not removing a part; the file is
+untouched and any other project may still build it.
+_Avoid_: ignore, blocklist, filter, hidden
+
 **Build**:
 The pipeline run that turns one source document set into one part corpus:
 acquire → extract → structure → enrich → publish.
@@ -211,7 +224,14 @@ own text, falling back to the filename stem only when the text yields none.
 _Avoid_: task, item, work item
 
 **Batch**:
-The set of PDFs in one directory (e.g. `datasheets/`), each becoming a job;
-the directory is the batch's identity and its only specification. How many
-Parts it yields is a fact about its documents, never a count of its jobs.
-_Avoid_: bulk, campaign, queue, spec file
+The set of PDFs under one directory (e.g. `datasheets/`), each becoming a
+job; the directory is the batch's identity and its only specification. The
+CLI reads direct children only; the workbench walks subdirectories too,
+skipping what could not be a source document — dot-directories, symlinks, and
+the tool's own `parts/`, `library/`, `projects/` and `.cache/`. What it
+skipped is reported, never silently dropped. A Batch is a set of documents,
+not a design: opening one may *seed* a Project, but the two remain separate
+nouns — excluding a document from a Batch stops it being built, whereas
+removing a part from a Project only narrows the view. How many Parts a Batch
+yields is a fact about its documents, never a count of its jobs.
+_Avoid_: bulk, campaign, queue, spec file, project, folder

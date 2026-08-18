@@ -735,6 +735,13 @@ class Project(BaseModel):
     parts: list[ProjectMember] = Field(default_factory=list)
     interfaces: str = ""
     notes: str = ""
+    #: SourceDocuments this project will never build, by content hash. A
+    #: recursive walk re-proposes every rejected file on every rescan, so an
+    #: exclusion that did not persist would have to be re-made forever.
+    #: Scoped here rather than globally on purpose: the same document is noise
+    #: in one design and the subject of another. Excluding is not deleting —
+    #: the file is untouched and any other project may still build it.
+    excluded: list[str] = Field(default_factory=list)
     #: The directory this project's documents were scanned from, recorded
     #: verbatim as the user gave it. A shelf of PDFs *is* the project, but
     #: until this existed the association lived only in browser local storage

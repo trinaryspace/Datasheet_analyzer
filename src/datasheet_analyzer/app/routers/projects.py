@@ -26,6 +26,9 @@ check.
 
 from __future__ import annotations
 
+import hashlib
+import re
+from pathlib import Path
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -33,6 +36,8 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from datasheet_analyzer.app.contracts import (
     API_PREFIX,
     ProjectCreateIn,
+    ProjectExcludeIn,
+    ProjectOpenIn,
     ProjectOut,
     ProjectPartOut,
     ProjectPartsIn,
@@ -48,6 +53,7 @@ from datasheet_analyzer.projects import (
     add_parts,
     exists,
     is_built,
+    list_projects,
     load_project,
     new_project,
     project_dir,
@@ -99,6 +105,66 @@ def add_project_parts(name: str, body: ProjectPartsIn, settings: SettingsDep) ->
     return _row(project.name, settings)
 
 
+@router.post("/projects/open", response_model=ProjectOut)
+def open_project(body: ProjectOpenIn, settings: SettingsDep) -> ProjectOut:
+    """Adopt a directory as a working set, creating the project if needed.
+
+    Idempotent by directory: opening the same folder twice resolves to the
+    same project, never a second one pointing at the same shelf. That is what
+    makes "swap projects by swapping folders" safe to do repeatedly.
+
+    The folder's name is slugified because project names are constrained
+    (`[A-Za-z0-9._-]`, starting alphanumeric) and real folders are not —
+    `Radar 7-8G` is an ordinary thing to call a directory. On a name collision
+    with a project pointing somewhere *else*, a short digest of the path is
+    appended rather than adopting a stranger's project, which would silently
+    repoint their working set at your files.
+    """
+    raw = (body.directory or "").strip()
+    if not raw:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="no directory given")
+    directory = Path(raw).expanduser()
+    if not directory.is_dir():
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST, detail=f"directory not found: {raw}"
+        )
+    resolved = str(directory)
+
+    for existing in list_projects(settings.projects_dir):
+        try:
+            candidate = load_project(existing, settings.projects_dir)
+        except ProjectError:
+            continue
+        if candidate.directory and _same_directory(candidate.directory, resolved):
+            return _row(candidate.name, settings)
+
+    name = _available_name(directory, resolved, settings)
+    try:
+        project = new_project(name, settings.projects_dir)
+        project.directory = resolved
+        save_project(project, settings.projects_dir)
+    except ProjectError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    return _row(project.name, settings)
+
+
+@router.put("/projects/{name}/exclusions", response_model=ProjectOut)
+def set_exclusions(name: str, body: ProjectExcludeIn, settings: SettingsDep) -> ProjectOut:
+    """Replace the set of documents this project will never build.
+
+    The whole set, not a delta: the review screen already holds the complete
+    tick state, and a delta API would turn "untick two, tick one back" into
+    three round trips that can disagree if one fails.
+    """
+    project = _load(name, settings)
+    project.excluded = sorted({h.strip() for h in body.excluded if h.strip()})
+    try:
+        save_project(project, settings.projects_dir)
+    except ProjectError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    return _row(project.name, settings)
+
+
 @router.patch("/projects/{name}", response_model=ProjectOut)
 def patch_project(name: str, body: ProjectPatchIn, settings: SettingsDep) -> ProjectOut:
     """Change the fields a user maintains: the directory, interfaces, notes.
@@ -143,6 +209,32 @@ def remove_project_part(name: str, part_number: str, settings: SettingsDep) -> P
     return _row(project.name, settings)
 
 
+def _same_directory(a: str, b: str) -> bool:
+    """Whether two recorded paths name one folder, re-spellings included."""
+    try:
+        return Path(a).resolve() == Path(b).resolve()
+    except (OSError, ValueError):
+        return a.strip().rstrip("/\\").lower() == b.strip().rstrip("/\\").lower()
+
+
+def _slugify(folder_name: str) -> str:
+    """A folder name as a legal project name, or `project` when nothing survives."""
+    kept = [ch if (ch.isalnum() or ch in "._-") else "-" for ch in folder_name.strip()]
+    slug = re.sub(r"-{2,}", "-", "".join(kept)).strip("-.")
+    while slug and not slug[0].isalnum():
+        slug = slug[1:]
+    return slug.lower() or "project"
+
+
+def _available_name(directory: Path, resolved: str, settings: Settings) -> str:
+    """The slug, or the slug plus a path digest when the slug is taken."""
+    slug = _slugify(directory.name or resolved)
+    if not exists(slug, settings.projects_dir):
+        return slug
+    digest = hashlib.sha256(resolved.encode("utf-8", "replace")).hexdigest()[:6]
+    return f"{slug}-{digest}"
+
+
 def _load(name: str, settings: Settings):
     """The project, or a 404 naming it."""
     try:
@@ -172,5 +264,6 @@ def _row(name: str, settings: Settings) -> ProjectOut:
         interfaces=project.interfaces,
         notes=project.notes,
         directory=project.directory,
+        excluded=list(project.excluded),
         built=(project_dir(project.name, settings.projects_dir) / PROJECT_INDEX_FILENAME).exists(),
     )
