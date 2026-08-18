@@ -315,6 +315,69 @@ and `errata_links.json`. Two caveats the implementer recorded honestly:
 
 ---
 
+## Stage 8 — `dsa audit`: the trust scorecard (15 min, VERIFIED 2026-08-18)
+
+Landed in `fed4d26`. Grades a corpus over 13 metrics loaded from
+`registry/audit_rubric.yaml` — no threshold, weight or letter lives in Python.
+Also exposed as the 14th MCP tool, `get_audit`.
+
+### Run `check-revisions` FIRST. The order changes the grade.
+
+```bash
+dsa check-revisions --all      # do this first
+dsa audit --all
+```
+
+`revision_freshness` is a **categorical** metric carried at weight 3.0, the
+joint-highest in the rubric. It reads `current` (grade A), `stale`, or
+`unknown` (grade **C**). A corpus you have never checked against upstream is
+penalised to C on the heaviest metric in the rubric — which is defensible, but
+it means **the audit grade is not a pure function of the corpus.** Measured
+both ways on the same fleet:
+
+| Part | audit only | check-revisions, then audit |
+|---|---|---|
+| AFE7950 | B | **A** (`revision_freshness: current`) |
+| AFE7953 | B | **A** (`revision_freshness: current`) |
+| AD9081, HMC520A, QPA1003P | B | B (`unknown`, no registry URL) |
+| LMX1204 | B | B (`stale` — see the rebuild note in Stage 7) |
+
+Observed fleet output after checking revisions:
+
+```
+| Part     | Grade | Graded | n/a | records graded high | golden pass rate | revision freshness |
+| AD9081   | B     | 11     | 2   | 49%                 | 100%             | unknown            |
+| LMX1204  | B     | 11     | 2   | 8%                  | 100%             | stale              |
+| AFE7950  | A     | 10     | 3   | 54%                 | 100%             | current            |
+```
+
+### Read the n/a column, not just the grade
+
+A metric the corpus carries no fact for is `n/a` and **excluded** from the
+weighted mean — never scored 0 (which would defame a corpus for a statistic
+nobody recorded) and never full marks (which would flatter one). The count of
+excluded metrics prints beside the grade, and the policy ships in the
+scorecard's own `unavailable_policy`. Every `n/a` carries a reason, e.g.
+
+> `this corpus records no table pinning count — rebuild this corpus with
+> `dsa build` to record it`
+
+Note that A-grade parts here have *more* n/a metrics than B-grade ones. That is
+not why they scored higher — verified by reading the per-metric JSON. The
+difference is `revision_freshness`, above.
+
+### Two defects the implementer flagged and did not fix
+
+- `_mean_fidelity` conflates a measured `0.0` with "never computed", and states
+  a backend fact it did not check. This is the exact inverse of the
+  null-vs-zero rule the ticket added `tables_pinned: int | None` to honour.
+- The `--min-grade` comparison branch is never exercised by a graded part below
+  the floor, so half that flag is untested. `LM741` grades **C**, so
+  `--min-grade B` would fail it — correct and intended, but ticket 08 must
+  decide whether that is the gate.
+
+---
+
 ## Known findings — what you will hit, and what it means
 
 Full evidence in `Reports/FINDINGS_2026-08-18.md`.
@@ -326,7 +389,9 @@ Full evidence in `Reports/FINDINGS_2026-08-18.md`.
 | F2 | HIGH | TI build dies with a raw traceback on a 404 | Real defect — breaches invariant 7 |
 | F4 | HIGH | TI sha256 changes daily | Upstream behaviour — design must not read it as a new revision |
 | F8 | HIGH | `sniff_revision` → `SYSREFOUT0` for LMX1204 | **FIXED** in `f32d9a9` — verified live, see Stage 7 |
+| F14 | HIGH | Every `--json` command prints a PyMuPDF deprecation warning **on stdout** ahead of the JSON | Real defect — `dsa ask … --json \| jq` fails to parse; breaks the agent-facing contract |
 | F13 | MED-HIGH | `check-revisions --all` on a missing parts dir prints `0 checked, 0 stale, 0 content-drift, 0 could not be checked` and exits 0 | Real defect — a typo'd `DSA_PARTS_DIR` reads as "fleet current" |
+| F15 | MED | `dsa audit` grades a never-checked corpus C on `revision_freshness`, weight 3.0 | By design, but the grade depends on run order — check revisions first |
 | F3 | MED | `dsa batch` has no `--vendor` override | Gap — blocks offline batch of TI parts |
 | F6 | MED | LM741 pin table not extracted, no reason recorded | Real defect — and the message points at a `dsa status` that carries nothing |
 | F10 | MED | Two revision parsers disagree | Duplication — should share one |
