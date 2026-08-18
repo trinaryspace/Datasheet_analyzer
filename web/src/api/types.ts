@@ -191,8 +191,17 @@ export interface ProjectOut {
   parts: ProjectPartOut[];
   interfaces: string;
   notes: string;
+  /** The directory this project was scanned from; `''` when not recorded. */
+  directory: string;
   built: boolean;
   error: string;
+}
+
+/** `PATCH /api/projects/{name}` — omitting a field leaves it alone. */
+export interface ProjectPatchIn {
+  directory?: string;
+  interfaces?: string;
+  notes?: string;
 }
 
 /** `POST /api/projects` — a new, empty working set. */
@@ -217,6 +226,14 @@ export interface ProjectsOut {
 // --- scan and review ----------------------------------------------------------
 
 /**
+ * Whether analyzing this PDF will actually do any work.
+ *
+ * `current` is the only one that costs nothing. The other three all end in a
+ * build, and `build_reason` says which of them and why.
+ */
+export type BuildState = 'new' | 'current' | 'stale' | 'changed';
+
+/**
  * What inference proposes for one PDF — a proposal, never a decision.
  *
  * `evidence` is the part-number evidence; `applicability.evidence` is the
@@ -232,6 +249,8 @@ export interface DocProposal {
   page_count: number;
   doc_type: string;
   content_hash: string;
+  build_state: BuildState;
+  build_reason: string;
 }
 
 /** `POST /api/analyze/scan` — a server-side directory path. */
@@ -244,6 +263,8 @@ export interface ScanOut {
   directory: string;
   proposals: DocProposal[];
   count: number;
+  /** Tally of `DocProposal.build_state`, so a caller need not walk the rows. */
+  states: Partial<Record<BuildState, number>>;
 }
 
 /** `POST /api/analyze/start` — the confirmed proposals, used verbatim. */

@@ -31,6 +31,8 @@
 import type { ComponentType, ReactNode } from 'react';
 import { Link, Route, Routes, useLocation } from 'react-router-dom';
 
+import { WorkingSetProvider } from './shell/workingSet';
+
 /** What a `src/routes/<name>/route.tsx` module may export. */
 export interface RouteModule {
   default: ComponentType;
@@ -114,21 +116,28 @@ function NoRoutes() {
 
 export function App() {
   const Frame = Shell ?? FallbackShell;
+  // The working set wraps everything, so the project a user picks on one
+  // screen is the context the others already have. It reads the router's
+  // search params, so it must sit inside the Router and outside the screens.
   if (routes.length === 0) {
     return (
-      <Frame routes={routes}>
-        <NoRoutes />
-      </Frame>
+      <WorkingSetProvider>
+        <Frame routes={routes}>
+          <NoRoutes />
+        </Frame>
+      </WorkingSetProvider>
     );
   }
   return (
-    <Frame routes={routes}>
-      <Routes>
-        {routes.map((route) => (
-          <Route key={route.id} path={route.path} element={<route.Component />} />
-        ))}
-      </Routes>
-    </Frame>
+    <WorkingSetProvider>
+      <Frame routes={routes}>
+        <Routes>
+          {routes.map((route) => (
+            <Route key={route.id} path={route.path} element={<route.Component />} />
+          ))}
+        </Routes>
+      </Frame>
+    </WorkingSetProvider>
   );
 }
 

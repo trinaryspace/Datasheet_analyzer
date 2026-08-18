@@ -30,6 +30,7 @@ import type {
   ProjectCreateIn,
   ProjectOut,
   ProjectPartsIn,
+  ProjectPatchIn,
   ProjectsOut,
   ResolveIn,
   RunSnapshot,
@@ -104,6 +105,19 @@ export function getProjects(): Promise<ProjectsOut> {
 /** `POST /api/projects` — a new, empty working set. 409 if the name is taken. */
 export function createProject(body: ProjectCreateIn): Promise<ProjectOut> {
   return request<ProjectOut>('/projects', jsonBody(body));
+}
+
+/**
+ * `PATCH /api/projects/{name}` — the fields a user maintains.
+ *
+ * Omitting a field leaves it alone, so a screen editing the directory cannot
+ * blank the notes by not sending them.
+ */
+export function patchProject(name: string, body: ProjectPatchIn): Promise<ProjectOut> {
+  return request<ProjectOut>(`/projects/${encodeURIComponent(name)}`, {
+    method: 'PATCH',
+    body: JSON.stringify(body),
+  });
 }
 
 /** `POST /api/projects/{name}/parts` — bring parts into the working set. */

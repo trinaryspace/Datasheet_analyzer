@@ -43,6 +43,7 @@ import fitz
 from fastapi import APIRouter, Depends, HTTPException
 
 from datasheet_analyzer.acquire import applicability as applicability_module
+from datasheet_analyzer.app.buildstate import classify
 from datasheet_analyzer.app.contracts import (
     API_PREFIX,
     Applicability,
@@ -189,7 +190,18 @@ def scan_directory(directory: str, settings: Settings) -> ScanOut:
     client = _llm_client(settings)
 
     def one(pdf_path: Path) -> DocProposal:
-        return _propose(pdf_path, known_parts=known_parts, client=client)
+        proposal = _propose(pdf_path, known_parts=known_parts, client=client)
+        # Classified here rather than on the client: it takes a manifest read
+        # per part, and the browser has neither the manifests nor the gate.
+        state, reason = classify(
+            pdf_path,
+            proposal.part_number,
+            proposal.content_hash,
+            settings=settings,
+        )
+        proposal.build_state = state
+        proposal.build_reason = reason
+        return proposal
 
     workers = max(1, min(int(settings.analyze_workers), len(pdfs)))
     with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="dsa-scan") as pool:
@@ -197,7 +209,16 @@ def scan_directory(directory: str, settings: Settings) -> ScanOut:
         # never overtakes the row above it.
         proposals = list(pool.map(one, pdfs))
 
-    return ScanOut(directory=str(path), proposals=proposals, count=len(proposals))
+    states: dict[str, int] = {}
+    for proposal in proposals:
+        states[proposal.build_state] = states.get(proposal.build_state, 0) + 1
+
+    return ScanOut(
+        directory=str(path),
+        proposals=proposals,
+        count=len(proposals),
+        states=states,
+    )
 
 
 @router.post("/scan", response_model=ScanOut)

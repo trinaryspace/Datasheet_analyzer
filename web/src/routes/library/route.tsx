@@ -24,15 +24,19 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { ComponentType } from 'react';
 
+import { useNavigate } from 'react-router-dom';
+
 import {
   addProjectParts,
   createProject,
   getLibrary,
   getProjects,
   removeProjectPart,
+  startAnalyze,
 } from '../../api/client';
-import type { LibraryDocumentOut, ProjectOut } from '../../api/types';
+import type { DocProposal, LibraryDocumentOut, ProjectOut } from '../../api/types';
 import { PartGroupRow } from './PartGroupRow';
+import { useWorkingSet } from '../../shell/workingSet';
 import { ALL_DOCUMENTS, ProjectBar } from './ProjectBar';
 import { getApplicabilityControl } from './shellPrimitives';
 import type { ApplicabilityControlProps } from './shellPrimitives';
@@ -72,8 +76,11 @@ export function LibraryScreen({ applicabilityControl = null }: LibraryScreenProp
   const [serverLabels, setServerLabels] = useState<string[]>([]);
   const [filters, setFilters] = useState<LibraryFilters>(NO_FILTERS);
   const [projects, setProjects] = useState<ProjectOut[]>([]);
-  const [selectedProject, setSelectedProject] = useState<string>(ALL_DOCUMENTS);
+  // The working set is app-wide (shell/workingSet), not this screen's state:
+  // a project chosen here is the context Chat and Analyze inherit too.
+  const { project: selectedProject, setProject: setSelectedProject } = useWorkingSet();
   const [projectBusy, setProjectBusy] = useState(false);
+  const navigate = useNavigate();
   const [projectError, setProjectError] = useState('');
 
   const load = useCallback(async () => {
@@ -144,6 +151,43 @@ export function LibraryScreen({ applicabilityControl = null }: LibraryScreenProp
   const onPatched = useCallback((next: LibraryDocumentOut) => {
     setDocuments((current) => replaceDocument(current, next));
   }, []);
+
+  /**
+   * Build an unbuilt part from the documents that already reach it.
+   *
+   * A library document carries `path`, `part_number` and `applicability` —
+   * which is a `DocProposal` — so this is an ordinary run through the existing
+   * endpoint rather than a new one. Progress is handed to the Analyze screen's
+   * run view; a second progress UI here would be the same thing twice.
+   */
+  const buildPart = useCallback(
+    async (group: { part_number: string; documents: LibraryDocumentOut[] }) => {
+      setProjectError('');
+      const proposals: DocProposal[] = group.documents.map((doc) => ({
+        pdf_path: doc.path,
+        filename: doc.filename,
+        part_number: group.part_number,
+        applicability: doc.applicability,
+        evidence: doc.applicability.evidence,
+        page_count: doc.page_count,
+        doc_type: doc.doc_type,
+        content_hash: doc.content_hash,
+        build_state: 'new',
+        build_reason: `${group.part_number} has no corpus yet`,
+      }));
+      // The run view shows the directory; use the one the documents actually
+      // live in rather than a blank, which would read as "nowhere".
+      const first = group.documents[0]?.path ?? '';
+      const directory = first.replace(/[/\\][^/\\]*$/, '');
+      try {
+        const started = await startAnalyze({ directory, proposals });
+        navigate(`/analyze?run=${encodeURIComponent(started.run_id)}`);
+      } catch (caught) {
+        setProjectError(errorMessage(caught, `${group.part_number} could not be built`));
+      }
+    },
+    [navigate],
+  );
 
   /** Run one project write, then replace the row it returned. */
   const runProjectWrite = useCallback(
@@ -275,6 +319,7 @@ export function LibraryScreen({ applicabilityControl = null }: LibraryScreenProp
                   applicabilityControl={applicabilityControl}
                   onPatched={onPatched}
                   defaultOpen={groups.length === 1}
+                  onBuild={group.built ? undefined : (g) => void buildPart(g)}
                   onRemoveFromProject={
                     project && projectParts.includes(group.part_number)
                       ? (partNumber) =>

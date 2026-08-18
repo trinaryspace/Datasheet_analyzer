@@ -44,3 +44,11 @@ export type { ApplicabilityControlProps } from './ApplicabilityControl';
 
 export { useSSE } from './useSSE';
 export type { SSEOpener, SSEStatus, UseSSEOptions, UseSSEResult } from './useSSE';
+
+export {
+  WorkingSetProvider,
+  useWorkingSet,
+  NO_PROJECT,
+  PROJECT_PARAM,
+} from './workingSet';
+export type { WorkingSet } from './workingSet';

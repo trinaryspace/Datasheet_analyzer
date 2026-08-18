@@ -152,3 +152,63 @@ def test_an_illegal_project_name_is_a_400_that_says_what_is_legal(client: TestCl
     detail = response.json()["detail"]
     assert "invalid project name" in detail
     assert "rf-frontend" in detail
+
+
+# --- ticket 28: a project remembers its directory --------------------------------
+
+
+def test_a_project_round_trips_its_directory(client: TestClient) -> None:
+    client.post("/api/projects", json={"name": "rx-chain"})
+    patched = client.patch("/api/projects/rx-chain", json={"directory": "D:/shelf/rx"})
+    assert patched.status_code == 200
+    assert patched.json()["directory"] == "D:/shelf/rx"
+
+    listed = client.get("/api/projects").json()["projects"][0]
+    assert listed["directory"] == "D:/shelf/rx"
+
+
+def test_a_project_written_before_this_field_still_loads(
+    client: TestClient, settings: Settings
+) -> None:
+    """Additive and backward compatible: an old file reads `directory == ""`."""
+    old = settings.projects_dir / "legacy"
+    old.mkdir(parents=True, exist_ok=True)
+    (old / "project.json").write_text(
+        json.dumps(
+            {
+                "name": "legacy",
+                "parts": [],
+                "interfaces": "",
+                "notes": "",
+                "created_at": "2026-01-01T00:00:00Z",
+                "updated_at": "2026-01-01T00:00:00Z",
+            }
+        ),
+        encoding="utf-8",
+    )
+    row = next(r for r in client.get("/api/projects").json()["projects"] if r["name"] == "legacy")
+    assert row["error"] == ""
+    assert row["directory"] == ""
+
+
+def test_patch_leaves_the_fields_it_was_not_given_alone(
+    client: TestClient, settings: Settings
+) -> None:
+    """`None` means "leave it alone", so editing one cannot blank the others."""
+    build_part(settings, "AFE7950")
+    client.post("/api/projects", json={"name": "rx-chain", "notes": "keep me"})
+    client.post("/api/projects/rx-chain/parts", json={"parts": ["AFE7950"]})
+
+    row = client.patch("/api/projects/rx-chain", json={"directory": "D:/shelf/rx"}).json()
+    assert row["notes"] == "keep me"
+    assert [p["part_number"] for p in row["parts"]] == ["AFE7950"]
+
+    row = client.patch("/api/projects/rx-chain", json={"notes": "changed"}).json()
+    assert row["directory"] == "D:/shelf/rx"
+    assert row["notes"] == "changed"
+
+
+def test_patching_an_unknown_project_is_a_404_naming_it(client: TestClient) -> None:
+    response = client.patch("/api/projects/nope", json={"directory": "D:/x"})
+    assert response.status_code == 404
+    assert "nope" in response.json()["detail"]

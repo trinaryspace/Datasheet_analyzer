@@ -49,10 +49,47 @@ export function attentionReason(proposal: DocProposal): AttentionReason {
  */
 export function sortProposals(proposals: DocProposal[]): DocProposal[] {
   return [...proposals].sort((a, b) => {
+    // What will actually rebuild comes first: on a rescan of a mostly-current
+    // shelf, the two rows that matter must not be buried under thirty-eight
+    // that do not.
+    const work = Number(isCurrent(a)) - Number(isCurrent(b));
+    if (work !== 0) return work;
     const rank = ATTENTION_RANK[attentionReason(a)] - ATTENTION_RANK[attentionReason(b)];
     if (rank !== 0) return rank;
     return displayName(a).localeCompare(displayName(b));
   });
+}
+
+/** `current` is the only state that costs nothing. */
+export function isCurrent(proposal: DocProposal): boolean {
+  return proposal.build_state === 'current';
+}
+
+/** Every document is already built and current — there is nothing to do. */
+export function nothingToBuild(scan: { proposals: DocProposal[] }): boolean {
+  return scan.proposals.length > 0 && scan.proposals.every(isCurrent);
+}
+
+/**
+ * "38 current, 2 will rebuild — 1 stale, 1 changed".
+ *
+ * Built from the rows rather than `ScanOut.states` so it stays correct after
+ * an edit on this screen, and so it works for any subset a caller hands it.
+ */
+export function summarise(proposals: DocProposal[]): string {
+  const tally = new Map<string, number>();
+  for (const p of proposals) tally.set(p.build_state, (tally.get(p.build_state) ?? 0) + 1);
+
+  const current = tally.get('current') ?? 0;
+  const rebuild = proposals.length - current;
+  if (rebuild === 0) return `${current} already built and current`;
+
+  const detail = (['new', 'stale', 'changed'] as const)
+    .filter((state) => tally.get(state))
+    .map((state) => `${tally.get(state)} ${state}`)
+    .join(', ');
+  const head = current > 0 ? `${current} current, ${rebuild} will rebuild` : `${rebuild} will build`;
+  return detail ? `${head} — ${detail}` : head;
 }
 
 /** A one-line description of what an applicability covers. */

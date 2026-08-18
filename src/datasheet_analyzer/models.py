@@ -735,6 +735,13 @@ class Project(BaseModel):
     parts: list[ProjectMember] = Field(default_factory=list)
     interfaces: str = ""
     notes: str = ""
+    #: The directory this project's documents were scanned from, recorded
+    #: verbatim as the user gave it. A shelf of PDFs *is* the project, but
+    #: until this existed the association lived only in browser local storage
+    #: — it died with the cache and the server never learned it, so reopening
+    #: meant retyping a path. Additive and optional: a `project.json` written
+    #: before this field reads `""`, which honestly means "not recorded".
+    directory: str = ""
     created_at: datetime = Field(default_factory=_utcnow)
     updated_at: datetime = Field(default_factory=_utcnow)
 

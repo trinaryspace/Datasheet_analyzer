@@ -119,6 +119,7 @@ def _project_row(name: str, settings: Settings) -> ProjectOut:
         ],
         interfaces=project.interfaces,
         notes=project.notes,
+        directory=project.directory,
         built=(project_dir(project.name, settings.projects_dir) / PROJECT_INDEX_FILENAME).exists(),
     )
 

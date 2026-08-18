@@ -147,3 +147,88 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* --- build state: what will actually cost time ------------------------------
+   Added with ticket 26. `current` is the only state that means "free", so it
+   is the one drawn quietly; the three that end in a build are the ones a
+   reader is scanning for. */
+
+.analyze-summary {
+  margin: 0 0 0.75rem;
+  font-size: 0.9em;
+  font-weight: 600;
+}
+
+.analyze-build-state {
+  /* The row is a grid, so a bare span stretches the whole column and the pill
+     reads as a banner rather than a badge. */
+  justify-self: start;
+  width: fit-content;
+  padding: 0.05em 0.5em;
+  border-radius: 999px;
+  border: 1px solid var(--dsa-border, #d8dee6);
+  font-size: 0.75em;
+  white-space: nowrap;
+}
+
+.analyze-build-state--current {
+  color: var(--dsa-muted, #6b7280);
+}
+
+.analyze-build-state--new,
+.analyze-build-state--stale,
+.analyze-build-state--changed {
+  border-color: var(--dsa-warn-border, #e5c07b);
+  color: var(--dsa-warn-text, #8a6100);
+  background: var(--dsa-warn-bg, rgb(229 192 123 / 18%));
+}
+
+/* --- nothing to build ------------------------------------------------------- */
+
+.analyze-uptodate {
+  max-width: 46rem;
+}
+
+.analyze-uptodate-lead {
+  margin: 0.25rem 0;
+  font-size: 1.05em;
+  font-weight: 600;
+}
+
+.analyze-uptodate-dir,
+.analyze-uptodate-parts {
+  margin: 0.15rem 0;
+  font-size: 0.9em;
+  color: var(--dsa-muted, #6b7280);
+}
+
+.analyze-uptodate-detail {
+  margin: 0.9rem 0;
+  font-size: 0.9em;
+}
+
+.analyze-uptodate-detail summary {
+  cursor: pointer;
+}
+
+.analyze-uptodate-detail ul {
+  margin: 0.5rem 0 0;
+  padding-left: 1.2rem;
+}
+
+.analyze-uptodate-detail li {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.2rem;
+}
+
+.analyze-uptodate-reason {
+  color: var(--dsa-muted, #6b7280);
+}
+
+.analyze-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}

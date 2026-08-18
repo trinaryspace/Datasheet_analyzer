@@ -12,6 +12,7 @@ in parallel against the same contract.
 | POST | `/api/projects` | `ProjectCreateIn` | `ProjectOut` | — |
 | POST | `/api/projects/{name}/parts` | `ProjectPartsIn` | `ProjectOut` | — |
 | DELETE | `/api/projects/{name}/parts/{part}` | — | `ProjectOut` | — |
+| PATCH | `/api/projects/{name}` | `ProjectPatchIn` | `ProjectOut` | — |
 | POST | `/api/analyze/scan` | `ScanIn` | `ScanOut` | 08 |
 | POST | `/api/analyze/start` | `StartIn` | `StartOut` | 07 |
 | GET | `/api/analyze/{run_id}/events` | — | SSE of `JobEvent` | 07 |
@@ -51,6 +52,7 @@ from typing import Literal, Protocol, runtime_checkable
 
 from pydantic import BaseModel, Field
 
+from datasheet_analyzer.app.buildstate import BUILD_STATES, BuildState
 from datasheet_analyzer.models import (
     AnalyzeJob,
     Applicability,
@@ -76,11 +78,13 @@ __all__ = [
     "ANALYZE_EVENT_JOB",
     "ANALYZE_EVENT_SNAPSHOT",
     "API_PREFIX",
+    "BUILD_STATES",
     "CHAT_EVENT_TYPES",
     "EXPORT_FORMATS",
     "SSE_HEARTBEAT_SECONDS",
     "AnalyzeJob",
     "Applicability",
+    "BuildState",
     "ChatEvent",
     "ChatEventType",
     "ChatMessage",
@@ -104,6 +108,7 @@ __all__ = [
     "ProjectOut",
     "ProjectPartOut",
     "ProjectPartsIn",
+    "ProjectPatchIn",
     "ProjectsOut",
     "RectOut",
     "ResolveIn",
@@ -208,8 +213,24 @@ class ProjectOut(BaseModel):
     parts: list[ProjectPartOut] = Field(default_factory=list)
     interfaces: str = ""
     notes: str = ""
+    #: The directory this project was scanned from; `""` when not recorded.
+    directory: str = ""
     built: bool = False
     error: str = ""
+
+
+class ProjectPatchIn(BaseModel):
+    """`PATCH /api/projects/{name}` — change the fields a user maintains.
+
+    Every field is optional and `None` means "leave it alone", so a screen
+    that edits one of them cannot blank the other two by omission. Parts are
+    not here: they move through their own endpoints, where adding an unbuilt
+    part can be refused with a reason.
+    """
+
+    directory: str | None = None
+    interfaces: str | None = None
+    notes: str | None = None
 
 
 class ProjectCreateIn(BaseModel):
@@ -265,6 +286,13 @@ class DocProposal(BaseModel):
     # Optional extras a scan may fill without a second pass over the file.
     doc_type: str = ""
     content_hash: str = ""
+    #: Whether analyzing this PDF will actually do any work, and why. Reported
+    #: by `app/buildstate.classify`, which asks `batch.skip_reason` rather than
+    #: deciding anything itself. `current` is the only state that costs
+    #: nothing. Defaults to `new` so a caller that never classified promises
+    #: work rather than promising there is none.
+    build_state: BuildState = "new"
+    build_reason: str = ""
 
 
 class ScanIn(BaseModel):
@@ -279,11 +307,22 @@ class ScanIn(BaseModel):
 
 
 class ScanOut(BaseModel):
-    """One proposal per direct-child `*.pdf`, sorted by filename."""
+    """One proposal per direct-child `*.pdf`, sorted by filename.
+
+    `states` tallies `DocProposal.build_state` so a caller can say "38 current,
+    2 will rebuild" without walking the rows — the screen needs the summary
+    before it decides whether to show a review table at all.
+    """
 
     directory: str = ""
     proposals: list[DocProposal] = Field(default_factory=list)
     count: int = 0
+    states: dict[str, int] = Field(default_factory=dict)
+
+    @property
+    def rebuild_count(self) -> int:
+        """How many of these will actually do work."""
+        return sum(n for state, n in self.states.items() if state != "current")
 
 
 class StartIn(BaseModel):

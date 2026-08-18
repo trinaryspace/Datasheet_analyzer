@@ -36,6 +36,7 @@ import {
   type ChatEvent,
   type ScopeRef,
 } from '../../api/types';
+import { useWorkingSet } from '../../shell/workingSet';
 import { AnswerBody, citedInText } from './AnswerBody';
 import { CitationLink } from './CitationLink';
 import { ScopeChip, scopeKey } from './ScopeChip';
@@ -97,6 +98,9 @@ export function ChatPane({ sessionId: fixedSessionId }: ChatPaneProps = {}) {
   const [sessionId, setSessionId] = useState(urlSession);
   const [sessionError, setSessionError] = useState('');
   const [restoring, setRestoring] = useState(Boolean(urlSession));
+  // The app-wide working set. Used only as a scope fallback below — it never
+  // overrides a question that resolves confidently on its own.
+  const { project: workingSet } = useWorkingSet();
 
   const sessionIdRef = useRef(sessionId);
   sessionIdRef.current = sessionId;
@@ -214,7 +218,21 @@ export function ChatPane({ sessionId: fixedSessionId }: ChatPaneProps = {}) {
         update(id, (turn) => ({ ...turn, status: 'error', error: errorText(error) }));
         return;
       }
-      // Ambiguous: render the choices and stop. No model request is issued.
+      // Unresolved, but the user has declared a working set: scope to it
+      // rather than interrupting. This is a *fallback*, never an override — a
+      // confident resolution below still wins, so naming a part in the
+      // question is never quietly redirected to the project. ADR 0006 holds
+      // because the chip renders this scope exactly like a resolved one and
+      // it stays editable: the scope of the answer is on screen either way.
+      if (!resolution.scope && workingSet) {
+        const scoped: ScopeRef = { kind: 'project', name: workingSet };
+        update(id, (turn) => ({ ...turn, matchedVia: 'working set' }));
+        stream(id, text, scoped, session);
+        return;
+      }
+
+      // Ambiguous with no working set: render the choices and stop. No model
+      // request is issued.
       if (!resolution.scope) {
         update(id, (turn) => ({
           ...turn,
@@ -229,7 +247,7 @@ export function ChatPane({ sessionId: fixedSessionId }: ChatPaneProps = {}) {
       update(id, (turn) => ({ ...turn, matchedVia: resolution.matched_via }));
       stream(id, text, resolution.scope, session);
     },
-    [stream, update],
+    [stream, update, workingSet],
   );
 
   const ask = useCallback(

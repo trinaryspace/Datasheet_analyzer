@@ -36,6 +36,7 @@ from datasheet_analyzer.app.contracts import (
     ProjectOut,
     ProjectPartOut,
     ProjectPartsIn,
+    ProjectPatchIn,
 )
 from datasheet_analyzer.app.deps import get_settings_dep
 from datasheet_analyzer.config import Settings
@@ -98,6 +99,32 @@ def add_project_parts(name: str, body: ProjectPartsIn, settings: SettingsDep) ->
     return _row(project.name, settings)
 
 
+@router.patch("/projects/{name}", response_model=ProjectOut)
+def patch_project(name: str, body: ProjectPatchIn, settings: SettingsDep) -> ProjectOut:
+    """Change the fields a user maintains: the directory, interfaces, notes.
+
+    `None` means "leave it alone" for every field, so a screen editing one of
+    them cannot blank the other two by omitting them. Parts are deliberately
+    not patchable here — they move through their own endpoints, where adding
+    an unbuilt part can be refused with a reason instead of silently stored.
+    """
+    project = _load(name, settings)
+    if body.directory is not None:
+        # Recorded verbatim, exactly as `ScanIn.directory` is given. It is a
+        # path on the machine running the server, and normalising it here
+        # would stop it matching what the user typed on the Analyze screen.
+        project.directory = body.directory.strip()
+    if body.interfaces is not None:
+        project.interfaces = body.interfaces
+    if body.notes is not None:
+        project.notes = body.notes
+    try:
+        save_project(project, settings.projects_dir)
+    except ProjectError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    return _row(project.name, settings)
+
+
 @router.delete("/projects/{name}/parts/{part_number}", response_model=ProjectOut)
 def remove_project_part(name: str, part_number: str, settings: SettingsDep) -> ProjectOut:
     """Remove one part from a project.
@@ -144,5 +171,6 @@ def _row(name: str, settings: Settings) -> ProjectOut:
         ],
         interfaces=project.interfaces,
         notes=project.notes,
+        directory=project.directory,
         built=(project_dir(project.name, settings.projects_dir) / PROJECT_INDEX_FILENAME).exists(),
     )

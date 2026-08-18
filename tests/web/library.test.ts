@@ -67,6 +67,7 @@ vi.mock('../../web/src/api/client', async (importOriginal) => {
     createProject: vi.fn(),
     addProjectParts: vi.fn(),
     removeProjectPart: vi.fn(),
+    startAnalyze: vi.fn(),
   };
 });
 
@@ -81,6 +82,7 @@ const getProjects = vi.mocked(client.getProjects);
 const createProject = vi.mocked(client.createProject);
 const addProjectParts = vi.mocked(client.addProjectParts);
 const removeProjectPart = vi.mocked(client.removeProjectPart);
+const startAnalyze = vi.mocked(client.startAnalyze);
 
 /** A project row, as `GET /api/projects` returns it. */
 function projectOut(name: string, parts: string[] = []): ProjectOut {
@@ -89,9 +91,30 @@ function projectOut(name: string, parts: string[] = []): ProjectOut {
     parts: parts.map((part_number) => ({ part_number, role: '', built: true })),
     interfaces: '',
     notes: '',
+    directory: '',
     built: false,
     error: '',
   };
+}
+
+/**
+ * Render the Library inside a Router.
+ *
+ * The screen navigates to the Analyze run view when a part is built, so
+ * `useNavigate` needs a router context. Wrapping here rather than at thirteen
+ * call sites keeps the tests reading as tests.
+ */
+function renderLibrary(props: Parameters<typeof LibraryScreen>[0] = {}) {
+  return render(
+    createElement(
+      MemoryRouter,
+      null,
+      createElement(LibraryScreen, props),
+      // The screen navigates to the run view after a build; the probe is how
+      // that is observed without asserting on router internals.
+      createElement(LocationProbe),
+    ),
+  );
 }
 
 // --- fixtures -----------------------------------------------------------------
@@ -268,6 +291,7 @@ beforeEach(() => {
     projectOut(name, ['AFE7950', ...body.parts]),
   );
   removeProjectPart.mockImplementation(async (name) => projectOut(name));
+  startAnalyze.mockResolvedValue({ run_id: 'run-1', n_jobs: 1 });
 });
 
 // --- the library model ---------------------------------------------------------
@@ -328,7 +352,7 @@ describe('library screen', () => {
     const pending = deferred<LibraryOut>();
     getLibrary.mockReturnValue(pending.promise);
 
-    render(createElement(LibraryScreen));
+    renderLibrary();
     expect(screen.getByRole('status')).toHaveTextContent(/loading the library/i);
 
     pending.resolve(libraryOut());
@@ -356,7 +380,7 @@ describe('library screen', () => {
   });
 
   it('groups the shelf by part, one collapsed row each', async () => {
-    render(createElement(LibraryScreen));
+    renderLibrary();
     await screen.findByRole('article', { name: 'Document lmx1204.pdf' });
 
     const parts = document.querySelectorAll('.library-part');
@@ -372,7 +396,7 @@ describe('library screen', () => {
 
   it('shows an empty state when nothing has been analyzed yet', async () => {
     getLibrary.mockResolvedValue(libraryOut({ documents: [], count: 0, labels: [] }));
-    render(createElement(LibraryScreen));
+    renderLibrary();
     expect(await screen.findByText(/the library is empty/i)).toBeInTheDocument();
   });
 
@@ -380,7 +404,7 @@ describe('library screen', () => {
     getLibrary.mockRejectedValueOnce(new ApiError(500, 'library store is unreadable'));
     const user = userEvent.setup();
 
-    render(createElement(LibraryScreen));
+    renderLibrary();
     expect(await screen.findByRole('alert')).toHaveTextContent('library store is unreadable');
 
     getLibrary.mockResolvedValue(libraryOut());
@@ -390,7 +414,7 @@ describe('library screen', () => {
 
   it('filters the list by label and by part', async () => {
     const user = userEvent.setup();
-    render(createElement(LibraryScreen));
+    renderLibrary();
     await screen.findByRole('article', { name: 'Document lmx1204.pdf' });
 
     await user.selectOptions(screen.getByLabelText('Filter by label'), 'thermal');
@@ -422,7 +446,7 @@ describe('library screen', () => {
     patchLibraryDocument.mockResolvedValue(patched);
     const user = userEvent.setup();
 
-    render(createElement(LibraryScreen, { applicabilityControl: stubControl(widened) }));
+    renderLibrary({ applicabilityControl: stubControl(widened) });
     const row = await screen.findByRole('article', { name: 'Document lmx1204.pdf' });
 
     await user.click(
@@ -453,11 +477,9 @@ describe('library screen', () => {
 
   it('blocks an invalid applicability in the UI before it reaches the server', async () => {
     const user = userEvent.setup();
-    render(
-      createElement(LibraryScreen, {
-        applicabilityControl: stubControl(applicability({ kind: 'parts', parts: [] })),
-      }),
-    );
+    renderLibrary({
+      applicabilityControl: stubControl(applicability({ kind: 'parts', parts: [] })),
+    });
     const row = await screen.findByRole('article', { name: 'Document lmx1204.pdf' });
 
     await user.click(
@@ -477,7 +499,7 @@ describe('library screen', () => {
     );
     const user = userEvent.setup();
 
-    render(createElement(LibraryScreen));
+    renderLibrary();
     const row = await screen.findByRole('article', { name: 'Document lmx1204.pdf' });
 
     // The datalist offers every label in use that this document lacks.
@@ -506,7 +528,7 @@ describe('library screen', () => {
     patchLibraryDocument.mockResolvedValue(libraryDocument({ labels: ['reviewed', 'errata'] }));
     const user = userEvent.setup();
 
-    render(createElement(LibraryScreen));
+    renderLibrary();
     const row = await screen.findByRole('article', { name: 'Document lmx1204.pdf' });
 
     await user.type(within(row).getByLabelText('Add a label to lmx1204.pdf'), 'errata');
@@ -557,7 +579,7 @@ describe('library screen', () => {
   });
 
   it('falls back to read-only applicability when the shell control is absent', async () => {
-    render(createElement(LibraryScreen, { applicabilityControl: null }));
+    renderLibrary({ applicabilityControl: null });
     const row = await screen.findByRole('article', { name: 'Document lmx1204.pdf' });
     expect(within(row).getByText(/read-only/i)).toBeInTheDocument();
     expect(
@@ -773,7 +795,7 @@ describe('screen source', () => {
 describe('the working set', () => {
   it('narrows the shelf to the selected project, and widens again', async () => {
     const user = userEvent.setup();
-    render(createElement(LibraryScreen));
+    renderLibrary();
     await screen.findByRole('article', { name: 'Document lmx1204.pdf' });
 
     await user.selectOptions(screen.getByLabelText('Working set'), 'LNA front-end');
@@ -793,7 +815,7 @@ describe('the working set', () => {
 
   it('creates a project and selects it', async () => {
     const user = userEvent.setup();
-    render(createElement(LibraryScreen));
+    renderLibrary();
     await screen.findByRole('article', { name: 'Document lmx1204.pdf' });
 
     await user.type(screen.getByLabelText('New project name'), 'mixer chain');
@@ -805,7 +827,7 @@ describe('the working set', () => {
 
   it('adds a part to the working set and drops one from it', async () => {
     const user = userEvent.setup();
-    render(createElement(LibraryScreen));
+    renderLibrary();
     await screen.findByRole('article', { name: 'Document lmx1204.pdf' });
     await user.selectOptions(screen.getByLabelText('Working set'), 'LNA front-end');
 
@@ -823,10 +845,71 @@ describe('the working set', () => {
 
   it('stays usable when projects cannot be read', async () => {
     getProjects.mockRejectedValueOnce(new ApiError(500, 'projects dir is unreadable'));
-    render(createElement(LibraryScreen));
+    renderLibrary();
 
     // The shelf still renders; only the working-set control reports trouble.
     expect(await screen.findByRole('article', { name: 'Document lmx1204.pdf' })).toBeInTheDocument();
     expect(await screen.findByRole('alert')).toHaveTextContent('projects dir is unreadable');
+  });
+});
+
+// --- ticket 30: build an unbuilt part where you meet it --------------------------
+
+describe('building an unbuilt part from the library', () => {
+  it('offers to build an unbuilt part and not a built one', async () => {
+    renderLibrary();
+    await screen.findByRole('article', { name: 'Document lmx1204.pdf' });
+
+    // AFE7951 is reached by the appnote but has no corpus.
+    expect(
+      screen.getByRole('button', { name: /Build AFE7951 from its documents/ }),
+    ).toBeInTheDocument();
+    // LMX1204 is built, so there is nothing to offer.
+    expect(
+      screen.queryByRole('button', { name: /Build LMX1204 from its documents/ }),
+    ).toBeNull();
+  });
+
+  it('sends one proposal per document reaching the part, applicability intact', async () => {
+    const user = userEvent.setup();
+    startAnalyze.mockResolvedValue({ run_id: 'run-7', n_jobs: 1 });
+    renderLibrary();
+    await screen.findByRole('article', { name: 'Document lmx1204.pdf' });
+
+    await user.click(screen.getByRole('button', { name: /Build AFE7951 from its documents/ }));
+
+    await waitFor(() => expect(startAnalyze).toHaveBeenCalledTimes(1));
+    const sent = startAnalyze.mock.calls[0][0];
+    expect(sent.proposals).toHaveLength(1);
+    expect(sent.proposals[0].part_number).toBe('AFE7951');
+    expect(sent.proposals[0].pdf_path).toBe('/shelf/afe79xx-appnote.pdf');
+    // The family applicability is carried through, not flattened to one part.
+    expect(sent.proposals[0].applicability.kind).toBe('family');
+    expect(sent.proposals[0].applicability.family).toBe('AFE79xx');
+    // The directory the documents actually live in, not a blank.
+    expect(sent.directory).toBe('/shelf');
+  });
+
+  it('hands off to the analyze run view with the run id in the URL', async () => {
+    const user = userEvent.setup();
+    startAnalyze.mockResolvedValue({ run_id: 'run-7', n_jobs: 1 });
+    renderLibrary();
+    await screen.findByRole('article', { name: 'Document lmx1204.pdf' });
+
+    await user.click(screen.getByRole('button', { name: /Build AFE7951 from its documents/ }));
+
+    await waitFor(() =>
+      expect(screen.getByTestId('location').textContent).toContain('run=run-7'),
+    );
+  });
+
+  it("renders the server's own message when the build cannot start", async () => {
+    const user = userEvent.setup();
+    startAnalyze.mockRejectedValue(new ApiError(400, 'the recorded path no longer exists'));
+    renderLibrary();
+    await screen.findByRole('article', { name: 'Document lmx1204.pdf' });
+
+    await user.click(screen.getByRole('button', { name: /Build AFE7951 from its documents/ }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('the recorded path no longer exists');
   });
 });

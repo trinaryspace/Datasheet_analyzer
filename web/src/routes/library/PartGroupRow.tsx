@@ -28,6 +28,8 @@ export interface PartGroupRowProps {
   onPatched: (next: LibraryDocumentOut) => void;
   /** Present only while a project is selected; absent hides the control. */
   onRemoveFromProject?: (partNumber: string) => void;
+  /** Present only for an unbuilt part; absent hides the offer. */
+  onBuild?: (group: PartGroup) => void;
   /** Open on first render — used for a single search result. */
   defaultOpen?: boolean;
 }
@@ -42,6 +44,7 @@ export function PartGroupRow({
   applicabilityControl,
   onPatched,
   onRemoveFromProject,
+  onBuild,
   defaultOpen = false,
 }: PartGroupRowProps) {
   const { part_number: part, built, documents, labels } = group;
@@ -58,6 +61,23 @@ export function PartGroupRow({
             unbuilt
           </span>
         )}
+        {!built && onBuild ? (
+          // The Library already knows which documents reach this part and
+          // where their files are, so the fix belongs here rather than as a
+          // trip back to Analyze to retype a path the screen is holding.
+          <button
+            type="button"
+            className="library-part-build"
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              onBuild(group);
+            }}
+            aria-label={`Build ${part} from its documents`}
+          >
+            Build this part
+          </button>
+        ) : null}
         {labels.map((name) => (
           <span key={name} className="library-part-label">
             {name}

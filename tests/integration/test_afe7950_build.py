@@ -583,6 +583,12 @@ def search_index_committed_corpus(src: Path, dst: Path) -> Path:
     """
     import shutil
 
+    from datasheet_analyzer.corpus_ref import (
+        corpus_relative,
+        is_library_ref,
+        library_root_of,
+        resolve_artifact_ref,
+    )
     from datasheet_analyzer.publish.search_index import (
         build_search_index,
         write_search_index,
@@ -593,24 +599,59 @@ def search_index_committed_corpus(src: Path, dst: Path) -> Path:
     manifest = CorpusManifest.model_validate_json(
         (dst / "manifest.json").read_text(encoding="utf-8")
     )
+
+    # A corpus published into the shared store references its documents as
+    # `@library/...`, and those bytes live outside the part directory — so the
+    # copy above is not self-contained and joining the reference onto `dst`
+    # names a file that is not there. Bring the referenced documents along and
+    # re-root the copy at them, which keeps the promise this helper makes: the
+    # committed corpus is read, never written.
+    source_library = library_root_of(manifest, src)
+    shared = sorted(
+        {corpus_relative(sec.file).partition("/sections/")[0]
+         for sec in manifest.sections
+         if is_library_ref(sec.file)}
+    )
+    if shared and source_library is not None:
+        for doc_dir in shared:
+            origin = source_library / doc_dir
+            if origin.is_dir():
+                shutil.copytree(
+                    origin,
+                    dst / "_library" / doc_dir,
+                    ignore=shutil.ignore_patterns("figures"),
+                    dirs_exist_ok=True,
+                )
+        manifest.library_root = "_library"
+        (dst / "manifest.json").write_text(
+            manifest.model_dump_json(indent=2), encoding="utf-8"
+        )
+
+    library_dir = dst / "_library" if shared else None
+
+    def resolved(ref: str) -> Path:
+        return resolve_artifact_ref(ref, part_dir=dst, library_dir=library_dir)
+
     plans: dict[str, list[SectionPlan]] = {}
     for sec in manifest.sections:
-        doc_dir, _, rel = sec.file.partition("/sections/")
-        plans.setdefault(doc_dir, []).append(
+        doc_dir, _, rel = corpus_relative(sec.file).partition("/sections/")
+        # Keyed on the *reference* so the index is written back beside the
+        # document it indexes, wherever that document actually lives.
+        plans.setdefault(sec.file.partition("/sections/")[0], []).append(
             SectionPlan(
                 section=SectionNode(number=sec.number, title=sec.title),
                 file=f"sections/{rel}",
-                markdown=(dst / sec.file).read_text(encoding="utf-8"),
+                markdown=resolved(sec.file).read_text(encoding="utf-8"),
                 token_count=sec.token_count,
             )
         )
-    for doc_dir, doc_plans in plans.items():
+    for doc_ref, doc_plans in plans.items():
         write_search_index(
-            dst / doc_dir,
+            resolved(doc_ref),
             build_search_index(
                 doc_plans,
                 part_number=manifest.part_number,
-                doc_hash=doc_dir.rsplit("-", 1)[-1],
+                doc_hash=corpus_relative(doc_ref).rsplit("-", 1)[-1],
             ),
         )
     return dst

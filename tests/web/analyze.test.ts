@@ -116,12 +116,16 @@ function proposal(patch: Partial<DocProposal> = {}): DocProposal {
     page_count: 210,
     doc_type: 'datasheet',
     content_hash: 'hash-a',
+    build_state: 'new',
+    build_reason: 'no corpus for AFE7950 yet',
     ...patch,
   };
 }
 
 function scanOut(proposals: DocProposal[], directory = '/shelf'): ScanOut {
-  return { directory, proposals, count: proposals.length };
+  const states: Partial<Record<DocProposal['build_state'], number>> = {};
+  for (const p of proposals) states[p.build_state] = (states[p.build_state] ?? 0) + 1;
+  return { directory, proposals, count: proposals.length, states };
 }
 
 function job(patch: Partial<AnalyzeJob> = {}): AnalyzeJob {
@@ -619,5 +623,80 @@ describe('every server call goes through the client', () => {
     await toProgress(scanOut([proposal()]));
 
     expect(source).not.toHaveBeenCalled();
+  });
+});
+
+// --- ticket 29: analyze collapses when there is nothing to do --------------------
+
+describe('a rescan with nothing to do', () => {
+  /** Scan a directory whose every document is already current. */
+  async function toUpToDate(scan: ScanOut): Promise<void> {
+    mocks.scanDirectory.mockResolvedValue(scan);
+    render(ui());
+    fireEvent.change(screen.getByLabelText('Directory path'), {
+      target: { value: scan.directory },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Scan' }));
+    await screen.findByRole('heading', { name: 'Nothing to build' });
+  }
+
+  const built = (over: Partial<DocProposal> = {}) =>
+    proposal({
+      build_state: 'current',
+      build_reason: 'already built: PDF sha256, pipeline and extractor versions match',
+      ...over,
+    });
+
+  it('says so and shows no review table', async () => {
+    await toUpToDate(
+      scanOut([
+        built(),
+        built({
+          pdf_path: '/shelf/lm741.pdf',
+          filename: 'lm741.pdf',
+          part_number: 'LM741',
+          content_hash: 'hash-b',
+        }),
+      ]),
+    );
+
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'All 2 documents in this directory are already built and current.',
+    );
+    // Skipped entirely, not rendered empty.
+    expect(screen.queryByRole('heading', { name: /^Review/ })).toBeNull();
+  });
+
+  it('rebuild anyway starts a run for every proposal', async () => {
+    await toUpToDate(scanOut([built()]));
+    mocks.startAnalyze.mockResolvedValue({ run_id: 'run-9', n_jobs: 1 });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Rebuild anyway' }));
+
+    await waitFor(() => expect(mocks.startAnalyze).toHaveBeenCalledTimes(1));
+    expect(mocks.startAnalyze.mock.calls[0][0].proposals).toHaveLength(1);
+  });
+
+  it('a mixed scan still reviews, listing what will rebuild first', async () => {
+    await toReview(
+      scanOut([
+        built(),
+        proposal({
+          pdf_path: '/shelf/older.pdf',
+          filename: 'older.pdf',
+          part_number: 'LM741',
+          content_hash: 'hash-b',
+          build_state: 'stale',
+          build_reason: 'built by pipeline 0.1.0, current is 0.4.0',
+        }),
+      ]),
+    );
+
+    expect(screen.getByTestId('analyze-summary')).toHaveTextContent('1 current, 1 will rebuild');
+    expect(screen.getByTestId('analyze-summary')).toHaveTextContent('1 stale');
+
+    // What costs time is not buried under what does not.
+    const rows = document.querySelectorAll('.analyze-row');
+    expect(rows[0].getAttribute('data-build-state')).toBe('stale');
   });
 });

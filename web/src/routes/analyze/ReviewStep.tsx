@@ -21,8 +21,10 @@ import {
   attentionReason,
   describeApplicability,
   displayName,
+  isCurrent,
   proposalKey,
   sortProposals,
+  summarise,
 } from './proposals';
 import { getApplicabilityControl } from './shellPrimitives';
 
@@ -94,6 +96,13 @@ export default function ReviewStep({ scan, onStarted, onBack }: ReviewStepProps)
         you confirm is built exactly as it reads here.
       </p>
 
+      {/* What will cost time, before the table rather than buried in it. */}
+      {/* Not `role="status"`: it is rendered once with the table rather than
+          announced, and a second live region competes with the real one. */}
+      <p className="analyze-summary" data-testid="analyze-summary">
+        {summarise(proposals)}
+      </p>
+
       {ApplicabilityControl ? null : (
         <p role="alert" className="analyze-error">
           The shell&apos;s applicability control is unavailable, so applicability is shown
@@ -107,9 +116,22 @@ export default function ReviewStep({ scan, onStarted, onBack }: ReviewStepProps)
           const key = proposalKey(proposal);
           const reason = attentionReason(proposal);
           return (
-            <li key={key} className={`analyze-row analyze-row--${reason}`} data-attention={reason}>
+            <li
+              key={key}
+              className={`analyze-row analyze-row--${reason}`}
+              data-attention={reason}
+              data-build-state={proposal.build_state}
+            >
               <h3 className="analyze-row-name">{displayName(proposal)}</h3>
               <span className="analyze-row-badge">{ATTENTION_LABEL[reason]}</span>
+              {/* Why this row will or will not do work. `current` is the only
+                  state that costs nothing, so it is the one worth de-emphasising. */}
+              <span
+                className={`analyze-build-state analyze-build-state--${proposal.build_state}`}
+                title={proposal.build_reason}
+              >
+                {isCurrent(proposal) ? 'already built' : proposal.build_state}
+              </span>
 
               <div className="analyze-field">
                 <label htmlFor={`part-${key}`}>Part number</label>
