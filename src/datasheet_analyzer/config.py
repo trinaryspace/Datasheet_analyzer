@@ -96,6 +96,14 @@ ERRATA_SCHEMA_VERSION = "1"
 # scorecard (`registry/audit_rubric.yaml`), because a grade produced under
 # different thresholds is a different reading even when the shape is identical.
 AUDIT_SCHEMA_VERSION = "1"
+# "1": phase 7, ticket 06 — `tests/fixtures/golden_qa_<PART>.candidate.yaml` and
+# its rejection ledger, the two files `dsa golden suggest|confirm` own. They are
+# *not* corpus artifacts and are no part of any publish cache key: a candidate is
+# a proposal about the benchmark, not a claim about the document, and it is inert
+# until a human confirms it (invariant 5). The version exists so a candidate file
+# written under an older template set is legible as such rather than silently
+# merged into the objective function.
+GOLDEN_CANDIDATE_SCHEMA_VERSION = "1"
 
 # The version of the *derivation rules* (ADR 0005 / invariant 8). Derived
 # artifacts — design cards and anything else computed from records by a named

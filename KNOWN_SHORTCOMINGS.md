@@ -628,3 +628,52 @@ this pipeline has managed", which on a sample this size is as much a fact about
 the sample as about the pipeline. Onboarding twenty parts (the phase-8 scale
 gate) is the first real calibration; the thresholds are data so that is an edit
 rather than a change.
+
+---
+
+## Golden suggest/confirm (phase 7, ticket 06)
+
+### 1. The two reference corpora yield no spec, pin or register candidates
+
+A candidate must name the record it was templated from — invariant 8 has no
+exception for a proposal, because a question whose answer cannot be walked back
+to a printed row is exactly the thing a benchmark must not contain. Records
+published before the id scheme existed (ADR 0005) carry `id: ""` and are
+honestly unaddressable, so they cannot be templated at all.
+
+Measured: `parts/AFE7950` and `parts/AFE7953` propose **0** spec, pin and
+register candidates and 514 / 492 plot candidates (plot ids predate the scheme).
+The pool line says so on every run rather than reading as a broken generator.
+The fix is the rebuild `dsa audit` already asks for on those two parts, and it
+is recorded as a live step (`Reports/PHASE_7_LIVE_RUN.md`, L14) because AFE7953
+cannot be rebuilt hermetically.
+
+### 2. A generated question is only as readable as the cell it quotes
+
+The question text is a format string over printed cells and nothing rewrites
+them, so a record whose name cell is `OPERATING JUNCTION TEMPERATURE (T` —
+AD9081 p.4, where the closing `J)` wrapped to the next printed line — yields
+"What is the maximum OPERATING JUNCTION TEMPERATURE (T?". That is verbatim and
+it is correct about the record; it also reads badly, and it is the first thing a
+reviewer edits (which is why `confirm` takes the question text).
+
+No model call may fix this (invariant 8) and no heuristic should: the identity
+string in the question is the substring the answer is checked against, so
+"tidying" it would break the check it exists to perform.
+
+### 3. The proposals cannot generate the ask- and search-path twins
+
+Phase 5 added `ask_query` and `search_query` as *twins* of an existing question
+— they reuse its cited pages and verbatim substrings so a new surface is proven
+against the existing objective function. Minting a twin therefore means choosing
+which question deserves one, which is a judgment rather than a template, and
+this generator does not attempt it. A part's twins are still written by hand.
+
+### 4. A candidate's page is checked against the corpus unless `--pdf` is given
+
+`dsa golden confirm` prefers the printed PDF page and falls back to the corpus
+section covering the page, under an explicit warning, when no PDF is supplied.
+The fallback is genuinely weaker: a citation confirmed against the extraction
+that produced it has been checked against itself. The warning says so in those
+words, but nothing *prevents* confirming from corpus text alone — a reviewer in
+a hurry can still do it, and `dsa verify --pdf` is what catches the result.

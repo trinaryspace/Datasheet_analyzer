@@ -919,3 +919,176 @@ lower**. If `n/a` were being folded in as a zero the two would tie.
   recorded shortcoming") is ticket 08's decision, not this one's. On today's
   fleet that gate would fail on LM741, which is the correct and intended
   outcome — the shortcoming is real and now measured.
+
+---
+
+## Ticket 06 — Golden suggest/confirm
+
+**Landed.** `pytest` 1989 passed / 1 skipped (1937 before this ticket + 52 new);
+`ruff` clean. Invariant 5 is the right objective function and it does not
+survive sixty parts of hand-verification. This ticket removes the typing and
+leaves the judgment exactly where it was: `dsa golden suggest` templates
+stratified candidate questions from records that already carry a verbatim
+answer and a printed page, and `dsa golden confirm` walks them beside the
+printed page and merges the accepted ones.
+
+**The clause invariant 5 gains:** *a generated candidate counts toward nothing
+until a human confirms it.*
+
+### What shipped
+
+| Piece | Where | What it owns |
+|---|---|---|
+| the two files and their rules | `evalh/candidates.py` | `golden_qa_<PART>.candidate.yaml` (proposals, all `confirmed: false`) and `golden_qa_<PART>.rejected.yaml` (the ledger). `question_to_dict` is the single place a golden question becomes YAML |
+| generation | `evalh/suggest.py` | four named templates (one per artifact), the stratified order, the pool and exclusion counts |
+| the decision | `evalh/confirm.py` | `apply_decisions` (the pure core), `merge_into_golden` (the append + rollback), `page_context` / `render_candidate` (the glance), `run_interactive` (the thin shell) |
+| the command | `cli.py::_cmd_golden` | `golden suggest` / `golden confirm`, the paths and the exit codes |
+| the models | `models.py` | `GoldenCandidate`, `GoldenCandidateSet`, `GoldenRejection`, `GoldenRejectionLedger` (additive) |
+| the version | `config.GOLDEN_CANDIDATE_SCHEMA_VERSION` | `"1"`; no part of any publish cache key — a candidate is a proposal about the benchmark, not an artifact of a build |
+
+### The three defences of invariant 5
+
+A candidate cannot reach `dsa verify` by accident, and it is defended three
+ways rather than one, because the failure would be silent:
+
+1. **The name.** `dsa verify` discovers `golden_qa_<PART>.yaml`;
+   candidates live in `golden_qa_<PART>.candidate.yaml`.
+2. **The shape.** The candidate file's top-level key is `candidates`. It has no
+   `questions:` key at all, so a loader that read it would find nothing rather
+   than something.
+3. **The refusal.** `evalh.golden.load_golden` rejects a candidate file *by
+   name* and says why; `dsa verify --golden <candidate file>` exits 2.
+
+Asserted with a **control**, which is the part that makes the assertion mean
+something: the same `dsa verify` run is compared before and after generation
+(stdout byte for byte, exit code included) and must be identical — and then the
+candidate is confirmed and the report must *grow*
+(`test_golden_assist.py::TestAnUnconfirmedCandidateDoesNotAffectVerify`).
+Without the second test the first would pass just as well against a generator
+that wrote nothing at all.
+
+### Stratification, measured
+
+The generator's failure mode is not producing too few candidates — it is
+producing twenty variations of the easiest lookup, which satisfies `--n 20` and
+confirms only the extraction path that was already working. Selection is
+therefore a **recursive round-robin over the stratum tuple**: artifact, then
+extraction backend, then confidence grade, then printed section (falling back to
+the printed table title on the captionless era, where every record honestly
+carries `section: ""`). The guaranteed property holds at every level — *nothing
+is drawn twice until everything beside it has been drawn once* — and that is
+what the test asserts, rather than a count.
+
+The first design was a single flat round-robin over the composite stratum. It
+was replaced after measuring it on AD9081: that part prints its specs under
+twelve table titles and its 321 pins under none, so the flat pass drew twelve
+spec rows per pin row and a set of twenty held **one** pin. A benchmark that
+barely exercises the pin path is exactly the outcome the criterion exists to
+prevent.
+
+Measured on two real corpora, both built offline from `tests/fixtures/pdf/`,
+`--n 20`:
+
+| Part | artifacts | confidence grades | sections | templatable pool |
+|---|---|---|---|---|
+| AD9081 | specs 7, pins 7, plots 6 | high 12, medium 5, low 3 | 7 distinct (13 of 20 unnumbered — the document numbers none) | specs 211, pins 321, registers 0, plots 99 |
+| LM741 | specs 17, plots 3 | high 3, low 17 | 6 distinct (6.1, 6.5, 6.7, 8.2.1, 8.2.3, 10.1) | specs 52, pins 0, registers 0, plots 3 |
+
+LM741's mix is the corpus, not the generator: it prints no pin table and no
+register map, and 71 of its 71 spec records grade `low`. The set spreads across
+every stratum the document has.
+
+### How good are the proposals? 19/20, twice
+
+Nothing filters a candidate by whether it would *pass* — that would be fitting
+the proposals to the checker rather than to the document, and it would hide the
+rows a maintainer most needs to look at. So the quality of the proposals is
+worth measuring rather than assuming. Both corpora above had all twenty
+candidates accepted unread and then run through `dsa verify --specs --pdf`:
+
+| Part | text questions | spec queries | pin queries | plot queries |
+|---|---|---|---|---|
+| AD9081 | 19/20 | 7/7 | 7/7 | 6/6 |
+| LM741 | 19/20 | 17/17 | — | 3/3 |
+
+Both failures are the same shape and both are the reviewer's job: a spec row
+whose printed name is composed from cells that do not appear contiguously on
+the page (`Differential Input Power Minimum` on AD9081 p.7, `Input adjustment
+range` on LM741 p.5). The corpus holds the row and the query path finds it; the
+*page-truth* half fails because that exact string was never printed as a run.
+That is a candidate to edit or reject — which is what `confirm` is for — and it
+is also, usefully, a measurement of how often a table's identity cell is a
+join rather than a quote.
+
+**These numbers are a proposal-quality reading, not a benchmark.** No generated
+question was committed to `tests/fixtures/` by this ticket. The measurement ran
+against scratch corpora under `.scratch/tmp/`, and the seven hand-written golden
+sets are untouched.
+
+### Decisions worth recording
+
+- **The merge appends; it does not rewrite.** The golden files are hand-written
+  and their comments are documentation — `golden_qa_AD9081.yaml` opens with
+  eighteen lines explaining why one question carries no `spec_query`. A merge
+  that re-dumped the YAML would reformat a reviewer's file to land two
+  questions, and a tool that does that is not used twice. So the existing bytes
+  stay the prefix of the new file, the appended items are re-indented to match
+  the sequence indentation the file already uses, and the result is re-read and
+  checked: if any pre-existing question no longer parses to exactly the dict it
+  parsed to before, the original text is **restored** and the merge raises.
+- **The interactive shell is split from the decision core, and the core is the
+  product.** `apply_decisions` takes a candidate set and a list of
+  accept/edit/reject decisions and returns an outcome; it touches no terminal
+  and no file. `--decisions <file>` / `--accept-ids` / `--reject-ids` reach it
+  without a TTY, which is how a twenty-part fleet gets confirmed in a script,
+  and it is what the tests drive. `run_interactive` is a thin loop over it with
+  injected read/write, so even the shell is exercised hermetically.
+- **A non-interactive run with no decisions refuses.** It does not accept
+  nothing quietly and it certainly does not accept everything: `dsa golden
+  confirm` with no decisions and no terminal exits 2 naming the three flags.
+- **Only three fields are editable** (`question`, `expected_substrings`,
+  `pages`) — the three things reading the printed page tells you. The path
+  marker and the notes belong to the record the candidate was templated from,
+  and editing them by hand would decouple the question from its provenance.
+- **A rejection is keyed on `<record reference>|<template>`**, both of which the
+  next generation run reproduces exactly (record ids are deterministic,
+  `provenance`). That is what makes "never suggest this again" true across
+  runs rather than within one.
+- **An unaddressable record cannot be a candidate.** Invariant 8 has no
+  exception for a proposal: a candidate must name the record it came from, and a
+  corpus published before record ids existed carries `id: ""`. Measured, and it
+  is a finding: `parts/AFE7950` and `parts/AFE7953` yield **0** spec, pin and
+  register candidates and 514 / 492 plot candidates respectively, because plot
+  ids predate the id scheme. Those two corpora need the rebuild `dsa audit`
+  already reports (ticket 05, "the two reference corpora need rebuilding").
+- **A caption that is only a figure label is refused.** `Figure 1.` names no
+  subject, so "Which figure shows Figure 1.?" is a question about the caption
+  rather than about the device, and there is no verbatim answer for it to
+  contain. One AD9081 figure is excluded by this rule (99 of 100 templatable).
+- **`confirm` prefers the printed PDF page and says so when it cannot get one.**
+  Without `--pdf` it shows the corpus section covering the page under an
+  explicit warning: a candidate confirmed against the very extraction that
+  produced it has had its citation checked against itself, which is not a check.
+  It also reports which expected substrings are actually on the shown text,
+  which is the whole "confirmation is a glance".
+
+### Shortcomings, honestly
+
+- **Question wording is a format string over printed cells, and it shows.** A
+  record whose name cell is `OPERATING JUNCTION TEMPERATURE (T` (AD9081 p.4,
+  where the closing `J)` wrapped to the next line) produces a question that
+  reads exactly that badly. It is verbatim and it is correct about the record;
+  it is also the first thing a reviewer will edit, which is why `edit` takes the
+  question text. No model call may fix this (invariant 8), and no heuristic
+  should: rewriting a printed identity would break the substring it exists to
+  match.
+- **One template per artifact.** A second phrasing of the same record would
+  double the count without widening the coverage, so a candidate set is at most
+  as large as the templatable pool. That is a deliberate ceiling.
+- **`ask_query` and `search_query` twins are not generated.** Phase 5 added
+  those paths as *twins* of an existing question, and minting a twin means
+  choosing which question deserves one — a judgment, not a template. A reviewer
+  writes them by hand, as they always have.
+- **No MCP surface.** The plan's new MCP tools for this phase are `get_audit`,
+  `list_families` and `get_family_index`; golden generation is a maintainer's
+  command, not an agent's answer path, and it writes to `tests/fixtures/`.

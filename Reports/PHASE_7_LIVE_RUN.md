@@ -393,3 +393,72 @@ HTML path is the only place this metric can discriminate — and
 `pagemap.pin_table_pages` genuinely can fail there, leaving `page: None`.
 A rate materially below 100 % is the finding this metric was put in the rubric
 for; record it, and re-check the `A`/`C` cut points against it.
+
+---
+
+## Ticket 06 — golden suggest/confirm
+
+**Nothing in this ticket needs the network.** `dsa golden suggest` reads records
+a corpus already published and `dsa golden confirm` reads the corpus and,
+optionally, a local PDF. Both are fully offline by construction and both are
+measured in `Reports/PHASE_7_REPORT.md` under ticket 06 against real corpora
+built offline from `tests/fixtures/pdf/`. The steps below are deferred for a
+different reason: they need a **human**, which is the whole point of the
+ticket — invariant 5's judgment is not something this run may perform on the
+repo owner's behalf.
+
+### L13. Confirm a real generated set into a real golden file
+
+No generated question was committed to `tests/fixtures/` by this ticket. The
+19-of-20 pass rates in the report were measured against scratch corpora under
+`.scratch/tmp/` and thrown away, and the seven hand-written golden sets are
+untouched — because accepting a candidate *is* the human verification invariant
+5 rests on, and a candidate accepted by the agent that generated it would be a
+benchmark verified by nothing.
+
+```bash
+dsa golden suggest --part AD9081 --n 20
+dsa golden confirm --part AD9081 --pdf tests/fixtures/pdf/ad9081.pdf
+```
+
+`confirm` shows each candidate beside the **printed PDF page**; accept, edit the
+wording or the page, or reject with a reason. Accepted questions append to
+`tests/fixtures/golden_qa_AD9081.yaml` (the hand-written questions above stay
+byte-identical); rejections land in `golden_qa_AD9081.rejected.yaml` and are
+never proposed again.
+
+**What to record afterwards**, in `Reports/PHASE_7_REPORT.md` under ticket 06:
+
+- the accept / edit / reject split for the first real set. The report's
+  measured 19/20 says how many candidates *pass the checker*; only a human can
+  say how many are **good questions**, and the gap between those two numbers is
+  the one figure that tells whether this tooling is worth using at scale;
+- how many rejections were the composed-identity shape the report names
+  (`Differential Input Power Minimum`), because if that dominates, the fix is a
+  templating rule and not a reviewer's time;
+- the new per-part question count in `AGENTS.md` invariant 5 and the README
+  testing section, and a `dsa verify --part <PART> --pdf …` run at 100 %.
+
+### L14. Regenerate for the two reference corpora *after* they are rebuilt
+
+`parts/AFE7950` and `parts/AFE7953` predate record ids, so their spec, pin and
+register records carry `id: ""` and are **unaddressable**. Invariant 8 has no
+exception for a proposal — a candidate must name the record it came from — so
+those two parts yield 0 spec/pin/register candidates today (514 and 492 plot
+candidates respectively; plot ids predate the scheme). That is the same finding
+`dsa audit` already reports for them.
+
+Rebuilding AFE7950 is offline (`dsa build afe7950.pdf --part AFE7950`);
+**AFE7953 cannot be rebuilt hermetically** — no recorded TI document-viewer
+pages exist for it — which is why this sits here rather than done. It is the
+same rebuild as ticket 05's L12; do them together:
+
+```bash
+dsa build afe7950.pdf --part AFE7950     # offline
+dsa build afe7953.pdf --part AFE7953     # needs the TI document viewer
+dsa golden suggest --part AFE7950 --n 20 # now proposes spec rows too
+```
+
+**What to check:** that the pool line changes from `specs.json 0` to a real
+count. If it does not, the rebuild did not stamp record ids and that is a
+defect, not a corpus fact.

@@ -285,6 +285,25 @@ page it must cite — all read off the PDF by hand, per part, in
 function: `dsa verify` fails the corpus, not the question.
 _Avoid_: test case, sample, example, prompt
 
+**Golden candidate**:
+A *proposed* golden question, templated by `dsa golden suggest` from a record
+that already carries a verbatim answer and a printed page, and written to
+`tests/fixtures/golden_qa_<PART>.candidate.yaml` with `confirmed: false`. It is
+defined by what it is **not**: it is not the objective function, and it counts
+toward `dsa verify` only after a human moves it into the golden file. That gap
+is the whole design — the tooling removes the typing, never the judgment — so
+the candidate file is named differently from the benchmark, keys its questions
+under `candidates` rather than `questions`, and is refused outright by the
+loader that reads benchmarks. Candidates are chosen by round-robin over the
+strata a benchmark must span — the artifact, the extraction backend, the record's
+confidence grade and the printed section — because twenty questions off one easy
+spec table satisfy a count and prove nothing. Each one is derived and says so:
+the record it came from, the page that record was printed on, the cells the
+answer was taken from, and the named rule that phrased it. A candidate a
+reviewer turns down is **remembered**, keyed on the record and the rule, so the
+same bad proposal is never made twice.
+_Avoid_: draft, suggestion, auto-golden, generated test
+
 **Path marker**:
 The field on a golden question that says which retrieval path must answer it
 — `spec_query`, `plot_query`, `pin_query`, `reg_query`, `card_query`,

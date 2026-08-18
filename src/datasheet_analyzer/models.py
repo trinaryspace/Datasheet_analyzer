@@ -1609,3 +1609,108 @@ class GoldenQuestion(BaseModel):
     ask_query: dict[str, str] | None = None  # Phase 5 answer pack ({route})
     search_query: dict[str, str] | None = None  # Phase 5 full text ({query, rank})
     notes: str = ""
+
+
+class GoldenCandidate(BaseModel):
+    """One *generated* golden question — a proposal, inert until confirmed.
+
+    Phase 7, ticket 06. `GoldenQuestion` above is the objective function
+    (invariant 5); this is the thing that is **not** it yet. A candidate is
+    templated by `evalh/suggest.py` from a record that already carries a
+    verbatim answer and a printed page, so it is a derived artifact under
+    invariant 8 and carries the whole envelope: `source` (the record it was
+    read from, a `provenance.source_ref`), `page` (the page that record was
+    printed on), `verbatim` (the cells the answer was taken from) and
+    `template` (the named rule that produced it). No model call is in that
+    path — the question text is a format string over printed cells.
+
+    `confirmed` is the field the invariant turns on, and it is written `false`.
+    Nothing reads a candidate file into `dsa verify`: the file is named
+    `golden_qa_<PART>.candidate.yaml`, its top-level key is `candidates` rather
+    than `questions`, and `evalh.golden.load_golden` refuses it by name. A
+    candidate becomes part of the benchmark only by a human decision that
+    copies its `question` into `golden_qa_<PART>.yaml`.
+
+    The strata fields (`doc`, `backend`, `section`, `section_title`,
+    `confidence`, `artifact`) are what the generator spreads the set across.
+    They are recorded per candidate rather than only in aggregate so a reviewer
+    can see *why* a candidate is in the set — "this is the corpus's only `low`
+    register row" is the reason to look hardest at it.
+    """
+
+    question: GoldenQuestion
+    confirmed: bool = False
+    # Stable identity of this candidate across runs: `<source>|<template>`.
+    # It is what the rejection ledger records, so the same bad candidate is not
+    # re-suggested next run; record ids are reproduced exactly by a rebuild of
+    # identical input, which is what makes the key stable.
+    key: str = ""
+    # The named rule that produced the question (invariant 8's `derivation`).
+    template: str = ""
+    # The record this was templated from (`docs/<doc>/specs.json#rec_412`).
+    source: str = ""
+    # The page that record was printed on. Never `None` on a published
+    # candidate — a record with no page is not templatable at all, because a
+    # golden question with no citable page cannot be verified.
+    page: int | None = None
+    # The printed cells the answer was taken from, joined for a reviewer's
+    # glance. Verbatim: never rewritten, never shortened to fit.
+    verbatim: str = ""
+    # Which published artifact the record lives in (`specs.json`, `pins.json`,
+    # `registers.json`, `plots.json`).
+    artifact: str = ""
+    doc: str = ""  # the document directory name
+    backend: str = ""  # the extraction backend that produced that document
+    section: str = ""  # printed section number ("" on the captionless era)
+    section_title: str = ""
+    confidence: Confidence = Confidence.UNKNOWN
+
+
+class GoldenCandidateSet(BaseModel):
+    """A part's generated candidates, plus what the generator refused and why.
+
+    `strata` is the stratification, measured on the **selected** set: one
+    mapping per dimension (`artifact`, `backend`, `confidence`, `section`) from
+    value to count. It is published rather than left for the reader to compute
+    because it is the criterion — a set that is twenty variations of the
+    easiest lookup is a defect, and the file has to make that visible without
+    re-deriving it.
+
+    `pool` is how many templatable records existed per artifact before
+    selection, so "only three candidates" is legible as a fact about the corpus
+    rather than as a broken generator. `skipped_rejected` / `skipped_existing`
+    are the two exclusions, counted rather than silently applied.
+    """
+
+    schema_version: str = ""
+    part: str = ""
+    candidates: list[GoldenCandidate] = Field(default_factory=list)
+    strata: dict[str, dict[str, int]] = Field(default_factory=dict)
+    pool: dict[str, int] = Field(default_factory=dict)
+    skipped_rejected: int = 0
+    skipped_existing: int = 0
+    notes: list[str] = Field(default_factory=list)
+
+
+class GoldenRejection(BaseModel):
+    """One candidate a human rejected, recorded so it is not re-suggested.
+
+    Keyed by the candidate's `key` (record reference + template), which the
+    next generation run over the same corpus reproduces exactly. The question
+    text and the reason travel with it because a ledger nobody can read is a
+    ledger nobody will correct: "the value cell is a footnote marker" is the
+    note that stops a maintainer re-deriving the same wrong candidate by hand.
+    """
+
+    key: str
+    id: str = ""
+    question: str = ""
+    reason: str = ""
+
+
+class GoldenRejectionLedger(BaseModel):
+    """`tests/fixtures/golden_qa_<PART>.rejected.yaml` — the rejected set."""
+
+    schema_version: str = ""
+    part: str = ""
+    rejected: list[GoldenRejection] = Field(default_factory=list)

@@ -566,6 +566,62 @@ against the measured fleet — so a grade is arguable rather than an oracle, and
 disagreeing with one is a YAML edit. Deleting a metric from that file makes the
 metric `n/a`; there is no threshold hidden in Python behind it.
 
+### Write a golden set without typing it (`dsa golden`)
+
+```bash
+dsa golden suggest --part AD9081 --n 20        # -> tests/fixtures/golden_qa_AD9081.candidate.yaml
+dsa golden confirm --part AD9081 --pdf tests/fixtures/pdf/ad9081.pdf   # walk them by hand
+dsa golden confirm --part AD9081 --accept-ids g-6b8f2a1c-rec_12 --dry-run
+dsa golden confirm --part AD9081 --decisions decisions.yaml            # scripted, for a fleet
+```
+
+Hand-verified goldens are the objective function and they do not survive sixty
+parts of typing. `suggest` templates candidate questions from records that
+**already carry a verbatim answer and a printed page** — spec rows, pin rows,
+register rows, plot captions — and spreads them across the strata a benchmark
+has to span:
+
+```
+| Dimension  | Mix                                                   |
+|------------|-------------------------------------------------------|
+| artifact   | pins.json 3, plots.json 1, registers.json 1, specs.json 3 |
+| backend    | pdf_layout 8                                          |
+| confidence | high 5, low 1, medium 2                               |
+| section    | 4.12.1 1, 4.3 6, 4.5 1                                |
+```
+
+Selection is a round-robin over the composite `(artifact, backend, confidence,
+section)` stratum, so candidate 1..k come from k *different* strata. Twenty
+variations of the easiest spec lookup satisfy `--n 20` and prove nothing; this
+generator cannot produce them.
+
+**A candidate counts toward nothing until you confirm it.** Every one is written
+`confirmed: false`, the file is `golden_qa_<PART>.candidate.yaml` rather than the
+name `dsa verify` discovers, its top-level key is `candidates` rather than
+`questions`, and pointing `--golden` at it is refused with an error. `confirm`
+shows each candidate beside the **printed PDF page** (or, with no `--pdf`, the
+corpus section and a warning that says so) and takes accept / edit / reject:
+
+```
+[1/6] g-6b8f2a1c-rec_12  (spec_row_value, high)
+  Q: What is the maximum Operating junction temperature?
+  expects: ['Operating junction temperature', '105', '°C']
+  page: p.6   source: docs/datasheet-6b8f2a1c/specs.json#rec_12
+  printed cells: Operating junction temperature | 105 | °C
+  --- printed PDF p.6 ---
+  | Operating junction temperature TJ ranges from -40 to 105 °C.
+  substrings on this page: all of them
+  [a]ccept / [e]dit / [r]eject / [s]kip / [q]uit >
+```
+
+Accepted questions are **appended** to `golden_qa_<PART>.yaml` — the
+hand-written questions and their comments above stay byte-identical, and a merge
+that would have moved one is rolled back rather than reported afterwards.
+Rejected ones land in `golden_qa_<PART>.rejected.yaml` with your reason, keyed on
+the record plus the rule, so the same bad candidate is never proposed again.
+`--accept-ids` / `--reject-ids` / `--decisions <file>` drive the same core
+non-interactively, which is how a twenty-part fleet gets confirmed in a script.
+
 ### Find a plot
 
 ```bash
@@ -840,7 +896,11 @@ AFE7953 has a 13-Q set verified against the committed corpus + the
 skip-guarded PDF, because that part has no offline build path).
 `dsa verify --part X` discovers the part's golden by name and fails loudly
 when it is missing — extend a set when new answer paths ship; `dsa verify`
-must stay at 100% for supported paths.
+must stay at 100% for supported paths. `dsa golden suggest|confirm` makes
+writing one affordable without weakening it: candidates are generated, and a
+**generated candidate counts toward nothing until a human confirms it** —
+asserted by a test that runs the same `dsa verify` before and after generation
+and requires the output to be byte-identical.
 
 Every part's set carries one **ask-path** question (a designer's words, no
 symbols) and one **search-path** question (top-1 must be the section holding
