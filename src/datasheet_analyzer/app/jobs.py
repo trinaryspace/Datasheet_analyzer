@@ -163,14 +163,39 @@ def _register_into_library() -> Callable[..., LibraryDocument | None] | None:
     return helper if callable(helper) else None
 
 
+def is_document_only(job: AnalyzeJob) -> bool:
+    """Is this a supporting document rather than a part's datasheet?
+
+    A high-frequency-layout app note belongs to *amplifiers* and to no part on
+    its own; there is nothing to name a corpus after and nothing to publish.
+    An empty part number is the whole test, because `_job_for` fabricates one
+    from the filename only for the kinds that describe part numbers.
+    """
+    return not job.part_number.strip()
+
+
 def build_job(
     job: AnalyzeJob,
     *,
     settings: Settings,
     on_progress: Callable[[str], None],
 ) -> None:
-    """The real build: record the confirmed applicability, then `build_part`."""
-    record_applicability(job, settings=settings)
+    """The real build: record the confirmed applicability, then `build_part`.
+
+    A supporting document stops after the first half. Filing it *is* the whole
+    job: `resolve_documents` builds a part from every library document that
+    covers it, so the next build of any part in that category extracts this
+    PDF into that part's corpus. Publishing a part named after an app note
+    would put a phantom on the shelf and change nothing about retrieval.
+    """
+    document = record_applicability(job, settings=settings)
+    if is_document_only(job):
+        where = job.applicability.label if document is not None else "the library"
+        on_progress(f"filed as a supporting document for {where}")
+        on_progress(
+            "it joins each part's corpus the next time that part is built"
+        )
+        return
     build_part(
         Path(job.pdf_path),
         part_number=job.part_number,
@@ -180,7 +205,14 @@ def build_job(
 
 
 def default_skip_check(job: AnalyzeJob, *, settings: Settings) -> str:
-    """`batch.skip_reason` verbatim — one hash gate, not two implementations."""
+    """`batch.skip_reason` verbatim — one hash gate, not two implementations.
+
+    A supporting document has no part directory to gate on, so the hash gate
+    does not apply: filing is idempotent and cheap, and re-filing is how a
+    corrected applicability reaches the Library at all.
+    """
+    if is_document_only(job):
+        return ""
     return batch_skip_reason(
         BatchJob(pdf_path=Path(job.pdf_path), part=job.part_number),
         settings=settings,
@@ -411,9 +443,14 @@ class JobRegistry:
         The part number falls back to the filename stem the way `batch.py`
         derives one, so a proposal whose part number a user cleared still
         builds something named after its file rather than an empty part.
+
+        Not for `category` or `all`, though: those kinds say the document
+        belongs to a *set* of parts and to none in particular, so a stem-named
+        part would put "AN-1285" on the shelf as if it were a component. Left
+        empty, the job files the document and builds nothing.
         """
         part_number = (proposal.part_number or "").strip().upper()
-        if not part_number:
+        if not part_number and proposal.applicability.kind not in ("category", "all"):
             part_number = Path(proposal.pdf_path).stem.upper()
         return AnalyzeJob(
             id=f"{run_id}-{index}",

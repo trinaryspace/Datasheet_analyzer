@@ -20,6 +20,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from datasheet_analyzer.acquire.categorize import categorize, keyword_guess
+from datasheet_analyzer.acquire.inventory import resolve_documents
 from datasheet_analyzer.app.deps import get_settings_dep
 from datasheet_analyzer.app.routers import categories as categories_router
 from datasheet_analyzer.config import Settings, reset_settings_cache
@@ -30,6 +31,8 @@ from datasheet_analyzer.library.categories import (
     CategoryStore,
     slugify,
 )
+from datasheet_analyzer.library.store import LibraryStore
+from datasheet_analyzer.models import Applicability, LibraryDocument, SourceDocument
 
 
 @pytest.fixture
@@ -167,6 +170,25 @@ class TestCategoryEndpoints:
         converters = next(r for r in rows if r["id"] == "data-converters")
         assert converters["count"] == 2
 
+    def test_the_taxonomy_also_says_where_every_recorded_part_is_filed(
+        self, client: TestClient, store: CategoryStore
+    ) -> None:
+        """One source for the count and for the contents.
+
+        The Library groups its documents by this map. Deriving the grouping
+        from the built-parts catalog instead let a category read "3" and then
+        open empty, because that catalog knows only what is built — and a
+        filed part is filed whether or not it has been rebuilt since.
+        """
+        store.set_category("PMA1-14LN+", "amplifiers")
+        store.set_category("AD9081", "data-converters")
+
+        body = client.get("/api/categories").json()
+        assert body["parts"] == {"PMA1-14LN+": "amplifiers", "AD9081": "data-converters"}
+
+        counted = sum(c["count"] for c in body["categories"])
+        assert counted == len(body["parts"])
+
     def test_filing_a_part_by_hand_marks_it_confirmed(self, client: TestClient) -> None:
         out = client.post("/api/parts/PMA1-14LN+/category", json={"category": "amplifiers"}).json()
         assert out["category"] == "amplifiers"
@@ -254,3 +276,69 @@ class TestGuessing:
         assert category == "amplifiers"  # fell back to the keyword pass
         assert "malformed" in evidence
         assert confident is False
+
+
+class TestSupportingDocumentsReachTheirCategory:
+    """The end the fourth Applicability kind exists for.
+
+    A supporting document is filed and never built into a part of its own.
+    What makes it *useful* is the next line of the chain: a build resolves its
+    documents from every library record covering the part, and a part in the
+    category is covered. Without this, `category` applicability would be a
+    label that changed nothing about retrieval.
+    """
+
+    def _shelf(self, settings: Settings) -> tuple[LibraryStore, CategoryStore, Path]:
+        shelf = settings.library_dir.parent / "shelf"
+        shelf.mkdir(parents=True, exist_ok=True)
+        return LibraryStore(settings.library_dir), CategoryStore(settings.library_dir), shelf
+
+    def _file(self, shelf: Path, name: str) -> Path:
+        path = shelf / name
+        path.write_bytes(b"%PDF-1.4\n")
+        return path
+
+    def _build_set(self, library: LibraryStore, settings: Settings) -> list[str]:
+        return sorted(
+            Path(d.path).name
+            for d in resolve_documents(
+                settings.parts_dir / "PMA1-14LN+", part_number="PMA1-14LN+", store=library
+            )
+        )
+
+    def _document(self, path: Path, part_number: str, applicability: Applicability):
+        return LibraryDocument(
+            source=SourceDocument(
+                content_hash=path.name.encode().hex()[:32] or "0",
+                path=str(path),
+                part_number=part_number,
+                page_count=4,
+            ),
+            applicability=applicability,
+        )
+
+    def test_an_app_note_joins_every_part_filed_in_its_category(
+        self, settings: Settings
+    ) -> None:
+        library, categories, shelf = self._shelf(settings)
+        datasheet = self._file(shelf, "PMA1-14LN+.pdf")
+        appnote = self._file(shelf, "AN-1285.pdf")
+        library.put(self._document(datasheet, "PMA1-14LN+", Applicability.for_parts(["PMA1-14LN+"])))
+        library.put(self._document(appnote, "", Applicability.for_category("amplifiers")))
+        categories.set_category("PMA1-14LN+", "amplifiers")
+
+        # Sorted, not positional: resolution order follows content hashes.
+        built_from = self._build_set(library, settings)
+        assert built_from == ["AN-1285.pdf", "PMA1-14LN+.pdf"]
+
+    def test_refiling_the_part_takes_it_out_of_that_build(self, settings: Settings) -> None:
+        """Filing is the only thing that binds them, so refiling unbinds them."""
+        library, categories, shelf = self._shelf(settings)
+        datasheet = self._file(shelf, "PMA1-14LN+.pdf")
+        appnote = self._file(shelf, "AN-1285.pdf")
+        library.put(self._document(datasheet, "PMA1-14LN+", Applicability.for_parts(["PMA1-14LN+"])))
+        library.put(self._document(appnote, "", Applicability.for_category("amplifiers")))
+        categories.set_category("PMA1-14LN+", "amplifiers")
+        categories.set_category("PMA1-14LN+", "mixers")
+
+        assert self._build_set(library, settings) == ["PMA1-14LN+.pdf"]

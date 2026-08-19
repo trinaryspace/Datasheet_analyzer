@@ -71,7 +71,12 @@ function DocumentLine({
         title={`Open ${document.filename}`}
       >
         <span className="cat-doc-name">{document.filename}</span>
-        <span className="cat-doc-meta">{document.doc_type || 'document'}</span>
+        {/* `unknown` is the DocType default, and printing it on every row is
+            noise on the one screen that has to stay compact. A type earns its
+            place only when it says something — errata, app note, register map. */}
+        {document.doc_type && document.doc_type !== 'unknown' ? (
+          <span className="cat-doc-meta">{document.doc_type.replace(/_/g, ' ')}</span>
+        ) : null}
         <span className="cat-doc-meta">{document.page_count}p</span>
         {document.labels.map((label) => (
           <span key={label} className="cat-doc-label">

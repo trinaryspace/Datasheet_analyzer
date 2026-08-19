@@ -48,3 +48,22 @@ Three things follow, and each has a decision behind it (grilled, recorded):
 3. A build may propose a category; only a person may set one.
 4. One category per part, plus `uncategorized`. Multi-membership is a Label.
 5. Tests hermetic; `ruff check` and `npm run typecheck` clean.
+
+## Landed
+
+All ten tickets. Two things the plan did not anticipate, both found by driving
+the real app rather than by a test:
+
+- **A category read "3" and opened empty.** The tree counted part *records*
+  while the pane grouped by the *built-parts catalog* — two sources for one
+  fact. `GET /api/categories` now also returns the filing it counted, and the
+  pane groups by that. A filed-but-unbuilt part appears in its category, which
+  is what "filed" has to mean.
+- **The taxonomy was hidden until something was built.** The panes sat behind
+  the empty-library message, so a new shelf offered no way to arrange the
+  categories before filling them. Only the filters, scope switch and count are
+  gated now.
+
+Ticket 43 also needed a matching change on the review screen: it refused to
+build while any row had no part number, which made the one kind of document
+`category` applicability exists for unsubmittable.

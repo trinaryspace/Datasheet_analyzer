@@ -259,6 +259,8 @@ export interface CategoryOut {
 /** `GET /api/categories` — `uncategorized` is always last. */
 export interface CategoriesOut {
   categories: CategoryOut[];
+  /** Where every recorded part is filed: part number to category id. */
+  parts: Record<string, string>;
 }
 
 /** `POST /api/categories` — the id is slugified from the name. */

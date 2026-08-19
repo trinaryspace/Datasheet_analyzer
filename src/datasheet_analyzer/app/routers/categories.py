@@ -54,13 +54,18 @@ def get_categories(settings: SettingsDep) -> CategoriesOut:
     """
     store = CategoryStore.for_settings(settings)
     counts: dict[str, int] = {}
+    filed: dict[str, str] = {}
     for record in store.parts().values():
         counts[record.category] = counts.get(record.category, 0) + 1
+        filed[record.part_number] = record.category
     return CategoriesOut(
         categories=[
             CategoryOut(id=c.id, name=c.name, count=counts.get(c.id, 0))
             for c in store.categories()
-        ]
+        ],
+        # The same records the counts come from. The Library groups by this,
+        # so a category's number and its contents can never disagree.
+        parts=filed,
     )
 
 

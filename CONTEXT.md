@@ -188,10 +188,29 @@ _Avoid_: corpus, collection, database, shelf (a shelf is one project's folder)
 
 **Applicability**:
 The set of Parts a SourceDocument is about: named part numbers, a family
-prefix (e.g. `AFE79xx`), or every part. Inferred at build time from the
-document's own text and correctable by hand. A document may apply to many
-parts, and a part is constituted by the documents that apply to it.
+prefix (e.g. `AFE79xx`), a Category, or every part. Inferred at build time
+from the document's own text and correctable by hand. A document may apply to
+many parts, and a part is constituted by the documents that apply to it.
 _Avoid_: ownership, assignment, grouping, scope
+
+**Category**:
+The one slot a Part occupies in the user's taxonomy — amplifiers, mixers,
+data converters. A build may *propose* one by reading the built corpus; only
+a person may set one, and a person's answer survives every later rebuild,
+which is why it is recorded beside the Library and never in the manifest. One
+per part, always: a part that belongs in two places wants a Label, not a
+second category. A Family is read off the page (`AFE79xx` is printed in the
+datasheet); a category is a decision about a shelf.
+_Avoid_: tag, label, folder, type, group
+
+**Supporting document**:
+A SourceDocument that applies to a whole Category rather than to any part —
+an app note on high-frequency amplifier layout, a JESD204B primer. It is
+filed, never built into a part of its own, and it joins each part's corpus the
+next time that part is built, because a build resolves its documents from
+every Library record covering the part. Refiling the part into another
+category takes it back out.
+_Avoid_: general document, shared doc, appnote (as a kind), attachment
 
 **Tag**:
 A machine-derived facet of a PlotRecord — signal path (`tx`, `rx`), a

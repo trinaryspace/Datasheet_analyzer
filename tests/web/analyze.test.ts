@@ -541,6 +541,27 @@ describe('reviewing proposals', () => {
     expect(screen.getByRole('button', { name: /^Build/ })).toBeEnabled();
   });
 
+  it('lets a supporting document through with no part number, and says so', async () => {
+    // An app note covering every amplifier belongs to a category and to no
+    // part. Demanding a part number for it made it unsubmittable, which left
+    // the one kind of document the category applicability exists for with no
+    // way into the Library at all.
+    await toReview(
+      scanOut([
+        proposal({
+          filename: 'AN-1285.pdf',
+          pdf_path: '/shelf/AN-1285.pdf',
+          part_number: '',
+          applicability: applicability({ kind: 'category', category: 'amplifiers' }),
+        }),
+      ]),
+    );
+
+    expect(screen.getByRole('button', { name: /^Build/ })).toBeEnabled();
+    expect(screen.queryByText(/have no part number/)).toBeNull();
+    expect(screen.getByText(/will be filed, not built into a part/)).toBeInTheDocument();
+  });
+
   it('has an empty state for a directory with no PDFs', async () => {
     await toReview(scanOut([]));
 

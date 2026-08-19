@@ -332,9 +332,17 @@ class CategoryOut(BaseModel):
 
 
 class CategoriesOut(BaseModel):
-    """`GET /api/categories` — the taxonomy, `uncategorized` last."""
+    """`GET /api/categories` — the taxonomy, `uncategorized` last.
+
+    `parts` carries where every *recorded* part is filed, part number to
+    category id. The Library groups its documents by this map, so the number
+    beside a category and the parts behind it come from one source; deriving
+    the grouping from the built-parts catalog instead made a category read
+    "3" and open empty, because that catalog knows only what is built.
+    """
 
     categories: list[CategoryOut] = Field(default_factory=list)
+    parts: dict[str, str] = Field(default_factory=dict)
 
 
 class CategoryCreateIn(BaseModel):

@@ -47,6 +47,7 @@ from datasheet_analyzer.app.jobs import (
     build_job,
     default_registry,
     default_skip_check,
+    is_document_only,
     record_applicability,
     reset_default_registry,
 )
@@ -688,3 +689,80 @@ def test_build_job_records_applicability_before_building(settings, tmp_path, mon
     assert order == ["record", "build"]
     assert seen == {"part": "LM741", "pdf": pdf, "build_part": "LM741"}
     assert stages == ["extracting"], "the pipeline's stage callback is passed through"
+
+
+# --- supporting documents: filed, never published as a part -------------------
+
+
+def test_a_category_proposal_with_no_part_number_stays_part_less(settings, tmp_path):
+    """A stem-named part would put "AN-1285" on the shelf as a component.
+
+    `parts` and `family` describe part numbers, so a cleared part number there
+    still falls back to the filename. `category` and `all` describe a *set*,
+    and there is nothing to name.
+    """
+    registry = _registry(settings, StubBuild())
+    appnote = _touch(tmp_path, "AN-1285 high-frequency layout.pdf")
+    datasheet = _touch(tmp_path, "pma1-14ln.pdf")
+
+    run_id = registry.start(
+        directory=str(tmp_path),
+        proposals=[
+            _proposal(appnote, "", Applicability.for_category("amplifiers")),
+            _proposal(datasheet, "", Applicability.for_parts([], evidence="cleared")),
+        ],
+    )
+    assert registry.wait(run_id, DEADLINE)
+    jobs = registry.run(run_id)
+
+    assert jobs[0].part_number == ""
+    assert jobs[1].part_number == "PMA1-14LN", "a parts proposal still falls back to the stem"
+    assert is_document_only(jobs[0]) and not is_document_only(jobs[1])
+
+
+def test_a_supporting_document_is_filed_and_never_built(settings, tmp_path, monkeypatch):
+    """Filing *is* the whole job.
+
+    `resolve_documents` builds a part from every library document covering it,
+    so this PDF reaches an amplifier's corpus the next time that amplifier is
+    built. There is no second corpus and no phantom part.
+    """
+    import datasheet_analyzer.app.jobs as jobs_module
+
+    recorded: list[str] = []
+    monkeypatch.setattr(
+        jobs_module,
+        "record_applicability",
+        lambda job, *, settings, store=None: recorded.append(job.pdf_path),
+    )
+    monkeypatch.setattr(
+        jobs_module,
+        "build_part",
+        lambda *a, **k: pytest.fail("a supporting document must not publish a part"),
+    )
+
+    pdf = _touch(tmp_path, "AN-1285 high-frequency layout.pdf")
+    job = AnalyzeJob(
+        id="j1",
+        pdf_path=str(pdf),
+        part_number="",
+        applicability=Applicability.for_category("amplifiers"),
+    )
+    stages: list[str] = []
+    build_job(job, settings=settings, on_progress=stages.append)
+
+    assert recorded == [str(pdf)], "it still reaches the library"
+    assert any("supporting document" in stage for stage in stages)
+
+
+def test_a_supporting_document_is_never_skipped_by_the_hash_gate(settings, tmp_path):
+    """There is no part directory to gate on, and re-filing is how a
+    corrected applicability reaches the Library at all."""
+    pdf = _touch(tmp_path, "AN-1285 high-frequency layout.pdf")
+    job = AnalyzeJob(
+        id="j1",
+        pdf_path=str(pdf),
+        part_number="",
+        applicability=Applicability.for_category("amplifiers"),
+    )
+    assert default_skip_check(job, settings=settings) == ""

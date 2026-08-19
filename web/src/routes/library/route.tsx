@@ -105,6 +105,8 @@ export function LibraryScreen({ applicabilityControl = null }: LibraryScreenProp
   const [projectError, setProjectError] = useState('');
   const [projectNote, setProjectNote] = useState('');
   const [categories, setCategories] = useState<CategoryOut[]>([]);
+  /** Part number to category id, straight from the taxonomy response. */
+  const [filed, setFiled] = useState<Record<string, string>>({});
   const [catalog, setCatalog] = useState<PartOut[]>([]);
   const [selectedCategory, setSelectedCategory] = useState('');
   const [editing, setEditing] = useState<LibraryDocumentOut | null>(null);
@@ -133,6 +135,7 @@ export function LibraryScreen({ applicabilityControl = null }: LibraryScreenProp
     try {
       const [taxonomy, parts] = await Promise.all([getCategories(), getParts()]);
       setCategories(taxonomy.categories);
+      setFiled(taxonomy.parts);
       setCatalog(parts.parts);
       setSelectedCategory((current) => current || taxonomy.categories[0]?.id || '');
     } catch (caught) {
@@ -229,10 +232,11 @@ export function LibraryScreen({ applicabilityControl = null }: LibraryScreenProp
   );
 
   // Which category each part is filed in, and which parts are actually built.
-  const partCategory = useMemo(
-    () => new Map(catalog.map((part) => [part.part_number, part.category])),
-    [catalog],
-  );
+  // The filing comes from the taxonomy response — the same part records the
+  // counts beside each category are computed from — and not from the parts
+  // catalog, which knows only what is *built*. Reading it from the catalog
+  // made a category read "3" and then open empty.
+  const partCategory = useMemo(() => new Map(Object.entries(filed)), [filed]);
   const builtParts = useMemo(
     () => new Set(catalog.filter((part) => part.built).map((part) => part.part_number)),
     [catalog],
@@ -262,7 +266,9 @@ export function LibraryScreen({ applicabilityControl = null }: LibraryScreenProp
       setProjectError('');
       try {
         await write();
-        setCategories((await getCategories()).categories);
+        const refreshed = await getCategories();
+        setCategories(refreshed.categories);
+        setFiled(refreshed.parts);
       } catch (caught) {
         setProjectError(errorMessage(caught, 'the taxonomy could not be changed'));
       } finally {
@@ -287,6 +293,7 @@ ${categories.map((c) => c.id).join(', ')}`,
         await setPartCategory(partNumber, { category: target.trim() });
         const [taxonomy, parts] = await Promise.all([getCategories(), getParts()]);
         setCategories(taxonomy.categories);
+        setFiled(taxonomy.parts);
         setCatalog(parts.parts);
       } catch (caught) {
         setProjectError(errorMessage(caught, `${partNumber} could not be moved`));
@@ -404,11 +411,11 @@ ${categories.map((c) => c.id).join(', ')}`,
         }}
       />
 
-      {documents.length === 0 ? (
-        <p className="library-empty">
-          The library is empty. Analyze a directory of PDFs and every document lands here.
-        </p>
-      ) : (
+      {/* The panes below render on an empty shelf too: the taxonomy is the
+          user's to arrange *before* there is anything to file into it. Only
+          the filters, the scope switch and the count need documents to mean
+          anything, so only those are gated. */}
+      {documents.length > 0 ? (
         <>
           <form className="library-filters" aria-label="Filter the library">
             <label htmlFor="library-filter-label">Filter by label</label>
@@ -481,71 +488,76 @@ ${categories.map((c) => c.id).join(', ')}`,
           <p className="library-count" role="status">
             {`${shownDocuments} of ${documents.length} documents`}
           </p>
-
-          {/* Two panes, not a three-level tree: category on the left, its
-              parts and supporting documents on the right. Three levels of
-              indentation is what made the previous screen sprawl. */}
-          <div className="library-panes">
-            <CategoryTree
-              categories={categories}
-              selected={selectedCategory}
-              busy={projectBusy}
-              onSelect={setSelectedCategory}
-              onCreate={(name) => void runTaxonomy(() => createCategory({ name }))}
-              onRename={(id, name) => void runTaxonomy(() => renameCategory(id, { name }))}
-              onRemove={(id) => void runTaxonomy(() => removeCategory(id))}
-            />
-
-            <CategoryContents
-              category={categories.find((c) => c.id === selectedCategory) ?? null}
-              parts={contents.parts}
-              supporting={contents.supporting}
-              inProject={inProjectHashes}
-              onOpen={openDocument}
-              onAddToProject={project ? (hash) => void addToProject(hash) : undefined}
-              onEditDocument={(document) => setEditing(document)}
-              onMovePart={(partNumber) => void movePart(partNumber)}
-              onBuild={(group) => void buildPart(group)}
-              projectParts={new Set(projectParts)}
-              onRemoveFromProject={
-                project
-                  ? (partNumber) =>
-                      void runProjectWrite(() => removeProjectPart(project.name, partNumber))
-                  : undefined
-              }
-            />
-          </div>
-
-          {/* Applicability and labels are edited one document at a time, in a
-              panel, rather than inline on every row — inline is what made a
-              shelf of twelve not fit on a screen. */}
-          {editing ? (
-            <section className="library-editor" aria-label={`Edit ${editing.filename}`}>
-              <div className="library-editor-head">
-                <h3>{editing.filename}</h3>
-                <button type="button" onClick={() => setEditing(null)}>
-                  Close
-                </button>
-              </div>
-              <PartGroupRow
-                group={{
-                  part_number: editing.part_number || editing.filename,
-                  built: true,
-                  documents: [editing],
-                  labels: editing.labels,
-                }}
-                knownLabels={knownLabels}
-                applicabilityControl={applicabilityControl}
-                onPatched={(next) => {
-                  onPatched(next);
-                  setEditing(next);
-                }}
-                defaultOpen
-              />
-            </section>
-          ) : null}
         </>
+      ) : (
+        <p className="library-empty">
+          The library is empty — arrange your categories here, and every document you
+          build lands in one.
+        </p>
       )}
+
+      {/* Two panes, not a three-level tree: category on the left, its
+          parts and supporting documents on the right. Three levels of
+          indentation is what made the previous screen sprawl. */}
+      <div className="library-panes">
+        <CategoryTree
+          categories={categories}
+          selected={selectedCategory}
+          busy={projectBusy}
+          onSelect={setSelectedCategory}
+          onCreate={(name) => void runTaxonomy(() => createCategory({ name }))}
+          onRename={(id, name) => void runTaxonomy(() => renameCategory(id, { name }))}
+          onRemove={(id) => void runTaxonomy(() => removeCategory(id))}
+        />
+
+        <CategoryContents
+          category={categories.find((c) => c.id === selectedCategory) ?? null}
+          parts={contents.parts}
+          supporting={contents.supporting}
+          inProject={inProjectHashes}
+          onOpen={openDocument}
+          onAddToProject={project ? (hash) => void addToProject(hash) : undefined}
+          onEditDocument={(document) => setEditing(document)}
+          onMovePart={(partNumber) => void movePart(partNumber)}
+          onBuild={(group) => void buildPart(group)}
+          projectParts={new Set(projectParts)}
+          onRemoveFromProject={
+            project
+              ? (partNumber) =>
+                  void runProjectWrite(() => removeProjectPart(project.name, partNumber))
+              : undefined
+          }
+        />
+      </div>
+
+      {/* Applicability and labels are edited one document at a time, in a
+          panel, rather than inline on every row — inline is what made a
+          shelf of twelve not fit on a screen. */}
+      {editing ? (
+        <section className="library-editor" aria-label={`Edit ${editing.filename}`}>
+          <div className="library-editor-head">
+            <h3>{editing.filename}</h3>
+            <button type="button" onClick={() => setEditing(null)}>
+              Close
+            </button>
+          </div>
+          <PartGroupRow
+            group={{
+              part_number: editing.part_number || editing.filename,
+              built: true,
+              documents: [editing],
+              labels: editing.labels,
+            }}
+            knownLabels={knownLabels}
+            applicabilityControl={applicabilityControl}
+            onPatched={(next) => {
+              onPatched(next);
+              setEditing(next);
+            }}
+            defaultOpen
+          />
+        </section>
+      ) : null}
     </main>
   );
 }

@@ -94,7 +94,15 @@ export default function ReviewStep({
     () => proposals.filter((p) => selected.has(selectionKey(p))),
     [proposals, selected],
   );
-  const missingPartNumber = chosen.filter((p) => !p.part_number.trim()).length;
+  // A supporting document — an app note covering every amplifier — belongs to
+  // a category and to no part, so demanding a part number for it would make it
+  // unsubmittable. Only the kinds that describe part numbers need one.
+  const needsPartNumber = (p: DocProposal) =>
+    p.applicability.kind !== 'category' && p.applicability.kind !== 'all';
+  const missingPartNumber = chosen.filter(
+    (p) => needsPartNumber(p) && !p.part_number.trim(),
+  ).length;
+  const supporting = chosen.filter((p) => !needsPartNumber(p) && !p.part_number.trim()).length;
 
   function toggle(key: string, on: boolean) {
     setSelected((current) => {
@@ -330,6 +338,13 @@ export default function ReviewStep({
         <p role="alert" className="analyze-error">
           {missingPartNumber} document(s) have no part number. Give each one a part number
           before building.
+        </p>
+      ) : null}
+
+      {supporting > 0 ? (
+        <p role="status" className="analyze-hint">
+          {`${supporting} supporting document(s) will be filed, not built into a part of
+            their own. Each joins a part's corpus the next time that part is built.`}
         </p>
       ) : null}
 

@@ -359,6 +359,16 @@ beforeEach(() => {
       { id: 'data-converters', name: 'Data converters', count: 1 },
       { id: 'uncategorized', name: 'Uncategorized', count: 0 },
     ],
+    // The filing the Library groups by. It comes from the same part records
+    // the counts do, so a category's number always matches what it opens to.
+    // AFE7951 is unbuilt and still filed: the map is the part *records*, so
+    // a part that is filed but not yet built still appears in its category.
+    parts: {
+      LMX1204: 'amplifiers',
+      AFE7950: 'data-converters',
+      AFE7951: 'data-converters',
+      AD9081: 'data-converters',
+    },
   });
   getParts.mockResolvedValue({
     parts: [
@@ -840,6 +850,20 @@ describe('the working set', () => {
 });
 
 // --- ticket 30: build an unbuilt part where you meet it --------------------------
+
+describe('a category opens to exactly what it counted', () => {
+  it('groups by the part records, so a filed-but-unbuilt part still appears', async () => {
+    // The regression: grouping used to come from the parts catalog, which
+    // lists only what is *built*. A category could report three parts and
+    // open empty. The filing now comes from the same records the counts do.
+    renderLibrary();
+    const tree = await screen.findByRole('navigation', { name: 'Categories' });
+    await userEvent.setup().click(within(tree).getByRole('button', { name: /^Data converters/ }));
+
+    const pane = await screen.findByRole('region', { name: /Contents of Data converters/ });
+    expect(within(pane).getByText('AFE7951')).toBeInTheDocument();
+  });
+});
 
 describe('building an unbuilt part from the library', () => {
   /** AFE7950 and AFE7951 are filed under data converters by the catalog fixture. */
