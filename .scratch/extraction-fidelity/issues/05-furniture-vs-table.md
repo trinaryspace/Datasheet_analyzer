@@ -40,19 +40,20 @@ often it appears.
 
 **Blocked by:** — (wave 1; lands with 06–08 as one cache-invalidating change)
 
-**Status:** ready-for-agent
+**Status:** done (wave 1; rebuild pending in 09)
 
-- [ ] Develop against **synthetic PyMuPDF fixtures** first: a document whose
+- [x] Develop against **synthetic PyMuPDF fixtures** first: a document whose
       genuine running header recurs, and one whose table cell recurs at the
       same slot. The first must still be stripped; the second must survive.
-- [ ] `LMX1204_registermap.pdf` yields `Table 1-1` with all **35** rows
-- [ ] Every document already extracting correctly is byte-identical afterwards
+- [x] `LMX1204_registermap.pdf` yields `Table 1-1` with all **35** rows
+- [x] Every document already extracting correctly is byte-identical afterwards
       *except* where this fix is the reason — diff the corpus and account for
       every change, do not assume
-- [ ] Real running headers/footers/page numbers still stripped — assert on a
+- [x] Real running headers/footers/page numbers still stripped — assert on a
       document that has them
-- [ ] The threshold constant is unchanged (see the guard above)
-- [ ] `output_version` **not** bumped here; ticket 09 bumps it once for the wave
+- [x] The threshold constant is unchanged (see the guard above)
+- [x] `output_version` **not** bumped here; ticket 09 bumps it once for the wave
+      — so nothing below is visible in a *built* corpus until 09 rebuilds
 
 **Owns:** `src/datasheet_analyzer/extract/pdf_layout.py` (furniture detection
 only), `tests/unit/test_pdf_layout_furniture.py`

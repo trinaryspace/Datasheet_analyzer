@@ -157,9 +157,24 @@ def record_id(prefix: str, *parts: object) -> str:
     return f"{prefix}_" + "-".join(_id_part(p) for p in parts)
 
 
-def spec_record_id(section: str, table_index: int, row_index: int) -> str:
-    """Id of one `SpecRecord`: its section, its table in that section, its row."""
-    return record_id("rec", f"s{section}", f"t{table_index}", f"r{row_index}")
+def spec_record_id(section_key: str, table_index: int, row_index: int) -> str:
+    """Id of one `SpecRecord`: its section, its table in that section, its row.
+
+    `section_key` identifies the *section*, not its printed number, and the
+    difference is the whole of phase 6.5 ticket 08. `table_index` counts
+    within a section, so a document whose sections carry no numbers restarted
+    it at 0 in every one of them and several records computed one id:
+    **AD9081 published 549 records carrying 259 distinct ids**, with
+    `rec_s-t0-r0` alone carried by 14. Every datasheet read without a numbered
+    table of contents had it.
+
+    The key is the section's published file stem, which is already unique per
+    section — two sections sharing it would collide on disk before they
+    collided here. Numbering tables document-globally would also have worked
+    and was rejected: `table_index` is a position *within* a section, read as
+    one by the CSV twin names and by every lookup back into `section.tables`.
+    """
+    return record_id("rec", f"s{section_key}", f"t{table_index}", f"r{row_index}")
 
 
 def pin_record_id(table_index: int, row_index: int, pin: str) -> str:
@@ -560,6 +575,15 @@ class TableBlock(BaseModel):
     # multi-page table cite their own printed page, so answers never cite a
     # row by a page it does not appear on.
     row_pages: list[int | None] = Field(default_factory=list)
+    # Grid rows whose **first cell was lent by a spanning parent**, not
+    # printed (`pdf_layout` rowspan materialization). The text is right for
+    # reading — a spec record under a parameter that spans four condition
+    # rows needs the parameter's name — and wrong for keying: HMC520A's
+    # exposed-pad row prints no pin number, and lending it the row above's
+    # `15` made two rows claim one designator. A consumer that keys on the
+    # first column must read these rows as *unkeyed*, which is what the page
+    # says. Empty for HTML backends, whose spans are declared by the source.
+    lent_first_cells: list[int] = Field(default_factory=list)
     # How this grid was reconstructed, when it had to be (`pdf_layout`):
     # `RECONSTRUCTION_HEADER` — the table's own header-declared column edges
     # passed the gate on the first try; `RECONSTRUCTION_RESCUED` — only a
@@ -734,7 +758,12 @@ class SpecRecord(BaseModel):
     """One normalized row from a parametric table — deterministic lookup unit."""
 
     # identity within the document
-    section: str = ""
+    section: str = ""  # the printed section number, "" when the page prints none
+    # The section's published file stem — what makes this record's id unique
+    # inside its document even when the printed number is absent. See
+    # `spec_record_id`. Falls back to `section` when a record predates the
+    # field, which keeps an older `specs.json` resolvable.
+    section_key: str = ""
     table_index: int = 0
     row_index: int = 0
     # semantic roles (empty string when the role doesn't exist for the table)
@@ -788,7 +817,8 @@ class SpecRecord(BaseModel):
         Serialized into `specs.json` so a reader that never constructs the
         model can still resolve a citation.
         """
-        return spec_record_id(self.section, self.table_index, self.row_index)
+        return spec_record_id(self.section_key or self.section,
+                              self.table_index, self.row_index)
 
 
 class SpecTableInfo(BaseModel):

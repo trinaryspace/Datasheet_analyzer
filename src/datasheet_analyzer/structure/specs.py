@@ -12,6 +12,7 @@ from datasheet_analyzer.config import SPECS_SCHEMA_VERSION
 from datasheet_analyzer.models import RawDocument, SectionNode, SpecRecord, SpecSet, SpecTableInfo
 from datasheet_analyzer.structure.aliases import load_lexicon
 from datasheet_analyzer.structure.confidence import grade_spec_record
+from datasheet_analyzer.structure.corpus import section_stem
 from datasheet_analyzer.structure.quantities import annotate_record
 from datasheet_analyzer.structure.roles import assign_roles, classify_table
 from datasheet_analyzer.structure.units import canonical_unit, normalize_text
@@ -55,6 +56,7 @@ def table_to_records(
             else None
         record = SpecRecord(
             section=section.number,
+            section_key=section_stem(section),
             table_index=table_index,
             row_index=row_index,
             symbol=normalize_text(_cell_for_role(row, roles, "symbol")),

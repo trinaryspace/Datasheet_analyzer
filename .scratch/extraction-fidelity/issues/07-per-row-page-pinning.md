@@ -28,18 +28,20 @@ unknown number of wrong rows, which is worse than what we have.
 
 **Blocked by:** — (wave 1; independent of 05/06/08 in code)
 
-**Status:** ready-for-agent
+**Status:** done (wave 1; rebuild pending in 09)
 
-- [ ] Row-level pinning implemented by extending `pin_table_pages`'s rule, not
+- [x] Row-level pinning implemented by extending `pin_table_pages`'s rule, not
       by duplicating it
-- [ ] An ambiguous or non-distinctive row falls back to the table's page and
+- [x] An ambiguous or non-distinctive row falls back to the table's page and
       records that it did — no guess
-- [ ] LMX1204 `Table 7-1`: every row cites its printed page; the named
+- [x] LMX1204 `Table 7-1`: every row cites its printed page; the named
       off-by-one row is gone and the count is **0**
-- [ ] Spec records derived from those rows carry the corrected page
-- [ ] `pdf_layout`-derived tables are unaffected — they already have geometry
+- [ ] Spec records derived from those rows carry the corrected page —
+      **deferred to 09**: proved at the `TableBlock` level, and the
+      published `specs.json` follows only after the rebuild
+- [x] `pdf_layout`-derived tables are unaffected — they already have geometry
       and this path must not overwrite it
-- [ ] Synthetic fixture covering: distinctive row, ambiguous row, blank row
+- [x] Synthetic fixture covering: distinctive row, ambiguous row, blank row
 
 **Owns:** `src/datasheet_analyzer/structure/pagemap.py`,
 `src/datasheet_analyzer/structure/tables.py`,

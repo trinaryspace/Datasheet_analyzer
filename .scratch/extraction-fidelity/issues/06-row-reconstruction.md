@@ -37,20 +37,21 @@ stop and report the trade rather than choosing for the project.
 
 **Blocked by:** — (wave 1; coordinate with 05, which owns the same file)
 
-**Status:** ready-for-agent
+**Status:** done (wave 1; rebuild pending in 09)
 
-- [ ] Synthetic fixtures for each of the four symptoms in the table above,
+- [x] Synthetic fixtures for each of the four symptoms in the table above,
       written before the fix and failing for the documented reason
-- [ ] A genuinely blank leading cell reconstructs as blank
-- [ ] A genuine continuation row still joins to its predecessor — assert both
+- [x] A genuinely blank leading cell reconstructs as blank
+- [x] A genuine continuation row still joins to its predecessor — assert both
       directions; this ticket can break wrapped-cell handling if it only tests
       the new case
-- [ ] Register-map recall ≥ 28/35 with precision at 100%, both measured and
+- [x] Register-map recall ≥ 28/35 with precision at 100%, both measured and
       recorded per register
-- [ ] HMC520A publishes 24 pins; the duplicate-key refusal still fires on a
+- [x] HMC520A publishes 24 pins; the duplicate-key refusal still fires on a
       synthetic table that really does have duplicate keys
-- [ ] Phase 6 goldens re-measured and not regressed
-- [ ] `output_version` **not** bumped here; ticket 09 bumps it once
+- [ ] Phase 6 goldens re-measured and not regressed — **deferred to 09**:
+      the goldens read a published corpus, which 09 rebuilds
+- [x] `output_version` **not** bumped here; ticket 09 bumps it once
 
 **Owns:** `src/datasheet_analyzer/extract/pdf_layout.py` (row reconstruction
 only), `tests/unit/test_pdf_layout_tables.py`,

@@ -65,7 +65,7 @@ from datasheet_analyzer.publish.plots import (
 )
 from datasheet_analyzer.publish.writer import doc_dir_name
 from datasheet_analyzer.structure.corpus import SectionPlan, build_section_plans
-from datasheet_analyzer.structure.pagemap import pin_table_pages
+from datasheet_analyzer.structure.pagemap import pin_table_pages, pin_table_row_pages
 from datasheet_analyzer.structure.plot_axes import annotate_plot_axes
 from datasheet_analyzer.structure.plots import build_plotset
 from datasheet_analyzer.structure.specs import build_specset
@@ -398,9 +398,15 @@ def _extract_document(
             )
         raw = backend.extract(source, pdf_toc=pdf_toc)
         if backend_name != "pdf_text":
-            pinned = pin_table_pages(raw.sections, page_texts(pdf_path))
+            texts = page_texts(pdf_path)
+            pinned = pin_table_pages(raw.sections, texts)
             log.info("table pages pinned: %d/%d", pinned,
                      sum(len(s.tables) for s in raw.sections))
+            # Rows next, at the same bar. `pdf_layout` already measured its
+            # own; this is the HTML path, which has no geometry to measure.
+            rows_pinned, rows_total = pin_table_row_pages(raw.sections, texts)
+            if rows_total:
+                log.info("table row pages pinned: %d/%d", rows_pinned, rows_total)
         _store_cached_raw(settings, raw)
     return raw, cached
 

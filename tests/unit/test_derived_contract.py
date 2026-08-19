@@ -629,8 +629,13 @@ class TestAdditiveOnly:
         assert plot.axis_confidence is Confidence.UNKNOWN
 
     def test_the_parsed_layer_is_recorded_in_the_specs_schema_version(self):
-        """The bump is what puts ids on disk for an already-built corpus."""
-        assert SPECS_SCHEMA_VERSION == "3"
+        """The bump is what puts ids on disk for an already-built corpus.
+
+        4 since phase 6.5 ticket 08: a record id is keyed on its section's
+        file stem rather than its printed number, so every id written before
+        that changes and every citation holding one has to be rewritten.
+        """
+        assert SPECS_SCHEMA_VERSION == "4"
 
     def test_a_pin_type_is_a_closed_vocabulary_with_an_honest_unknown(self):
         assert PinRecord().type == "unknown"

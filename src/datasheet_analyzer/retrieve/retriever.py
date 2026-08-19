@@ -197,7 +197,11 @@ class Retriever:
         # matched exactly; without that guard this rung would quietly become a
         # prefix search and shadow the alias rungs below it.
         low = term.lower()
-        exact = [(doc, rec) for doc, rec in pool if rec.symbol.lower() == low]
+        exact = [
+            (doc, rec)
+            for doc, rec in pool
+            if low in (rec.symbol.lower(), _without_glued_marker(rec.symbol).lower())
+        ]
         if exact:
             children = [
                 (doc, rec) for doc, rec in pool if rec.symbol.lower().startswith(low + " ")
@@ -221,10 +225,15 @@ class Retriever:
             for entry, phrase in group:
                 entry_low = entry.symbol.lower()
                 for doc, rec in pool:
+                    printed = _printed_as(rec)
                     if not (
-                        rec.symbol.lower() == entry_low
+                        entry_low in (
+                            rec.symbol.lower(),
+                            _without_glued_marker(rec.symbol).lower(),
+                        )
                         or _in_family(rec, entry)
-                        or entry.describes(_printed_as(rec))
+                        or entry.describes(printed)
+                        or entry.describes(_without_glued_marker(printed))
                     ):
                         continue
                     key = (id(doc), id(rec))
@@ -562,6 +571,34 @@ def _passes(rec: SpecRecord, *, section: str, also_name: str) -> bool:
     if section and section.lower() not in rec.section.lower():
         return False
     return not (also_name and also_name.lower() not in rec.name.lower())
+
+
+#: A trailing footnote marker glued to a printed symbol: `RF RANGE1`,
+#: `Maximum Aperture Jitter2`. One or two digits after a letter or a closing
+#: bracket, at the very end.
+_GLUED_MARKER = re.compile(r"(?<=[A-Za-z)\]])\d{1,2}$")
+
+
+def _without_glued_marker(text: str) -> str:
+    """`text` with a trailing footnote marker removed, or `text` unchanged.
+
+    Used **additively**, never to replace what a record says. A datasheet
+    glues its footnote markers to the cell text and the corpus keeps them
+    there on purpose, so the reader of an answer can see which footnote
+    applies (`test_pdf_layout_footnotes.py` fixes that contract). The cost is
+    that the printed symbol stops matching the designer's phrase: HMC520A
+    prints `RF RANGE` with a superscript `1`, so "what is the RF frequency
+    range?" matched `LO INPUT FREQUENCY RANGE` and `IF FREQUENCY RANGE`
+    instead — both real records, neither the answer.
+
+    Stripping is only ever *tried alongside* the printed form, because it is
+    not safe on its own in either direction: `AVDD2` and `VCO Output Divide
+    by 1` end in digits that are part of the text, and `cited_markers` cannot
+    separate them — it carries `1` for that divide-by row too, which the
+    marker scanner itself documents as an audit-level orphan. Offering both
+    forms can only add a match, never remove one.
+    """
+    return _GLUED_MARKER.sub("", text).rstrip()
 
 
 def _printed_as(rec: SpecRecord) -> str:

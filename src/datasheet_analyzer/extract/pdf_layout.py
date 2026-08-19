@@ -93,6 +93,20 @@ log = logging.getLogger(__name__)
 _BUCKET = 15.0
 _MIN_PAGES_FRAC = 0.4
 _MIN_PAGES = 2
+# Column edges carry typographic noise. Measured on LMX1204's register
+# summary: the body cell `R0` starts at x=100.24398803710938 and the header
+# cell `Acronym` that declares its column at x=100.24400329589844 — 1.5e-5 pt
+# further right. A strict half-open interval put `R0` in the *previous*
+# column, so every row read as `0x0 R0 | Powerdown... | | Go` and the address
+# column stopped being addresses. Every band edge is therefore tested with
+# this tolerance, four orders of magnitude above the noise and two below the
+# tightest real column gap in the corpus (25-34 pt, Min|Typ on AD9081).
+_COLUMN_EDGE_EPS = 0.1
+# A cell that wraps mid-identifier must not gain a space at the break. The
+# head must end inside an underscore-bearing identifier and the tail must
+# begin as one; see `_wrapped_identifier` for why both halves are required.
+_IDENT_HEAD = re.compile(r"[A-Z0-9]+_[A-Z0-9_]*$")
+_IDENT_TAIL = re.compile(r"^[A-Z0-9_]+$")
 
 _WS = re.compile(r"\s+")
 _NONALNUM = re.compile(r"[^a-z0-9]+")
@@ -311,7 +325,94 @@ def _furniture_sets(pages: list[_Page]) -> list[set[int]]:
                 same_text |= text_at_band.get((k, line.text), set())
             if len(same_text) >= threshold:
                 out[page.index - 1].add(i)
+    _release_body_cells(pages, out)
     return out
+
+
+def _release_body_cells(pages: list[_Page], furniture: list[set[int]]) -> None:
+    """Give back the recurring lines that are table cells, not page machinery.
+
+    Recurrence is the right signal for a running header and the wrong one for
+    a register map, which prints the same short strings in the same slots on
+    every field page. Two measured failures, both on
+    `LMX1204_registermap.pdf`:
+
+    - `0x0` — the reset value of a field — prints in one y-band on **11 of the
+      document's 25 pages** against a threshold of 10, so the first body row of
+      its register summary (`Table 1-1`, 35 rows) was classified as machinery.
+    - Its field tables reprint one header row (`Bit | Field | Type | Reset |
+      Description`) in the same slot on **21 pages**, so *every cell of it*
+      recurs and 97% of that band is furniture.
+
+    In both cases the table region was cut off, reconstruction was rejected
+    (`no viable column split`, `no rows`), and the cells were gone from the
+    paragraph stream too, so nothing downstream could recover them. Expect the
+    shape from every register map: they are dense in repeated short strings at
+    stable positions, which is precisely what recurrence keys on.
+
+    Raising the threshold would be the wrong fix — it would break header
+    stripping on any document with more pages. Statistics do not separate the
+    cases either: the second one looks exactly like a running header by
+    recurrence *and* by band occupancy. **Structure does.** Page machinery
+    never prints directly under a `Table N.` caption, so everything below the
+    first caption on a page is released, bounded by the page's *body span* —
+    what remains after stripping the leading and trailing rows that are
+    machinery all the way across, which is what a running header and footer
+    are.
+
+    An earlier rule also released a flagged line that merely shared its row
+    with content, gated on its band being mostly content. It is gone: LM741
+    page 15 prints `www.ti.com` beside a generated date, so the header shared
+    its row with content, and its band — used by few pages — read as mostly
+    content. The header leaked into the corpus. Being under a caption is the
+    only evidence this function now accepts.
+
+    A line matching a universal page-machinery pattern is never released: a
+    bare page number, `N of M` and a revision bar are machinery by their
+    shape, wherever they print.
+    """
+    for page, marked in zip(pages, furniture):
+        if not marked:
+            continue
+        index_of = {id(line): i for i, line in enumerate(page.lines)}
+        rows = [[index_of[id(line)] for line in row.lines]
+                for row in _group_rows(page.lines, wrap=False)]
+        below_caption = _first_caption_row(page, rows)
+        if below_caption is None:
+            continue
+        first, last = _body_span(rows, marked)
+        for position in range(max(below_caption + 1, first), last + 1):
+            for i in rows[position]:
+                if i not in marked:
+                    continue
+                line = page.lines[i]
+                if _matches_pattern(line.text, page.index, line.x, line.y):
+                    continue
+                marked.discard(i)
+
+
+def _body_span(rows: list[list[int]], marked: set[int]) -> tuple[int, int]:
+    """The row positions between the running header and the running footer.
+
+    A running header and footer are rows that are machinery *all the way
+    across*, at the page's top and bottom. Stripping them from both ends
+    leaves the body, and gives the release rule a bound that does not depend
+    on a page-geometry constant.
+    """
+    first, last = 0, len(rows) - 1
+    while first <= last and rows[first] and all(i in marked for i in rows[first]):
+        first += 1
+    while last >= first and rows[last] and all(i in marked for i in rows[last]):
+        last -= 1
+    return first, last
+
+
+def _first_caption_row(page: _Page, rows: list[list[int]]) -> int | None:
+    """Position of the first row printing a `Table N.` caption, or `None`."""
+    for position, indices in enumerate(rows):
+        if any(_CAPTION_RE.match(page.lines[i].text.strip()) for i in indices):
+            return position
+    return None
 
 
 def _title_keys(entries: list[TOCEntry]) -> frozenset[str]:
@@ -896,26 +997,65 @@ def _word_bands(rows: list[_Row], tau: float) -> list[float]:
     return _cluster_lefts([s.x0 for row in rows for s in row.spans], tau)
 
 
+def _in_band(x0: float, left: float, right: float) -> bool:
+    """Whether a span starting at `x0` belongs to the band `[left, right)`.
+
+    Both edges carry `_COLUMN_EDGE_EPS`, so the bands still partition the
+    line exactly — no span lands in two, none falls between.
+    """
+    return left - _COLUMN_EDGE_EPS <= x0 < right - _COLUMN_EDGE_EPS
+
+
 def _cell(span_texts: list[_Span], left: float,
           right: float) -> str:
     """Join the spans whose x0 falls in [left, right), with the project's
     glue rule: sub/superscripts (next span starts right at the previous
     one's end) stay glued; a true overlap (> 0.5pt) is a separate word and
-    gets a space; a real gap gets a space."""
+    gets a space; a real gap gets a space.
+
+    One exception, and it is lexical rather than geometric because the
+    geometry does not separate the cases. When a cell wraps **mid-token**,
+    the space the line break would earn is wrong: LMX1204's R13 and R17 print
+    the field `SYSREFREQ_DELAY_STEPSIZE` across two lines and the grid read
+    `SYSREFREQ_DELAY_ST EPSIZE` — a field name that does not exist. Measuring
+    the slack left on the first line does not decide it (5.6 pt of room
+    against a 4.7 pt character: the next character would have fit, so the
+    break was not width-forced at that glyph). What does decide it is that
+    both fragments are pieces of one identifier — see `_wrapped_identifier`.
+
+    """
     parts: list[str] = []
     prev_x1: float | None = None
     prev_size = 8.0
     for s in span_texts:
-        if not (left <= s.x0 < right):
+        if not _in_band(s.x0, left, right):
             continue
         if prev_x1 is not None:
             gap = s.x0 - prev_x1
-            if gap < -0.5 or gap > 0.5 * prev_size:
+            line_break = gap < -0.5
+            if (gap > 0.5 * prev_size or line_break) and not (
+                line_break and _wrapped_identifier(parts[-1] if parts else "", s.text)
+            ):
                 parts.append(" ")
         parts.append(s.text)
         prev_x1 = s.x1
         prev_size = s.size
     return _WS.sub(" ", "".join(parts)).strip()
+
+
+def _wrapped_identifier(head: str, tail: str) -> bool:
+    """Whether a line break inside a cell split one identifier in two.
+
+    Deliberately narrow, because the cost of being wrong is a fused word.
+    Both sides must be identifier-shaped (upper-case, digits, underscores —
+    the shape of a register field, a pin name, a signal), and the head must
+    contain an underscore, which is what a wrapped *identifier* has and a
+    wrapped pair of words does not: `POWER` over `SUPPLIES` is a band label
+    printed on two lines and must keep its space, while
+    `SYSREFREQ_DELAY_ST` over `EPSIZE` is one name broken by a column edge.
+    """
+    return bool(_IDENT_HEAD.search(head) and _IDENT_TAIL.match(tail))
+
 
 
 def _row_cells(row: _Row, lefts: list[float]) -> list[str]:
@@ -948,7 +1088,7 @@ def _gate(rows: list[_Row], lefts: list[float], page: _Page,
     # LM741's MIN/MAX/UNIT-only header would otherwise strand the whole
     # parameter column outside the bands while still passing occupancy.
     for row in rows:
-        if any(s.x0 < lefts[0] for s in row.spans):
+        if any(s.x0 < lefts[0] - _COLUMN_EDGE_EPS for s in row.spans):
             return "words fall outside the column bands"
 
     # (ticket 09) Lateral uniformity: a band whose cell starts cluster into
@@ -964,7 +1104,7 @@ def _gate(rows: list[_Row], lefts: list[float], page: _Page,
     for lo, hi in zip(lefts, lefts[1:] + [math.inf]):
         for row in rows:
             max_size = max((s.size for s in row.spans), default=0.0)
-            raw = sorted((s for s in row.spans if lo <= s.x0 < hi),
+            raw = sorted((s for s in row.spans if _in_band(s.x0, lo, hi)),
                          key=lambda s: s.x0)
             starts = [
                 s.x0 for s in raw
@@ -1005,7 +1145,7 @@ def _gate(rows: list[_Row], lefts: list[float], page: _Page,
     for row_spans in (r.spans for r in rows):
         for b, (lo, hi) in enumerate(zip(lefts, lefts[1:] + [math.inf])):
             for s in row_spans:
-                if lo <= s.x0 < hi:
+                if _in_band(s.x0, lo, hi):
                     first_devs[b].append(s.x0 - lo)
                     break
     tight = [bool(d) and sorted(d)[len(d) // 2] <= 30.0 for d in first_devs]
@@ -1036,8 +1176,18 @@ def _row_y(row: _Row) -> float:
 
 
 def _materialize_band0(grid: list[list[str]], row_ys: list[float],
-                       starts: list[float | None], lefts: list[float]) -> None:
+                       starts: list[float | None], lefts: list[float]) -> list[int]:
     """Ticket 09: rowspan materialization of the parameter column.
+
+    Returns the grid row indices whose first cell this function *lent* from a
+    spanning parent rather than read off the page. Phase 6.5 ticket 06: a
+    lent cell is a reconstruction, not a print, and a consumer that keys on
+    that column has to be able to tell the difference. HMC520A's
+    `Table 4. Pin Function Descriptions` prints no pin number at all for its
+    exposed-pad row; materialization lends it the previous row's `15`, and
+    the device-table layer then sees designator `15` twice and refuses the
+    table — losing all 24 of its real pins. The refusal is right. What was
+    missing is this list, so the refusal never has to happen.
 
     The engine's grids are band-expanded but span-silent — a parent cell
     that spans several rows keeps its association only if it replicates.
@@ -1061,7 +1211,8 @@ def _materialize_band0(grid: list[list[str]], row_ys: list[float],
        the span, so the nearest anchor is the true parent.
     """
     if len(grid) <= 1 or not lefts:
-        return
+        return []
+    lent: list[int] = []
     band0 = lefts[0]
     parent = -1
     anchors = [i for i, row in enumerate(grid) if row[0].strip()]
@@ -1075,6 +1226,8 @@ def _materialize_band0(grid: list[list[str]], row_ys: list[float],
             # (measured indent levels: 6.4-8.5 pt rows vs 14.9-17.0 pt
             # children on AD9081; band headers sit on the column's own edge)
             if depth >= _HDR_ANCHOR_TAU and parent >= 0:
+                # The child printed its own text; the parent's is prefixed.
+                # Not lent: the row does key itself, just less completely.
                 row[0] = f"{grid[parent][0]} {row[0]}"
             elif 0.0 < depth < _HDR_ANCHOR_TAU:
                 has_values = any(c.strip() for c in row[2:])
@@ -1093,6 +1246,51 @@ def _materialize_band0(grid: list[list[str]], row_ys: list[float],
                     best = cand
             if best is not None:
                 row[0] = grid[best[1]][0]
+                lent.append(i)
+    return lent
+
+
+def _unfold_header(rows: list[_Row], lefts: list[float]) -> list[_Row]:
+    """Give back a first grid row that wrap-merging folded into the header.
+
+    A header cell may genuinely wrap ("Lead finish/" over "Ball material"),
+    so the merge is right in general. It goes wrong when the region's row
+    pitch is measured over lines that are not the table's — LMX1204's field
+    tables are followed by the next section's prose at 18 pt, which raises
+    the wrap threshold above the table's own 14 pt row gap and swallows the
+    first data row into the header. Measured: 5 of that document's tables,
+    each reading `Bit 15:0 | Field rb_CLKPOS[31:16] | Type R | ...`, with the
+    header's own declaration destroyed and a rescue split winning the ladder.
+
+    The two shapes separate cleanly on **how much** the later baseline fills:
+
+    - A wrapped header continues *some* cells — 2 of 8 on AFE7950's ordering
+      table — and leaves the rest of its columns empty.
+    - A folded data row fills **every column the header filled**, because it
+      is a row.
+
+    Sub-baseline skew (AD9081's 0.9 pt, HMC520A's 0.4 pt) is one printed line
+    and never splits: `_group_rows` merges it before this sees it.
+    """
+    if len(rows) < 1 or len(lefts) < 2:
+        return rows
+    baselines = _group_rows(sorted(rows[0].lines, key=lambda ln: ln.y), wrap=False)
+    if len(baselines) < 2:
+        return rows
+    head, *rest = baselines
+    filled = [bool(c.strip()) for c in _row_cells(head, lefts)]
+    if not any(filled):
+        return rows
+    unfolded: list[_Row] = [head]
+    for row in rest:
+        cells = _row_cells(row, lefts)
+        if not all(cells[b].strip() for b, was_filled in enumerate(filled) if was_filled):
+            # continues the header rather than replacing it: fold it back in
+            unfolded[0].lines.extend(row.lines)
+            unfolded[0].spans.extend(row.spans)
+            continue
+        unfolded.append(row)
+    return unfolded + rows[1:] if len(unfolded) > 1 else rows
 
 
 def _block_from(rows: list[_Row], lefts: list[float], caption: str,
@@ -1100,6 +1298,7 @@ def _block_from(rows: list[_Row], lefts: list[float], caption: str,
                 footnotes: list[Footnote] | None = None,
                 cited_markers: list[str] | None = None,
                 reconstruction: str = "") -> TableBlock:
+    rows = _unfold_header(rows, lefts)
     headers = _row_cells(rows[0], lefts)
     kept = [(r, _row_cells(r, lefts)) for r in rows[1:]
             if any(c.strip() for c in _row_cells(r, lefts))]
@@ -1107,11 +1306,11 @@ def _block_from(rows: list[_Row], lefts: list[float], caption: str,
     row_ys = [_row_y(r) for r, _c in kept]
     band1 = lefts[1] if len(lefts) > 1 else math.inf
     starts = [
-        min((s.x0 for s in r.spans if lefts[0] <= s.x0 < band1), default=None)
+        min((s.x0 for s in r.spans if _in_band(s.x0, lefts[0], band1)), default=None)
         for r, _c in kept
     ]
     row_pages = [page_number] * len(grid)
-    _materialize_band0(grid, row_ys, starts, lefts)
+    lent = _materialize_band0(grid, row_ys, starts, lefts)
     return TableBlock(
         caption=caption,
         headers=headers,
@@ -1123,6 +1322,7 @@ def _block_from(rows: list[_Row], lefts: list[float], caption: str,
         csv=grid_csv(headers, grid),
         page=page_number,
         row_pages=row_pages,
+        lent_first_cells=lent,
         reconstruction=reconstruction,
     )
 

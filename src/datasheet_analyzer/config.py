@@ -34,7 +34,10 @@ PIPELINE_VERSION = "0.5.0"
 # `specs.json` published without one cannot be the target of a card's
 # `source` — the bump is what republishes it once instead of leaving every
 # citation on that part unresolvable.
-SPECS_SCHEMA_VERSION = "3"
+# 4: a spec record id is keyed on the section's file stem, not its
+# printed number, so records in unnumbered sections stop colliding
+# (phase 6.5, ticket 08). Every id written before this changes.
+SPECS_SCHEMA_VERSION = "4"
 # "2" also carries the GUI change: `PlotRecord.file` is *library*-relative
 # once a document is published into the shared store, not part-relative. A
 # `plots.json` still at "1" predates both changes and must be republished

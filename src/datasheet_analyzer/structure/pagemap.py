@@ -149,3 +149,109 @@ def pin_table_pages(sections: list[SectionNode], page_texts: list[str]) -> int:
                 table.page = best_page
                 pinned += 1
     return pinned
+
+
+#: A row is pinned only on this many distinctive cells found together on one
+#: page — the same bar `pin_table_pages` sets for a whole table, because a
+#: single coincidental match is not evidence about where a row printed.
+_ROW_MIN_HITS = 2
+
+
+def _row_needles(row: list[str]) -> list[str]:
+    """The cells of one row distinctive enough to locate it in page text.
+
+    The same test `_distinctive_needles` applies to a table, read one level
+    down: a value carrying digits, or a symbol carrying none. A row of `—`
+    or of bare single digits yields nothing, which is the honest answer —
+    such a row cannot be located and must keep its table's page.
+    """
+    out: list[str] = []
+    for cell in row:
+        c = cell.strip()
+        has_digit = any(ch.isdigit() for ch in c)
+        if (has_digit and len(c) >= 3 and not c.isdigit()) or (
+            _SYMBOL.match(c) and not has_digit
+        ):
+            out.append(_squash(c))
+    return [n for n in out if len(n) >= 2]
+
+
+def pin_table_row_pages(sections: list[SectionNode], page_texts: list[str]) -> tuple[int, int]:
+    """Pin each grid row's printed page. Returns `(rows_pinned, rows_total)`.
+
+    `TableBlock.row_pages` is real geometry on the `pdf_layout` path, and the
+    HTML path has none — so every row of an HTML-derived table cited the page
+    its *table* began on. Measured on LMX1204's `Table 7-1`: 1 row of 35
+    (`0x5A` / `R90`) prints on page 33 and cited page 32, and the spec records
+    read from it inherited the error.
+
+    One row in thirty-five is small, and small is the dangerous size: a
+    citation that is *nearly* right is the one a reader trusts without
+    opening the page.
+
+    This applies `pin_table_pages`'s rule one level down rather than inventing
+    a second one — locate the row's distinctive cells in the PDF's per-page
+    text — plus the structural fact that makes it safe: **a printed table
+    advances one page at a time.** Rows are walked in order, and each row is
+    only ever asked whether it stayed on the page the row above printed on or
+    moved to the next. Searching the whole section instead is what a first
+    attempt did, and it fails on exactly the row this ticket exists for:
+    `0x5A` and `R90` both also appear on page 54, twenty-two pages past a
+    35-row table, and the resulting tie left the row unpinned.
+
+    **A row that cannot be located stays where the row above printed.** Not
+    the nearest match anywhere in the section, not a guess: a pinning rule
+    confident where it should not be turns one wrong row in thirty-five into
+    an unknown number of them, which is worse than the defect it replaces.
+    Rows already carrying geometry are left alone.
+    """
+    row_pinned = row_total = 0
+    for sec in sections:
+        if not sec.tables or sec.page_start is None:
+            continue
+        # One page past the section's recorded end. That range comes from the
+        # TOC and is a *heading* boundary, not a content one: the next section
+        # starts partway down a page, so a table can legitimately finish on
+        # it. Measured: 12 rows of LMX1204's 6.3.6.1.1 print on the page after
+        # its recorded end and cited the page before. The walk still advances
+        # one page at a time and only on stronger evidence, so widening the
+        # bound cannot reach a distant coincidence.
+        last_page = (sec.page_end or sec.page_start) + 1
+        for table in sec.tables:
+            if not table.grid or table.page is None:
+                continue
+            if len(table.row_pages) == len(table.grid) and any(
+                p is not None for p in table.row_pages
+            ):
+                continue  # `pdf_layout` measured these; do not overwrite
+            pinned_rows: list[int | None] = []
+            current = table.page
+            for row in table.grid:
+                row_total += 1
+                needles = _row_needles(row)
+                nxt = current + 1
+                here = _hits(needles, page_texts, current)
+                there = _hits(needles, page_texts, nxt) if nxt <= last_page else 0
+                # Two distinctive cells found together is the bar, the same
+                # one whole tables are pinned at. A row that prints only one
+                # such cell can still turn the page on *all* of its evidence
+                # — measured: LMX1204's 6.3.6.1.1 rows carry one decimal each
+                # and 12 of them cited the page before the one they print on.
+                bar = min(_ROW_MIN_HITS, len(needles))
+                # Staying is the default; only clear evidence turns the page.
+                if there >= bar and there > here:
+                    current = nxt
+                    row_pinned += 1
+                elif here >= bar and here:
+                    row_pinned += 1
+                pinned_rows.append(current)
+            table.row_pages = pinned_rows
+    return row_pinned, row_total
+
+
+def _hits(needles: list[str], page_texts: list[str], page: int) -> int:
+    """How many of a row's needles print on `page` (1-based)."""
+    if page < 1 or page > len(page_texts):
+        return 0
+    text = _squash(page_texts[page - 1])
+    return sum(1 for n in needles if n in text)

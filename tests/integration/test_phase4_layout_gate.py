@@ -257,9 +257,15 @@ class TestGateTables:
         children = [r for r in fsocr if r.min or r.typ]
         assert len(children) == 3
         ac = next(r for r in children if "AC Coupling" in r.symbol)
-        # the printed '6.43' and '26.5' share one unheaded mini-column, so
-        # the materialized child's min cell honestly carries both values
-        assert ac.min == "6.43 26.5" and ac.typ == "37.75"
+        # Phase 6.5 ticket 06: `26.5` starts at x=465.89 and the `Typ` header
+        # that declares its column at x=465.90 — 0.01 pt further right. The
+        # strict interval put it in `Min`, so the row read
+        # `min='6.43 26.5', typ='37.75', max=''`, which is not what the page
+        # says. Measured against the header row: Min 438.8, Typ 465.9,
+        # Max 521.5, Unit 552.7, and the row prints 6.43 / 26.5 / 37.75 / mA
+        # at 439.07 / 465.89 / 521.47 / 552.90.
+        assert (ac.min, ac.typ, ac.max) == ("6.43", "26.5", "37.75")
+        assert ac.unit.verbatim == "mA"
         assert ac.unit.canonical == "mA"
         ac = q.find(symbol="Gain Matching")
         assert ac and ac[0].typ == "0.7" and ac[0].unit.canonical == "% FSR"
@@ -582,16 +588,26 @@ class TestConfidenceMix:
             print("\nconfidence mix, four gate corpora\n" + "\n".join(rows) + "\n")
 
     def test_a_rescued_grid_is_why_the_captionless_corpora_are_low(self, gate):
-        """LM741, QPA1003P and HMC520A print their tables under section
-        headings with no caption and no header-declared column geometry the
-        data obeys: measured, their grids only ever pass the gate on a rescue
-        split, so every row is honestly `low`. AD9081's captioned ADI tables
-        reconstruct from their own headers and produce all three grades."""
-        for name in ("LM741", "QPA1003P", "HMC520A"):
+        """A rescue split is what makes a row `low`, and it is measurable.
+
+        LM741 and QPA1003P print their tables under section headings with no
+        caption and no header-declared column geometry the data obeys, so
+        their grids only ever pass the gate on a rescue split and every row is
+        honestly `low`.
+
+        **HMC520A left that group in phase 6.5.** Its `Table 1.` is captioned
+        and does declare its columns; what stopped the header-anchored split
+        winning was a body cell starting 0.01-0.05 pt left of the header edge
+        that declares its column, which ticket 06's edge tolerance fixed. The
+        table now reconstructs from its own header — 5 rows became 28 — and
+        the part produces all three grades like AD9081's captioned ADI tables.
+        """
+        for name in ("LM741", "QPA1003P"):
             stats = gate[name].manifest.stats
             assert stats.spec_confidence["low"] == stats.n_specs, name
-        ad9081 = gate["AD9081"].manifest.stats.spec_confidence
-        assert min(ad9081.values()) > 0, ad9081
+        for name in ("AD9081", "HMC520A"):
+            mix = gate[name].manifest.stats.spec_confidence
+            assert min(mix.values()) > 0, f"{name}: {mix}"
 
     def test_no_recorded_value_or_page_moved(self, gate):
         """Criterion: grading changes no answer. `alias_seed_symbols.json` is a

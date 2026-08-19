@@ -882,9 +882,14 @@ class TestPublishing:
 
 
 class TestUnaddressableRecords:
-    """`spec_record_id` is `(section, table_index, row_index)`, so a document
-    whose sections carry no numbers computes one id for several records. The
-    card refuses to cite the ones a resolver would not hand back."""
+    """When two records do compute one id, a card cites neither ambiguously.
+
+    Phase 6.5 ticket 08 removed the *cause* — an id is keyed on the section's
+    file stem now, so AD9081 went from 259 distinct ids over 549 records to
+    549 — but the refusal must stay: any future collision has to be visible
+    rather than resolved by picking whichever record was read first. The
+    records below are constructed with a colliding key on purpose.
+    """
 
     def test_only_the_addressable_record_of_a_colliding_pair_is_cited(self, tmp_path):
         part_dir = tmp_path / "parts" / "COLLIDE"

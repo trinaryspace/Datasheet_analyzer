@@ -394,11 +394,17 @@ class TestPrintedShapesThatAreLayoutNotContent:
         assert "band label 'POWER SUPPLIES'" in " ".join(result.notes)
         assert any("continues row" in n for n in result.notes)
 
-    def test_a_repeat_that_prints_every_column_is_a_duplicate(self, tmp_path):
-        """HMC520A Table 4: the exposed-pad row prints no pin number, and the
-        layout engine's rowspan materialization lends it the row above's `15`.
-        Merging would attach one pin's name to another's description, so the
-        table is rejected with the reason instead."""
+    def test_a_row_that_prints_no_key_costs_only_itself(self, tmp_path):
+        """HMC520A Table 4: the exposed-pad row prints no pin number.
+
+        Phase 6 read the lent `15` as a second claim on pin 15 and refused
+        the whole table — correct given what it could see, and it cost all 24
+        of the datasheet's real pins. Phase 6.5 ticket 06 tells the layout
+        engine to record which first cells it lent, so an unkeyed row reads
+        as unkeyed: the pins that *are* numbered publish, the row that is not
+        becomes no record, and the note says so rather than leaving the table
+        looking complete.
+        """
         rows = [
             ["12", "GND", "Ground", "Ground return."],
             ["15", "LO", "Input", "LO port. See Figure 4."],
@@ -406,6 +412,26 @@ class TestPrintedShapesThatAreLayoutNotContent:
             ["17", "RF", "Output", "RF port."],
         ]
         raw = _pin_doc(tmp_path, "epad.pdf", PIN_HEADERS, rows)
+        found = extract_device_tables(raw, kind=KIND_PIN)
+
+        assert found.rejected == ()
+        assert [r.key for r in found.rows] == ["12", "15", "17"]
+        assert "prints no key of its own" in " ".join(found.accepted[0].notes)
+
+    def test_a_printed_repeat_is_still_a_duplicate(self, tmp_path):
+        """The refusal ticket 06 was careful to keep.
+
+        A row that prints `15` a second time is a real contradiction, not a
+        span: reading it as one pin would attach one pin's description to
+        another. Only a cell the engine *lent* is forgiven.
+        """
+        rows = [
+            ["12", "GND", "Ground", "Ground return."],
+            ["15", "LO", "Input", "LO port. See Figure 4."],
+            ["15", "EPAD", "Ground", "Exposed pad. Connect to GND."],
+            ["17", "RF", "Output", "RF port."],
+        ]
+        raw = _pin_doc(tmp_path, "dupe.pdf", PIN_HEADERS, rows)
         found = extract_device_tables(raw, kind=KIND_PIN)
 
         assert found.rows == ()

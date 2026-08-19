@@ -158,7 +158,8 @@ def _synthetic_record_id(artifact: str, node: dict[str, Any]) -> str:
     except (TypeError, ValueError):
         return ""
     if name == SPECS_ARTIFACT:
-        return spec_record_id(str(node.get("section", "")), table_index, row_index)
+        key = str(node.get("section_key") or node.get("section", ""))
+        return spec_record_id(key, table_index, row_index)
     if name == PINS_ARTIFACT:
         return pin_record_id(table_index, row_index, str(node.get("pin", "")))
     if name == REGISTERS_ARTIFACT:

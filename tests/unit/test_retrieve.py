@@ -430,3 +430,76 @@ class TestCliIsFormatOnly:
         assert cli.main(["plots", "--part", "TEST", "--q", "Fullscale"]) == 0
         out = capsys.readouterr().out
         assert "p.29-37" in out
+
+
+class TestGluedFootnoteMarkers:
+    """A printed symbol keeps its footnote marker; matching must see past it.
+
+    Phase 6.5, ticket 06. A datasheet glues its footnote markers to the cell
+    text and the corpus keeps them there deliberately, so a reader of an
+    answer can tell which footnote applies (`test_pdf_layout_footnotes.py`
+    fixes that contract). The cost is that the printed symbol stops matching
+    the designer's phrase.
+
+    Measured on HMC520A: its `Table 1.` prints `RF RANGE` with a superscript
+    `1`. Until ticket 06 the marker landed in a spurious column of a rescued
+    grid, so the symbol read clean by accident; once the table reconstructed
+    from its own header the marker joined the cell, and "Over what RF
+    frequency range does this mixer work?" started answering with `LO INPUT
+    FREQUENCY RANGE` and `IF FREQUENCY RANGE` — both real records, neither
+    the answer.
+
+    The fix offers the ladder *both* forms. It can only add a match, which is
+    why it is safe: stripping alone is wrong in both directions, and the
+    record's own `cited_markers` cannot referee — it carries `1` for a row
+    reading `VCO Output Divide by 1` too.
+    """
+
+    def _part_with(self, tmp_path: Path, symbol: str) -> Path:
+        part_dir = _write_part(tmp_path / "parts" / "MARKED")
+        doc_dir = part_dir / "docs" / DOC
+        records = _spec_records()
+        records.append(
+            SpecRecord(
+                section="4.5",
+                table_index=1,
+                row_index=0,
+                symbol=symbol,
+                min="6",
+                max="10",
+                unit=SpecUnit(verbatim="GHz", canonical="GHz"),
+                cited_markers=["1"],
+                page=7,
+            )
+        )
+        (doc_dir / "specs.json").write_text(
+            SpecSet(
+                schema_version="1", part_number="MARKED", doc_hash=DOC_HASH, records=records
+            ).model_dump_json(),
+            encoding="utf-8",
+        )
+        return part_dir
+
+    def test_a_marked_symbol_is_reachable_by_its_clean_name(self, tmp_path):
+        part_dir = self._part_with(tmp_path, "RF RANGE1")
+        hits = Retriever.for_part(part_dir).specs(symbol="RF RANGE")
+        assert [h.record.symbol for h in hits] == ["RF RANGE1"]
+
+    def test_the_marker_is_still_in_what_the_answer_prints(self, tmp_path):
+        """Stripping is for matching only — never for what a reader sees."""
+        part_dir = self._part_with(tmp_path, "RF RANGE1")
+        hit = Retriever.for_part(part_dir).specs(symbol="RF RANGE")[0]
+        assert hit.record.symbol == "RF RANGE1"
+
+    def test_a_symbol_that_really_ends_in_a_digit_still_resolves(self, tmp_path):
+        """`VDD1P2` and `AVDD2` end in digits that are part of the name.
+
+        Offering both forms cannot break them: the printed form is still tried
+        first and still matches.
+        """
+        part_dir = self._part_with(tmp_path, "AVDD2")
+        assert [h.record.symbol for h in Retriever.for_part(part_dir).specs(symbol="AVDD2")] == [
+            "AVDD2"
+        ]
+        vdd = Retriever.for_part(part_dir).specs(symbol="VDD1P2")
+        assert [h.record.symbol for h in vdd] == ["VDD1P2"]

@@ -534,6 +534,11 @@ class _PrintedRow:
     cells: tuple[str, ...]
     page: int | None
     grid_index: int | None  # None for a header row that turned out to be data
+    #: False when this row's first cell was lent by a spanning parent rather
+    #: than printed (`TableBlock.lent_first_cells`). Such a row is *unkeyed*:
+    #: the page shows no key for it, and reading the lent text as one makes
+    #: two rows claim a designator the datasheet gave to one.
+    key_printed: bool = True
 
 
 def _is_repeat_header(cells: Sequence[str], headers: Sequence[str]) -> bool:
@@ -588,6 +593,7 @@ def _printed_rows(
                 grid_index=None,
             )
         )
+    lent = set(table.lent_first_cells)
     for grid_index, cells in enumerate(table.grid):
         if not any(c.strip() for c in cells):
             continue
@@ -599,6 +605,7 @@ def _printed_rows(
                 cells=tuple(cells),
                 page=_row_page(table, section, grid_index),
                 grid_index=grid_index,
+                key_printed=grid_index not in lent,
             )
         )
     return rows
@@ -835,7 +842,16 @@ def _stage_rows(
     notes: list[str] = []
     tail_roles = [r for r in mapping.columns if r != spec.key_role]
     for row in printed:
-        key_cell = mapping.cell(row.cells, spec.key_role)
+        # A first cell the layout engine *lent* from a spanning parent is not
+        # a key — the page prints none for this row. Reading it as one is what
+        # made HMC520A's exposed-pad row claim pin 15 a second time and cost
+        # the table all 24 of its real pins. Blank is what the datasheet says.
+        key_is_first_column = mapping.columns.get(spec.key_role) == 0
+        key_cell = (
+            ""
+            if key_is_first_column and not row.key_printed
+            else mapping.cell(row.cells, spec.key_role)
+        )
         values = {role: mapping.cell(row.cells, role) for role in mapping.columns}
         if key_cell and not spec.key_matches(key_cell) and not any(values[r] for r in tail_roles):
             notes.append(f"row {row.row_index}: band label {key_cell!r}")
@@ -855,10 +871,20 @@ def _stage_rows(
             "values": values,
         }
         prev = staged[-1] if staged else None
+        # A tail is a row that keys the same entity as the row above and
+        # leaves empty a column that row filled. Two things say "same
+        # entity": the key repeats, or the row printed no key at all and the
+        # layout engine lent it the one above (`key_printed`). The second is
+        # the stronger evidence and used to be invisible here, because
+        # materialization had already turned it into the first.
+        same_entity = (
+            entry["key_ok"] and key_cell.strip().upper() == prev["key"].strip().upper()
+            if prev is not None
+            else False
+        ) or (not row.key_printed and not entry["keys"])
         continues = (
             prev is not None
-            and entry["key_ok"]
-            and key_cell.strip().upper() == prev["key"].strip().upper()
+            and same_entity
             and any(prev["values"][r].strip() and not values[r].strip() for r in tail_roles)
         )
         if continues:
@@ -870,6 +896,12 @@ def _stage_rows(
                 prev["values"][role] = f"{head} {tail}".strip()
             notes.append(f"row {row.row_index}: continues row {prev['row_index']}")
             continue
+        if not entry["keys"] and not row.key_printed:
+            # Not a continuation and not keyed: the page prints a row here
+            # with nothing in the key column (HMC520A's exposed pad). It
+            # cannot become a keyed record, and dropping it silently would
+            # make the table look complete when it is not.
+            notes.append(f"row {row.row_index}: prints no key of its own")
         staged.append(entry)
     return staged, notes
 

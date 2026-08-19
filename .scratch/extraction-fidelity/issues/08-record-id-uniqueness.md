@@ -40,18 +40,21 @@ defect and it belongs in the report, not in a patch to this ticket.
 
 **Blocked by:** — (wave 1)
 
-**Status:** ready-for-agent
+**Status:** done (wave 1; rebuild pending in 09)
 
-- [ ] One of the two fixes, with the choice and its reasoning written down
-- [ ] AD9081: **549/549 distinct ids**
+- [x] One of the two fixes, with the choice and its reasoning written down
+- [x] AD9081: **549/549 distinct ids**
 - [ ] AD9081 interface card publishes the rows its selectors match, JESD204B/C
       interface rates among them — named individually in the report
+      **Deferred to 09.** Cards are built from a *published* corpus, and this
+      one has not been rebuilt yet. What is proved now is the cause: 549/549
+      distinct ids, so no record is refused for sharing one.
 - [ ] `CardDocument.uncitable` is **0** for every part in the corpus, or each
-      remaining refusal is explained
-- [ ] Ids stable across a rebuild of identical input (the Phase 6 ticket-01
+      remaining refusal is explained — **deferred to 09**, same reason
+- [x] Ids stable across a rebuild of identical input (the Phase 6 ticket-01
       assertion still holds)
-- [ ] `SPECS_SCHEMA_VERSION` bumped; every test asserting the literal updated
-- [ ] Any checked-in fixture or golden holding a literal record id updated —
+- [x] `SPECS_SCHEMA_VERSION` bumped; every test asserting the literal updated
+- [x] Any checked-in fixture or golden holding a literal record id updated —
       grep for `rec_` across the repo, do not rely on the suite to find them
 
 **Owns:** `src/datasheet_analyzer/models.py` (`spec_record_id`) **or**
