@@ -35,6 +35,7 @@ import fitz
 import pytest
 
 from datasheet_analyzer.config import (
+    CARDS_SCHEMA_VERSION,
     SPECS_SCHEMA_VERSION,
     Settings,
     reset_settings_cache,
@@ -61,6 +62,7 @@ from datasheet_analyzer.derive.cards import (
     load_card_lexicon,
     load_or_build_card,
     matches_group,
+    part_corpus_key,
     publish_part_cards,
     render_card,
     row_citation,
@@ -1097,3 +1099,121 @@ class TestCli:
         reset_settings_cache()
         assert cli_card(self._args(part=part, card="voltage")) == 2
         reset_settings_cache()
+
+
+# --- staleness when a document moves (phase 6.5, ticket 03) ----------------
+
+
+def _republish_to_library(part_dir: Path, library_dir: Path) -> None:
+    """Move a part's one document into the shared store, as `publish` would.
+
+    Exactly the transition that produced the defect: the artifacts are
+    untouched, the manifest now names them through `@library/`, and nothing a
+    card records about its *rules* has changed.
+    """
+    import shutil
+
+    shared = library_dir / "docs" / DOC
+    shared.parent.mkdir(parents=True, exist_ok=True)
+    shutil.move(str(part_dir / "docs" / DOC), str(shared))
+    (part_dir / "docs").rmdir()
+
+    manifest = CorpusManifest.model_validate_json(
+        (part_dir / "manifest.json").read_text(encoding="utf-8")
+    )
+    moved = manifest.model_copy(
+        update={
+            "library_root": str(library_dir),
+            "sections": [
+                section.model_copy(update={"file": f"@library/docs/{DOC}/sections/{s}.md"})
+                for section in manifest.sections
+                for s in [section.number]
+            ],
+        }
+    )
+    (part_dir / "manifest.json").write_text(moved.model_dump_json(indent=2), encoding="utf-8")
+
+
+class TestCorpusKey:
+    """A card is stale when its documents no longer resolve where they did.
+
+    `schema_version` and `card_version` describe the *rules* a card was built
+    by, and neither moves when a document is republished to the shared store.
+    Before this key, the card kept citing a directory that no longer existed —
+    87 of 87 filled values on AD9081's power card resolved to no record, and
+    only `audit_card` noticed.
+    """
+
+    def test_the_key_is_stable_across_an_identical_rebuild(self, reference_part):
+        part_dir, part = reference_part
+        first = build_part_cards(part_dir, part, [CARD_POWER], card_version="1")[CARD_POWER]
+        second = build_part_cards(part_dir, part, [CARD_POWER], card_version="1")[CARD_POWER]
+        assert first.corpus_key
+        assert first.corpus_key == second.corpus_key == part_corpus_key(part_dir)
+
+    def test_the_key_does_not_depend_on_where_the_part_is_checked_out(self, tmp_path):
+        """No absolute path may reach the digest, or a clone is born stale."""
+        keys = []
+        for clone in ("checkout-a", "checkout-b"):
+            part_dir = tmp_path / clone / "parts" / "REF9000"
+            publish_corpus(part_dir, "REF9000", reference_records(), sections=SECTIONS)
+            keys.append(part_corpus_key(part_dir))
+        assert keys[0] == keys[1]
+
+    def test_a_card_whose_document_moved_is_rebuilt_not_served(self, tmp_path):
+        part_dir = tmp_path / "parts" / "REF9000"
+        publish_corpus(part_dir, "REF9000", reference_records(), sections=SECTIONS)
+        before = load_or_build_card(part_dir, "REF9000", CARD_POWER, card_version="1")
+        assert before.rows, "the fixture must fill a power card, or this proves nothing"
+        assert all(source.startswith(f"docs/{DOC}") for source in before.sources)
+
+        _republish_to_library(part_dir, tmp_path / "library")
+        after = load_or_build_card(part_dir, "REF9000", CARD_POWER, card_version="1")
+
+        assert after.corpus_key != before.corpus_key
+        assert all(source.startswith(f"@library/docs/{DOC}") for source in after.sources)
+
+    def test_the_rebuilt_card_audits_clean(self, tmp_path):
+        """The point of rebuilding: every citation resolves again."""
+        part_dir = tmp_path / "parts" / "REF9000"
+        publish_corpus(part_dir, "REF9000", reference_records(), sections=SECTIONS)
+        load_or_build_card(part_dir, "REF9000", CARD_POWER, card_version="1")
+
+        _republish_to_library(part_dir, tmp_path / "library")
+        card = load_or_build_card(part_dir, "REF9000", CARD_POWER, card_version="1")
+        audit = audit_card(
+            card, part_dir=part_dir, library_dir=load_card_corpus(part_dir, "REF9000").library_dir
+        )
+
+        assert audit.problems == ()
+        assert audit.resolved == audit.checked > 0
+
+    def test_without_the_key_the_stale_card_would_have_been_served(self, tmp_path):
+        """The defect itself, pinned: the two old terms cannot see the move."""
+        part_dir = tmp_path / "parts" / "REF9000"
+        publish_corpus(part_dir, "REF9000", reference_records(), sections=SECTIONS)
+        before = load_or_build_card(part_dir, "REF9000", CARD_POWER, card_version="1")
+        _republish_to_library(part_dir, tmp_path / "library")
+
+        stale = json.loads((part_dir / CARDS_DIRNAME / f"{CARD_POWER}.json").read_text("utf-8"))
+        assert stale["schema_version"] == CARDS_SCHEMA_VERSION
+        assert stale["card_version"] == "1"  # unchanged by the move — that was the hole
+        assert stale["corpus_key"] == before.corpus_key != part_corpus_key(part_dir)
+
+        # And what serving it would have cost, measured on the file as written.
+        moved = load_card_corpus(part_dir, "REF9000")
+        audit = audit_card(
+            Card.model_validate(stale), part_dir=part_dir, library_dir=moved.library_dir
+        )
+        assert audit.resolved == 0 and audit.checked > 0
+
+    def test_the_batch_gate_agrees_with_the_reader(self, tmp_path):
+        """One staleness rule. Two that could disagree is a rebuild loop."""
+        part_dir = tmp_path / "parts" / "REF9000"
+        publish_corpus(part_dir, "REF9000", reference_records(), sections=SECTIONS)
+        publish_part_cards(part_dir, "REF9000")
+        assert cards_current(part_dir, "1") is True
+
+        _republish_to_library(part_dir, tmp_path / "library")
+        assert cards_current(part_dir, "1") is False
+        assert load_card(part_dir, CARD_POWER, card_version="1") is None

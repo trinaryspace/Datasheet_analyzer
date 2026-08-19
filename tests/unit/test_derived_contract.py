@@ -540,9 +540,19 @@ class TestCardVersion:
         assert cards_current(tmp_path, "1") is True
 
     def test_a_card_built_by_older_rules_is_stale(self, tmp_path):
+        from datasheet_analyzer.derive.cards import part_corpus_key
+
         cards = tmp_path / CARDS_DIRNAME
         cards.mkdir()
-        card = Card(card="power", schema_version=CARDS_SCHEMA_VERSION, card_version="1")
+        # Phase 6.5 ticket 03 added a third term to the key. This test is
+        # about the `card_version` term, so the other two must agree —
+        # otherwise it would pass for the wrong reason.
+        card = Card(
+            card="power",
+            schema_version=CARDS_SCHEMA_VERSION,
+            card_version="1",
+            corpus_key=part_corpus_key(tmp_path),
+        )
         (cards / "power.json").write_text(card.model_dump_json(), encoding="utf-8")
         assert cards_current(tmp_path, "1") is True
         assert cards_current(tmp_path, "2") is False

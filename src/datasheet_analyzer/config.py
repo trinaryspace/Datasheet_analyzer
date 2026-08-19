@@ -52,7 +52,9 @@ LIBRARY_SCHEMA_VERSION = "1"
 # than being served forever in a shape its reader no longer expects.
 PINS_SCHEMA_VERSION = "1"
 REGISTERS_SCHEMA_VERSION = "1"
-CARDS_SCHEMA_VERSION = "1"
+# 2: cards carry `corpus_key`, so a document that moved between the part
+# and the shared store invalidates the card that cited it (phase 6.5, 03).
+CARDS_SCHEMA_VERSION = "2"
 
 
 class Settings(BaseSettings):

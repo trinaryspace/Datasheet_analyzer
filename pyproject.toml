@@ -84,4 +84,10 @@ line-length = 100
 # working state — notes, throwaway probes and git worktrees of other branches —
 # not shipped code, and linting another branch's checkout through this one's
 # config reports findings that cannot be fixed here either.
-extend-exclude = ["Lit_Analyzer", ".scratch", ".claude"]
+# `Reports/` holds the archived plan and report for each phase — a record of
+# what was decided and measured, not source. ruff formats Python inside
+# Markdown fences, and two of those plans illustrate a model with hand-aligned
+# comment columns that carry the explanation; reformatting them would rewrite
+# history to satisfy a source-code gate. `docs/` stays in: nothing there is
+# affected today, and an ADR's code should read like the code it describes.
+extend-exclude = ["Lit_Analyzer", ".scratch", ".claude", "Reports"]

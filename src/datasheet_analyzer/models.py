@@ -1161,12 +1161,19 @@ class Card(BaseModel):
     `card_version` is `DSA_CARD_VERSION` at build time and participates in the
     publish cache key, so changing a selector or a derivation rule forces
     regeneration instead of silently leaving stale cards on disk.
+
+    `corpus_key` is the other half of that key: the rules can be unchanged
+    while the *documents* move between the part and the shared store, which
+    rewrites every `source` the card holds. See `derive.cards.corpus_key`.
     """
 
     part_number: str = ""
     card: str = ""  # one of `CARD_KINDS`
     schema_version: str = ""
     card_version: str = ""  # `DSA_CARD_VERSION` at build; publish cache key
+    # Digest of the documents this card was built against, and where they
+    # resolved to. A cache key, not data: nothing should read meaning out of it.
+    corpus_key: str = ""
     rows: list[CardRow] = Field(default_factory=list)
     # What the card looked for and could not fill, named out loud. The
     # `limits` card's "could not compare" population lives here.

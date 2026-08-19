@@ -27,13 +27,42 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
 import sys
+from collections.abc import MutableMapping
 from pathlib import Path
 
 from datasheet_analyzer.config import PIPELINE_VERSION, get_settings
 from datasheet_analyzer.models import CARD_KINDS, PIN_TYPES
 
 log = logging.getLogger("dsa")
+
+#: Where PyMuPDF's own messages go when nobody has said otherwise.
+#: `fd:2` is stderr in PyMuPDF's message-destination syntax.
+PYMUPDF_MESSAGE_DEFAULT = "fd:2"
+
+
+def _route_pymupdf_messages(env: MutableMapping[str, str] | None = None) -> None:
+    """Send PyMuPDF's own messages to stderr, because stdout is the payload.
+
+    Eight verbs write a JSON payload to stdout and `serve --mcp` writes a
+    JSON-RPC stream there. PyMuPDF writes *its* diagnostics to stdout by
+    default — a deprecated `fitz` import, a malformed xref, a font it could
+    not load — so one line from a dependency turns a machine-readable payload
+    into prose the caller's parser rejects.
+
+    Set unconditionally rather than where chatter is expected, because which
+    messages appear is not this repo's decision: PyMuPDF 1.28.2 warns on
+    `import fitz` and 1.28.0 does not, and `pyproject.toml` pins `>=1.24`.
+    Whether `--json` is parseable must not be decided by dependency
+    resolution.
+
+    `setdefault`, so an operator who routed messages somewhere deliberately
+    keeps their routing.
+    """
+    (os.environ if env is None else env).setdefault(
+        "PYMUPDF_MESSAGE", PYMUPDF_MESSAGE_DEFAULT
+    )
 
 
 def _known_vendor_or_error(vendor: str) -> bool:
@@ -370,13 +399,27 @@ def _cmd_plots(args: argparse.Namespace) -> int:
         q=args.q or "",
         section=args.section or "",
         tags=tags,
+        x_label=args.x_label or "",
+        y_label=args.y_label or "",
+        near_x=args.near_x or "",
+        near_y=args.near_y or "",
     )
     if args.json:
         # Shape owned by PlotHit.as_dict(), like every other JSON surface.
         payload = {
             "part": args.part,
             "project": args.project,
-            "query": {"q": args.q, "section": args.section, "tags": tags},
+            "query": {
+                "q": args.q,
+                "section": args.section,
+                "tags": tags,
+                # What narrowed the result must be visible to a machine
+                # reader, or an empty `hits` is unattributable.
+                "x_label": args.x_label,
+                "y_label": args.y_label,
+                "near_x": args.near_x,
+                "near_y": args.near_y,
+            },
             "hits": [h.as_dict() for h in hits],
         }
         print(json.dumps(payload, ensure_ascii=False, indent=2))
@@ -781,6 +824,9 @@ def _add_scope(parser: argparse.ArgumentParser) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
+    # Before any command function can lazily reach `fitz`: stdout belongs to
+    # the payload, so PyMuPDF's messages go to stderr.
+    _route_pymupdf_messages()
     # Windows consoles default to cp1252 — reports contain ✅/❌/± etc.
     for stream in (sys.stdout, sys.stderr):
         try:
@@ -890,6 +936,23 @@ def main(argv: list[str] | None = None) -> int:
     p_plots.add_argument("--section", default="", help="exact section number")
     p_plots.add_argument(
         "--tag", default="", help="comma-separated tags (all must match)"
+    )
+    # Axis filters match what the figure *prints on its axes*, not what its
+    # caption says. A figure whose axes could not be read is ruled out by
+    # them — `query.find_plots` documents why that is the honest direction.
+    p_plots.add_argument(
+        "--x-label", default="", help="substring of the printed x-axis title"
+    )
+    p_plots.add_argument(
+        "--y-label", default="", help="substring of the printed y-axis title"
+    )
+    p_plots.add_argument(
+        "--near-x",
+        default="",
+        help="keep figures whose printed x range covers this quantity, e.g. 3.5GHz",
+    )
+    p_plots.add_argument(
+        "--near-y", default="", help="the same for the y axis, e.g. -40dBc"
     )
     p_plots.add_argument(
         "--json",

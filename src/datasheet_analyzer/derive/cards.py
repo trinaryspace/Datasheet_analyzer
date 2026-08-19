@@ -58,6 +58,7 @@ compare --card` sit on.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import logging
 import math
@@ -389,8 +390,65 @@ class CardCorpus:
     def uncitable(self) -> int:
         return sum(doc.uncitable for doc in self.documents)
 
+    @property
+    def corpus_key(self) -> str:
+        """This corpus's contribution to a card's cache key — see `corpus_key`."""
+        return corpus_key((doc.name, doc.ref_base) for doc in self.documents)
+
     def section_title(self, number: str) -> str:
         return self.section_titles.get((number or "").strip(), "")
+
+
+def corpus_key(documents: Iterable[tuple[str, str]]) -> str:
+    """A short digest of *where* a card's documents resolved to.
+
+    A card's every `source` is built from a document's `ref_base`, and that
+    base flips between `docs/<doc>` and `@library/docs/<doc>` when the
+    document is republished to the shared store. Neither `CARDS_SCHEMA_VERSION`
+    nor `DSA_CARD_VERSION` changes when that happens, so before this key a
+    moved document left a published card *stale but current-looking*: all 87
+    filled values on AD9081's power card cited a directory that no longer
+    existed, and only `audit_card` noticed.
+
+    Folding the resolved set into the cache key turns that into a cache miss.
+    The rules it must obey to be a cache key at all:
+
+    - **Pure.** Sorted pairs, no absolute paths, no timestamps, no filesystem
+      order — a rebuild of identical input must produce an identical key, or
+      every card is permanently stale and rebuilds on every read.
+    - **Cheap.** Recomputing it must cost a manifest read, not a corpus read
+      (`part_corpus_key`).
+
+    It is a cache key and nothing else: 16 hex characters carry no meaning a
+    reader should try to interpret, which is deliberate — a field that looked
+    like data would invite someone to read the corpus's shape out of it.
+    """
+    payload = "\n".join(sorted(f"{name}\t{ref}" for name, ref in documents))
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
+
+
+def part_corpus_key(part_dir: Path | str) -> str:
+    """`corpus_key` for a built part, without loading its records.
+
+    Reads through `CorpusIndex`, which resolves each manifest document to the
+    root it was actually published under — the same resolution
+    `load_card_corpus` performs, so the two cannot disagree about what the
+    corpus looks like. `CorpusIndex.load` is process-cached, so the manifest
+    is read once however many cards are checked.
+    """
+    from datasheet_analyzer.retrieve.index import CorpusIndex
+
+    part_dir = Path(part_dir)
+    index = CorpusIndex.load(part_dir)
+    return corpus_key(
+        (
+            doc.name,
+            _ref_base(
+                doc.directory or (part_dir / "docs" / doc.name), part_dir, index.library_dir
+            ),
+        )
+        for doc in index.docs
+    )
 
 
 def _ref_base(doc_dir: Path, part_dir: Path, library_dir: Path | None) -> str:
@@ -1139,6 +1197,7 @@ def build_card(
         card=kind,
         schema_version=CARDS_SCHEMA_VERSION,
         card_version=version,
+        corpus_key=corpus.corpus_key,
         rows=rows,
         unresolved=build.unresolved,
         warnings=build.warnings,
@@ -1332,12 +1391,14 @@ def write_card(part_dir: Path | str, card: Card) -> tuple[Path, Path]:
 def load_card(part_dir: Path | str, kind: str, *, card_version: str = "") -> Card | None:
     """Read a published card, or `None` when it is absent or **stale**.
 
-    Stale means built by different rules: a `schema_version` this reader does
-    not speak, or a `card_version` other than the one in force. Returning
-    `None` is what makes `DSA_CARD_VERSION` regenerate a card instead of
-    leaving one on disk whose numbers no longer follow from the rule that is
-    written down — the same publish-cache-key contract `publish.cards_current`
-    enforces for the batch skip gate.
+    Stale means built by different rules or against a different corpus: a
+    `schema_version` this reader does not speak, a `card_version` other than
+    the one in force, or a `corpus_key` naming documents that no longer
+    resolve where they did (see `corpus_key`). Returning `None` is what makes
+    a rule change or a republish regenerate a card instead of leaving one on
+    disk whose numbers no longer follow from the rule that is written down —
+    the same publish-cache-key contract `publish.cards_current` enforces for
+    the batch skip gate.
     """
     version = card_version or get_settings().card_version
     path, _md = card_paths(part_dir, kind)
@@ -1349,6 +1410,8 @@ def load_card(part_dir: Path | str, kind: str, *, card_version: str = "") -> Car
         log.warning("unreadable %s: %s", path, exc)
         return None
     if card.schema_version != CARDS_SCHEMA_VERSION or card.card_version != version:
+        return None
+    if card.corpus_key != part_corpus_key(part_dir):
         return None
     return card
 

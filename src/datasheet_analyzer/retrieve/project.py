@@ -84,12 +84,30 @@ class ProjectRetriever:
         conditions: str = "",
         section: str = "",
         tags: list[str] | None = None,
+        x_label: str = "",
+        y_label: str = "",
+        near_x: str = "",
+        near_y: str = "",
     ) -> list[PlotHit]:
+        """Every member's plot hits, filtered by the same rules `Retriever` uses.
+
+        The axis filters are forwarded rather than reimplemented: a project
+        lookup that narrowed differently from a part lookup would make the
+        same query mean two things depending on the scope it was asked in.
+        """
         return [
             hit
             for member in self.members
             for hit in member.plots(
-                q=q, caption=caption, conditions=conditions, section=section, tags=tags
+                q=q,
+                caption=caption,
+                conditions=conditions,
+                section=section,
+                tags=tags,
+                x_label=x_label,
+                y_label=y_label,
+                near_x=near_x,
+                near_y=near_y,
             )
         ]
 

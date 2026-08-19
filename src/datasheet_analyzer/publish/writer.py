@@ -276,9 +276,16 @@ def cards_current(part_dir: Path, card_version: str) -> bool:
     cards is not a part with stale cards, and demanding one would put every
     part without them into a rebuild loop.
     """
+    from datasheet_analyzer.derive.cards import part_corpus_key
+
     cards_dir = Path(part_dir) / CARDS_DIRNAME
     if not cards_dir.is_dir():
         return True
+    # One staleness rule, read from one place. If this disagreed with
+    # `derive.cards.load_card`, the batch gate would skip a part whose cards
+    # that reader then rebuilt on every query — or rebuild one it was happy
+    # with. Computed once for the directory: it is the same for every card.
+    expected_corpus = part_corpus_key(part_dir)
     for path in sorted(cards_dir.glob("*.json")):
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
@@ -289,6 +296,8 @@ def cards_current(part_dir: Path, card_version: str) -> bool:
         if data.get("schema_version") != CARDS_SCHEMA_VERSION:
             return False
         if data.get("card_version") != card_version:
+            return False
+        if data.get("corpus_key") != expected_corpus:
             return False
     return True
 
