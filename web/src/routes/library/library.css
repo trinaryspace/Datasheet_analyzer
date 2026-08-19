@@ -190,3 +190,48 @@
   margin: 0.5rem 0;
   color: var(--dsa-muted, #6b7280);
 }
+
+/* --- the bookshelf, seen through the open project ---------------------------- */
+
+.library-scope {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0 0 0.6rem;
+  font-size: 0.85em;
+}
+
+.library-scope button[aria-pressed='true'] {
+  font-weight: 650;
+  border-color: var(--dsa-focus, #2563eb);
+}
+
+.library-scope-note,
+.library-in-project {
+  color: var(--dsa-muted, #6b7280);
+  font-size: 0.85em;
+}
+
+.library-note {
+  margin: 0 0 0.6rem;
+  padding: 0.35rem 0.6rem;
+  border: 1px solid var(--dsa-border, #d8dee6);
+  border-radius: 6px;
+  font-size: 0.88em;
+}
+
+.library-doc {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.library-add-to-project,
+.library-in-project {
+  align-self: flex-start;
+  margin: 0 0 0.2rem;
+}
+
+.library-add-to-project {
+  font-size: 0.82em;
+}

@@ -301,3 +301,124 @@ def test_excluding_never_touches_a_part_or_the_library(
 
     assert [p["part_number"] for p in row["parts"]] == ["AFE7950"]
     assert (part_dir / "manifest.json").read_bytes() == manifest
+
+
+# --- the shelf: what is in this project's folder ---------------------------------
+
+
+def make_pdf(path: Path, body: str) -> Path:
+    import fitz
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    doc = fitz.open()
+    page = doc.new_page()
+    page.insert_text((72, 72), body, fontsize=12)
+    doc.save(path)
+    doc.close()
+    return path
+
+
+def open_shelf(client: TestClient, tmp_path: Path, name: str = "radar") -> Path:
+    shelf = tmp_path / name
+    shelf.mkdir(parents=True, exist_ok=True)
+    client.post("/api/projects/open", json={"directory": str(shelf)})
+    return shelf
+
+
+def test_the_shelf_lists_unprocessed_pdfs_and_says_they_are_unprocessed(
+    client: TestClient, tmp_path: Path
+) -> None:
+    """A PDF you dropped in is on the shelf; the Library has never heard of it.
+
+    This is the distinction the rail exists for — "not listed" must not mean
+    both "not in the folder" and "not built".
+    """
+    shelf = open_shelf(client, tmp_path)
+    make_pdf(shelf / "dropped-in.pdf", "ACME1234 Data Sheet")
+
+    out = client.get("/api/projects/radar/shelf").json()
+    assert [d["filename"] for d in out["documents"]] == ["dropped-in.pdf"]
+    assert out["documents"][0]["processed"] is False
+    assert out["count"] == 1
+    assert out["processed_count"] == 0
+
+
+def test_the_shelf_reports_where_each_document_sits(client: TestClient, tmp_path: Path) -> None:
+    shelf = open_shelf(client, tmp_path)
+    make_pdf(shelf / "top.pdf", "one")
+    make_pdf(shelf / "datasheets" / "deep.pdf", "two")
+
+    out = client.get("/api/projects/radar/shelf").json()
+    where = {d["filename"]: d["relative_dir"] for d in out["documents"]}
+    assert where == {"top.pdf": "", "deep.pdf": "datasheets"}
+
+
+def test_a_project_with_no_folder_has_an_empty_shelf(client: TestClient) -> None:
+    client.post("/api/projects", json={"name": "handmade"})
+    out = client.get("/api/projects/handmade/shelf").json()
+    assert out["documents"] == []
+    assert out["directory"] == ""
+
+
+def test_adding_the_same_bytes_twice_copies_nothing(
+    client: TestClient, tmp_path: Path, settings: Settings
+) -> None:
+    """Identity is the hash, so a second name for one document is duplication."""
+    from datasheet_analyzer.extract.pdf_structure import compute_content_hash
+    from datasheet_analyzer.library.store import LibraryStore
+    from datasheet_analyzer.models import Applicability, LibraryDocument, SourceDocument
+
+    shelf = open_shelf(client, tmp_path)
+    source = make_pdf(tmp_path / "elsewhere" / "ad9081.pdf", "AD9081 Data Sheet")
+    digest = compute_content_hash(source)
+    LibraryStore.for_settings(settings).put(
+        LibraryDocument(
+            source=SourceDocument(content_hash=digest, path=str(source), part_number="AD9081"),
+            applicability=Applicability.for_parts(["AD9081"], evidence="test"),
+        )
+    )
+
+    first = client.post("/api/projects/radar/shelf", json={"content_hash": digest}).json()
+    assert first["copied"] is True
+    assert (shelf / "ad9081.pdf").is_file()
+
+    second = client.post("/api/projects/radar/shelf", json={"content_hash": digest}).json()
+    assert second["copied"] is False
+    assert "already on this shelf" in second["reason"]
+    assert len(list(shelf.glob("*.pdf"))) == 1
+
+
+def test_a_name_clash_copies_alongside_and_flags_it_rather_than_overwriting(
+    client: TestClient, tmp_path: Path, settings: Settings
+) -> None:
+    """The file already in your folder is one you put there."""
+    from datasheet_analyzer.extract.pdf_structure import compute_content_hash
+    from datasheet_analyzer.library.store import LibraryStore
+    from datasheet_analyzer.models import Applicability, LibraryDocument, SourceDocument
+
+    shelf = open_shelf(client, tmp_path)
+    mine = make_pdf(shelf / "ad9081.pdf", "MY OWN NOTES, not the vendor datasheet")
+    mine_bytes = mine.read_bytes()
+
+    source = make_pdf(tmp_path / "elsewhere" / "ad9081.pdf", "AD9081 Data Sheet")
+    digest = compute_content_hash(source)
+    LibraryStore.for_settings(settings).put(
+        LibraryDocument(
+            source=SourceDocument(content_hash=digest, path=str(source), part_number="AD9081"),
+            applicability=Applicability.for_parts(["AD9081"], evidence="test"),
+        )
+    )
+
+    out = client.post("/api/projects/radar/shelf", json={"content_hash": digest}).json()
+
+    assert out["copied"] is True
+    assert out["renamed"] is True
+    assert "ad9081" in out["reason"]
+    assert mine.read_bytes() == mine_bytes, "the user's own file was overwritten"
+    assert (shelf / "ad9081 (2).pdf").is_file()
+
+
+def test_adding_an_unknown_document_is_a_404(client: TestClient, tmp_path: Path) -> None:
+    open_shelf(client, tmp_path)
+    response = client.post("/api/projects/radar/shelf", json={"content_hash": "nope"})
+    assert response.status_code == 404

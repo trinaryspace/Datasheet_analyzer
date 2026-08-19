@@ -15,6 +15,8 @@ in parallel against the same contract.
 | PATCH | `/api/projects/{name}` | `ProjectPatchIn` | `ProjectOut` | — |
 | POST | `/api/projects/open` | `ProjectOpenIn` | `ProjectOut` | — |
 | PUT | `/api/projects/{name}/exclusions` | `ProjectExcludeIn` | `ProjectOut` | — |
+| GET | `/api/projects/{name}/shelf` | — | `ShelfOut` | — |
+| POST | `/api/projects/{name}/shelf` | `ShelfAddIn` | `ShelfAddOut` | — |
 | POST | `/api/browse/dialog` | — | `BrowsePickOut` | — |
 | GET | `/api/browse/list` | query `path` | `BrowseListOut` | — |
 | POST | `/api/analyze/scan` | `ScanIn` | `ScanOut` | 08 |
@@ -131,6 +133,10 @@ __all__ = [
     "SessionOut",
     "SessionSummary",
     "SessionsOut",
+    "ShelfAddIn",
+    "ShelfAddOut",
+    "ShelfDocument",
+    "ShelfOut",
     "StartIn",
     "StartOut",
 ]
@@ -292,6 +298,64 @@ class ProjectsOut(BaseModel):
 
     projects: list[ProjectOut] = Field(default_factory=list)
     count: int = 0
+
+
+# --- a project's shelf ----------------------------------------------------------
+
+
+class ShelfDocument(BaseModel):
+    """One PDF sitting in a project's folder.
+
+    `processed` is the field the rail exists for: a document the Library knows
+    has a corpus and the model can read it; one it does not is a file on the
+    shelf and nothing more. Rendering them the same would make "not listed"
+    mean two different things.
+    """
+
+    filename: str
+    path: str
+    relative_dir: str = ""
+    content_hash: str = ""
+    processed: bool = False
+    #: Filled from the Library when `processed`; empty otherwise.
+    part_number: str = ""
+    parts_reached: list[str] = Field(default_factory=list)
+    labels: list[str] = Field(default_factory=list)
+    page_count: int = 0
+    #: True when this project has told it never to build.
+    excluded: bool = False
+
+
+class ShelfOut(BaseModel):
+    """`GET /api/projects/{name}/shelf` — what is in this project's folder."""
+
+    project: str = ""
+    directory: str = ""
+    documents: list[ShelfDocument] = Field(default_factory=list)
+    count: int = 0
+    processed_count: int = 0
+
+
+class ShelfAddIn(BaseModel):
+    """`POST /api/projects/{name}/shelf` — put a known document on the shelf.
+
+    Identified by content hash rather than path: the caller is picking from
+    the Library, which is keyed that way, and the file's location is the
+    Library's business rather than the caller's.
+    """
+
+    content_hash: str
+
+
+class ShelfAddOut(BaseModel):
+    """What adding did — including the case where it did nothing."""
+
+    document: ShelfDocument
+    copied: bool = False
+    renamed: bool = False
+    reason: str = ""
+    #: Built parts the document reaches that were added to the project.
+    parts_added: list[str] = Field(default_factory=list)
 
 
 # --- browsing for a folder ----------------------------------------------------

@@ -31,9 +31,12 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from datasheet_analyzer.app.contracts import API_PREFIX, LocateOut
 from datasheet_analyzer.app.deps import get_settings_dep
 from datasheet_analyzer.app.locate import locate as locate_needle
+from datasheet_analyzer.app.sectiontext import needles_from_section
 from datasheet_analyzer.config import Settings
 from datasheet_analyzer.models import CorpusManifest, SourceDocument
+from datasheet_analyzer.retrieve import Retriever
 from datasheet_analyzer.retrieve.index import discover_parts
+from datasheet_analyzer.retrieve.results import is_furniture
 
 log = logging.getLogger(__name__)
 
@@ -132,6 +135,29 @@ def get_locate(
     page: Annotated[int, Query(description="1-based printed page the citation names")] = 1,
     needle: Annotated[str, Query(description="The record's own text: cell, caption, opening")] = "",
 ) -> LocateOut:
-    """Rectangles to highlight for one citation, or an honest miss."""
+    """Rectangles to highlight for one citation, or an honest miss.
+
+    An empty `needle` is not an error: `section_needle` deliberately refuses a
+    section titled `Page 3`, because that string is the running footer and
+    highlighting it would be confidently wrong. When that happens the needle
+    is recovered here from the section's own published markdown — one file
+    read, on click, for the citation the reader actually opened.
+    """
     pdf_path = _resolve_document(settings, part, doc_hash)
-    return locate_needle(pdf_path, page, needle)
+    wanted = (needle or "").strip()
+    if wanted and not is_furniture(wanted):
+        # The record's own text. Trusted wherever it lands.
+        return locate_needle(pdf_path, page, wanted)
+
+    # Nothing usable came with the citation, so recover candidates from the
+    # section's markdown and take the first that lands on content. Each is a
+    # guess, which is why they are filtered to the body of the page.
+    candidates = needles_from_section(
+        Retriever.for_part(Path(settings.parts_dir) / part).index, doc_hash, page
+    )
+    result = locate_needle(pdf_path, page, "")
+    for candidate in candidates:
+        result = locate_needle(pdf_path, page, candidate, content_only=True)
+        if result.found:
+            break
+    return result

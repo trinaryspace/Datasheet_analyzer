@@ -30,6 +30,10 @@ export interface PartGroupRowProps {
   onRemoveFromProject?: (partNumber: string) => void;
   /** Present only for an unbuilt part; absent hides the offer. */
   onBuild?: (group: PartGroup) => void;
+  /** Copy a document onto the open project's shelf. Absent hides the offer. */
+  onAddToProject?: (contentHash: string) => void;
+  /** Content hashes already on the open project's shelf. */
+  inProject?: ReadonlySet<string>;
   /** Open on first render — used for a single search result. */
   defaultOpen?: boolean;
 }
@@ -45,6 +49,8 @@ export function PartGroupRow({
   onPatched,
   onRemoveFromProject,
   onBuild,
+  onAddToProject,
+  inProject,
   defaultOpen = false,
 }: PartGroupRowProps) {
   const { part_number: part, built, documents, labels } = group;
@@ -102,13 +108,28 @@ export function PartGroupRow({
 
       <div className="library-part-body">
         {documents.map((document) => (
-          <DocumentRow
-            key={document.content_hash}
-            document={document}
-            knownLabels={knownLabels}
-            applicabilityControl={applicabilityControl}
-            onPatched={onPatched}
-          />
+          <div key={document.content_hash} className="library-doc">
+            <DocumentRow
+              document={document}
+              knownLabels={knownLabels}
+              applicabilityControl={applicabilityControl}
+              onPatched={onPatched}
+            />
+            {onAddToProject ? (
+              inProject?.has(document.content_hash) ? (
+                <p className="library-in-project">In this project</p>
+              ) : (
+                <button
+                  type="button"
+                  className="library-add-to-project"
+                  onClick={() => onAddToProject(document.content_hash)}
+                  aria-label={`Add ${document.filename} to this project`}
+                >
+                  Add to project
+                </button>
+              )
+            ) : null}
+          </div>
         ))}
       </div>
     </details>

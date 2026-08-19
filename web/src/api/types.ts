@@ -235,6 +235,52 @@ export interface ProjectsOut {
   count: number;
 }
 
+// --- a project's shelf ------------------------------------------------------------
+
+/**
+ * One PDF sitting in a project's folder.
+ *
+ * `processed` is why the rail exists: a processed document has a corpus and
+ * the model can read it; an unprocessed one is a file on your shelf and
+ * nothing more. They must not render the same, or "not listed" would mean
+ * both "not in the folder" and "not built".
+ */
+export interface ShelfDocument {
+  filename: string;
+  path: string;
+  relative_dir: string;
+  content_hash: string;
+  processed: boolean;
+  part_number: string;
+  parts_reached: string[];
+  labels: string[];
+  page_count: number;
+  excluded: boolean;
+}
+
+/** `GET /api/projects/{name}/shelf`. */
+export interface ShelfOut {
+  project: string;
+  directory: string;
+  documents: ShelfDocument[];
+  count: number;
+  processed_count: number;
+}
+
+/** `POST /api/projects/{name}/shelf` — a processed document, by hash. */
+export interface ShelfAddIn {
+  content_hash: string;
+}
+
+/** What adding did, including the case where it did nothing. */
+export interface ShelfAddOut {
+  document: ShelfDocument;
+  copied: boolean;
+  renamed: boolean;
+  reason: string;
+  parts_added: string[];
+}
+
 // --- browsing for a folder ------------------------------------------------------
 
 /**

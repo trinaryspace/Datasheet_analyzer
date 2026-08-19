@@ -516,3 +516,157 @@ body {
     scroll-behavior: auto !important;
   }
 }
+
+/* --- the shelf rail ----------------------------------------------------------
+   A narrow column inside the working pane, so resizing the PDF pane never
+   squeezes it and it survives navigation between screens. Tokens only: this
+   stylesheet is the shell's, and a literal here would fork the palette. */
+
+.shell__work {
+  display: flex;
+  min-width: 0;
+  height: 100%;
+}
+
+.shell__work > main {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: auto;
+}
+
+.shelf-rail {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  width: 15rem;
+  min-width: 0;
+  border-right: var(--divider-size) solid var(--color-border);
+  background: var(--color-bg-sunken);
+  overflow: hidden;
+}
+
+.shelf-rail[data-collapsed='true'] {
+  width: 2rem;
+}
+
+.shelf-rail-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1);
+  border-bottom: var(--divider-size) solid var(--color-border);
+}
+
+.shelf-rail-toggle {
+  flex: none;
+  width: 1.4rem;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--color-fg-muted);
+  cursor: pointer;
+  line-height: 1;
+}
+
+.shelf-rail-title {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  font-size: var(--text-sm);
+  font-weight: 650;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.shelf-rail-count {
+  font-weight: 400;
+  font-size: var(--text-xs);
+  color: var(--color-fg-muted);
+}
+
+.shelf-rail-body {
+  flex: 1 1 auto;
+  overflow-y: auto;
+}
+
+.shelf-rail-note {
+  margin: var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--color-fg-muted);
+}
+
+.shelf-rail-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.shelf-rail-item {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-1);
+  border-bottom: var(--divider-size) solid var(--color-border);
+}
+
+/* Unbuilt: on your shelf, invisible to the model. It must not read the same
+   as a document the corpus actually holds. */
+.shelf-rail-item[data-processed='false'] {
+  opacity: 0.6;
+}
+
+.shelf-rail-item[data-excluded='true'] .shelf-rail-name {
+  text-decoration: line-through;
+}
+
+.shelf-rail-open {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+  padding: var(--space-2);
+  border: 0;
+  background: none;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  font-size: var(--text-xs);
+}
+
+.shelf-rail-open:disabled {
+  cursor: default;
+}
+
+.shelf-rail-open:hover:not(:disabled) {
+  background: var(--color-bg-raised);
+}
+
+.shelf-rail-open:focus-visible {
+  outline: var(--focus-ring-width) solid var(--color-focus);
+  outline-offset: calc(-1 * var(--focus-ring-width));
+}
+
+.shelf-rail-name {
+  overflow-wrap: anywhere;
+  font-weight: 600;
+}
+
+.shelf-rail-where,
+.shelf-rail-unbuilt {
+  color: var(--color-fg-muted);
+}
+
+.shelf-rail-label {
+  align-self: flex-start;
+  padding: 0 0.35em;
+  border: var(--divider-size) solid var(--color-border);
+  border-radius: var(--radius-pill);
+  color: var(--color-fg-muted);
+}
+
+.shelf-rail-build {
+  flex: none;
+  margin: var(--space-2) var(--space-1) 0 0;
+  font-size: var(--text-xs);
+}

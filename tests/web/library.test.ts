@@ -29,6 +29,7 @@ import type {
   LibraryOut,
   ProjectOut,
   SessionOut,
+  ShelfDocument,
   SessionSummary,
   SessionsOut,
 } from '../../web/src/api/types';
@@ -68,6 +69,7 @@ vi.mock('../../web/src/api/client', async (importOriginal) => {
     addProjectParts: vi.fn(),
     removeProjectPart: vi.fn(),
     startAnalyze: vi.fn(),
+    addToShelf: vi.fn(),
   };
 });
 
@@ -83,6 +85,7 @@ const createProject = vi.mocked(client.createProject);
 const addProjectParts = vi.mocked(client.addProjectParts);
 const removeProjectPart = vi.mocked(client.removeProjectPart);
 const startAnalyze = vi.mocked(client.startAnalyze);
+const addToShelf = vi.mocked(client.addToShelf);
 
 /** A project row, as `GET /api/projects` returns it. */
 function projectOut(name: string, parts: string[] = []): ProjectOut {
@@ -116,6 +119,23 @@ function renderLibrary(props: Parameters<typeof LibraryScreen>[0] = {}) {
       createElement(LocationProbe),
     ),
   );
+}
+
+/** A `ShelfDocument`, as `POST /api/projects/{name}/shelf` returns one. */
+function shelfDocument(over: Partial<ShelfDocument> = {}): ShelfDocument {
+  return {
+    filename: 'away.pdf',
+    path: '/shelf/radar/away.pdf',
+    relative_dir: '',
+    content_hash: 'ccc333',
+    processed: true,
+    part_number: 'AD9081',
+    parts_reached: ['AD9081'],
+    labels: [],
+    page_count: 12,
+    excluded: false,
+    ...over,
+  };
 }
 
 // --- fixtures -----------------------------------------------------------------
@@ -912,5 +932,146 @@ describe('building an unbuilt part from the library', () => {
 
     await user.click(screen.getByRole('button', { name: /Build AFE7951 from its documents/ }));
     expect(await screen.findByRole('alert')).toHaveTextContent('the recorded path no longer exists');
+  });
+});
+
+// --- the bookshelf, seen through the open project (round 3) ----------------------
+
+describe('the library as a bookshelf', () => {
+  const SHELF = '/shelf/radar';
+
+  function withProject(directory: string) {
+    getProjects.mockResolvedValue({
+      projects: [{ ...projectOut('radar', ['AFE7950']), directory }],
+      count: 1,
+    });
+  }
+
+  it('defaults to the documents in the open project folder', async () => {
+    const user = userEvent.setup();
+    withProject(SHELF);
+    getLibrary.mockResolvedValue(
+      libraryOut({
+        documents: [
+          libraryDocument({ path: `${SHELF}/here.pdf`, filename: 'here.pdf' }),
+          libraryDocument({
+            content_hash: 'ccc333',
+            path: '/somewhere/else/away.pdf',
+            filename: 'away.pdf',
+            part_number: 'AD9081',
+            parts_reached: ['AD9081'],
+          }),
+        ],
+      }),
+    );
+
+    renderLibrary();
+    // The scope toggle only exists once a project is open.
+    await user.selectOptions(await screen.findByLabelText('Working set'), 'radar');
+    await screen.findByRole('button', { name: 'In radar' });
+
+    await waitFor(() =>
+      expect(screen.queryByRole('article', { name: 'Document away.pdf' })).toBeNull(),
+    );
+    expect(screen.getByRole('article', { name: 'Document here.pdf' })).toBeInTheDocument();
+  });
+
+  it('opens the whole bookshelf on demand — that is what it is for', async () => {
+    const user = userEvent.setup();
+    withProject(SHELF);
+    getLibrary.mockResolvedValue(
+      libraryOut({
+        documents: [
+          libraryDocument({ path: `${SHELF}/here.pdf`, filename: 'here.pdf' }),
+          libraryDocument({
+            content_hash: 'ccc333',
+            path: '/somewhere/else/away.pdf',
+            filename: 'away.pdf',
+            part_number: 'AD9081',
+            parts_reached: ['AD9081'],
+          }),
+        ],
+      }),
+    );
+
+    renderLibrary();
+    await user.selectOptions(await screen.findByLabelText('Working set'), 'radar');
+    await user.click(await screen.findByRole('button', { name: 'All documents' }));
+
+    expect(
+      await screen.findByRole('article', { name: 'Document away.pdf' }),
+    ).toBeInTheDocument();
+  });
+
+  it('adds a document from the bookshelf to the project, copying the PDF', async () => {
+    const user = userEvent.setup();
+    withProject(SHELF);
+    getLibrary.mockResolvedValue(
+      libraryOut({
+        documents: [
+          libraryDocument({
+            content_hash: 'ccc333',
+            path: '/somewhere/else/away.pdf',
+            filename: 'away.pdf',
+            part_number: 'AD9081',
+            parts_reached: ['AD9081'],
+          }),
+        ],
+      }),
+    );
+    addToShelf.mockResolvedValue({
+      document: shelfDocument(),
+      copied: true,
+      renamed: false,
+      reason: '',
+      parts_added: ['AD9081'],
+    });
+
+    renderLibrary();
+    await user.selectOptions(await screen.findByLabelText('Working set'), 'radar');
+    await user.click(await screen.findByRole('button', { name: 'All documents' }));
+
+    await user.click(
+      await screen.findByRole('button', { name: 'Add away.pdf to this project' }),
+    );
+
+    await waitFor(() =>
+      expect(addToShelf).toHaveBeenCalledWith('radar', { content_hash: 'ccc333' }),
+    );
+  });
+
+  it('says when a name clash was copied alongside rather than over', async () => {
+    const user = userEvent.setup();
+    withProject(SHELF);
+    getLibrary.mockResolvedValue(
+      libraryOut({
+        documents: [
+          libraryDocument({
+            content_hash: 'ccc333',
+            path: '/elsewhere/ad9081.pdf',
+            filename: 'ad9081.pdf',
+            part_number: 'AD9081',
+            parts_reached: ['AD9081'],
+          }),
+        ],
+      }),
+    );
+    addToShelf.mockResolvedValue({
+      document: shelfDocument({ filename: 'ad9081 (2).pdf' }),
+      copied: true,
+      renamed: true,
+      reason: 'a different file was already called ad9081.pdf; copied as ad9081 (2).pdf',
+      parts_added: [],
+    });
+
+    renderLibrary();
+    await user.selectOptions(await screen.findByLabelText('Working set'), 'radar');
+    await user.click(await screen.findByRole('button', { name: 'All documents' }));
+    await user.click(
+      await screen.findByRole('button', { name: 'Add ad9081.pdf to this project' }),
+    );
+
+    // The user now has two files that look like one document, and must be told.
+    expect(await screen.findByText(/copied as ad9081 \(2\)\.pdf/)).toBeInTheDocument();
   });
 });

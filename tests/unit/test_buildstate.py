@@ -89,26 +89,36 @@ def test_a_freshly_built_pdf_is_current_and_carries_the_gates_own_reason(
     assert "already built" in reason
 
 
-def test_a_renamed_file_rebuilds_and_says_it_is_the_path(
-    tmp_path: Path, settings: Settings
-) -> None:
-    """Renaming *does* rebuild, and the reason must not blame the extractor.
+def test_a_renamed_file_is_still_current(tmp_path: Path, settings: Settings) -> None:
+    """Identity is the sha256 of the bytes — ticket 31.
 
-    `batch.skip_reason` matches an inventory entry by path and only then by
-    hash, so the same bytes under a new name are not recognised as already
-    built. That is the engine's behaviour, conservative and safe; what this
-    pins is that the classifier explains it correctly rather than reporting a
-    version problem the user would go looking for and never find.
+    This test previously pinned the opposite, because `skip_reason` matched
+    the inventory by path before hash and a rename therefore rebuilt. That
+    contradicted the gate's own docstring, and it made copying a PDF onto a
+    project's shelf cost a full rebuild of a corpus that was already correct.
     """
     pdf = make_pdf(tmp_path / "in" / "acme.pdf", "first revision")
     build(pdf, "ACME1234", settings)
 
     renamed = pdf.parent / "renamed-by-the-user.pdf"
     pdf.rename(renamed)
+
     state, reason = state_of(renamed, "ACME1234", settings)
-    assert state == "stale"
-    assert "different path" in reason
-    assert "extractor" not in reason
+    assert state == "current"
+    assert "already built" in reason
+
+
+def test_the_same_bytes_in_a_second_place_are_current(tmp_path: Path, settings: Settings) -> None:
+    """The shelf case: adding a document to a project copies the PDF."""
+    pdf = make_pdf(tmp_path / "in" / "acme.pdf", "first revision")
+    build(pdf, "ACME1234", settings)
+
+    shelf = tmp_path / "project" / "acme.pdf"
+    shelf.parent.mkdir(parents=True, exist_ok=True)
+    shelf.write_bytes(pdf.read_bytes())
+
+    state, _ = state_of(shelf, "ACME1234", settings)
+    assert state == "current"
 
 
 def test_editing_the_pdf_is_changed_not_stale(tmp_path: Path, settings: Settings) -> None:

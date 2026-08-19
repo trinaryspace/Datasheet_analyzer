@@ -393,10 +393,21 @@ def skip_reason(job: BatchJob, *, settings: Settings, force: bool = False) -> st
             return ""
         pdf_hash = compute_content_hash(job.pdf_path)
         published = {s.content_hash for s in manifest.documents}
-        entries = [
-            s for s in load_inventory(part_dir) if _same_path(s.path, job.pdf_path)
-        ]
-        if any(s.content_hash == pdf_hash for s in entries) and pdf_hash in published:
+        # Hash first, path never. Identity is the sha256 of the bytes — the
+        # docstring said so while the code still required the inventory to
+        # name this exact path, so a renamed file, or one copied onto a
+        # project's shelf, rebuilt a corpus that was already correct.
+        #
+        # The guard that actually matters is unchanged: the hash must be among
+        # the manifest's *published* documents. That is what stops a failed
+        # rebuild arming the skip on a stale corpus, and it does not care where
+        # the file sits.
+        # No inventory condition: `load_inventory` drops entries whose file has
+        # moved, so requiring one reintroduced the path dependency by the back
+        # door. The manifest's published documents are the authoritative record
+        # of what was built, and — per this function's own rationale — are the
+        # guard that stops a failed rebuild arming the skip on a stale corpus.
+        if pdf_hash in published:
             return (f"already built: PDF sha256, pipeline version "
                     f"{PIPELINE_VERSION} and extractor versions match")
         return ""

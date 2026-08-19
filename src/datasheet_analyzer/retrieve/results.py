@@ -28,6 +28,7 @@ its `alias:` rungs lives in `registry/aliases.yaml`.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 
 from datasheet_analyzer.corpus_ref import corpus_relative
@@ -52,6 +53,45 @@ def record_confidence(record: object) -> str:
 #: A needle shorter than this matches half the page; `locate` refuses it, and
 #: so do we, rather than send a request we know will come back a miss.
 MIN_NEEDLE_CHARS = 4
+
+#: Text that names page *furniture* rather than content. A document whose
+#: headings the structure stage could not find gets sections titled `Page 1`,
+#: `Page 2`, … — and that string appears exactly once on the page, in the
+#: running footer. Searching for it produces a confident highlight around the
+#: page number, which is worse than no highlight at all: it tells the reader
+#: the answer came from the footer.
+#:
+#: Measured on the radar corpus: 9/9 sections of PMA1-14LN+, 2/2 of
+#: ZX10R-2-183-S+, 5/5 of CA1389 and 5/5 of DQ1225 are titled this way, against
+#: 0/34 of AD9081 and 0/40 of lm741 — which is why this looked total to a user
+#: of the first group and invisible to a user of the second.
+_FURNITURE = re.compile(
+    r"""^(
+          page \s* \d+ (\s* of \s* \d+)?   # Page 3, Page 3 of 12
+        | p \.? \s* \d+                     # p.3, p 3
+        | \d+                               # a bare page number
+        | (figure|table|section) \s* [\d.\-]+   # bare "Figure 4-1" with no caption
+    )$""",
+    re.IGNORECASE | re.VERBOSE,
+)
+
+
+def is_furniture(text: str) -> bool:
+    """Whether `text` names page furniture rather than anything on the page."""
+    return bool(_FURNITURE.match((text or "").strip()))
+
+
+def section_needle(title: str) -> str:
+    """A section title as a needle, or `""` when the title is furniture.
+
+    Refusing is the point. `/locate` can do better by reading the section's
+    own markdown, and an empty needle is the signal that it should — while a
+    furniture needle would have produced a wrong answer confidently.
+    """
+    cleaned = (title or "").strip()
+    if is_furniture(cleaned) or len(cleaned) < MIN_NEEDLE_CHARS:
+        return ""
+    return cleaned
 
 
 def spec_needle(record: SpecRecord) -> str:
@@ -162,7 +202,7 @@ class Citation:
             page_start=section.page_start,
             page_end=section.page_end,
             part=part,
-            needle=section.title,
+            needle=section_needle(section.title),
         )
 
 

@@ -36,6 +36,9 @@ import type {
   ProjectOpenIn,
   ProjectPatchIn,
   ProjectsOut,
+  ShelfAddIn,
+  ShelfAddOut,
+  ShelfOut,
   ResolveIn,
   RunSnapshot,
   ScanIn,
@@ -159,6 +162,21 @@ export function setProjectExclusions(
     method: 'PUT',
     body: JSON.stringify(body),
   });
+}
+
+/** `GET /api/projects/{name}/shelf` — the PDFs in this project's folder. */
+export function getShelf(name: string): Promise<ShelfOut> {
+  return request<ShelfOut>(`/projects/${encodeURIComponent(name)}/shelf`);
+}
+
+/**
+ * `POST /api/projects/{name}/shelf` — copy a processed document's PDF in.
+ *
+ * Never overwrites. Same bytes already there means nothing is written; a name
+ * taken by different bytes lands alongside and comes back `renamed: true`.
+ */
+export function addToShelf(name: string, body: ShelfAddIn): Promise<ShelfAddOut> {
+  return request<ShelfAddOut>(`/projects/${encodeURIComponent(name)}/shelf`, jsonBody(body));
 }
 
 // --- browsing for a folder ------------------------------------------------------

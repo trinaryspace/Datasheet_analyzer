@@ -27,6 +27,7 @@ check.
 from __future__ import annotations
 
 import hashlib
+import logging
 import re
 from pathlib import Path
 from typing import Annotated
@@ -42,9 +43,15 @@ from datasheet_analyzer.app.contracts import (
     ProjectPartOut,
     ProjectPartsIn,
     ProjectPatchIn,
+    ShelfAddIn,
+    ShelfAddOut,
+    ShelfDocument,
+    ShelfOut,
 )
 from datasheet_analyzer.app.deps import get_settings_dep
 from datasheet_analyzer.config import Settings
+from datasheet_analyzer.extract.pdf_structure import compute_content_hash
+from datasheet_analyzer.library.store import LibraryStore
 from datasheet_analyzer.projects import (
     INDEX_FILENAME as PROJECT_INDEX_FILENAME,
 )
@@ -61,6 +68,10 @@ from datasheet_analyzer.projects import (
     save_project,
     validate_name,
 )
+from datasheet_analyzer.projects.shelf import copy_onto_shelf, pdfs_on_shelf
+from datasheet_analyzer.retrieve import discover_parts
+
+log = logging.getLogger(__name__)
 
 router = APIRouter(prefix=API_PREFIX, tags=["projects"])
 
@@ -233,6 +244,145 @@ def _available_name(directory: Path, resolved: str, settings: Settings) -> str:
         return slug
     digest = hashlib.sha256(resolved.encode("utf-8", "replace")).hexdigest()[:6]
     return f"{slug}-{digest}"
+
+
+@router.get("/projects/{name}/shelf", response_model=ShelfOut)
+def get_shelf(name: str, settings: SettingsDep) -> ShelfOut:
+    """Every PDF in the project's folder, marked with what the Library knows.
+
+    Two sets joined on the content hash: the files that are *there*, and the
+    documents that have been *processed*. The rail needs both — "the model can
+    read this" and "this is on your shelf but unbuilt" are different answers
+    and a reader must be able to tell them apart.
+    """
+    project = _load(name, settings)
+    directory = Path(project.directory) if project.directory else None
+    if directory is None or not directory.is_dir():
+        return ShelfOut(project=project.name, directory=project.directory)
+
+    store = LibraryStore.for_settings(settings)
+    known = {doc.content_hash: doc for doc in store.all()}
+    excluded = set(project.excluded)
+
+    documents: list[ShelfDocument] = []
+    for pdf in pdfs_on_shelf(directory):
+        try:
+            content_hash = compute_content_hash(pdf)
+        except OSError:  # a file that vanished mid-listing is simply not shown
+            continue
+        entry = known.get(content_hash)
+        documents.append(
+            ShelfDocument(
+                filename=pdf.name,
+                path=str(pdf),
+                relative_dir=_relative_dir(pdf, directory),
+                content_hash=content_hash,
+                processed=entry is not None,
+                part_number=entry.source.part_number if entry else "",
+                parts_reached=_parts_reached(entry, settings) if entry else [],
+                labels=list(entry.labels) if entry else [],
+                page_count=entry.source.page_count if entry else 0,
+                excluded=content_hash in excluded,
+            )
+        )
+
+    return ShelfOut(
+        project=project.name,
+        directory=str(directory),
+        documents=documents,
+        count=len(documents),
+        processed_count=sum(1 for d in documents if d.processed),
+    )
+
+
+@router.post("/projects/{name}/shelf", response_model=ShelfAddOut)
+def add_to_shelf(name: str, body: ShelfAddIn, settings: SettingsDep) -> ShelfAddOut:
+    """Copy a processed document's PDF onto this project's shelf.
+
+    The copy is what makes a project portable: its folder ends up holding the
+    sources it was built from. Nothing is ever overwritten — same bytes means
+    no copy at all, and a name taken by different bytes lands beside it.
+
+    Built parts the document reaches join the project, because otherwise you
+    would add a document and the project still could not answer questions
+    about it. Unbuilt reached parts are left out: `add_parts` refuses them, and
+    the shelf shows the document with a build offer instead.
+    """
+    project = _load(name, settings)
+    if not project.directory:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            detail=f"project {name!r} has no folder to copy into",
+        )
+
+    store = LibraryStore.for_settings(settings)
+    entry = store.get(body.content_hash)
+    if entry is None:
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND,
+            detail=f"no processed document with hash {body.content_hash}",
+        )
+
+    source = Path(entry.source.path)
+    if not source.is_file():
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND,
+            detail=f"the PDF recorded for this document is not on disk: {source}",
+        )
+
+    try:
+        result = copy_onto_shelf(source, Path(project.directory))
+    except OSError as exc:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST, detail=f"could not copy onto the shelf: {exc}"
+        ) from exc
+
+    reached = _parts_reached(entry, settings)
+    added: list[str] = []
+    if reached:
+        try:
+            added = add_parts(project, reached, parts_dir=settings.parts_dir)
+            save_project(project, settings.projects_dir)
+        except ProjectError as exc:
+            # The copy already happened and is the useful half. A part that
+            # cannot join is reported, not rolled back into a failed request.
+            log.info("shelf: parts not added for %s: %s", name, exc)
+
+    return ShelfAddOut(
+        document=ShelfDocument(
+            filename=result.path.name,
+            path=str(result.path),
+            relative_dir=_relative_dir(result.path, Path(project.directory)),
+            content_hash=entry.content_hash,
+            processed=True,
+            part_number=entry.source.part_number,
+            parts_reached=reached,
+            labels=list(entry.labels),
+            page_count=entry.source.page_count,
+        ),
+        copied=result.copied,
+        renamed=result.renamed,
+        reason=result.reason,
+        parts_added=added,
+    )
+
+
+def _relative_dir(path: Path, root: Path) -> str:
+    """Where the file sits under the shelf; `""` at the top."""
+    try:
+        rel = path.parent.relative_to(root).as_posix()
+    except ValueError:
+        return ""
+    return "" if rel == "." else rel
+
+
+def _parts_reached(entry, settings: Settings) -> list[str]:
+    """Built parts this document applies to, sorted."""
+    return sorted(
+        part.name
+        for part in discover_parts(settings.parts_dir)
+        if entry.applicability.covers(part.name)
+    )
 
 
 def _load(name: str, settings: Settings):

@@ -33,6 +33,7 @@ import {
   getProjects,
   removeProjectPart,
   startAnalyze,
+  addToShelf,
 } from '../../api/client';
 import type { DocProposal, LibraryDocumentOut, ProjectOut } from '../../api/types';
 import { PartGroupRow } from './PartGroupRow';
@@ -49,6 +50,7 @@ import {
   filterDocuments,
   filterGroupsToProject,
   groupByPart,
+  partitionByProject,
   replaceDocument,
 } from './state';
 import type { LibraryFilters } from './state';
@@ -80,8 +82,13 @@ export function LibraryScreen({ applicabilityControl = null }: LibraryScreenProp
   // a project chosen here is the context Chat and Analyze inherit too.
   const { project: selectedProject, setProject: setSelectedProject } = useWorkingSet();
   const [projectBusy, setProjectBusy] = useState(false);
+  // The Library is the whole bookshelf; the project is the default lens on it.
+  // `false` opens the rest, which is what the screen exists for when you are
+  // looking for something you have *not* got yet.
+  const [scopeToProject, setScopeToProject] = useState(true);
   const navigate = useNavigate();
   const [projectError, setProjectError] = useState('');
+  const [projectNote, setProjectNote] = useState('');
 
   const load = useCallback(async () => {
     setStatus('loading');
@@ -123,9 +130,29 @@ export function LibraryScreen({ applicabilityControl = null }: LibraryScreenProp
     () => (project ? project.parts.map((member) => member.part_number) : []),
     [project],
   );
-  const groups = useMemo(
-    () => filterGroupsToProject(groupByPart(visible), projectParts),
-    [visible, projectParts],
+  // Split by where the file lives, not by the project's part list: a
+  // project's documents are the PDFs in its folder, and its part list is a
+  // different thing that lags behind.
+  const split = useMemo(
+    () => partitionByProject(visible, project?.directory ?? ''),
+    [visible, project],
+  );
+  // Folder-scoped when the project has a folder; otherwise fall back to its
+  // part list. A project made by hand — before the open-a-folder flow existed,
+  // or created from the Library — has no directory, and scoping it by one
+  // would show nothing at all.
+  const shown = useMemo(() => {
+    if (!scopeToProject || !project) return visible;
+    if (project.directory) return split.inProject;
+    return filterDocuments(
+      visible.filter((doc) => doc.parts_reached.some((p) => projectParts.includes(p))),
+      NO_FILTERS,
+    );
+  }, [scopeToProject, project, visible, split, projectParts]);
+  const groups = useMemo(() => groupByPart(shown), [shown]);
+  const inProjectHashes = useMemo(
+    () => new Set(split.inProject.map((d) => d.content_hash)),
+    [split],
   );
   // Only built parts are offered: `add_parts` requires a real part directory,
   // so listing an unbuilt one would be an option that always fails. It is not
@@ -146,6 +173,30 @@ export function LibraryScreen({ applicabilityControl = null }: LibraryScreenProp
   const shownDocuments = useMemo(
     () => new Set(groups.flatMap((group) => group.documents.map((d) => d.content_hash))).size,
     [groups],
+  );
+
+  /** Copy a document's PDF onto the open project's shelf. */
+  const addToProject = useCallback(
+    async (contentHash: string) => {
+      if (!project) return;
+      setProjectError('');
+      try {
+        const added = await addToShelf(project.name, { content_hash: contentHash });
+        // Say what happened: "already there" and "copied under a new name"
+        // are both outcomes the user needs to know about.
+        setProjectNote(
+          added.copied
+            ? added.renamed
+              ? added.reason
+              : `Copied ${added.document.filename} into ${project.name}.`
+            : added.reason || 'Already on this shelf.',
+        );
+        await load();
+      } catch (caught) {
+        setProjectError(errorMessage(caught, 'that document could not be added'));
+      }
+    },
+    [project, load],
   );
 
   const onPatched = useCallback((next: LibraryDocumentOut) => {
@@ -301,6 +352,36 @@ export function LibraryScreen({ applicabilityControl = null }: LibraryScreenProp
             </button>
           </form>
 
+          {project ? (
+            <div className="library-scope" role="group" aria-label="What to show">
+              <button
+                type="button"
+                aria-pressed={scopeToProject}
+                onClick={() => setScopeToProject(true)}
+              >
+                {`In ${project.name}`}
+              </button>
+              <button
+                type="button"
+                aria-pressed={!scopeToProject}
+                onClick={() => setScopeToProject(false)}
+              >
+                All documents
+              </button>
+              <span className="library-scope-note">
+                {scopeToProject
+                  ? `${split.inProject.length} here, ${split.elsewhere.length} elsewhere`
+                  : 'the whole bookshelf — add anything to your project'}
+              </span>
+            </div>
+          ) : null}
+
+          {projectNote ? (
+            <p className="library-note" role="status">
+              {projectNote}
+            </p>
+          ) : null}
+
           <p className="library-count" role="status">
             {`${groups.length === 1 ? '1 part' : `${groups.length} parts`}, ` +
               `${shownDocuments} of ${documents.length} documents`}
@@ -323,6 +404,12 @@ export function LibraryScreen({ applicabilityControl = null }: LibraryScreenProp
                   onPatched={onPatched}
                   defaultOpen={groups.length === 1}
                   onBuild={group.built ? undefined : (g) => void buildPart(g)}
+                  onAddToProject={
+                    project
+                      ? (hash) => void addToProject(hash)
+                      : undefined
+                  }
+                  inProject={inProjectHashes}
                   onRemoveFromProject={
                     project && projectParts.includes(group.part_number)
                       ? (partNumber) =>

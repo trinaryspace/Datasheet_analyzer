@@ -154,7 +154,11 @@ A design: a human-curated list of parts plus the free text that joins them
 designer actually works in. Membership may be *seeded* by opening a Batch
 directory, which names the project after the folder and adds what it built;
 it is never inferred from a design artifact, no BOM or netlist is parsed, and
-every seeded member can be removed by hand. A part with no built corpus is
+every seeded member can be removed by hand. Its directory is also its
+**shelf**: the folder holds copies of the source PDFs it was built from, so a
+project is portable on its own. That makes it a container of *sources* and
+still only a view of *parts* — removing a part deletes nothing, and removing a
+document offers to delete the copy rather than doing it. A part with no built corpus is
 refused rather than pointed at. Asking a project a question fans the lookup
 out across its members and labels every hit with the part it came from.
 _Avoid_: board, design file, group, BOM, assembly, folder, workspace
@@ -174,10 +178,13 @@ one Part.
 _Avoid_: PDF, file, doc
 
 **Library**:
-Every SourceDocument registered so far, as one flat set. A Batch is one
-directory processed in a single run; the Library is what has accumulated
-across runs, and is what a question is asked against.
-_Avoid_: corpus, collection, shelf, database
+Every *processed* SourceDocument, as one flat set — a document enters when a
+Build registers it and never before, so "in the Library" and "has a corpus"
+are the same fact. A Batch is one directory processed in a single run; the
+Library is what has accumulated across runs, and is what a question is asked
+against. One processed document may sit on many project shelves; the Library
+holds it once, keyed by content hash.
+_Avoid_: corpus, collection, database, shelf (a shelf is one project's folder)
 
 **Applicability**:
 The set of Parts a SourceDocument is about: named part numbers, a family
@@ -210,6 +217,23 @@ purpose: the same document may be noise in one design and the subject of
 another. Excluding is not deleting and not removing a part; the file is
 untouched and any other project may still build it.
 _Avoid_: ignore, blocklist, filter, hidden
+
+**Shelf**:
+One project's directory, seen as the documents sitting in it. It is what the
+rail lists and what "the files in this project" means — distinct from the
+Library, which is every processed document everywhere. A shelf may hold a PDF
+that has never been built; the Library, by definition, cannot.
+_Avoid_: library, folder, workspace, collection
+
+**Needle**:
+The record's own printed text, carried on a Citation so a reader can be shown
+*the row an answer came from* rather than the heading above it — a spec row's
+parameter name, a figure's caption, a section's title. It is never parsed and
+never printed; it exists to be handed to `/locate`, which is free to miss.
+Page furniture is not a needle: a section titled `Page 3` names nothing on the
+page except the running footer, and highlighting that is worse than
+highlighting nothing.
+_Avoid_: query, search term, anchor, selector
 
 **Build**:
 The pipeline run that turns one source document set into one part corpus:

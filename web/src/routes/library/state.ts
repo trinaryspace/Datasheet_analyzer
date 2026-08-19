@@ -257,3 +257,46 @@ export function filterGroupsToProject(
   const wanted = new Set(partNumbers);
   return groups.filter((group) => wanted.has(group.part_number));
 }
+
+
+// --- the bookshelf, seen through the open project (round 3) ----------------------
+
+/**
+ * Which documents the Library shows by default.
+ *
+ * The Library is the whole bookshelf — every *processed* document, from every
+ * folder — and that is its job: it is where you go to find something that is
+ * not in your project yet. But most of the time you want the shelf you are
+ * working on, so the project scopes it and one toggle opens the rest.
+ *
+ * Scoped by *file location*, not by the project's part list: a project's
+ * documents are the PDFs sitting in its folder, and its part list is a
+ * different thing that may lag behind or be deliberately narrower.
+ */
+export function inProjectFolder(document: LibraryDocumentOut, directory: string): boolean {
+  if (!directory) return false;
+  return underDirectory(document.path, directory);
+}
+
+/** Path containment, tolerant of separator and case differences. */
+export function underDirectory(path: string, directory: string): boolean {
+  const norm = (value: string) =>
+    value.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
+  const file = norm(path);
+  const root = norm(directory);
+  if (!root) return false;
+  return file === root || file.startsWith(`${root}/`);
+}
+
+/** Split the bookshelf into what is already on this shelf and what is not. */
+export function partitionByProject(
+  documents: LibraryDocumentOut[],
+  directory: string,
+): { inProject: LibraryDocumentOut[]; elsewhere: LibraryDocumentOut[] } {
+  const inProject: LibraryDocumentOut[] = [];
+  const elsewhere: LibraryDocumentOut[] = [];
+  for (const document of documents) {
+    (inProjectFolder(document, directory) ? inProject : elsewhere).push(document);
+  }
+  return { inProject, elsewhere };
+}

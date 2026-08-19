@@ -276,12 +276,30 @@ def _as_rows(
     return out
 
 
-def locate(pdf_path: Path, page: int, needle: str) -> LocateOut:
+#: The bands a running header and footer live in, as a fraction of page
+#: height. Only consulted for a *recovered* needle (see `content_only`): a
+#: record's own text is trusted wherever it lands, because a spec row really
+#: can sit low on the page.
+HEADER_BAND = 0.07
+FOOTER_BAND = 0.88
+
+
+def locate(
+    pdf_path: Path, page: int, needle: str, *, content_only: bool = False
+) -> LocateOut:
     """Rectangles for `needle` on 1-based `page` of `pdf_path`.
 
     Returns `LocateOut.miss(reason)` — never raises — for a missing or
     unreadable file, a page outside the document, an empty needle, or text
-    that simply is not there. Rects are PyMuPDF page points, top-left origin,
+    that simply is not there.
+
+    `content_only` discards matches inside the page's header/footer bands. Set
+    it when the needle was *recovered* from section text rather than supplied
+    by the record: `REV. A` is a distinctive line that lives in the footer, and
+    a highlight there tells the reader the answer came from the page number.
+    A record's own needle is never filtered — a spec row may legitimately sit
+    low on the page, and second-guessing it would break the citations that
+    work. Rects are PyMuPDF page points, top-left origin,
     ordered top to bottom; a row rect keeps the matched vertical band and is
     widened horizontally to the text extent so it reads as a row.
     """
@@ -339,6 +357,22 @@ def locate(pdf_path: Path, page: int, needle: str) -> LocateOut:
             page=page,
             needle=wanted,
         )
+
+    if content_only:
+        height = float(page_rect.height) or 1.0
+        body = [
+            hit
+            for hit in hits
+            if HEADER_BAND * height <= float(hit.y0) <= FOOTER_BAND * height
+        ]
+        if not body:
+            return LocateOut.miss(
+                f"{wanted!r} appears on page {page} only in the running "
+                f"header or footer, which is not where the answer came from",
+                page=page,
+                needle=wanted,
+            )
+        hits = body
 
     return LocateOut(
         found=True,

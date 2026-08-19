@@ -26,7 +26,6 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Literal
 
-from datasheet_analyzer.acquire.inventory import load_inventory
 from datasheet_analyzer.batch import BatchJob, skip_reason
 from datasheet_analyzer.config import PIPELINE_VERSION, Settings
 from datasheet_analyzer.models import CorpusManifest
@@ -72,18 +71,6 @@ def classify(
             f"current is {PIPELINE_VERSION}"
         )
 
-    # The contents are published and the pipeline is current, so the gate is
-    # objecting to something else. Check the inventory before blaming the
-    # extractor: `skip_reason` matches an inventory entry **by path** and only
-    # then by hash, so the same bytes under a new name are not recognised as
-    # already built. Saying "superseded extractor" there would send a reader
-    # looking for a version problem that does not exist.
-    if not _registered_at(settings.parts_dir / part_number, Path(pdf_path)):
-        return "stale", (
-            f"{part_number} was built from this file under a different path; "
-            "it will be re-registered and rebuilt"
-        )
-
     return "stale", "built by a superseded extractor or to an older artifact schema"
 
 
@@ -102,16 +89,3 @@ def _manifest(part_dir: Path) -> CorpusManifest | None:
         return CorpusManifest.model_validate_json(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return None
-
-
-def _registered_at(part_dir: Path, pdf_path: Path) -> bool:
-    """Whether the part's inventory records a document at this exact path.
-
-    Mirrors `batch._same_path`: both sides resolved, so a re-spelling
-    (relative vs absolute, separators, case) is not treated as a move.
-    """
-    try:
-        target = pdf_path.resolve()
-        return any(Path(doc.path).resolve() == target for doc in load_inventory(part_dir))
-    except (OSError, ValueError):
-        return False
