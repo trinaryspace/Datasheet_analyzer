@@ -21,10 +21,18 @@ import type { Applicability, ApplicabilityKind } from '../api/types';
 /** `Applicability.evidence` written when a human, not inference, decided. */
 export const APPLICABILITY_USER_EVIDENCE = 'set by user';
 
-/** Human labels for the three kinds, in the order the control renders them. */
+/**
+ * Human labels for the four kinds, in the order the control renders them.
+ *
+ * `family` and `category` sit next to each other and are not the same thing: a
+ * family is a pattern over part numbers read off the page (`AFE79xx`), a
+ * category is a slot in the user's taxonomy (`amplifiers`). The labels say so,
+ * because a control that made them look interchangeable would get them mixed.
+ */
 export const APPLICABILITY_KIND_LABELS: Record<ApplicabilityKind, string> = {
   parts: 'Specific parts',
   family: 'Family prefix',
+  category: 'A whole category',
   all: 'All parts',
 };
 
@@ -60,11 +68,16 @@ export function validateApplicability(value: Applicability): string | null {
       ? 'Enter a family prefix, such as AFE79xx, or choose All parts.'
       : null;
   }
+  if (value.kind === 'category') {
+    return value.category.trim() === ''
+      ? 'Choose a category, or choose All parts.'
+      : null;
+  }
   return null;
 }
 
 function signature(value: Applicability): string {
-  return JSON.stringify([value.kind, value.parts, value.family]);
+  return JSON.stringify([value.kind, value.parts, value.family, value.category]);
 }
 
 export interface ApplicabilityControlProps {
@@ -75,12 +88,18 @@ export interface ApplicabilityControlProps {
   onInvalid?: (message: string) => void;
   legend?: string;
   disabled?: boolean;
+  /**
+   * The taxonomy, for the `category` kind. Empty hides that option entirely —
+   * a shelf with no categories should not offer to file a document into one.
+   */
+  categories?: readonly { id: string; name: string }[];
 }
 
 export function ApplicabilityControl({
   value,
   onChange,
   onInvalid,
+  categories = [],
   legend = 'Applies to',
   disabled = false,
 }: ApplicabilityControlProps) {
@@ -88,6 +107,7 @@ export function ApplicabilityControl({
   const [kind, setKind] = useState<ApplicabilityKind>(value.kind);
   const [partsText, setPartsText] = useState(() => value.parts.join(', '));
   const [family, setFamily] = useState(value.family);
+  const [category, setCategory] = useState(value.category);
   const [error, setError] = useState<string | null>(null);
   const lastEmitted = useRef(signature(value));
 
@@ -100,14 +120,21 @@ export function ApplicabilityControl({
     setKind(value.kind);
     setPartsText(value.parts.join(', '));
     setFamily(value.family);
+    setCategory(value.category);
     setError(null);
   }, [value]);
 
-  function emit(nextKind: ApplicabilityKind, nextPartsText: string, nextFamily: string): void {
+  function emit(
+    nextKind: ApplicabilityKind,
+    nextPartsText: string,
+    nextFamily: string,
+    nextCategory: string = category,
+  ): void {
     const candidate: Applicability = {
       kind: nextKind,
       parts: nextKind === 'parts' ? parsePartsList(nextPartsText) : [],
       family: nextKind === 'family' ? nextFamily.trim() : '',
+      category: nextKind === 'category' ? nextCategory.trim() : '',
       evidence: APPLICABILITY_USER_EVIDENCE,
     };
     if (signature(candidate) === signature(value)) {
@@ -130,7 +157,9 @@ export function ApplicabilityControl({
       <legend className="applicability__legend">{legend}</legend>
 
       <div className="applicability__kinds">
-        {(Object.keys(APPLICABILITY_KIND_LABELS) as ApplicabilityKind[]).map((option) => (
+        {(Object.keys(APPLICABILITY_KIND_LABELS) as ApplicabilityKind[])
+          .filter((option) => option !== 'category' || categories.length > 0)
+          .map((option) => (
           <label className="applicability__kind" key={option}>
             <input
               type="radio"
@@ -139,7 +168,7 @@ export function ApplicabilityControl({
               checked={kind === option}
               onChange={() => {
                 setKind(option);
-                emit(option, partsText, family);
+                emit(option, partsText, family, category);
               }}
             />
             {APPLICABILITY_KIND_LABELS[option]}
@@ -158,9 +187,33 @@ export function ApplicabilityControl({
             aria-describedby={error ? errorId : undefined}
             onChange={(event) => {
               setPartsText(event.target.value);
-              emit('parts', event.target.value, family);
+              emit('parts', event.target.value, family, category);
             }}
           />
+        </label>
+      ) : null}
+
+      {kind === 'category' ? (
+        <label className="applicability__field">
+          {/* A supporting document — a layout note that covers every
+              amplifier — belongs to a category and to no part at all. */}
+          Category
+          <select
+            value={category}
+            aria-invalid={error !== null || undefined}
+            aria-describedby={error ? errorId : undefined}
+            onChange={(event) => {
+              setCategory(event.target.value);
+              emit('category', partsText, family, event.target.value);
+            }}
+          >
+            <option value="">choose a category…</option>
+            {categories.map((entry) => (
+              <option key={entry.id} value={entry.id}>
+                {entry.name}
+              </option>
+            ))}
+          </select>
         </label>
       ) : null}
 
@@ -178,7 +231,7 @@ export function ApplicabilityControl({
             aria-describedby={error ? errorId : undefined}
             onChange={(event) => {
               setFamily(event.target.value);
-              emit('family', partsText, event.target.value);
+              emit('family', partsText, event.target.value, category);
             }}
           />
         </label>

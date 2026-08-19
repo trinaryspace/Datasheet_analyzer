@@ -12,9 +12,9 @@
  * parallel and must not validate the same model two different ways, so the
  * control lives in the shell and neither screen owns a copy.
  */
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
-import { ApiError, startAnalyze } from '../../api/client';
+import { ApiError, getCategories, startAnalyze } from '../../api/client';
 import type { Applicability, DocProposal, ScanOut } from '../../api/types';
 import {
   ATTENTION_LABEL,
@@ -64,6 +64,25 @@ export default function ReviewStep({
   const [error, setError] = useState('');
 
   const ApplicabilityControl = useMemo(() => getApplicabilityControl(), []);
+
+  // The taxonomy, so a supporting document can be filed against a whole
+  // category from the review rather than only from the Library afterwards.
+  const [categories, setCategories] = useState<{ id: string; name: string }[]>([]);
+  useEffect(() => {
+    let live = true;
+    void (async () => {
+      try {
+        const taxonomy = await getCategories();
+        if (live) setCategories(taxonomy.categories);
+      } catch {
+        // A missing taxonomy hides the category option; it never blocks a build.
+        if (live) setCategories([]);
+      }
+    })();
+    return () => {
+      live = false;
+    };
+  }, []);
   const folders = useMemo(() => groupByFolder(proposals), [proposals]);
 
   // Ticked rows. Seeded once from the scan so a later edit to a part number
@@ -207,6 +226,7 @@ export default function ReviewStep({
                 const pick = selectionKey(proposal);
                 const reason = attentionReason(proposal);
                 const on = selected.has(pick);
+                const applies = describeApplicability(proposal.applicability);
                 return (
                   <li
                     key={key}
@@ -215,8 +235,10 @@ export default function ReviewStep({
                     data-build-state={proposal.build_state}
                     data-selected={on}
                   >
-                    {/* One flex line spanning the row's grid: tick, name, then
-                        the badges. Left to right, in the order a reader scans. */}
+                    {/* One line: tick, filename, part number, applicability,
+                        state. Evidence is behind the disclosure, because it is
+                        what you read for the one row that looks wrong — not for
+                        all forty. A batch has to clear without scrolling. */}
                     <div className="analyze-row-head">
                       <input
                         type="checkbox"
@@ -226,7 +248,25 @@ export default function ReviewStep({
                         aria-label={`Build ${displayName(proposal)}`}
                         onChange={(event) => toggle(pick, event.target.checked)}
                       />
-                      <h4 className="analyze-row-name">{displayName(proposal)}</h4>
+                      <span className="analyze-row-name" title={displayName(proposal)}>
+                        {displayName(proposal)}
+                      </span>
+
+                      <input
+                        className="analyze-row-part"
+                        id={`part-${key}`}
+                        type="text"
+                        value={proposal.part_number}
+                        placeholder="part number"
+                        aria-label={`Part number for ${displayName(proposal)}`}
+                        disabled={starting || !on}
+                        onChange={(event) => update(key, { part_number: event.target.value })}
+                      />
+
+                      <span className="analyze-row-applies" title={applies}>
+                        {applies}
+                      </span>
+
                       <span
                         className={`analyze-build-state analyze-build-state--${proposal.build_state}`}
                         title={proposal.build_reason}
@@ -238,50 +278,46 @@ export default function ReviewStep({
                           not a datasheet?
                         </span>
                       )}
-                      <span className="analyze-row-badge">{ATTENTION_LABEL[reason]}</span>
                     </div>
 
-                    <div className="analyze-field">
-                      <label htmlFor={`part-${key}`}>Part number</label>
-                      <input
-                        id={`part-${key}`}
-                        type="text"
-                        value={proposal.part_number}
-                        disabled={starting || !on}
-                        onChange={(event) => update(key, { part_number: event.target.value })}
-                      />
+                    <details className="analyze-row-detail">
+                      <summary aria-label={`Evidence and applicability for ${displayName(proposal)}`}>
+                        evidence &amp; applicability
+                      </summary>
+
                       <p className="analyze-evidence">
                         <span className="analyze-evidence-label">Part evidence:</span>{' '}
                         {proposal.evidence || 'none recorded'}
                       </p>
-                    </div>
 
-                    <div className="analyze-field">
-                      <span className="analyze-field-label" id={`applicability-label-${key}`}>
-                        Applies to
-                      </span>
-                      {ApplicabilityControl ? (
-                        <ApplicabilityControl
-                          id={`applicability-${key}`}
-                          label={`Applicability for ${displayName(proposal)}`}
-                          value={proposal.applicability}
-                          disabled={starting || !on}
-                          onChange={(next: Applicability) =>
-                            update(key, { applicability: next })
-                          }
-                        />
-                      ) : (
-                        <span className="analyze-applicability-readonly">
-                          {describeApplicability(proposal.applicability)}
+                      <div className="analyze-field">
+                        <span className="analyze-field-label" id={`applicability-label-${key}`}>
+                          Applies to
                         </span>
-                      )}
-                      <p className="analyze-evidence">
-                        <span className="analyze-evidence-label">
-                          Applicability evidence:
-                        </span>{' '}
-                        {proposal.applicability.evidence || 'none recorded'}
-                      </p>
-                    </div>
+                        {ApplicabilityControl ? (
+                          <ApplicabilityControl
+                            id={`applicability-${key}`}
+                            label={`Applicability for ${displayName(proposal)}`}
+                            value={proposal.applicability}
+                            categories={categories}
+                            disabled={starting || !on}
+                            onChange={(next: Applicability) =>
+                              update(key, { applicability: next })
+                            }
+                          />
+                        ) : (
+                          <span className="analyze-applicability-readonly">
+                            {describeApplicability(proposal.applicability)}
+                          </span>
+                        )}
+                        <p className="analyze-evidence">
+                          <span className="analyze-evidence-label">
+                            Applicability evidence:
+                          </span>{' '}
+                          {proposal.applicability.evidence || 'none recorded'}
+                        </p>
+                      </div>
+                    </details>
                   </li>
                 );
               })}

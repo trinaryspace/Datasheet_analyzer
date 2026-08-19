@@ -38,6 +38,7 @@ from datasheet_analyzer.app.contracts import (
 )
 from datasheet_analyzer.app.deps import get_settings_dep
 from datasheet_analyzer.config import Settings
+from datasheet_analyzer.library.categories import CategoryStore
 from datasheet_analyzer.projects import (
     INDEX_FILENAME as PROJECT_INDEX_FILENAME,
 )
@@ -60,7 +61,19 @@ SettingsDep = Annotated[Settings, Depends(get_settings_dep)]
 @router.get("/parts", response_model=PartsOut)
 def get_parts(settings: SettingsDep) -> PartsOut:
     """Every part directory under `parts_dir`, built or not, sorted by name."""
-    parts = [_part_row(part_dir) for part_dir in discover_parts(settings.parts_dir)]
+    store = CategoryStore.for_settings(settings)
+    parts = []
+    for part_dir in discover_parts(settings.parts_dir):
+        row = _part_row(part_dir)
+        record = store.part(row.part_number)
+        parts.append(
+            row.model_copy(
+                update={
+                    "category": record.category,
+                    "category_confirmed": record.confirmed,
+                }
+            )
+        )
     return PartsOut(parts=parts, count=len(parts))
 
 

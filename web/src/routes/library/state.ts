@@ -114,6 +114,8 @@ export function normalizeApplicability(applicability: Applicability): Applicabil
     kind: applicability.kind,
     parts: applicability.kind === 'parts' ? unique(applicability.parts ?? []) : [],
     family: applicability.kind === 'family' ? (applicability.family ?? '').trim() : '',
+    category:
+      applicability.kind === 'category' ? (applicability.category ?? '').trim() : '',
     evidence: applicability.evidence ?? '',
   };
 }
@@ -299,4 +301,57 @@ export function partitionByProject(
     (inProjectFolder(document, directory) ? inProject : elsewhere).push(document);
   }
   return { inProject, elsewhere };
+}
+
+// --- the structured bookshelf (round 4) ------------------------------------------
+
+/** Which category a document's *applicability* names, or `''` if it names none. */
+export function supportingCategory(document: LibraryDocumentOut): string {
+  return document.applicability.kind === 'category'
+    ? (document.applicability.category ?? '').trim()
+    : '';
+}
+
+/**
+ * Split a category's contents into its parts and its supporting documents.
+ *
+ * Two different claims, and the Library must not blur them: a datasheet is a
+ * document *of* a part, while a layout note is about the whole category and
+ * belongs to no part at all. A supporting document therefore appears once,
+ * under the category — not repeated under every part it reaches, which is
+ * what the part-first grouping would otherwise do to it.
+ */
+export function categoryContents(
+  documents: LibraryDocumentOut[],
+  partCategory: ReadonlyMap<string, string>,
+  categoryId: string,
+  builtParts: ReadonlySet<string>,
+): { parts: { part_number: string; built: boolean; documents: LibraryDocumentOut[] }[];
+     supporting: LibraryDocumentOut[] } {
+  const supporting: LibraryDocumentOut[] = [];
+  const byPart = new Map<string, LibraryDocumentOut[]>();
+
+  for (const document of documents) {
+    if (supportingCategory(document) === categoryId) {
+      supporting.push(document);
+      continue;
+    }
+    for (const part of document.parts_reached) {
+      // A part with no record reads `uncategorized`, which is a real slot.
+      if ((partCategory.get(part) ?? 'uncategorized') !== categoryId) continue;
+      const bucket = byPart.get(part);
+      if (bucket) bucket.push(document);
+      else byPart.set(part, [document]);
+    }
+  }
+
+  const parts = [...byPart.entries()]
+    .map(([part_number, docs]) => ({
+      part_number,
+      built: builtParts.has(part_number),
+      documents: docs,
+    }))
+    .sort((a, b) => a.part_number.localeCompare(b.part_number));
+
+  return { parts, supporting };
 }

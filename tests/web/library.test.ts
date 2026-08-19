@@ -27,6 +27,7 @@ import type {
   Applicability,
   LibraryDocumentOut,
   LibraryOut,
+  PartOut,
   ProjectOut,
   SessionOut,
   ShelfDocument,
@@ -70,6 +71,12 @@ vi.mock('../../web/src/api/client', async (importOriginal) => {
     removeProjectPart: vi.fn(),
     startAnalyze: vi.fn(),
     addToShelf: vi.fn(),
+    getCategories: vi.fn(),
+    getParts: vi.fn(),
+    createCategory: vi.fn(),
+    renameCategory: vi.fn(),
+    removeCategory: vi.fn(),
+    setPartCategory: vi.fn(),
   };
 });
 
@@ -86,6 +93,30 @@ const addProjectParts = vi.mocked(client.addProjectParts);
 const removeProjectPart = vi.mocked(client.removeProjectPart);
 const startAnalyze = vi.mocked(client.startAnalyze);
 const addToShelf = vi.mocked(client.addToShelf);
+const getCategories = vi.mocked(client.getCategories);
+const getParts = vi.mocked(client.getParts);
+const createCategory = vi.mocked(client.createCategory);
+const setPartCategory = vi.mocked(client.setPartCategory);
+
+/** A catalog row, as `GET /api/parts` returns it. */
+function partOut(part_number: string, category: string, built = true): PartOut {
+  return {
+    part_number,
+    built,
+    revision: '',
+    vendor: '',
+    backends: [],
+    sections: 0,
+    specs: 0,
+    plots: 0,
+    tokens: 0,
+    searchable: false,
+    spec_confidence: {},
+    plot_confidence: {},
+    category,
+    category_confirmed: false,
+  };
+}
 
 /** A project row, as `GET /api/projects` returns it. */
 function projectOut(name: string, parts: string[] = []): ProjectOut {
@@ -141,7 +172,7 @@ function shelfDocument(over: Partial<ShelfDocument> = {}): ShelfDocument {
 // --- fixtures -----------------------------------------------------------------
 
 function applicability(over: Partial<Applicability> = {}): Applicability {
-  return { kind: 'all', parts: [], family: '', evidence: '', ...over };
+  return { kind: 'all', parts: [], family: '', category: '', evidence: '', ...over };
 }
 
 function libraryDocument(over: Partial<LibraryDocumentOut> = {}): LibraryDocumentOut {
@@ -179,6 +210,7 @@ const APPNOTE = libraryDocument({
   applicability: applicability({
     kind: 'family',
     family: 'AFE79xx',
+    category: '',
     evidence: 'the abstract covers the AFE79xx family',
   }),
   labels: ['thermal'],
@@ -313,6 +345,42 @@ beforeEach(() => {
   );
   removeProjectPart.mockImplementation(async (name) => projectOut(name));
   startAnalyze.mockResolvedValue({ run_id: 'run-1', n_jobs: 1 });
+  addToShelf.mockResolvedValue({
+    document: shelfDocument(),
+    copied: true,
+    renamed: false,
+    reason: '',
+    parts_added: [],
+  });
+  // The taxonomy the shelf is filed into, and which category each part is in.
+  getCategories.mockResolvedValue({
+    categories: [
+      { id: 'amplifiers', name: 'Amplifiers', count: 1 },
+      { id: 'data-converters', name: 'Data converters', count: 1 },
+      { id: 'uncategorized', name: 'Uncategorized', count: 0 },
+    ],
+  });
+  getParts.mockResolvedValue({
+    parts: [
+      partOut('LMX1204', 'amplifiers'),
+      partOut('AFE7950', 'data-converters'),
+      partOut('AFE7951', 'data-converters', false),
+      partOut('AD9081', 'data-converters'),
+    ],
+    count: 4,
+  });
+  createCategory.mockImplementation(async ({ name }) => ({
+    id: name.toLowerCase().replace(/\s+/g, '-'),
+    name,
+    count: 0,
+  }));
+  setPartCategory.mockImplementation(async (part_number, body) => ({
+    part_number,
+    category: body.category,
+    evidence: 'set by hand',
+    confirmed: true,
+    confident: true,
+  }));
 });
 
 // --- the library model ---------------------------------------------------------
@@ -369,7 +437,7 @@ describe('library model', () => {
 // --- the library screen --------------------------------------------------------
 
 describe('library screen', () => {
-  it('shows a loading state, then lists every document with applicability, labels and reach', async () => {
+  it('shows a loading state, then the taxonomy and what is filed in it', async () => {
     const pending = deferred<LibraryOut>();
     getLibrary.mockReturnValue(pending.promise);
 
@@ -378,41 +446,104 @@ describe('library screen', () => {
 
     pending.resolve(libraryOut());
 
-    const datasheet = await screen.findByRole('article', { name: 'Document lmx1204.pdf' });
-    expect(within(datasheet).getByText('Parts: LMX1204')).toBeInTheDocument();
-    expect(within(datasheet).getByText(/title block names LMX1204/)).toBeInTheDocument();
-    expect(within(datasheet).getByText('reviewed')).toBeInTheDocument();
-
-    // The shelf is part-first now, so a family appnote is listed under every
-    // part it reaches — that is ADR 0005's relation working, not duplication.
-    // Scope the assertion to one part rather than expecting a single row.
-    const appnotes = screen.getAllByRole('article', {
-      name: 'Document afe79xx-appnote.pdf',
-    });
-    expect(appnotes.length).toBeGreaterThan(1);
-    const appnote = appnotes[0];
-    expect(within(appnote).getByText('Family: AFE79xx')).toBeInTheDocument();
-    expect(within(appnote).getByText('thermal')).toBeInTheDocument();
-    const reach = within(appnote).getByRole('region', {
-      name: 'Parts reached by afe79xx-appnote.pdf',
-    });
-    expect(reach).toHaveTextContent('AFE7950');
-    expect(reach).toHaveTextContent('AFE7951 — unbuilt');
+    // The bookshelf is categories first: a flat list is what made finding a
+    // part you used two years ago a search rather than a scan.
+    const tree = await screen.findByRole('navigation', { name: 'Categories' });
+    expect(within(tree).getByRole('button', { name: /^Amplifiers/ })).toBeInTheDocument();
+    expect(within(tree).getByRole('button', { name: /^Data converters/ })).toBeInTheDocument();
+    expect(within(tree).getByRole('button', { name: /^Uncategorized/ })).toBeInTheDocument();
   });
 
-  it('groups the shelf by part, one collapsed row each', async () => {
+  it('lists a category’s parts, and their documents under them', async () => {
     renderLibrary();
-    await screen.findByRole('article', { name: 'Document lmx1204.pdf' });
+    const tree = await screen.findByRole('navigation', { name: 'Categories' });
+    await userEvent.setup().click(within(tree).getByRole('button', { name: /^Amplifiers/ }));
 
-    const parts = document.querySelectorAll('.library-part');
-    const names = [...parts].map((row) => row.getAttribute('data-part'));
-    expect(names).toContain('LMX1204');
-    expect(names).toContain('AFE7950');
-    // A part nothing has been built for is still listed, marked unbuilt,
-    // rather than hidden.
-    expect(names).toContain('AFE7951');
-    const unbuilt = document.querySelector('.library-part[data-part="AFE7951"]');
-    expect(unbuilt?.getAttribute('data-built')).toBe('false');
+    // LMX1204 is filed under amplifiers by the catalog fixture.
+    const contents = await screen.findByRole('region', { name: /Contents of Amplifiers/ });
+    expect(within(contents).getByText('LMX1204')).toBeInTheDocument();
+    expect(within(contents).getByRole('button', { name: /Open lmx1204\.pdf/ })).toBeInTheDocument();
+  });
+
+  it('separates supporting documents from a part’s own documents', async () => {
+    // A layout note that applies to the whole category and to no part.
+    getLibrary.mockResolvedValue(
+      libraryOut({
+        documents: [
+          DATASHEET,
+          libraryDocument({
+            content_hash: 'sup1',
+            path: '/shelf/hf-layout.pdf',
+            filename: 'hf-layout.pdf',
+            part_number: '',
+            parts_reached: [],
+            applicability: applicability({
+              kind: 'category',
+              category: 'amplifiers',
+              evidence: 'covers every amplifier',
+            }),
+          }),
+        ],
+      }),
+    );
+
+    renderLibrary();
+    const tree = await screen.findByRole('navigation', { name: 'Categories' });
+    await userEvent.setup().click(within(tree).getByRole('button', { name: /^Amplifiers/ }));
+
+    const supporting = await screen.findByRole('region', {
+      name: /Supporting documents for Amplifiers/,
+    });
+    expect(within(supporting).getByText('hf-layout.pdf')).toBeInTheDocument();
+    // It is listed once, under the category — not repeated under every part.
+    expect(screen.getAllByText('hf-layout.pdf')).toHaveLength(1);
+  });
+
+  it('opens a document in the PDF pane when clicked', async () => {
+    renderLibrary();
+    const tree = await screen.findByRole('navigation', { name: 'Categories' });
+    const user = userEvent.setup();
+    await user.click(within(tree).getByRole('button', { name: /^Amplifiers/ }));
+    await user.click(await screen.findByRole('button', { name: /Open lmx1204\.pdf/ }));
+
+    await waitFor(() =>
+      expect(screen.getByTestId('location').textContent).toContain('doc=aaa111'),
+    );
+  });
+
+  it('edits applicability and labels in a panel, not on every row', async () => {
+    const user = userEvent.setup();
+    const widened = applicability({ kind: 'all', evidence: 'set by user' });
+    patchLibraryDocument.mockResolvedValue(
+      libraryDocument({ applicability: widened, parts_reached: ['LMX1204', 'AFE7950'] }),
+    );
+
+    renderLibrary({ applicabilityControl: stubControl(widened) });
+    const tree = await screen.findByRole('navigation', { name: 'Categories' });
+    await user.click(within(tree).getByRole('button', { name: /^Amplifiers/ }));
+
+    // Compact by default: the editor exists only once you ask for it.
+    expect(screen.queryByRole('article', { name: 'Document lmx1204.pdf' })).toBeNull();
+    await user.click(await screen.findByRole('button', { name: /Edit lmx1204\.pdf/ }));
+
+    const panel = await screen.findByRole('region', { name: /Edit lmx1204\.pdf/ });
+    await user.click(within(panel).getByRole('button', { name: /Edit Applicability/ }));
+    await user.click(within(panel).getByRole('button', { name: /Save applicability/ }));
+
+    await waitFor(() =>
+      expect(patchLibraryDocument).toHaveBeenCalledWith('aaa111', { applicability: widened }),
+    );
+  });
+
+  it('adds a category and files a part into it', async () => {
+    const user = userEvent.setup();
+    renderLibrary();
+    await screen.findByRole('navigation', { name: 'Categories' });
+
+    await user.type(screen.getByLabelText('New category name'), 'Circulators');
+    await user.click(screen.getByRole('button', { name: 'Add category' }));
+
+    await waitFor(() => expect(createCategory).toHaveBeenCalledWith({ name: 'Circulators' }));
   });
 
   it('shows an empty state when nothing has been analyzed yet', async () => {
@@ -430,186 +561,17 @@ describe('library screen', () => {
 
     getLibrary.mockResolvedValue(libraryOut());
     await user.click(screen.getByRole('button', { name: 'Retry' }));
-    expect(await screen.findByRole('article', { name: 'Document lmx1204.pdf' })).toBeInTheDocument();
+    expect(await screen.findByRole('navigation', { name: 'Categories' })).toBeInTheDocument();
   });
 
-  it('filters the list by label and by part', async () => {
-    const user = userEvent.setup();
+  it('stays usable when the taxonomy cannot be read', async () => {
+    // A shelf whose categories will not load is still a shelf.
+    getCategories.mockRejectedValueOnce(new ApiError(500, 'taxonomy unreadable'));
     renderLibrary();
-    await screen.findByRole('article', { name: 'Document lmx1204.pdf' });
-
-    await user.selectOptions(screen.getByLabelText('Filter by label'), 'thermal');
-    expect(screen.queryByRole('article', { name: 'Document lmx1204.pdf' })).not.toBeInTheDocument();
-    expect(
-      screen.getAllByRole('article', { name: 'Document afe79xx-appnote.pdf' }).length,
-    ).toBeGreaterThan(0);
-
-    await user.click(screen.getByRole('button', { name: 'Clear filters' }));
-    await user.selectOptions(screen.getByLabelText('Filter by part'), 'LMX1204');
-    expect(screen.getByRole('article', { name: 'Document lmx1204.pdf' })).toBeInTheDocument();
-    expect(
-      screen.queryByRole('article', { name: 'Document afe79xx-appnote.pdf' }),
-    ).not.toBeInTheDocument();
-  });
-
-  it('persists an applicability edit through PATCH and re-renders the reach it produced', async () => {
-    const widened = applicability({
-      kind: 'parts',
-      parts: ['LMX1204', 'LMX1205'],
-      evidence: 'title block names LMX1204',
-    });
-    const patched = libraryDocument({
-      applicability: widened,
-      parts_reached: ['LMX1204', 'LMX1205'],
-      unbuilt_parts: ['LMX1205'],
-      rebuild_needed: ['LMX1205'],
-    });
-    patchLibraryDocument.mockResolvedValue(patched);
-    const user = userEvent.setup();
-
-    renderLibrary({ applicabilityControl: stubControl(widened) });
-    const row = await screen.findByRole('article', { name: 'Document lmx1204.pdf' });
-
-    await user.click(
-      within(row).getByRole('button', { name: 'Edit Applicability of lmx1204.pdf' }),
-    );
-    await user.click(
-      within(row).getByRole('button', { name: 'Save applicability for lmx1204.pdf' }),
-    );
-
-    await waitFor(() => expect(patchLibraryDocument).toHaveBeenCalledTimes(1));
-    expect(patchLibraryDocument).toHaveBeenCalledWith('aaa111', {
-      applicability: {
-        kind: 'parts',
-        parts: ['LMX1204', 'LMX1205'],
-        family: '',
-        evidence: 'title block names LMX1204',
-      },
-    });
-
-    // Widening to a part that does not exist yet is legal (ADR 0005): the new
-    // part is shown as unbuilt, and rebuild_needed becomes a named offer.
-    expect(await within(row).findByText('Parts: LMX1204, LMX1205')).toBeInTheDocument();
-    const reach = within(row).getByRole('region', { name: 'Parts reached by lmx1204.pdf' });
-    expect(reach).toHaveTextContent('LMX1205 — unbuilt');
-    const offer = within(row).getByText(/LMX1205/, { selector: '.library-offer' });
-    expect(offer).toHaveTextContent(/build LMX1205/i);
-  });
-
-  it('blocks an invalid applicability in the UI before it reaches the server', async () => {
-    const user = userEvent.setup();
-    renderLibrary({
-      applicabilityControl: stubControl(applicability({ kind: 'parts', parts: [] })),
-    });
-    const row = await screen.findByRole('article', { name: 'Document lmx1204.pdf' });
-
-    await user.click(
-      within(row).getByRole('button', { name: 'Edit Applicability of lmx1204.pdf' }),
-    );
-    await user.click(
-      within(row).getByRole('button', { name: 'Save applicability for lmx1204.pdf' }),
-    );
-
-    expect(within(row).getByRole('alert')).toHaveTextContent(/at least one part/i);
-    expect(patchLibraryDocument).not.toHaveBeenCalled();
-  });
-
-  it('adds a label inline, autocompleting from the labels already in use', async () => {
-    patchLibraryDocument.mockResolvedValue(
-      libraryDocument({ labels: ['reviewed', 'thermal'] }),
-    );
-    const user = userEvent.setup();
-
-    renderLibrary();
-    const row = await screen.findByRole('article', { name: 'Document lmx1204.pdf' });
-
-    // The datalist offers every label in use that this document lacks.
-    const input = within(row).getByLabelText('Add a label to lmx1204.pdf');
-    const listId = input.getAttribute('list') ?? '';
-    const options = Array.from(
-      row.ownerDocument.getElementById(listId)?.querySelectorAll('option') ?? [],
-    ).map((option) => option.getAttribute('value'));
-    expect(options).toEqual(['jesd204', 'thermal']);
-
-    await user.type(input, 'the');
-    const suggestion = within(row).getByRole('button', {
-      name: 'Apply label thermal to lmx1204.pdf',
-    });
-    await user.click(suggestion);
-
-    await waitFor(() =>
-      expect(patchLibraryDocument).toHaveBeenCalledWith('aaa111', {
-        labels: ['reviewed', 'thermal'],
-      }),
-    );
-    expect(await within(row).findByText('thermal')).toBeInTheDocument();
-  });
-
-  it('adds a brand-new label from the form and removes a label in one action', async () => {
-    patchLibraryDocument.mockResolvedValue(libraryDocument({ labels: ['reviewed', 'errata'] }));
-    const user = userEvent.setup();
-
-    renderLibrary();
-    const row = await screen.findByRole('article', { name: 'Document lmx1204.pdf' });
-
-    await user.type(within(row).getByLabelText('Add a label to lmx1204.pdf'), 'errata');
-    await user.click(within(row).getByRole('button', { name: 'Add label to lmx1204.pdf' }));
-    await waitFor(() =>
-      expect(patchLibraryDocument).toHaveBeenCalledWith('aaa111', {
-        labels: ['reviewed', 'errata'],
-      }),
-    );
-    expect(await within(row).findByText('errata')).toBeInTheDocument();
-
-    // Removing is one action per label, and the patch carries what is left.
-    patchLibraryDocument.mockResolvedValue(libraryDocument({ labels: ['errata'] }));
-    await user.click(
-      within(row).getByRole('button', { name: 'Remove label reviewed from lmx1204.pdf' }),
-    );
-    await waitFor(() =>
-      expect(patchLibraryDocument).toHaveBeenLastCalledWith('aaa111', { labels: ['errata'] }),
-    );
-    await waitFor(() => expect(within(row).queryByText('reviewed')).not.toBeInTheDocument());
-
-    patchLibraryDocument.mockResolvedValue(libraryDocument({ labels: [] }));
-    await user.click(
-      within(row).getByRole('button', { name: 'Remove label errata from lmx1204.pdf' }),
-    );
-    await waitFor(() =>
-      expect(patchLibraryDocument).toHaveBeenLastCalledWith('aaa111', { labels: [] }),
-    );
-    expect(await within(row).findByText(/no labels yet/i)).toBeInTheDocument();
-  });
-
-  it("renders the server's message when a patch is refused", async () => {
-    patchLibraryDocument.mockRejectedValue(new ApiError(404, 'no document with that hash'));
-    const user = userEvent.setup();
-
-    render(
-      createElement(DocumentRow, {
-        document: DATASHEET,
-        knownLabels: ['reviewed'],
-        applicabilityControl: null,
-        onPatched: vi.fn(),
-      }),
-    );
-
-    await user.type(screen.getByLabelText('Add a label to lmx1204.pdf'), 'errata');
-    await user.click(screen.getByRole('button', { name: 'Add label to lmx1204.pdf' }));
-    expect(await screen.findByRole('alert')).toHaveTextContent('no document with that hash');
-  });
-
-  it('falls back to read-only applicability when the shell control is absent', async () => {
-    renderLibrary({ applicabilityControl: null });
-    const row = await screen.findByRole('article', { name: 'Document lmx1204.pdf' });
-    expect(within(row).getByText(/read-only/i)).toBeInTheDocument();
-    expect(
-      within(row).queryByRole('button', { name: 'Save applicability for lmx1204.pdf' }),
-    ).not.toBeInTheDocument();
+    expect(await screen.findByRole('alert')).toHaveTextContent('taxonomy unreadable');
+    expect(screen.getByRole('heading', { name: 'Library' })).toBeInTheDocument();
   });
 });
-
-// --- the sessions model --------------------------------------------------------
 
 describe('sessions model', () => {
   it('orders sessions newest first, with an undated one last', () => {
@@ -817,27 +779,26 @@ describe('the working set', () => {
   it('narrows the shelf to the selected project, and widens again', async () => {
     const user = userEvent.setup();
     renderLibrary();
-    await screen.findByRole('article', { name: 'Document lmx1204.pdf' });
+    await screen.findByRole('navigation', { name: 'Categories' });
 
     await user.selectOptions(screen.getByLabelText('Working set'), 'LNA front-end');
 
     // The project holds AFE7950 only, so LMX1204 leaves the view — without
     // anything being deleted.
-    await waitFor(() => {
-      expect(document.querySelector('.library-part[data-part="AFE7950"]')).not.toBeNull();
-    });
-    expect(document.querySelector('.library-part[data-part="LMX1204"]')).toBeNull();
+    // LMX1204 lives under amplifiers and is not in this project, so selecting
+    // that category shows nothing while the project scopes the shelf.
+    const tree = screen.getByRole('navigation', { name: 'Categories' });
+    await user.click(within(tree).getByRole('button', { name: /^Amplifiers/ }));
+    await waitFor(() => expect(screen.queryByText('lmx1204.pdf')).toBeNull());
 
     await user.selectOptions(screen.getByLabelText('Working set'), '');
-    await waitFor(() => {
-      expect(document.querySelector('.library-part[data-part="LMX1204"]')).not.toBeNull();
-    });
+    await waitFor(() => expect(screen.getByText('lmx1204.pdf')).toBeInTheDocument());
   });
 
   it('creates a project and selects it', async () => {
     const user = userEvent.setup();
     renderLibrary();
-    await screen.findByRole('article', { name: 'Document lmx1204.pdf' });
+    await screen.findByRole('navigation', { name: 'Categories' });
 
     await user.type(screen.getByLabelText('New project name'), 'mixer chain');
     await user.click(screen.getByRole('button', { name: 'Create' }));
@@ -849,7 +810,7 @@ describe('the working set', () => {
   it('adds a part to the working set and drops one from it', async () => {
     const user = userEvent.setup();
     renderLibrary();
-    await screen.findByRole('article', { name: 'Document lmx1204.pdf' });
+    await screen.findByRole('navigation', { name: 'Categories' });
     await user.selectOptions(screen.getByLabelText('Working set'), 'LNA front-end');
 
     await user.selectOptions(screen.getByLabelText('Add a part to LNA front-end'), 'LMX1204');
@@ -858,7 +819,11 @@ describe('the working set', () => {
       expect(addProjectParts).toHaveBeenCalledWith('LNA front-end', { parts: ['LMX1204'] }),
     );
 
-    await user.click(await screen.findByRole('button', { name: /Remove AFE7950 from this project/ }));
+    const tree2 = screen.getByRole('navigation', { name: 'Categories' });
+    await user.click(within(tree2).getByRole('button', { name: /^Data converters/ }));
+    await user.click(
+      await screen.findByRole('button', { name: /Remove AFE7950 from this project/ }),
+    );
     await waitFor(() =>
       expect(removeProjectPart).toHaveBeenCalledWith('LNA front-end', 'AFE7950'),
     );
@@ -869,7 +834,7 @@ describe('the working set', () => {
     renderLibrary();
 
     // The shelf still renders; only the working-set control reports trouble.
-    expect(await screen.findByRole('article', { name: 'Document lmx1204.pdf' })).toBeInTheDocument();
+    expect(await screen.findByText('lmx1204.pdf')).toBeInTheDocument();
     expect(await screen.findByRole('alert')).toHaveTextContent('projects dir is unreadable');
   });
 });
@@ -877,9 +842,16 @@ describe('the working set', () => {
 // --- ticket 30: build an unbuilt part where you meet it --------------------------
 
 describe('building an unbuilt part from the library', () => {
-  it('offers to build an unbuilt part and not a built one', async () => {
+  /** AFE7950 and AFE7951 are filed under data converters by the catalog fixture. */
+  async function toConverters(): Promise<void> {
     renderLibrary();
-    await screen.findByRole('article', { name: 'Document lmx1204.pdf' });
+    const tree = await screen.findByRole('navigation', { name: 'Categories' });
+    await userEvent.setup().click(within(tree).getByRole('button', { name: /^Data converters/ }));
+    await screen.findByRole('region', { name: /Contents of Data converters/ });
+  }
+
+  it('offers to build an unbuilt part and not a built one', async () => {
+    await toConverters();
 
     // AFE7951 is reached by the appnote but has no corpus.
     expect(
@@ -887,15 +859,14 @@ describe('building an unbuilt part from the library', () => {
     ).toBeInTheDocument();
     // LMX1204 is built, so there is nothing to offer.
     expect(
-      screen.queryByRole('button', { name: /Build LMX1204 from its documents/ }),
+      screen.queryByRole('button', { name: /Build AFE7950 from its documents/ }),
     ).toBeNull();
   });
 
   it('sends one proposal per document reaching the part, applicability intact', async () => {
     const user = userEvent.setup();
     startAnalyze.mockResolvedValue({ run_id: 'run-7', n_jobs: 1 });
-    renderLibrary();
-    await screen.findByRole('article', { name: 'Document lmx1204.pdf' });
+    await toConverters();
 
     await user.click(screen.getByRole('button', { name: /Build AFE7951 from its documents/ }));
 
@@ -914,8 +885,7 @@ describe('building an unbuilt part from the library', () => {
   it('hands off to the analyze run view with the run id in the URL', async () => {
     const user = userEvent.setup();
     startAnalyze.mockResolvedValue({ run_id: 'run-7', n_jobs: 1 });
-    renderLibrary();
-    await screen.findByRole('article', { name: 'Document lmx1204.pdf' });
+    await toConverters();
 
     await user.click(screen.getByRole('button', { name: /Build AFE7951 from its documents/ }));
 
@@ -927,8 +897,7 @@ describe('building an unbuilt part from the library', () => {
   it("renders the server's own message when the build cannot start", async () => {
     const user = userEvent.setup();
     startAnalyze.mockRejectedValue(new ApiError(400, 'the recorded path no longer exists'));
-    renderLibrary();
-    await screen.findByRole('article', { name: 'Document lmx1204.pdf' });
+    await toConverters();
 
     await user.click(screen.getByRole('button', { name: /Build AFE7951 from its documents/ }));
     expect(await screen.findByRole('alert')).toHaveTextContent('the recorded path no longer exists');
@@ -966,14 +935,13 @@ describe('the library as a bookshelf', () => {
     );
 
     renderLibrary();
-    // The scope toggle only exists once a project is open.
     await user.selectOptions(await screen.findByLabelText('Working set'), 'radar');
     await screen.findByRole('button', { name: 'In radar' });
 
     await waitFor(() =>
       expect(screen.queryByRole('article', { name: 'Document away.pdf' })).toBeNull(),
     );
-    expect(screen.getByRole('article', { name: 'Document here.pdf' })).toBeInTheDocument();
+    expect(screen.getByText('here.pdf')).toBeInTheDocument();
   });
 
   it('opens the whole bookshelf on demand — that is what it is for', async () => {
@@ -997,10 +965,10 @@ describe('the library as a bookshelf', () => {
     renderLibrary();
     await user.selectOptions(await screen.findByLabelText('Working set'), 'radar');
     await user.click(await screen.findByRole('button', { name: 'All documents' }));
+    const tree = screen.getByRole('navigation', { name: 'Categories' });
+    await user.click(within(tree).getByRole('button', { name: /^Data converters/ }));
 
-    expect(
-      await screen.findByRole('article', { name: 'Document away.pdf' }),
-    ).toBeInTheDocument();
+    expect(await screen.findByText('away.pdf')).toBeInTheDocument();
   });
 
   it('adds a document from the bookshelf to the project, copying the PDF', async () => {
@@ -1030,6 +998,8 @@ describe('the library as a bookshelf', () => {
     renderLibrary();
     await user.selectOptions(await screen.findByLabelText('Working set'), 'radar');
     await user.click(await screen.findByRole('button', { name: 'All documents' }));
+    const tree = screen.getByRole('navigation', { name: 'Categories' });
+    await user.click(within(tree).getByRole('button', { name: /^Data converters/ }));
 
     await user.click(
       await screen.findByRole('button', { name: 'Add away.pdf to this project' }),
@@ -1067,6 +1037,8 @@ describe('the library as a bookshelf', () => {
     renderLibrary();
     await user.selectOptions(await screen.findByLabelText('Working set'), 'radar');
     await user.click(await screen.findByRole('button', { name: 'All documents' }));
+    const tree = screen.getByRole('navigation', { name: 'Categories' });
+    await user.click(within(tree).getByRole('button', { name: /^Data converters/ }));
     await user.click(
       await screen.findByRole('button', { name: 'Add ad9081.pdf to this project' }),
     );

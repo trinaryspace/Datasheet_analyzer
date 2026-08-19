@@ -279,6 +279,10 @@ class TestPatchLibraryDocument:
             "kind": "parts",
             "parts": ["AD9081"],
             "family": "",
+            # Applicability gained a fourth kind (ADR 0005, amended): a
+            # document may apply to a whole category. Blank here — this one
+            # names parts.
+            "category": "",
             "evidence": "title block",
         }
         stored = store.get("hash-ds")

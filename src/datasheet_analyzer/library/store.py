@@ -38,9 +38,17 @@ import time
 from pathlib import Path
 
 from datasheet_analyzer.config import LIBRARY_SCHEMA_VERSION, Settings, get_settings
+from datasheet_analyzer.library.categories import (
+    CATEGORIES_FILE,
+    PARTS_FILE,
+    CategoryStore,
+)
 from datasheet_analyzer.models import Applicability, LibraryDocument
 
 log = logging.getLogger(__name__)
+
+#: Files in `library_dir` that are the store's own, not documents.
+STORE_METADATA_FILES = frozenset({CATEGORIES_FILE, PARTS_FILE})
 
 __all__ = ["LibraryStore", "clear_library_cache"]
 
@@ -92,7 +100,15 @@ class LibraryStore:
         not cost the caller the rest of the shelf.
         """
         try:
-            entries = sorted(self.library_dir.glob("*.json"))
+            entries = sorted(
+                path
+                for path in self.library_dir.glob("*.json")
+                # The taxonomy and the per-part records live in this directory
+                # too, and they are not documents. Excluded by name rather than
+                # by failing to parse: a document store that warns about its own
+                # metadata on every read has taught its user to ignore warnings.
+                if path.name not in STORE_METADATA_FILES
+            )
         except OSError:  # library_dir missing or unreadable: an empty shelf
             return []
         docs = [doc for doc in (_read_document(path) for path in entries) if doc is not None]
@@ -105,7 +121,12 @@ class LibraryStore:
         This is what makes a Part a *view*: `kind="all"` documents and family
         matches are included, and a part no document covers returns `[]`.
         """
-        return [doc for doc in self.all() if doc.covers(part_number)]
+        # A `category` applicability needs to know which category the part is
+        # filed in, and `Applicability.covers` deliberately will not look that
+        # up itself — it is embedded in a persisted model and must stay a pure
+        # function. Resolved once here rather than per document.
+        category = CategoryStore(self.library_dir).category_of(part_number)
+        return [doc for doc in self.all() if doc.covers(part_number, part_category=category)]
 
     # --- writes ---------------------------------------------------------------
 

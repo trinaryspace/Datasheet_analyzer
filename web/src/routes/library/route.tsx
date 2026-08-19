@@ -28,14 +28,28 @@ import { useNavigate } from 'react-router-dom';
 
 import {
   addProjectParts,
-  createProject,
-  getLibrary,
-  getProjects,
-  removeProjectPart,
-  startAnalyze,
   addToShelf,
+  createCategory,
+  createProject,
+  getCategories,
+  getLibrary,
+  getParts,
+  getProjects,
+  removeCategory,
+  removeProjectPart,
+  renameCategory,
+  setPartCategory,
+  startAnalyze,
 } from '../../api/client';
-import type { DocProposal, LibraryDocumentOut, ProjectOut } from '../../api/types';
+import type {
+  CategoryOut,
+  DocProposal,
+  LibraryDocumentOut,
+  PartOut,
+  ProjectOut,
+} from '../../api/types';
+import { CategoryContents } from './CategoryContents';
+import { CategoryTree } from './CategoryTree';
 import { PartGroupRow } from './PartGroupRow';
 import { useWorkingSet } from '../../shell/workingSet';
 import { ALL_DOCUMENTS, ProjectBar } from './ProjectBar';
@@ -48,6 +62,7 @@ import {
   collectParts,
   errorMessage,
   filterDocuments,
+  categoryContents,
   filterGroupsToProject,
   groupByPart,
   partitionByProject,
@@ -89,6 +104,10 @@ export function LibraryScreen({ applicabilityControl = null }: LibraryScreenProp
   const navigate = useNavigate();
   const [projectError, setProjectError] = useState('');
   const [projectNote, setProjectNote] = useState('');
+  const [categories, setCategories] = useState<CategoryOut[]>([]);
+  const [catalog, setCatalog] = useState<PartOut[]>([]);
+  const [selectedCategory, setSelectedCategory] = useState('');
+  const [editing, setEditing] = useState<LibraryDocumentOut | null>(null);
 
   const load = useCallback(async () => {
     setStatus('loading');
@@ -108,6 +127,16 @@ export function LibraryScreen({ applicabilityControl = null }: LibraryScreenProp
       setProjects((await getProjects()).projects);
     } catch (caught) {
       setProjectError(errorMessage(caught, 'projects could not be read'));
+    }
+    // The taxonomy and the catalog are what make this a bookshelf rather than
+    // a list. Neither failing should cost the user the documents themselves.
+    try {
+      const [taxonomy, parts] = await Promise.all([getCategories(), getParts()]);
+      setCategories(taxonomy.categories);
+      setCatalog(parts.parts);
+      setSelectedCategory((current) => current || taxonomy.categories[0]?.id || '');
+    } catch (caught) {
+      setProjectError(errorMessage(caught, 'the taxonomy could not be read'));
     }
   }, []);
 
@@ -197,6 +226,73 @@ export function LibraryScreen({ applicabilityControl = null }: LibraryScreenProp
       }
     },
     [project, load],
+  );
+
+  // Which category each part is filed in, and which parts are actually built.
+  const partCategory = useMemo(
+    () => new Map(catalog.map((part) => [part.part_number, part.category])),
+    [catalog],
+  );
+  const builtParts = useMemo(
+    () => new Set(catalog.filter((part) => part.built).map((part) => part.part_number)),
+    [catalog],
+  );
+  const contents = useMemo(
+    () => categoryContents(shown, partCategory, selectedCategory, builtParts),
+    [shown, partCategory, selectedCategory, builtParts],
+  );
+
+  /** Open a document in the PDF pane — the same handoff a citation uses. */
+  const openDocument = useCallback(
+    (document: LibraryDocumentOut) => {
+      const query = new URLSearchParams({
+        doc: document.content_hash,
+        part: document.part_number || '',
+        page: '1',
+      });
+      navigate(`/library?${query.toString()}`, { replace: false });
+    },
+    [navigate],
+  );
+
+  /** Run one taxonomy write and refresh the tree. */
+  const runTaxonomy = useCallback(
+    async (write: () => Promise<unknown>) => {
+      setProjectBusy(true);
+      setProjectError('');
+      try {
+        await write();
+        setCategories((await getCategories()).categories);
+      } catch (caught) {
+        setProjectError(errorMessage(caught, 'the taxonomy could not be changed'));
+      } finally {
+        setProjectBusy(false);
+      }
+    },
+    [],
+  );
+
+  /** Re-file a part, as a person. This is the answer a rebuild must not undo. */
+  const movePart = useCallback(
+    async (partNumber: string) => {
+      const target = globalThis.prompt?.(
+        `Move ${partNumber} to which category?
+
+${categories.map((c) => c.id).join(', ')}`,
+        selectedCategory,
+      );
+      if (!target) return;
+      setProjectError('');
+      try {
+        await setPartCategory(partNumber, { category: target.trim() });
+        const [taxonomy, parts] = await Promise.all([getCategories(), getParts()]);
+        setCategories(taxonomy.categories);
+        setCatalog(parts.parts);
+      } catch (caught) {
+        setProjectError(errorMessage(caught, `${partNumber} could not be moved`));
+      }
+    },
+    [categories, selectedCategory],
   );
 
   const onPatched = useCallback((next: LibraryDocumentOut) => {
@@ -383,45 +479,71 @@ export function LibraryScreen({ applicabilityControl = null }: LibraryScreenProp
           ) : null}
 
           <p className="library-count" role="status">
-            {`${groups.length === 1 ? '1 part' : `${groups.length} parts`}, ` +
-              `${shownDocuments} of ${documents.length} documents`}
+            {`${shownDocuments} of ${documents.length} documents`}
           </p>
 
-          {groups.length === 0 ? (
-            <p className="library-empty">
-              {projectParts.length > 0
-                ? `Nothing in ${selectedProject} matches these filters.`
-                : 'No document matches these filters.'}
-            </p>
-          ) : (
-            <div className="library-list">
-              {groups.map((group) => (
-                <PartGroupRow
-                  key={group.part_number}
-                  group={group}
-                  knownLabels={knownLabels}
-                  applicabilityControl={applicabilityControl}
-                  onPatched={onPatched}
-                  defaultOpen={groups.length === 1}
-                  onBuild={group.built ? undefined : (g) => void buildPart(g)}
-                  onAddToProject={
-                    project
-                      ? (hash) => void addToProject(hash)
-                      : undefined
-                  }
-                  inProject={inProjectHashes}
-                  onRemoveFromProject={
-                    project && projectParts.includes(group.part_number)
-                      ? (partNumber) =>
-                          void runProjectWrite(() =>
-                            removeProjectPart(project.name, partNumber),
-                          )
-                      : undefined
-                  }
-                />
-              ))}
-            </div>
-          )}
+          {/* Two panes, not a three-level tree: category on the left, its
+              parts and supporting documents on the right. Three levels of
+              indentation is what made the previous screen sprawl. */}
+          <div className="library-panes">
+            <CategoryTree
+              categories={categories}
+              selected={selectedCategory}
+              busy={projectBusy}
+              onSelect={setSelectedCategory}
+              onCreate={(name) => void runTaxonomy(() => createCategory({ name }))}
+              onRename={(id, name) => void runTaxonomy(() => renameCategory(id, { name }))}
+              onRemove={(id) => void runTaxonomy(() => removeCategory(id))}
+            />
+
+            <CategoryContents
+              category={categories.find((c) => c.id === selectedCategory) ?? null}
+              parts={contents.parts}
+              supporting={contents.supporting}
+              inProject={inProjectHashes}
+              onOpen={openDocument}
+              onAddToProject={project ? (hash) => void addToProject(hash) : undefined}
+              onEditDocument={(document) => setEditing(document)}
+              onMovePart={(partNumber) => void movePart(partNumber)}
+              onBuild={(group) => void buildPart(group)}
+              projectParts={new Set(projectParts)}
+              onRemoveFromProject={
+                project
+                  ? (partNumber) =>
+                      void runProjectWrite(() => removeProjectPart(project.name, partNumber))
+                  : undefined
+              }
+            />
+          </div>
+
+          {/* Applicability and labels are edited one document at a time, in a
+              panel, rather than inline on every row — inline is what made a
+              shelf of twelve not fit on a screen. */}
+          {editing ? (
+            <section className="library-editor" aria-label={`Edit ${editing.filename}`}>
+              <div className="library-editor-head">
+                <h3>{editing.filename}</h3>
+                <button type="button" onClick={() => setEditing(null)}>
+                  Close
+                </button>
+              </div>
+              <PartGroupRow
+                group={{
+                  part_number: editing.part_number || editing.filename,
+                  built: true,
+                  documents: [editing],
+                  labels: editing.labels,
+                }}
+                knownLabels={knownLabels}
+                applicabilityControl={applicabilityControl}
+                onPatched={(next) => {
+                  onPatched(next);
+                  setEditing(next);
+                }}
+                defaultOpen
+              />
+            </section>
+          ) : null}
         </>
       )}
     </main>

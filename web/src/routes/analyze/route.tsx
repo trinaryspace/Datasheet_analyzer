@@ -34,6 +34,7 @@ import { useWorkingSet } from '../../shell/workingSet';
 import ProgressStep from './ProgressStep';
 import ReviewStep from './ReviewStep';
 import UpToDateStep from './UpToDateStep';
+import CategorizeStep from './CategorizeStep';
 import WelcomeStep from './WelcomeStep';
 import { nothingToBuild } from './proposals';
 import './analyze.css';
@@ -50,7 +51,10 @@ type Step =
   | { name: 'welcome' }
   | { name: 'review'; scan: ScanOut }
   | { name: 'uptodate'; scan: ScanOut }
-  | { name: 'run'; runId: string; directory: string };
+  | { name: 'run'; runId: string; directory: string }
+  // The second confirmation moment: a classifier reading the built corpus
+  // guesses the category far better than one reading page 1.
+  | { name: 'categorize'; parts: string[] };
 
 function afterScan(scan: ScanOut): Step {
   return nothingToBuild(scan) ? { name: 'uptodate', scan } : { name: 'review', scan };
@@ -244,6 +248,14 @@ export default function AnalyzeScreen() {
           runId={step.runId}
           directory={step.directory || directory}
           onRestart={() => void scan(directory, { notify: false })}
+          onFinished={(parts) => setStep({ name: 'categorize', parts })}
+        />
+      ) : null}
+
+      {step.name === 'categorize' ? (
+        <CategorizeStep
+          parts={step.parts}
+          onDone={() => void scan(directory, { notify: false })}
         />
       ) : null}
     </div>

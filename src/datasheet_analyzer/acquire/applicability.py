@@ -127,6 +127,53 @@ class _Sweep:
         return min(self.parts, key=lambda h: h.rank) if self.parts else None
 
 
+#: A filename stem that is a document number rather than a part number.
+#: TI ships `sbas123e.pdf`, ADI ships `AD9081.pdf`, Mini-Circuits ships
+#: `PMA1-14LN+.pdf`. Only the first is useless, and it is recognisable: a
+#: vendor doc-number prefix followed by digits and an optional revision letter.
+_DOC_NUMBER = re.compile(
+    r"^(sbas|slas|snas|sbos|slos|sllс|sprs|swra|swaa|sboa|slva|snva|an|ug|tidu)"
+    r"[a-z]*\d+[a-z]?$",
+    re.IGNORECASE,
+)
+
+
+def filename_candidate(path: Path) -> str:
+    """The filename stem as a part-number candidate, or `""`.
+
+    Vendors split two ways: Mini-Circuits, Qorvo and ADI name the file after
+    the part (`PMA1-14LN+.pdf`), while TI names it after the document
+    (`sbas123e.pdf`). Reading only the text got `LHA-83W+.pdf` filed as
+    `DQ1225`; reading only the filename would file `sbas123e.pdf` as
+    `SBAS123E`, which SPEC user story #2 exists to prevent. So the filename is
+    a *candidate*, and `corroborate` decides.
+    """
+    stem = (path.stem or "").strip()
+    if len(stem) < 3 or _DOC_NUMBER.match(stem):
+        return ""
+    # A part number carries at least one digit; a title does not.
+    if not any(ch.isdigit() for ch in stem):
+        return ""
+    return stem.upper()
+
+
+def corroborate(filename: str, text: str, sweep_tokens: list[str]) -> tuple[str, str] | None:
+    """The part number the filename and the page agree on, with why.
+
+    Agreement is the whole idea: a filename that also appears in the document's
+    own text is far stronger evidence than either alone, and it is exactly the
+    case both single-source rules got wrong.
+    """
+    if not filename:
+        return None
+    haystack = (text or "").upper()
+    if any(filename == token.strip().upper() for token in sweep_tokens):
+        return filename, f'filename "{filename}" is also named in the document text'
+    if filename in haystack:
+        return filename, f'filename "{filename}" appears on the first page'
+    return None
+
+
 def infer(
     pdf_path: Path,
     *,
@@ -154,6 +201,21 @@ def infer(
 
     sweep = _sweep(text, known)
     proposal = DocProposal(pdf_path=str(path), filename=path.name, page_count=page_count)
+
+    # --- stage 0: corroboration ----------------------------------------------
+    # Before anything else, ask whether the filename and the page agree. When
+    # they do, that is the strongest evidence available and it settles the part
+    # number outright — which is what makes `PMA1-14LN+.pdf` and `sbas123e.pdf`
+    # both come out right instead of trading one for the other.
+    agreed = corroborate(
+        filename_candidate(path), text, [hit.token for hit in sweep.parts]
+    )
+    if agreed is not None and not sweep.families:
+        token, why = agreed
+        proposal.part_number = token
+        proposal.evidence = why
+        proposal.applicability = Applicability.for_parts([token], evidence=why)
+        return proposal
 
     # --- stage 1: deterministic ---------------------------------------------
     if sweep.empty:

@@ -35,6 +35,12 @@ export interface ApplicabilityControlProps {
   /** Accessible name for the control as a whole. */
   label?: string;
   disabled?: boolean;
+  /**
+   * The taxonomy, for the `category` kind — a supporting document applies to
+   * a whole category and to no part. Empty hides that option: a shelf with no
+   * categories should not offer to file a document into one.
+   */
+  categories?: readonly { id: string; name: string }[];
 }
 
 type ShellModule = Record<string, unknown>;

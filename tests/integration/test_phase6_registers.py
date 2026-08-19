@@ -271,6 +271,12 @@ class TestGoldenRegisterQuestions:
             assert resolved.record["name"] == record.name
 
     def test_dsa_regs_answers_the_same_way_the_library_does(self, monkeypatch, capsys):
+        if not (PARTS_DIR / PART).is_dir():
+            # Same guard the rest of this module already uses: the comparison
+            # is between two readers of a *built* corpus, and a cleared shelf
+            # has nothing for either of them to read.
+            pytest.skip(f"{PART} is not built under {PARTS_DIR}")
+
         import json
 
         from datasheet_analyzer.config import reset_settings_cache

@@ -15,7 +15,7 @@
 // --- scope, citations, applicability (models.py) ------------------------------
 
 /** `Applicability.kind` — the three, and there is no fourth. */
-export type ApplicabilityKind = 'parts' | 'family' | 'all';
+export type ApplicabilityKind = 'parts' | 'family' | 'category' | 'all';
 
 /**
  * The set of parts a document is about (ADR 0005).
@@ -31,6 +31,14 @@ export interface Applicability {
   parts: string[];
   /** Read when `kind === 'family'`, e.g. `AFE79xx`. */
   family: string;
+  /**
+   * Read when `kind === 'category'`, e.g. `amplifiers`.
+   *
+   * Not the same as a family: a family is a pattern over part numbers read
+   * off the page, a category is a slot in the user's taxonomy. A layout note
+   * covering every amplifier names no family and belongs to no part.
+   */
+  category: string;
   evidence: string;
 }
 
@@ -170,6 +178,10 @@ export interface PartOut {
   searchable: boolean;
   spec_confidence: Record<string, number>;
   plot_confidence: Record<string, number>;
+  /** Where this part is filed; `uncategorized` until somebody files it. */
+  category: string;
+  /** True when a person filed it, as opposed to a build proposing it. */
+  category_confirmed: boolean;
 }
 
 /** `GET /api/parts`. */
@@ -234,6 +246,64 @@ export interface ProjectsOut {
   projects: ProjectOut[];
   count: number;
 }
+
+// --- the category taxonomy ----------------------------------------------------
+
+/** One slot in the taxonomy, with how many parts are filed in it. */
+export interface CategoryOut {
+  id: string;
+  name: string;
+  count: number;
+}
+
+/** `GET /api/categories` — `uncategorized` is always last. */
+export interface CategoriesOut {
+  categories: CategoryOut[];
+}
+
+/** `POST /api/categories` — the id is slugified from the name. */
+export interface CategoryCreateIn {
+  name: string;
+}
+
+/** `PATCH /api/categories/{id}` — a new display name, same id. */
+export interface CategoryRenameIn {
+  name: string;
+}
+
+/**
+ * Where a part is filed.
+ *
+ * `confirmed` separates a build's proposal from a person's answer — the
+ * distinction that lets a rebuild re-guess without undoing a correction.
+ * `confident` is why the review sorts doubtful rows to the top.
+ */
+export interface PartCategoryOut {
+  part_number: string;
+  category: string;
+  evidence: string;
+  confirmed: boolean;
+  confident: boolean;
+}
+
+/** `POST /api/parts/{part}/category` — filing a part, as a person. */
+export interface PartCategoryIn {
+  category: string;
+  evidence?: string;
+}
+
+/** `POST /api/categorize` — the parts a finished run produced. */
+export interface CategorizeIn {
+  parts: string[];
+}
+
+/** Proposals, doubtful first. */
+export interface CategorizeOut {
+  parts: PartCategoryOut[];
+}
+
+/** The slot for a part whose category is unknown or genuinely none of them. */
+export const UNCATEGORIZED = 'uncategorized';
 
 // --- a project's shelf ------------------------------------------------------------
 

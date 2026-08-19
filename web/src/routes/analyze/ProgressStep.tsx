@@ -10,6 +10,7 @@
  * - a dropped stream reconnects and re-renders from the snapshot the server
  *   sends on connect, so the rows never blank out.
  */
+import { useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 
 import type { AnalyzeJob } from '../../api/types';
@@ -20,6 +21,8 @@ export interface ProgressStepProps {
   runId: string;
   directory: string;
   onRestart: () => void;
+  /** Fired once, when every job is terminal, with the parts that built. */
+  onFinished?: (parts: string[]) => void;
 }
 
 /**
@@ -58,9 +61,31 @@ function JobRow({ job }: { job: AnalyzeJob }) {
   );
 }
 
-export default function ProgressStep({ runId, directory, onRestart }: ProgressStepProps) {
+export default function ProgressStep({
+  runId,
+  directory,
+  onRestart,
+  onFinished,
+}: ProgressStepProps) {
   const run = useAnalyzeRun(runId);
   const counts = countByState(run.jobs);
+
+  // Fire once, when the run is genuinely over. A ref rather than state: this
+  // is a hand-off, and re-firing it would restart the categorise step every
+  // time a later render happened to touch this component.
+  const handedOff = useRef(false);
+  useEffect(() => {
+    if (!run.done || run.jobs.length === 0 || handedOff.current) return;
+    handedOff.current = true;
+    const built = [
+      ...new Set(
+        run.jobs
+          .filter((job) => job.state === 'done' && job.part_number)
+          .map((job) => job.part_number),
+      ),
+    ];
+    if (built.length > 0) onFinished?.(built);
+  }, [run.done, run.jobs, onFinished]);
   const failed = counts.failed ?? 0;
   const finished = (counts.done ?? 0) + failed + (counts.skipped ?? 0);
 

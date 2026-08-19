@@ -40,6 +40,7 @@ from __future__ import annotations
 
 import asyncio
 import inspect
+import logging
 import threading
 import uuid
 from collections import deque
@@ -63,6 +64,8 @@ from datasheet_analyzer.config import Settings, get_settings
 from datasheet_analyzer.library.store import LibraryStore
 from datasheet_analyzer.models import JobState, LibraryDocument
 from datasheet_analyzer.pipeline import build_part
+
+log = logging.getLogger(__name__)
 
 __all__ = [
     "STAGE_STATES",
@@ -555,3 +558,4 @@ def reset_default_registry() -> None:
     global _DEFAULT_REGISTRY
     with _DEFAULT_LOCK:
         _DEFAULT_REGISTRY = None
+

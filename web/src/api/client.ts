@@ -26,6 +26,14 @@ import type {
   LocateOut,
   LocateQuery,
   MessageIn,
+  CategoriesOut,
+  CategorizeIn,
+  CategorizeOut,
+  CategoryCreateIn,
+  CategoryOut,
+  CategoryRenameIn,
+  PartCategoryIn,
+  PartCategoryOut,
   BrowseListOut,
   BrowsePickOut,
   PartsOut,
@@ -196,6 +204,47 @@ export function openFolderDialog(): Promise<BrowsePickOut> {
 /** `GET /api/browse/list` — sub-directories of `path`; `''` lists the roots. */
 export function listDirectory(path: string): Promise<BrowseListOut> {
   return request<BrowseListOut>(`/browse/list?path=${encodeURIComponent(path)}`);
+}
+
+// --- the category taxonomy ------------------------------------------------------
+
+/** `GET /api/categories` — the taxonomy with per-category part counts. */
+export function getCategories(): Promise<CategoriesOut> {
+  return request<CategoriesOut>('/categories');
+}
+
+/** `POST /api/categories` — adding one that exists returns it. */
+export function createCategory(body: CategoryCreateIn): Promise<CategoryOut> {
+  return request<CategoryOut>('/categories', jsonBody(body));
+}
+
+/** `PATCH /api/categories/{id}` — rename; the id and its parts are untouched. */
+export function renameCategory(id: string, body: CategoryRenameIn): Promise<CategoriesOut> {
+  return request<CategoriesOut>(`/categories/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    body: JSON.stringify(body),
+  });
+}
+
+/** `DELETE /api/categories/{id}` — its parts fall back to `uncategorized`. */
+export function removeCategory(id: string): Promise<CategoriesOut> {
+  return request<CategoriesOut>(`/categories/${encodeURIComponent(id)}`, { method: 'DELETE' });
+}
+
+/** `POST /api/parts/{part}/category` — the person's answer, which sticks. */
+export function setPartCategory(
+  partNumber: string,
+  body: PartCategoryIn,
+): Promise<PartCategoryOut> {
+  return request<PartCategoryOut>(
+    `/parts/${encodeURIComponent(partNumber)}/category`,
+    jsonBody(body),
+  );
+}
+
+/** `POST /api/categorize` — proposals for a finished run, doubtful first. */
+export function categorizeParts(body: CategorizeIn): Promise<CategorizeOut> {
+  return request<CategorizeOut>('/categorize', jsonBody(body));
 }
 
 // --- analyze ------------------------------------------------------------------

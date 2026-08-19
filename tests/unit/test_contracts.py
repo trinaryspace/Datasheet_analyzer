@@ -464,6 +464,8 @@ def test_every_endpoint_in_the_table_has_a_row():
         "/api/projects/{name}/parts/{part}": "/api/projects/{name}/parts/{part_number}",
         "/api/sessions/{id}": "/api/sessions/{session_id}",
         "/api/sessions/{id}/export": "/api/sessions/{session_id}/export",
+        "/api/categories/{id}": "/api/categories/{category_id}",
+        "/api/parts/{part}/category": "/api/parts/{part_number}/category",
     }
     documented = {aliases.get(path, path) for path in documented}
     mounted = {path for path in create_app().openapi()["paths"] if path.startswith("/api/")}

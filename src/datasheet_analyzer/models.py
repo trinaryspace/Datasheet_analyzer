@@ -247,7 +247,14 @@ class Applicability(BaseModel):
     |---|---|---|
     | `parts` | `parts` | exactly these part numbers |
     | `family` | `family` | every part matching the prefix (`AFE79xx`) |
+    | `category` | `category` | every part filed in that category |
     | `all` | — | every part in the library |
+
+    `family` and `category` both mean "more than one part" and are not the
+    same thing: a family is a *pattern over part numbers*, read off the page
+    (`AFE79xx`); a category is a *slot in the user's taxonomy*, a judgement
+    about what the device is (`amplifiers`). A layout-guidelines note that
+    applies to every amplifier names no family and belongs to no part.
 
     `all` is the default *and* the honest fallback: a document whose
     applicability cannot be determined degrades to the previous flat
@@ -265,9 +272,10 @@ class Applicability(BaseModel):
     cached extraction.
     """
 
-    kind: Literal["parts", "family", "all"] = "all"
+    kind: Literal["parts", "family", "category", "all"] = "all"
     parts: list[str] = Field(default_factory=list)  # kind == "parts"
     family: str = ""  # kind == "family", e.g. "AFE79xx"
+    category: str = ""  # kind == "category", e.g. "amplifiers"
     evidence: str = ""  # how it was decided; never blank in practice
 
     @classmethod
@@ -281,23 +289,40 @@ class Applicability(BaseModel):
         return cls(kind="family", family=family, evidence=evidence)
 
     @classmethod
+    def for_category(cls, category: str, *, evidence: str = "") -> Applicability:
+        """Applicability covering every part filed in one category."""
+        return cls(kind="category", category=category, evidence=evidence)
+
+    @classmethod
     def for_all(cls, *, evidence: str = "") -> Applicability:
         """The honest default: a document that applies to every part."""
         return cls(kind="all", evidence=evidence)
 
-    def covers(self, part_number: str) -> bool:
+    def covers(self, part_number: str, *, part_category: str = "") -> bool:
         """True when this document applies to `part_number`.
 
         Case-insensitive throughout — part numbers are printed both ways and a
         corpus keyed on `AD9081` must not miss a document that wrote `ad9081`.
         A blank part number is covered by nothing: a part is an identity, and
         "applies to the nameless part" is never a useful answer.
+
+        `part_category` is which category the part is filed in, and only a
+        `category` applicability reads it. It is a parameter rather than a
+        lookup because this model must stay a pure function of its own fields:
+        it is embedded in `LibraryDocument`, which the pipeline persists, and
+        reaching into a store from here would put disk access inside a
+        predicate that runs per document per part. A caller that does not know
+        the category gets `False` for a category document — conservative, and
+        the reason `LibraryStore.for_part` resolves it before asking.
         """
         wanted = (part_number or "").strip().upper()
         if not wanted:
             return False
         if self.kind == "all":
             return True
+        if self.kind == "category":
+            mine = (self.category or "").strip().lower()
+            return bool(mine) and mine == (part_category or "").strip().lower()
         if self.kind == "parts":
             return any(wanted == p.strip().upper() for p in self.parts)
         stem = (self.family or "").strip().upper()
@@ -310,9 +335,11 @@ class Applicability(BaseModel):
 
     @property
     def label(self) -> str:
-        """Human-readable one-liner: `AD9081`, `AFE79xx`, `all parts`."""
+        """Human-readable one-liner: `AD9081`, `AFE79xx`, `all amplifiers`."""
         if self.kind == "all":
             return "all parts"
+        if self.kind == "category":
+            return f"all {self.category}" if self.category else "unnamed category"
         if self.kind == "family":
             return self.family or "unnamed family"
         return ", ".join(self.parts) if self.parts else "no parts"
@@ -327,6 +354,8 @@ class Applicability(BaseModel):
         """
         if self.kind == "parts":
             return bool([p for p in self.parts if p.strip()])
+        if self.kind == "category":
+            return bool(self.category.strip())
         if self.kind == "family":
             return bool(self.family.strip())
         return True
@@ -364,9 +393,9 @@ class LibraryDocument(BaseModel):
         """The recorded path's basename, for display."""
         return self.source.path.replace("\\", "/").rsplit("/", 1)[-1]
 
-    def covers(self, part_number: str) -> bool:
+    def covers(self, part_number: str, *, part_category: str = "") -> bool:
         """Shorthand for `self.applicability.covers(part_number)`."""
-        return self.applicability.covers(part_number)
+        return self.applicability.covers(part_number, part_category=part_category)
 
 
 class ScopeRef(BaseModel):

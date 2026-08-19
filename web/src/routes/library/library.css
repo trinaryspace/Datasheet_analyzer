@@ -235,3 +235,224 @@
 .library-add-to-project {
   font-size: 0.82em;
 }
+
+/* --- the structured bookshelf (round 4) ---------------------------------------
+   Two panes rather than a three-level tree: category on the left, its contents
+   on the right. Compact by construction — one line per document, detail on
+   demand — because an applicability fieldset on every row is what stopped a
+   shelf of twelve fitting on a screen. */
+
+.library-panes {
+  display: grid;
+  grid-template-columns: minmax(11rem, 15rem) minmax(0, 1fr);
+  gap: 1rem;
+  align-items: start;
+}
+
+@media (max-width: 60rem) {
+  .library-panes {
+    grid-template-columns: 1fr;
+  }
+}
+
+.category-tree-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--dsa-border, #d8dee6);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.category-tree-item {
+  display: flex;
+  align-items: center;
+  border-bottom: 1px solid var(--dsa-border-faint, rgb(0 0 0 / 6%));
+}
+
+.category-tree-item:last-child {
+  border-bottom: 0;
+}
+
+.category-tree-item[data-active='true'] {
+  background: var(--dsa-subtle, rgb(0 0 0 / 5%));
+}
+
+.category-tree-button {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  min-width: 0;
+  padding: 0.3rem 0.55rem;
+  border: 0;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+  font-size: 0.88em;
+}
+
+.category-tree-item[data-active='true'] .category-tree-name {
+  font-weight: 650;
+}
+
+.category-tree-name {
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.category-tree-count,
+.cat-doc-meta {
+  color: var(--dsa-muted, #6b7280);
+  font-size: 0.85em;
+}
+
+.category-tree-edit {
+  flex: none;
+  padding: 0 0.35rem;
+  border: 0;
+  background: none;
+  color: var(--dsa-muted, #6b7280);
+  cursor: pointer;
+}
+
+.category-tree-add {
+  display: flex;
+  gap: 0.35rem;
+  margin-top: 0.4rem;
+}
+
+.category-tree-add input {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+/* --- the contents pane -------------------------------------------------------- */
+
+.cat-heading {
+  margin: 0 0 0.5rem;
+  font-size: 1em;
+}
+
+.cat-empty,
+.cat-supporting-note {
+  margin: 0.3rem 0;
+  font-size: 0.88em;
+  color: var(--dsa-muted, #6b7280);
+}
+
+.cat-part {
+  margin-bottom: 0.5rem;
+  border: 1px solid var(--dsa-border, #d8dee6);
+  border-radius: 6px;
+}
+
+.cat-part-summary {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0.6rem;
+  cursor: pointer;
+  font-size: 0.9em;
+}
+
+.cat-part-name {
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.cat-unbuilt {
+  padding: 0 0.4em;
+  border: 1px solid var(--dsa-warn-border, #e5c07b);
+  border-radius: 999px;
+  color: var(--dsa-warn-text, #8a6100);
+  font-size: 0.8em;
+}
+
+.cat-docs {
+  margin: 0;
+  padding: 0 0 0.3rem;
+  list-style: none;
+}
+
+.cat-doc {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding-left: 0.6rem;
+}
+
+.cat-doc-open {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  min-width: 0;
+  padding: 0.22rem 0.3rem;
+  border: 0;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+  font-size: 0.85em;
+}
+
+.cat-doc-open:hover {
+  background: var(--dsa-subtle, rgb(0 0 0 / 4%));
+}
+
+.cat-doc-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cat-doc-label {
+  padding: 0 0.35em;
+  border: 1px solid var(--dsa-border, #d8dee6);
+  border-radius: 999px;
+  font-size: 0.8em;
+  color: var(--dsa-muted, #6b7280);
+}
+
+.cat-doc-action {
+  flex: none;
+  font-size: 0.78em;
+}
+
+.cat-doc-here {
+  flex: none;
+  font-size: 0.78em;
+  color: var(--dsa-muted, #6b7280);
+}
+
+.cat-supporting {
+  margin-top: 0.9rem;
+  padding-top: 0.6rem;
+  border-top: 1px dashed var(--dsa-border, #d8dee6);
+}
+
+.cat-supporting h4 {
+  margin: 0;
+  font-size: 0.9em;
+}
+
+.library-editor {
+  margin-top: 1rem;
+  padding: 0.6rem;
+  border: 1px solid var(--dsa-focus, #2563eb);
+  border-radius: 8px;
+}
+
+.library-editor-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.library-editor-head h3 {
+  margin: 0;
+  font-size: 0.95em;
+}

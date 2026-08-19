@@ -8,6 +8,13 @@ in parallel against the same contract.
 | Method | Path | Request | Response | Ticket |
 |---|---|---|---|---|
 | GET | `/api/parts` | — | `PartsOut` | 06 |
+| GET | `/api/categories` | — | `CategoriesOut` | — |
+| POST | `/api/categories` | `CategoryCreateIn` | `CategoryOut` | — |
+| PATCH | `/api/categories/{id}` | `CategoryRenameIn` | `CategoriesOut` | — |
+| DELETE | `/api/categories/{id}` | — | `CategoriesOut` | — |
+| GET | `/api/parts/{part}/category` | — | `PartCategoryOut` | — |
+| POST | `/api/parts/{part}/category` | `PartCategoryIn` | `PartCategoryOut` | — |
+| POST | `/api/categorize` | `CategorizeIn` | `CategorizeOut` | — |
 | GET | `/api/projects` | — | `ProjectsOut` | 06 |
 | POST | `/api/projects` | `ProjectCreateIn` | `ProjectOut` | — |
 | POST | `/api/projects/{name}/parts` | `ProjectPartsIn` | `ProjectOut` | — |
@@ -94,6 +101,12 @@ __all__ = [
     "BrowseListOut",
     "BrowsePickOut",
     "BuildState",
+    "CategoriesOut",
+    "CategorizeIn",
+    "CategorizeOut",
+    "CategoryCreateIn",
+    "CategoryOut",
+    "CategoryRenameIn",
     "ChatEvent",
     "ChatEventType",
     "ChatMessage",
@@ -111,6 +124,8 @@ __all__ = [
     "LocateOut",
     "LocateQuery",
     "MessageIn",
+    "PartCategoryIn",
+    "PartCategoryOut",
     "PartOut",
     "PartsOut",
     "ProjectCreateIn",
@@ -204,6 +219,11 @@ class PartOut(BaseModel):
     searchable: bool = False
     spec_confidence: dict[str, int] = Field(default_factory=dict)
     plot_confidence: dict[str, int] = Field(default_factory=dict)
+    #: Where this part is filed, and whether a person put it there. Carried on
+    #: the catalog row so the Library can group by category without a second
+    #: request per part.
+    category: str = "uncategorized"
+    category_confirmed: bool = False
 
 
 class PartsOut(BaseModel):
@@ -298,6 +318,72 @@ class ProjectsOut(BaseModel):
 
     projects: list[ProjectOut] = Field(default_factory=list)
     count: int = 0
+
+
+# --- the category taxonomy --------------------------------------------------------
+
+
+class CategoryOut(BaseModel):
+    """One slot in the taxonomy, with how many parts are filed in it."""
+
+    id: str
+    name: str
+    count: int = 0
+
+
+class CategoriesOut(BaseModel):
+    """`GET /api/categories` — the taxonomy, `uncategorized` last."""
+
+    categories: list[CategoryOut] = Field(default_factory=list)
+
+
+class CategoryCreateIn(BaseModel):
+    """`POST /api/categories` — the display name; the id is slugified from it."""
+
+    name: str
+
+
+class CategoryRenameIn(BaseModel):
+    """`PATCH /api/categories/{id}` — a new display name, same id."""
+
+    name: str
+
+
+class PartCategoryOut(BaseModel):
+    """Where a part is filed.
+
+    `confirmed` separates a build's proposal from a person's answer, which is
+    the distinction that lets a rebuild re-guess without undoing a correction.
+    """
+
+    part_number: str
+    category: str = "uncategorized"
+    evidence: str = ""
+    confirmed: bool = False
+    #: False when the guess came from a fallback, or when the classifier
+    #: contradicted a clear keyword hit. Drives the review's ordering — the
+    #: doubtful sort to the top, which is where a confidently wrong answer
+    #: needs to be if anyone is going to notice it.
+    confident: bool = False
+
+
+class CategorizeIn(BaseModel):
+    """`POST /api/categorize` — the parts a finished run produced."""
+
+    parts: list[str] = Field(default_factory=list)
+
+
+class CategorizeOut(BaseModel):
+    """Proposals, doubtful first — those are the rows worth a human glance."""
+
+    parts: list[PartCategoryOut] = Field(default_factory=list)
+
+
+class PartCategoryIn(BaseModel):
+    """`POST /api/parts/{part}/category` — filing a part, as a person."""
+
+    category: str
+    evidence: str = ""
 
 
 # --- a project's shelf ----------------------------------------------------------

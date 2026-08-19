@@ -37,7 +37,13 @@ export interface AnalyzeRunState {
   done: boolean;
 }
 
-const EMPTY_APPLICABILITY = { kind: 'all' as const, parts: [], family: '', evidence: '' };
+const EMPTY_APPLICABILITY = {
+  kind: 'all' as const,
+  parts: [],
+  family: '',
+  category: '',
+  evidence: '',
+};
 
 /** A job the snapshot has not described yet, synthesized from its event. */
 function jobFromEvent(event: JobEvent): AnalyzeJob {

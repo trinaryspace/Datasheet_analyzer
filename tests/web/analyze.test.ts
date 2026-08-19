@@ -41,6 +41,9 @@ const mocks = vi.hoisted(() => ({
   setProjectExclusions: vi.fn(),
   openFolderDialog: vi.fn(),
   listDirectory: vi.fn(),
+  getCategories: vi.fn(),
+  categorizeParts: vi.fn(),
+  setPartCategory: vi.fn(),
 }));
 
 vi.mock('../../web/src/api/client', async (importOriginal) => {
@@ -55,6 +58,9 @@ vi.mock('../../web/src/api/client', async (importOriginal) => {
     setProjectExclusions: mocks.setProjectExclusions,
     openFolderDialog: mocks.openFolderDialog,
     listDirectory: mocks.listDirectory,
+    getCategories: mocks.getCategories,
+    categorizeParts: mocks.categorizeParts,
+    setPartCategory: mocks.setPartCategory,
   };
 });
 
@@ -93,6 +99,7 @@ vi.mock('../../web/src/routes/analyze/shellPrimitives', async () => {
               kind: 'parts',
               parts: ['AFE7950', 'AFE7951'],
               family: '',
+              category: '',
               evidence: 'confirmed by user',
             }),
         },
@@ -110,7 +117,7 @@ const ANALYZE_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '../../web/
 // --- fixtures -----------------------------------------------------------------
 
 function applicability(patch: Partial<Applicability> = {}): Applicability {
-  return { kind: 'all', parts: [], family: '', evidence: '', ...patch };
+  return { kind: 'all', parts: [], family: '', category: '', evidence: '', ...patch };
 }
 
 function proposal(patch: Partial<DocProposal> = {}): DocProposal {
@@ -272,6 +279,16 @@ beforeEach(() => {
   });
   mocks.listDirectory.mockReset();
   mocks.listDirectory.mockResolvedValue({ path: '', parent: '', entries: [] });
+  mocks.getCategories.mockReset();
+  mocks.getCategories.mockResolvedValue({
+    categories: [
+      { id: 'amplifiers', name: 'Amplifiers', count: 0 },
+      { id: 'uncategorized', name: 'Uncategorized', count: 0 },
+    ],
+  });
+  mocks.categorizeParts.mockReset();
+  mocks.categorizeParts.mockResolvedValue({ parts: [] });
+  mocks.setPartCategory.mockReset();
   mocks.openAnalyzeStream.mockImplementation((runId: string, handlers: AnalyzeStreamHandlers) => {
     const stream: FakeStream = { runId, handlers, closed: false };
     streams.push(stream);
@@ -384,13 +401,14 @@ describe('reviewing proposals', () => {
           applicability: applicability({
             kind: 'family',
             family: 'AFE79xx',
+            category: '',
             evidence: 'title names a family prefix',
           }),
         }),
       ]),
     );
 
-    expect(screen.getByLabelText('Part number', { selector: '#part-hash-a' })).toHaveValue(
+    expect(screen.getByLabelText('Part number for sbas123e.pdf')).toHaveValue(
       'AFE7950',
     );
     expect(screen.getByText('applies:parts:AFE7950')).toBeInTheDocument();
@@ -411,7 +429,7 @@ describe('reviewing proposals', () => {
     });
     await toReview(scanOut([first, second]));
 
-    fireEvent.change(screen.getByLabelText('Part number', { selector: '#part-hash-b' }), {
+    fireEvent.change(screen.getByLabelText('Part number for an-jesd.pdf'), {
       target: { value: 'AFE7951' },
     });
     fireEvent.click(
@@ -433,6 +451,7 @@ describe('reviewing proposals', () => {
             kind: 'parts',
             parts: ['AFE7950', 'AFE7951'],
             family: '',
+            category: '',
             evidence: 'confirmed by user',
           },
         },
@@ -498,9 +517,9 @@ describe('reviewing proposals', () => {
 
     // Rows are `h4` now: they sit inside a folder section whose heading is the
     // `h3`. Level 3 would pick up the folder header, not the documents.
-    const names = screen
-      .getAllByRole('heading', { level: 4 })
-      .map((node) => node.textContent ?? '');
+    const names = [...document.querySelectorAll('.analyze-row-name')].map(
+      (node) => node.textContent ?? '',
+    );
     expect(names).toEqual([
       'no-part.pdf',
       'unresolved.pdf',
@@ -516,7 +535,7 @@ describe('reviewing proposals', () => {
     expect(screen.getByRole('button', { name: /^Build/ })).toBeDisabled();
     expect(screen.getByRole('alert')).toHaveTextContent('have no part number');
 
-    fireEvent.change(screen.getByLabelText('Part number', { selector: '#part-hash-a' }), {
+    fireEvent.change(screen.getByLabelText('Part number for sbas123e.pdf'), {
       target: { value: 'AFE7950' },
     });
     expect(screen.getByRole('button', { name: /^Build/ })).toBeEnabled();

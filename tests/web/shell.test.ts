@@ -592,7 +592,7 @@ describe('ConfidenceBadge', () => {
 // --- applicability -----------------------------------------------------------------
 
 function applicability(patch: Partial<Applicability> = {}): Applicability {
-  return { kind: 'all', parts: [], family: '', evidence: 'inferred', ...patch };
+  return { kind: 'all', parts: [], family: '', category: '', evidence: 'inferred', ...patch };
 }
 
 describe('ApplicabilityControl', () => {
@@ -613,6 +613,7 @@ describe('ApplicabilityControl', () => {
       kind: 'parts',
       parts: ['AD9081', 'AD9082', 'AD9986'],
       family: '',
+      category: '',
       evidence: APPLICABILITY_USER_EVIDENCE,
     });
   });
@@ -628,6 +629,7 @@ describe('ApplicabilityControl', () => {
       kind: 'family',
       parts: [],
       family: 'AFE80xx',
+      category: '',
       evidence: APPLICABILITY_USER_EVIDENCE,
     });
   });
@@ -640,6 +642,7 @@ describe('ApplicabilityControl', () => {
       kind: 'all',
       parts: [],
       family: '',
+      category: '',
       evidence: APPLICABILITY_USER_EVIDENCE,
     });
     expect(screen.queryByLabelText('Prefix')).toBeNull();
