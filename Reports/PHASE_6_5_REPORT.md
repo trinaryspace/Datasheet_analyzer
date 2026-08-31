@@ -178,8 +178,11 @@ three questions the plan raised, and this phase acted on all three.
    test that cannot skip asserts the tracked pair is current and readable from
    the part directory alone.
 
-`dsa build --self-contained` is the mode that makes (2) executable, and
-`tests/integration/test_corpus_currency.py` is (1) and (3).
+`dsa build --self-contained` is the mode that makes (2) executable;
+`tests/integration/test_corpus_currency.py` is (1) and the unskippable half of
+(3); and `test_phase6_gate._built` is the skipping half — it now names both
+versions ("AFE7950 is built at pipeline 0.1.0, this code is 0.5.0") instead of
+measuring a corpus the code has moved past.
 
 **The tracked corpora were rebuilt and committed** (`6837524`). That is the
 decision with history: the same act was reverted once, and it is being done

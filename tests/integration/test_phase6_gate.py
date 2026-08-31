@@ -26,6 +26,7 @@ from pathlib import Path
 
 import pytest
 
+from datasheet_analyzer.config import PIPELINE_VERSION
 from datasheet_analyzer.corpus_ref import library_root_of
 from datasheet_analyzer.derive.cards import audit_card, load_or_build_card
 from datasheet_analyzer.derive.compare import audit_comparison, compare_parts
@@ -130,9 +131,25 @@ def _library_dir(part: str) -> Path | None:
 
 
 def _built(part: str) -> Path:
+    """The part's directory, or a skip that says *why* it cannot be measured.
+
+    ADR 0008's third rule: a corpus-reading gate skips rather than fails when
+    its corpus predates the code, and names the version it found — "AFE7950 is
+    built at pipeline 0.1.0, this code is 0.5.0" is a sentence a developer can
+    act on, where a red gate on a fresh clone is one they learn to ignore. The
+    regression that skipping could hide is caught instead by
+    `tests/integration/test_corpus_currency.py`, which cannot skip because its
+    inputs are committed.
+    """
     directory = _part_dir(part)
-    if read_manifest(directory) is None:
+    manifest = read_manifest(directory)
+    if manifest is None:
         pytest.skip(f"{part} is not built under {PARTS}")
+    if manifest.pipeline_version != PIPELINE_VERSION:
+        pytest.skip(
+            f"{part} is built at pipeline {manifest.pipeline_version}, this code is "
+            f"{PIPELINE_VERSION}; rebuild it before this gate can measure anything"
+        )
     return directory
 
 
