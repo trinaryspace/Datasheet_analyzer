@@ -11,6 +11,7 @@ itself and reports what it cost.
 """
 
 from datasheet_analyzer.retrieve.compare import Comparison, check_parts
+from datasheet_analyzer.retrieve.family import FamilyRetriever, load_members
 from datasheet_analyzer.retrieve.index import (
     INDEX_FILENAME,
     CorpusIndex,
@@ -59,6 +60,7 @@ from datasheet_analyzer.retrieve.pack import (  # isort: skip
     AnswerPack,
     PackExcerpt,
     PackLine,
+    build_family_pack,
     build_pack,
     build_project_pack,
     validate_pack,
@@ -83,6 +85,7 @@ __all__ = [
     "Citation",
     "Comparison",
     "CorpusIndex",
+    "FamilyRetriever",
     "IndexedDoc",
     "PackExcerpt",
     "PackLine",
@@ -97,12 +100,14 @@ __all__ = [
     "SearchHit",
     "SectionHit",
     "SpecHit",
+    "build_family_pack",
     "build_pack",
     "build_project_pack",
     "check_parts",
     "clear_index_cache",
     "discover_parts",
     "gap_axis",
+    "load_members",
     "revision_documents",
     "score_sections",
     "select_revision",

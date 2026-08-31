@@ -74,6 +74,7 @@ dependency-free, so the check is available wherever the schema is.
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
+from typing import TYPE_CHECKING
 
 from datasheet_analyzer.config import get_settings
 from datasheet_analyzer.errata import pack_warning
@@ -105,6 +106,12 @@ from datasheet_analyzer.staleness import pack_footer
 from datasheet_analyzer.structure.aliases import padded, tokens
 from datasheet_analyzer.structure.search import tokenize
 from datasheet_analyzer.tokens import count_tokens, truncate_to_tokens
+
+if TYPE_CHECKING:  # pragma: no cover - import cycle guard, typing only
+    # `retrieve.family` composes this module (a family pack is built here),
+    # and it reaches into `datasheet_analyzer.families`, which reaches back
+    # into `retrieve.results`. Annotation-only keeps that cycle open.
+    from datasheet_analyzer.retrieve.family import FamilyRetriever
 
 ROUTE_SPEC = "spec"
 ROUTE_PLOT = "plot"
@@ -141,6 +148,11 @@ MAX_SUGGESTIONS = 5
 # A project pack answers from several parts at once; the cap is on the union,
 # and the rows are interleaved so it can never spend itself on one member.
 MAX_PROJECT_ANSWERS = 8
+
+#: The heading a family pack puts its per-member differences under. A heading
+#: rather than a footnote: "the answer is not the same for every member" is the
+#: finding, not a caveat on one.
+DIVERGENCE_HEADING = "Per-member differences"
 # How many member names the project header spells out before it counts them.
 _HEADER_PARTS = 6
 # Which route leads a project pack when two parts answer by different paths:
@@ -197,14 +209,24 @@ class PackLine:
     # be dropped only if the row they qualify is dropped — exactly like the
     # citation. A reader shown the value must be shown that an erratum names it.
     errata: tuple[str, ...] = ()
+    # Phase 7, ticket 07: the family members this row is **common to**, when it
+    # is. A family pack returns one row for a finding every member printed
+    # identically, and the row must say which devices it stands for — a value
+    # read once and applied to three parts is only safe if the reader can see
+    # that is what happened. Empty on every non-family pack.
+    shared_with: tuple[str, ...] = ()
 
     @property
     def rendered(self) -> str:
         head = f"[{self.part}] " if self.part else ""
         tail = f"  file: {self.file}" if self.file else ""
         warnings = "".join(f"\n    {note}" for note in self.errata)
+        common = (
+            f"  [common to {', '.join(self.shared_with)}]" if self.shared_with else ""
+        )
         return (
-            f"{head}{self.text} — {self.citation}  [{self.confidence}]{tail}{warnings}"
+            f"{head}{self.text} — {self.citation}  [{self.confidence}]"
+            f"{common}{tail}{warnings}"
         )
 
     def as_dict(self) -> dict:
@@ -221,6 +243,7 @@ class PackLine:
             "file": self.file,
             "source": self.source,
             "errata": list(self.errata),
+            "shared_with": list(self.shared_with),
         }
 
 
@@ -274,6 +297,14 @@ class AnswerPack:
     # tells a caller that every answer line names its own part.
     project: str = ""
     parts: tuple[str, ...] = ()
+    # Family scope (phase 7, ticket 07). `family` names the declared series and
+    # `parts` its members, exactly as a project pack uses them. `shared` is the
+    # answer to the question the family exists for — is this finding common to
+    # every member? — and `divergence` is the flag when it is not: one line per
+    # member, so "it depends which device you mean" is never left implicit.
+    family: str = ""
+    shared: bool = False
+    divergence: tuple[str, ...] = ()
     answers: tuple[PackLine, ...] = ()
     excerpt: PackExcerpt | None = None
     verify: str = ""
@@ -298,6 +329,16 @@ class AnswerPack:
         is capped, because the header is reserved tail and a fifty-part design
         must not spend the budget introducing itself.
         """
+        if self.family:
+            head = self.family
+            if self.parts:
+                shown = ", ".join(self.parts[:_HEADER_PARTS])
+                if len(self.parts) > _HEADER_PARTS:
+                    shown += f", … ({len(self.parts)} parts)"
+                head += f" — family ({shown})"
+            else:
+                head += " — family (no members)"
+            return f"## {head}"
         if self.project:
             head = self.project
             if self.parts:
@@ -327,6 +368,15 @@ class AnswerPack:
         else:
             blocks.append(
                 "### Answer\n" + "\n".join(line.rendered for line in self.answers)
+            )
+        # Placed immediately under the answer, before anything discretionary:
+        # a family answer that is *not* common is a different answer, and a
+        # reader who scrolled past the rows must not have to find that out at
+        # the bottom.
+        if self.divergence:
+            blocks.append(
+                f"### {DIVERGENCE_HEADING}\n"
+                + "\n".join(f"- {line}" for line in self.divergence)
             )
         if self.suggestions:
             blocks.append(
@@ -381,6 +431,9 @@ class AnswerPack:
             "staleness_note": self.staleness_note,
             "doc": self.doc,
             "project": self.project,
+            "family": self.family,
+            "shared": self.shared,
+            "divergence": list(self.divergence),
             "parts": list(self.parts),
             "answers": [line.as_dict() for line in self.answers],
             "excerpt": None if self.excerpt is None else self.excerpt.as_dict(),
@@ -469,6 +522,165 @@ def build_project_pack(
         f"{lead.part} — {lead.verify}",
         [],
         more,
+    )
+
+
+def build_family_pack(
+    scope: FamilyRetriever, question: str, *, budget: int = 0
+) -> AnswerPack:
+    """One pack for a whole series: shared answers once, differences flagged.
+
+    Phase 7, ticket 07, and the ticket's fifth criterion. Every member is routed
+    **independently**, exactly as a project pack routes them — a part answers
+    from its own records — and then one rule is applied that a project pack must
+    not apply: a finding **every** member produced, character for character, is
+    returned **once**, carrying the members it is common to and the reference
+    member's citation. Everything else is returned per member and the pack says
+    `shared: False` with one `divergence` line per member.
+
+    Character-for-character is the whole strictness. `1.35 A` and `1350 mA` are
+    the same magnitude and are not the same printed answer, and this repo treats
+    the printed string as authoritative — so two members that printed them are
+    divergent here, correctly, and a reader sees both.
+    """
+    question = question.strip()
+    if budget <= 0:
+        budget = get_settings().ask_budget
+
+    answering: list[_MemberAnswer] = []
+    suggestions: list[str] = []
+    silent: list[str] = []
+    for order, member in enumerate(scope.members):
+        route, lines, excerpt, verify, hints, more = _route(member, question)
+        if route in _ROUTE_STRENGTH:
+            answering.append(
+                _MemberAnswer(
+                    part=member.part,
+                    order=order,
+                    route=route,
+                    lines=[
+                        replace(line, part=member.part)
+                        for line in _with_errata(member, lines)
+                    ],
+                    excerpt=(
+                        None if excerpt is None else replace(excerpt, part=member.part)
+                    ),
+                    verify=verify,
+                    more=more,
+                )
+            )
+        else:
+            silent.append(member.part)
+            for hint in hints:
+                if hint not in suggestions:
+                    suggestions.append(hint)
+
+    if not answering:
+        pack = _project_no_match(scope, question, budget, suggestions)
+        return replace(pack, project="", family=scope.name, shared=False)
+
+    answering.sort(key=lambda m: (_ROUTE_STRENGTH[m.route], m.order))
+    lines, divergence, shared = _collapse(scope, answering, silent)
+    lead = answering[0]
+    more = any(m.more for m in answering) or len(lines) > MAX_PROJECT_ANSWERS
+    frame = _family_draft(scope, question, lead.route, budget)
+    frame = replace(frame, shared=shared, divergence=tuple(divergence))
+    return _assemble(
+        frame,
+        lines[:MAX_PROJECT_ANSWERS],
+        lead.excerpt if not shared else None,
+        f"{lead.part} — {lead.verify}",
+        [],
+        more,
+    )
+
+
+def _collapse(
+    scope: FamilyRetriever,
+    answering: list[_MemberAnswer],
+    silent: list[str],
+) -> tuple[list[PackLine], list[str], bool]:
+    """Fold the members' rows into "common once" plus "per member".
+
+    A finding is common only when **every declared member** produced it — a
+    member that answered nothing is a divergence, not an abstention, because
+    "this device does not state it" is exactly the difference a series reader is
+    asking about.
+    """
+    members = list(scope.parts)
+    by_text: dict[str, list[PackLine]] = {}
+    for answer in answering:
+        for line in answer.lines:
+            by_text.setdefault(line.text, []).append(line)
+
+    common_texts = [
+        text
+        for text, found in by_text.items()
+        if not silent and {line.part for line in found} == set(members)
+    ]
+    shared = bool(common_texts) and len(common_texts) == len(by_text)
+
+    lines: list[PackLine] = []
+    for text in common_texts:
+        found = sorted(by_text[text], key=lambda line: members.index(line.part))
+        lines.append(
+            replace(found[0], part="", shared_with=tuple(members))
+        )
+    divergent = [text for text in by_text if text not in set(common_texts)]
+    lines.extend(
+        _interleave(
+            [
+                [line for line in answer.lines if line.text in set(divergent)]
+                for answer in answering
+            ]
+        )
+    )
+
+    if shared:
+        return lines, [], True
+    notes = [
+        f"{part}: nothing on this path — "
+        f"`dsa ask --part {part} \"...\"` for what it does answer"
+        for part in silent
+    ]
+    for answer in answering:
+        own = [line.text for line in answer.lines if line.text in set(divergent)]
+        if not own:
+            continue
+        # One finding per member, plus a count. The rows themselves are above,
+        # each already labelled with its part — repeating all of them here would
+        # spend the budget saying twice what the answer block says once, and the
+        # budget is the reason a family pack exists.
+        more = f" (+{len(own) - 1} more above)" if len(own) > 1 else ""
+        notes.append(f"{answer.part}: {own[0]}{more}")
+    if notes:
+        notes.insert(
+            0,
+            "the answer is **not** common to every member — each row above names "
+            "the member it came from",
+        )
+    return lines, notes, False
+
+
+def _family_draft(
+    scope: FamilyRetriever, question: str, route: str, budget: int
+) -> AnswerPack:
+    """The render frame for a family pack: the series and its members.
+
+    The staleness reading is the series' least fresh member and names it, for the
+    reason a project pack's does: an answer drawn from several corpora is only as
+    current as the worst of them.
+    """
+    stale = scope.staleness()
+    return AnswerPack(
+        part="",
+        question=question,
+        route=route,
+        budget=budget,
+        family=scope.name,
+        parts=tuple(scope.parts),
+        staleness=stale.state.value,
+        staleness_note=pack_footer(stale),
     )
 
 
@@ -1205,7 +1417,7 @@ _LINE_SCHEMA = {
     "additionalProperties": False,
     "required": [
         "text", "citation", "confidence", "matched_via", "part", "doc", "section",
-        "page_start", "page_end", "file", "source", "errata",
+        "page_start", "page_end", "file", "source", "errata", "shared_with",
     ],
     "properties": {
         "text": {"type": "string"},
@@ -1220,6 +1432,11 @@ _LINE_SCHEMA = {
         "file": {"type": "string"},
         "source": {"type": "string"},
         "errata": {"type": "array", "items": {"type": "string"}},
+        # Phase 7, ticket 07 — the family members this row is common to. Empty
+        # on every non-family pack, which is why it is `required` like every
+        # other key: an absent key and an empty list would be two ways to say
+        # one thing, and a consumer would have to handle both.
+        "shared_with": {"type": "array", "items": {"type": "string"}},
     },
 }
 
@@ -1245,13 +1462,19 @@ ANSWER_PACK_SCHEMA: dict = {
     "required": [
         "part", "question", "route", "budget", "tokens", "over_budget",
         "truncated", "notice", "revision", "staleness", "staleness_note",
-        "doc", "project", "parts",
+        "doc", "project", "parts", "family", "shared", "divergence",
         "answers", "excerpt", "verify", "suggestions", "citations", "markdown",
     ],
     "properties": {
         "part": {"type": "string"},
         "project": {"type": "string"},
         "parts": {"type": "array", "items": {"type": "string"}},
+        # Phase 7, ticket 07. `family` is `""` on every other pack; `shared` is
+        # `false` there too and means nothing outside a family — it answers "is
+        # this finding common to every member?", which only a family asks.
+        "family": {"type": "string"},
+        "shared": {"type": "boolean"},
+        "divergence": {"type": "array", "items": {"type": "string"}},
         "question": {"type": "string"},
         "route": {"enum": list(ROUTES)},
         "budget": {"type": "integer"},

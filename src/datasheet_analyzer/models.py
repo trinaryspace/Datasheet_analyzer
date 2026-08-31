@@ -1325,6 +1325,108 @@ class RevisionDiff(BaseModel):
         """Every change of one artifact kind, in the order they were derived."""
         return [change for change in self.changes if change.kind == kind]
 
+
+class FamilySection(BaseModel):
+    """One section of a family: shared once, or divergent per member.
+
+    Phase 7, ticket 07. The token win the family index exists for is exactly
+    this distinction, so it is a recorded fact per section rather than a
+    rendering decision:
+
+    - `state` is `shared` only when **every** member prints this section under
+      the same printed title and its body text is byte-identical across all of
+      them (the `<!-- source: ... -->` provenance line excepted, which names each
+      member's own revision and pages and therefore always differs). One
+      differing value makes the section `divergent`, which is the ticket's
+      second criterion stated as data.
+    - `divergent` means every member prints it and something in it moved;
+      `partial` means some member does not print it at all, which is a finding
+      about the series and never folded into `divergent`.
+    - `aligned_on` says how the members' sections were matched — the printed
+      section number, else the printed title — because a family whose members
+      renumber their back matter must be readable as such rather than as ten
+      sections appearing and ten disappearing.
+    - `files` / `pages` / `titles` are per member and are what a reader follows
+      **only where the members diverge**: a shared section is read once, from the
+      reference member, and the family index says so instead of linking N copies.
+    - `tokens` is the size of the body the comparison was made on, measured with
+      the project's one token counter — the number that makes "listed once" a
+      measurement rather than a claim.
+    """
+
+    number: str = ""
+    title: str = ""
+    state: str = ""  # "shared" | "divergent" | "partial"
+    aligned_on: str = ""
+    members: list[str] = Field(default_factory=list)
+    missing_from: list[str] = Field(default_factory=list)
+    files: dict[str, str] = Field(default_factory=dict)
+    pages: dict[str, str] = Field(default_factory=dict)
+    titles: dict[str, str] = Field(default_factory=dict)
+    #: Why this section is not shared, in words. Empty for a shared section.
+    reason: str = ""
+    tokens: int = 0
+
+
+class FamilyIndex(BaseModel):
+    """A series answered once — `families/<NAME>/FAMILY_INDEX.md`.
+
+    Phase 7, ticket 07. A derived artifact under ADR 0005 in exactly the sense a
+    design card, a cross-part comparison and a revision diff are: it owns no
+    printed value, it quotes records its member corpora already publish, and the
+    only numbers it adds are the per-member deltas — each a documented pure
+    function of two quoted cells, each citing both operands.
+
+    - `members` is the **declared** membership, in the order
+      `registry/families.yaml` lists it; `reference` is the first of them, which
+      every delta is signed against. Nothing here is inferred from a part number:
+      a family is confirmed by a human or it does not exist.
+    - `sections` carries every section of the series once, each saying whether it
+      is shared or divergent (`FamilySection`).
+    - `deltas` / `pin_deltas` / `register_deltas` are the rows that **differ**,
+      as `ComparisonRow`s — the same row type `dsa compare` publishes, because a
+      family delta is a cross-part comparison restricted to what moved. Rows that
+      align and agree are counted (`n_specs_identical`) and not listed: listing
+      them is the cost the family index exists to avoid.
+    - `notes` carries the population sentences invariant 8 requires of a consumer
+      that compares, and `unparsed` one line per alignment it refused, with the
+      printed values, so nothing leaves a decision in silence.
+    - `empty_reason` states what was looked for when there is nothing to show; an
+      empty family index is a valid one.
+    """
+
+    schema_version: str = ""
+    card_version: str = ""
+    name: str = ""
+    title: str = ""
+    members: list[str] = Field(default_factory=list)
+    reference: str = ""
+    sections: list[FamilySection] = Field(default_factory=list)
+    deltas: list[ComparisonRow] = Field(default_factory=list)
+    pin_deltas: list[ComparisonRow] = Field(default_factory=list)
+    register_deltas: list[ComparisonRow] = Field(default_factory=list)
+    #: Spec rows that aligned across at least two members, and how many of those
+    #: printed the same values everywhere. The second number is the measured half
+    #: of "list the shared once".
+    n_specs_aligned: int = 0
+    n_specs_identical: int = 0
+    notes: list[str] = Field(default_factory=list)
+    unparsed: list[str] = Field(default_factory=list)
+    empty_reason: str = ""
+
+    @property
+    def shared_sections(self) -> list[FamilySection]:
+        return [s for s in self.sections if s.state == "shared"]
+
+    @property
+    def divergent_sections(self) -> list[FamilySection]:
+        return [s for s in self.sections if s.state != "shared"]
+
+    @property
+    def n_deltas(self) -> int:
+        return len(self.deltas) + len(self.pin_deltas) + len(self.register_deltas)
+
+
 class ErrataTargetKind(str, Enum):
     """What one errata link points at (phase 7, ticket 04).
 

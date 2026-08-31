@@ -343,6 +343,36 @@ drops its least-important block first and says that it did; the part list and
 the index pointers are the product and are never what a budget removes.
 _Avoid_: summary, dashboard, manifest, catalog
 
+**Family**:
+A declared set of parts that are the same device with different options
+(AFE7950 and AFE7953), listed in `registry/families.yaml`. It is the noun
+*beside* `project`: a project is parts that work together, a family is parts
+that are alternatives to each other. Membership is **declared by a human and
+never inferred** — an auto-suggest helper may propose a grouping from part
+numbers and section-structure similarity, and its proposals live in a
+differently-named file, carry `confirmed: false`, and build nothing until
+someone confirms one. That gap is the whole design: a family index tells a
+reader "this section is identical in every member, read it once", and a wrong
+member makes that sentence a lie with no visible seam.
+_Avoid_: series, group, variant set, line, portfolio
+
+**Family index**:
+`families/<NAME>/FAMILY_INDEX.md`: the single always-loadable file for a whole
+series, written under a hard token budget beside its complete `family.json`
+twin. It is a derived artifact like a design card or a comparison — it owns no
+printed value, quotes records the members already publish, and adds only the
+delta — and it is organised around one distinction: what is **shared** and what
+**differs**. A section identical in every member (same printed title, same body,
+byte for byte) is listed once, from the reference member; one that differs by a
+single printed value is listed per member with its own page and file. A spec,
+pin, register or bit field every member prints identically is *counted*, not
+tabulated — printing them is the cost the family index exists to avoid — while
+every difference is a row carrying each member's verbatim value and page. A
+member that publishes no such record is a row too, flagged, because during a
+series decision an absent parameter is the finding. What it refuses to align it
+lists with the printed values, and what a budget cut it names.
+_Avoid_: summary, matrix, comparison, overview
+
 **Registry entry**:
 One part's row in the curated document registry
 (`registry/datasheets.yaml`): where its datasheet and companions come from,

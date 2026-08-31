@@ -22,6 +22,7 @@ from datasheet_analyzer.compare.build import (
     ROLE_ORDER,
     ComparePart,
     CompareRecord,
+    SpecKeyFn,
     build_card_comparison,
     build_spec_comparison,
 )
@@ -49,6 +50,7 @@ __all__ = [
     "ROLE_ORDER",
     "ComparePart",
     "CompareRecord",
+    "SpecKeyFn",
     "banner",
     "build_card_comparison",
     "build_spec_comparison",

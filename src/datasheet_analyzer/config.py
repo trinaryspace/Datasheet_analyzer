@@ -104,6 +104,14 @@ AUDIT_SCHEMA_VERSION = "1"
 # written under an older template set is legible as such rather than silently
 # merged into the objective function.
 GOLDEN_CANDIDATE_SCHEMA_VERSION = "1"
+# "1": phase 7, ticket 07 — the shape `dsa family build` returns and writes as
+# `families/<NAME>/FAMILY_INDEX.md` (+ `family.json`). Like a comparison and a
+# revision diff it is derived live from what the member corpora already publish,
+# so it is no part of any *part's* publish cache key: rebuilding a member does
+# not leave a stale family artifact behind that a build has to notice, because
+# the family is rebuilt by its own command. The version exists so a machine
+# consumer can tell one family payload from the next.
+FAMILY_SCHEMA_VERSION = "1"
 
 # The version of the *derivation rules* (ADR 0005 / invariant 8). Derived
 # artifacts — design cards and anything else computed from records by a named
@@ -178,6 +186,18 @@ class Settings(BaseSettings):
     # because it summarizes several, still hard-bounded.
     project_index_token_budget: int = Field(default=4000, ge=1)
 
+    # Part families (phase 7, ticket 07). One directory per family, holding
+    # `FAMILY_INDEX.md` and its machine-readable twin. A family is a *view* over
+    # parts, so it lives beside `parts/` rather than inside any member.
+    families_dir: Path = Path("families")
+
+    # FAMILY_INDEX.md is the same promise `PROJECT_INDEX.md` makes, one noun
+    # across: the single always-loadable file for a whole series. It is bounded
+    # for the reason the family exists at all — an index that grew with the
+    # member count would cost more than reading both members' indexes, which is
+    # the comparison the ticket measures.
+    family_index_token_budget: int = Field(default=4000, ge=1)
+
     # `dsa ask` answer packs: the default token budget one pack may spend.
     # `--budget N` overrides per call; the pack announces any truncation and
     # names both this setting and the flag.
@@ -212,6 +232,7 @@ class Settings(BaseSettings):
         self.parts_dir = self.parts_dir.resolve()
         self.cache_dir = self.cache_dir.resolve()
         self.projects_dir = self.projects_dir.resolve()
+        self.families_dir = self.families_dir.resolve()
         if self.registry_dir is not None:
             self.registry_dir = self.registry_dir.resolve()
         return self

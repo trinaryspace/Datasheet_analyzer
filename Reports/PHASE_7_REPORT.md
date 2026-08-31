@@ -1092,3 +1092,208 @@ sets are untouched.
 - **No MCP surface.** The plan's new MCP tools for this phase are `get_audit`,
   `list_families` and `get_family_index`; golden generation is a maintainer's
   command, not an agent's answer path, and it writes to `tests/fixtures/`.
+
+---
+
+## Ticket 07 — Part families + delta index
+
+**Landed.** `pytest` 2055 passed / 1 skipped (1989 before this ticket + 66 new); `ruff` clean. The direct answer to "become an
+expert on a *series* of parts": `registry/families.yaml` declares who is in a
+family, `dsa family build` writes `families/<NAME>/FAMILY_INDEX.md` with the
+shared sections listed **once** and only the differences tabulated, and
+`dsa ask --family` returns a finding every member printed identically once and
+flags the members that differ.
+
+**The rule the whole ticket turns on:** *membership is declared, never inferred.*
+A family index says "this section is identical in every member — read it once",
+and a wrong member makes that sentence a lie a designer cannot see. So the
+suggester may only **propose**.
+
+### What shipped
+
+| Piece | Where | What it owns |
+|---|---|---|
+| membership | `families/registry.py` + `registry/families.yaml` | `FamilyEntry` / `FamilyRegistry`, the candidate file refused **by name**, `resolve`'s two refusals (`FamilyMiss`, `FamilyUnconfirmed`), each naming its fix |
+| the proposal | `families/suggest.py` | part-number stem + section-map Jaccard overlap, both above a floor; every proposal `confirmed: false` |
+| the derivation | `families/build.py` | section alignment (number, then printed title), the spec/pin/register/bit-field delta rows, the counts and the refusals |
+| the rendering | `families/render.py` | `FAMILY_INDEX.md` under a hard token budget with staged degradation |
+| the files | `families/store.py` | `families/<NAME>/FAMILY_INDEX.md` (bounded) + `family.json` (complete) |
+| the question | `retrieve/family.py` + `pack.build_family_pack` | `FamilyRetriever` (a `ProjectRetriever` by composition) and the shared/divergent collapse |
+| the command | `cli.py` | `dsa family list\|suggest\|confirm\|build`, and `--family` as the third scope beside `--part` / `--project` |
+| the models | `models.py` | `FamilySection`, `FamilyIndex` (additive) |
+| the versions | `config.py` | `FAMILY_SCHEMA_VERSION = "1"`, `families_dir`, `family_index_token_budget` |
+
+### One alignment engine, two artifacts
+
+The family delta table **is** a cross-part comparison restricted to what moved,
+so it is computed by `compare/build.py` rather than beside it. The one thing a
+family knows better than `dsa compare` does is the alignment key, and that is
+the only thing it overrides, through a new additive hook
+(`compare.build.SpecKeyFn`, passed as `key_for=`):
+
+- `dsa compare` aligns two **unrelated** parts on the alias-resolved symbol,
+  because that is what makes `TJ` and `Junction temperature` one row;
+- a **family** aligns on `(family section, printed symbol, printed name, printed
+  conditions)`, every part of it compared character for character, because the
+  members are one vendor's one document template and an alias key would collapse
+  `IVDD1P8` and `IVDD1P2` onto one bucket and then refuse them both as ambiguous.
+
+Everything downstream — the printed-identity tie-break, the per-part refusal of
+an ambiguous key, the SI delta, the unparsed population — is unchanged. Measured
+on the offline rebuild: the alias key produced **83** aligned rows and **0**
+non-zero deltas; the printed-row key produced **318** aligned rows, 86 of them
+identical, and the delta that matters (below).
+
+### The hand-verified delta
+
+`tests/integration/test_phase7_families.py` builds **both** members offline
+through the vendor-neutral layout floor (`--vendor unknown`, the escape hatch
+LM741 and LMX1204 already use — see the live-run note on why AFE7953 cannot go
+through `ti_html` here) and then checks the one spec both members print
+differently against the printed page of each PDF:
+
+| | AFE7950 | AFE7953 |
+|---|---|---|
+| §4.9 `IVDD1P8`, `Group 3C: VDD1P8PLL +` | `12.6 mA` (p.24) | `16 mA` (p.24) |
+| delta | — | `+0.0034 A` (`si_delta:typ`, cites both records) |
+
+The test does not take the corpus's word for either number: it re-reads page 24
+of `afe7950.pdf` and `afe7953.pdf` with `page_texts` and requires `IVDD1P8`,
+`VDD1P8PLL` and the value to be printed there — the same standard the phase-6
+bit-field gate holds itself to. The delta carries **no `verbatim`**, because no
+page printed a difference between two datasheets.
+
+### The token win, measured
+
+The ticket asks for a ratio, not a claim. Both readings are real and both are
+recorded, because they measure two different substrates:
+
+| Substrate | Sections | Shared | Spec rows aligned | Identical | Delta rows | Refusals listed | `FAMILY_INDEX.md` | Σ member `INDEX.md` | Ratio |
+|---|---|---|---|---|---|---|---|---|---|
+| `pdf_layout` rebuild, both members (the integration test) | 40 | 5 | 318 | 86 | 232 | 1009 | **2889 tok** | 5800 tok | **0.498** |
+| the corpora committed under `parts/` (`ti_html`) | 39 | 14 | 0 | 0 | 0 | 1220 | **2922 tok** | 4991 tok | **0.585** |
+
+Both are rendered **under** the 4000-token budget, which is the number that
+ships — a bound you did not apply is not a result. The second row's zeros are
+the honest reading, not a bug: `parts/AFE7950` and `parts/AFE7953` predate ADR
+0005 record ids, so no row in them can be **cited**, and an uncited value has no
+place on a derived artifact (`compare.build` already refused those rows for the
+same reason). The index says so per member, with the rebuild command, rather
+than printing an empty table:
+
+> `AFE7950: 619 of 619 spec records carry no addressable record id (a corpus
+> published before ADR 0005), so they cannot be cited and take no part in the
+> delta table — rebuild it to include them: dsa build <pdf> --part AFE7950`
+
+The *other* half of the win is the one the ticket names: on the committed
+corpora, **3652 tokens** of section body are identical across both members and
+are listed once rather than twice; on the offline rebuild, 1449.
+
+### The refusals, which are most of the design
+
+- **A section is shared only when it is identical everywhere** — same printed
+  title in every member, byte-identical body in every member, with the
+  `<!-- source: ... -->` provenance line and the `# N Title` heading removed
+  first (they name each member's own revision, pages and section number and
+  would make every section divergent for a reason that is not about the device).
+  One value that moved makes it `divergent` and it is listed per member with its
+  own page and file.
+- **`partial` is not `divergent`.** "Some member does not print this section at
+  all" is a different fact from "every member prints it and something moved",
+  and only the first is an absence.
+- **A section aligns on its printed number, then on its printed title, and
+  nowhere else.** AFE7950 numbers its back matter §6.x and AFE7953 §5.x; the
+  title rung folds those into one section (measured: the five support sections,
+  all `shared`) and refuses to fold anything whose printed titles differ.
+- **A pin name, a register reset and a bit range are never scored.** They are
+  quoted on both sides with no delta, no sign and no direction — `revdiff`
+  refuses a reset for the same reason, and it bears restating: a signed
+  difference between two bit patterns is a number that means nothing and looks
+  like it means something. A bit field is its own row rather than a cell of its
+  register's, so "3 registers differ" can never silently mean "3 bit fields
+  inside one register do".
+- **An empty pin delta table is ambiguous, so it is never left to speak for
+  itself.** The notes state what each member publishes either way — *"no member
+  publishes pins … this family states nothing about pins, which is not the same
+  as stating they agree"*.
+- **A declared member with no corpus is named**, not dropped: a family index
+  that quietly answered for two of three devices would be read as answering for
+  all three.
+
+### `dsa ask --family`
+
+The third scope, beside `--part` and `--project`. `FamilyRetriever` is a
+`ProjectRetriever` by composition — every fan-out a design needs, a series needs
+identically — and the one thing a family adds is the answer rule:
+
+- a finding **every** declared member produced, **character for character**, is
+  returned once, carrying `shared_with` (the members it is common to) and the
+  reference member's citation;
+- anything else is returned per member, `shared: false`, with one `divergence`
+  line per member under a `### Per-member differences` heading placed
+  immediately below the answer.
+
+Character-for-character is the whole strictness: `1.35 A` and `1350 mA` are the
+same magnitude and are not the same printed answer, and this repo treats the
+printed string as authoritative. A member that answered **nothing** is a
+divergence, not an abstention — "this device does not state it" is exactly the
+difference a series reader is asking about.
+
+`AnswerPack` gains `family` / `shared` / `divergence` and `PackLine` gains
+`shared_with`, all additive, all in `ANSWER_PACK_SCHEMA`, all empty on a
+single-part or project pack (asserted).
+
+### The suggester proposes and nothing else
+
+`dsa family suggest` reads only built corpora, groups by shared part-number stem
+**and** section-map Jaccard overlap ≥ 0.8, and writes
+`registry/families.candidate.yaml` — a different filename, a `candidates:`
+top-level key, `confirmed: false` on every entry, and a header that says so. It
+is defended three ways, each asserted:
+
+1. `load_families` refuses that filename outright (before parsing, so the check
+   cannot depend on the proposal being well-formed);
+2. `load_candidates` forces `confirmed: False` whatever the file says, so a
+   hand-edited proposal cannot confirm itself;
+3. `resolve` refuses an unconfirmed entry even inside `families.yaml`, naming
+   `dsa family confirm <NAME>`.
+
+`tests/unit/test_families.py::TestSuggestOnlyProposes::test_an_unconfirmed_suggestion_builds_nothing_through_the_cli`
+runs the whole loop: suggest → `family build` exits 2 → no `families/<NAME>/`
+directory exists. Only `dsa family confirm` moves an entry across.
+
+The proposal is deliberately weak evidence and says so in the file it writes:
+*"two devices can share a section map and be different parts."*
+
+### Honest degradation
+
+The seventh criterion, asserted rather than argued: members with different
+section structures produce **more** deltas and **fewer** shared sections
+(`TestHonestDegradation`), never a mis-aligned section — the title fold is exact,
+and a section pair whose printed titles differ is not folded at all. The real
+family demonstrates it: AFE7950's §4.4 is *Thermal Information* and AFE7953's is
+*Thermal Information AFE79xx*, which is `divergent` with the reason *"printed
+under a different title, and its text differs"*, and both titles are printed.
+
+### Shortcomings, honestly
+
+- **The delta table is capped under a tight budget** (60 → 25 → 10 rows), and it
+  says so, names `family.json` as the complete copy, and orders rows so the cap
+  drops the least informative last: parameters every member printed *differently*
+  first, then `only-in`, then the alignments nobody could pair.
+- **The offline substrate aligns worse than the ti_html one.** 88 spec rows pair
+  on the layout-floor rebuild against 387 on the committed ti_html corpora,
+  because the document viewer's real table markup keeps the symbol, name and
+  conditions columns apart that the layout floor has to infer. Both numbers are
+  in `Reports/PHASE_7_LIVE_RUN.md` §L15 with the fetch that closes the gap.
+- **The reference family publishes no pins and no registers**, because neither
+  AFE795x datasheet prints a table this repo can read as one. Those delta paths
+  are proven on synthetic corpora (`tests/unit/test_families.py::TestPinAndRegisterDeltas`)
+  rather than on the reference family, and the family index states the absence
+  rather than implying agreement.
+- **A family is not a corpus.** `families/<NAME>/` is written by its own command
+  and is no part of any part's publish cache key; rebuilding a member does not
+  refresh a family index, and nothing pretends otherwise.
+- **No MCP surface yet.** The plan lists `list_families` and `get_family_index`;
+  they are not in this ticket's acceptance criteria and did not ship here.
+

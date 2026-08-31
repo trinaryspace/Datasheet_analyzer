@@ -462,3 +462,75 @@ dsa golden suggest --part AFE7950 --n 20 # now proposes spec rows too
 **What to check:** that the pool line changes from `specs.json 0` to a real
 count. If it does not, the rebuild did not stamp record ids and that is a
 defect, not a corpus fact.
+
+---
+
+## Ticket 07 — part families + delta index
+
+### L15. Record the AFE7953 TI document-viewer pages
+
+**What is missing, exactly.** `tests/fixtures/recorded_http/` holds 41 recorded
+pages and **all 41 are AFE7950's** (`grep -l -i afe7953 tests/fixtures/recorded_http/*.html`
+returns nothing). The `CachingFetcher` cache layout is `sha1(url)[:16].html`, so
+the missing entry point is nameable exactly, from the URL rule already encoded in
+`src/datasheet_analyzer/extract/ti_html.py::TiHtmlBackend.main_url` — nothing here
+is a guessed URL:
+
+| Document | URL (from `TiHtmlBackend.main_url`) | Cache filename | Present? |
+|---|---|---|---|
+| AFE7950 TOC | `https://www.ti.com/document-viewer/AFE7950/datasheet` | `184beea0eaf165c0.html` | **yes** |
+| AFE7953 TOC | `https://www.ti.com/document-viewer/AFE7953/datasheet` | `490ed36fb2d28cf4.html` | **no** |
+
+The per-section URLs cannot be listed here at all, and that is the honest
+statement rather than a gap in this note: `ti_html.parse_toc` reads them out of
+the TOC page's own `<a href>` GUIDs, so until the TOC above is fetched, nobody —
+this repo included — knows what they are. AFE7950's 40 section pages are
+recorded; AFE7953's are not, and there is no pattern to compose them from.
+
+```bash
+# with a connection, from the repo root
+dsa build afe7953.pdf --part AFE7953        # routes to ti_html, fills .cache/http
+cp .cache/http/*.html tests/fixtures/recorded_http/   # only the new AFE7953 ones
+```
+
+**Why it matters for this ticket.** The family view itself does **not** need the
+network: `dsa family build AFE795x` works today, and
+`tests/integration/test_phase7_families.py` builds both members offline through
+the vendor-neutral layout floor (`--vendor unknown`) and asserts a hand-verified
+delta table against both printed PDFs. What the recorded pages would change is
+*quality*, and the difference is measured, not estimated:
+
+| Substrate | Sections | Shared | Spec rows aligned | Identical | Delta rows |
+|---|---|---|---|---|---|
+| `pdf_layout`, both members (this test, offline) | 40 | 5 | 318 | 86 | 232 |
+| `ti_html`, both members (the corpora committed under `parts/`) | 39 | 14 | — | — | — |
+
+The ti_html reading aligns far better — measured on the committed corpora,
+387 spec rows pair on `(section, printed symbol, printed name, printed
+conditions)` against 88 on the layout-floor rebuild — because the document
+viewer's real table markup keeps the symbol, name and conditions columns apart
+that the layout floor has to infer. It produces **no delta table today** for a
+different reason, recorded in L12/L14 above: both committed corpora predate ADR
+0005 record ids, so every row is unaddressable and `dsa family build AFE795x`
+says so per member with the rebuild command. Once L14's rebuild has happened,
+re-run:
+
+```bash
+dsa family build AFE795x
+```
+
+**Record afterwards:** the new `sections / shared / aligned / identical / delta`
+row for the ti_html substrate, and the `FAMILY_INDEX.md` vs sum-of-member-indexes
+ratio, into the ticket-07 section of `Reports/PHASE_7_REPORT.md` beside the
+offline numbers already there. Do **not** delete the offline row — the point of
+the pair is that the family view degrades honestly on the weaker substrate rather
+than silently producing a thinner truth.
+
+### L16. Nothing else in this ticket needs a network
+
+Stated explicitly so nobody goes looking: `registry/families.yaml` is checked-in
+data, `dsa family suggest` reads only built corpora, `dsa family confirm` writes
+only YAML, and `dsa ask --family` is the existing offline retrieval core fanned
+out over declared members. There is no fetch, no URL and no hash anywhere in this
+ticket's code.
+

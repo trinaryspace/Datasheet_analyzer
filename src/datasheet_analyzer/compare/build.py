@@ -54,7 +54,7 @@ its verbatim values under the comparison's `unparsed`, beside
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 
 from datasheet_analyzer.config import CARD_VERSION, COMPARE_SCHEMA_VERSION
@@ -89,6 +89,20 @@ ALIGNED_IDENTITY = "printed-identity"
 #: A card comparison aligns on the card's own group *and* row identity, because
 #: two cards can print one name under two groups (a rail and its current).
 ALIGNED_CARD = "card-row"
+
+#: How a caller that holds a **stronger** identity than the alias lexicon
+#: overrides the alignment (phase 7, ticket 07). Called once per record; returns
+#: `(key, aligned_on, group)`, where `group` scopes the key so two identical
+#: identities printed on two different tables cannot collide.
+#:
+#: It exists for the family index, whose members are one vendor's one document
+#: template published for several devices: there, the identity that survives is
+#: the row as printed inside the section it was printed in, and resolving it
+#: through the alias lexicon would collapse `IVDD1P8` and `IVDD1P2` onto one key
+#: and refuse them both as ambiguous. Everything downstream of the key — the
+#: pairing, the refusals, the delta, the unparsed population — is unchanged,
+#: which is the point: one alignment engine, two artifacts.
+SpecKeyFn = Callable[[SpecRecord], tuple[str, str, str]]
 
 #: Rows a reader must not misread. `only-in` means a compared part publishes no
 #: record under this parameter at all; `ambiguous` means one publishes several
@@ -164,12 +178,18 @@ def build_spec_comparison(
     term: str,
     kind: str = KIND_SYMBOL,
     lexicon: AliasLexicon | None = None,
+    key_for: SpecKeyFn | None = None,
 ) -> PartComparison:
     """Compare the records each part resolved for one query term.
 
     The records are whatever each part's own resolution ladder returned — a
     rung is a statement about one corpus's vocabulary, so each part answers for
     itself and the alignment happens afterwards, on the alias-resolved symbol.
+
+    `key_for` (additive, phase 7 ticket 07) replaces *only* that last step, for a
+    caller holding a stronger identity than the lexicon — see `SpecKeyFn`. It is
+    never a widening: a key function that pairs two rows the lexicon would not
+    still goes through the same identity tie-break and the same refusals.
     """
     lexicon = load_lexicon() if lexicon is None else lexicon
     candidates: list[_Candidate] = []
@@ -185,7 +205,9 @@ def build_spec_comparison(
             if not entry.record.id:
                 unaddressable.append(_unaddressable(part.part_number, entry.record))
                 continue
-            candidate = _spec_candidate(part.part_number, entry, lexicon=lexicon)
+            candidate = _spec_candidate(
+                part.part_number, entry, lexicon=lexicon, key_for=key_for
+            )
             if candidate is not None:
                 candidates.append(candidate)
 
@@ -254,7 +276,11 @@ def build_card_comparison(
 
 
 def _spec_candidate(
-    part: str, entry: CompareRecord, *, lexicon: AliasLexicon
+    part: str,
+    entry: CompareRecord,
+    *,
+    lexicon: AliasLexicon,
+    key_for: SpecKeyFn | None = None,
 ) -> _Candidate | None:
     """One spec record as a comparison candidate, or `None` when it cannot be one.
 
@@ -276,12 +302,17 @@ def _spec_candidate(
     }
     if not values:
         return None
-    key, aligned_on = _alignment_key(record.symbol, record.name, lexicon=lexicon)
+    group = ""
+    if key_for is not None:
+        key, aligned_on, group = key_for(record)
+    else:
+        key, aligned_on = _alignment_key(record.symbol, record.name, lexicon=lexicon)
     return _Candidate(
         part=part,
         key=key,
         label_key=key if aligned_on.startswith(ALIGNED_ALIAS) else "",
         aligned_on=aligned_on,
+        group=group,
         label=record.symbol or record.name,
         detail=record.name if record.symbol else record.conditions,
         section=record.section,

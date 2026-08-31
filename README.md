@@ -746,7 +746,64 @@ dsa plots  --project rf-frontend --q "gain"
 AFE7950 — Printed page 6 of afe7950.pdf.  Confidence: high.
 ```
 
-`--part` and `--project` are mutually exclusive, and one of them is required.
+`--part`, `--project` and `--family` are mutually exclusive, and exactly one
+of them is required.
+
+### Learn a whole series at once (`dsa family`)
+
+A **family** is a declared set of parts that are the same device with different
+options — AFE7950 and AFE7953 share 39 identically-titled sections. Loading both
+to ask "what is different?" is the wrong shape for the question and for the
+budget.
+
+```bash
+dsa family list                       # declared families, and any proposals
+dsa family suggest                    # PROPOSE groupings from built corpora
+dsa family confirm AFE795x            # a human moves one into families.yaml
+dsa family build AFE795x              # writes families/AFE795x/FAMILY_INDEX.md
+dsa family build AFE795x --json       # the complete payload; --no-write to print only
+```
+
+```
+families/AFE795x/
+├── FAMILY_INDEX.md   # always-loadable, hard budget (4000 tok)
+└── family.json       # the complete payload — every delta row, uncapped
+```
+
+`FAMILY_INDEX.md` lists the sections that are **identical in every member** once,
+from the reference member, and tabulates only what differs: each member's
+verbatim value, its printed page, and an SI delta where both sides parsed the
+same printed column. Pin, register and bit-field differences get their own
+tables. Everything it refused to align is listed with its printed values — a
+family index never drops what it could not compare.
+
+Measured on the two reference corpora: `FAMILY_INDEX.md` is **2922 tokens**
+against **4991** for the two members' `INDEX.md` files (ratio 0.585), and 3652
+tokens of identical section body are listed once instead of twice.
+
+**Membership is declared, never inferred.** `registry/families.yaml` is the only
+file `dsa family build` reads; `dsa family suggest` writes proposals to
+`registry/families.candidate.yaml` with `confirmed: false`, and they build
+nothing until `dsa family confirm` moves one across. A wrong grouping would put
+another part's numbers in front of you with no visible seam, which is why the
+tool refuses to guess one.
+
+Then ask the whole series one question:
+
+```bash
+dsa ask --family AFE795x "what is the maximum junction temperature?"
+```
+
+```
+## AFE795x — family (AFE7950, AFE7953)
+### Answer
+TJ: 150 °C (max); Junction temperature — §4.1, p.4  [low]  [common to AFE7950, AFE7953]
+```
+
+An answer every member printed **identically** comes back once and says which
+devices it stands for. An answer they disagree on comes back per member, with a
+`### Per-member differences` block — and a member that answers nothing is a
+difference, not a silence.
 
 ### Use it from an agent (MCP)
 
@@ -863,6 +920,8 @@ Environment variables (prefix `DSA_`, or `.env` file):
 | `DSA_INDEX_TOKEN_BUDGET` | `3000` | hard INDEX.md budget |
 | `DSA_ASK_BUDGET` | `4000` | default `dsa ask` pack budget (`--budget` overrides) |
 | `DSA_PROJECT_INDEX_TOKEN_BUDGET` | `4000` | hard PROJECT_INDEX.md budget |
+| `DSA_FAMILIES_DIR` | `families` | where family indexes are written |
+| `DSA_FAMILY_INDEX_TOKEN_BUDGET` | `4000` | hard FAMILY_INDEX.md budget |
 | `DSA_MCP_MAX_TOKENS` | `6000` | hard cap on every `dsa serve --mcp` response |
 | `DSA_LLM_DESCRIPTIONS` | `true` | use LLM for INDEX descriptions |
 | `DSA_MODEL` | `claude-haiku-4-5` | Anthropic model for descriptions |
