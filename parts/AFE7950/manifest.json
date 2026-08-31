@@ -1,7 +1,20 @@
 {
   "part_number": "AFE7950",
-  "pipeline_version": "0.1.0",
-  "generated_at": "2026-08-02T04:44:15.068625Z",
+  "pipeline_version": "0.5.0",
+  "vendor": "ti",
+  "library_root": "",
+  "extraction_stats": {
+    "c1b4663b0b8088eff44c45e96683fbac0b611d9299722a21613dc0dfd774f512": {
+      "backend": "ti_html",
+      "extractor_version": "",
+      "tables_detected": 0,
+      "tables_accepted": 0,
+      "tables_rejected": 0,
+      "rejection_reasons": [],
+      "mean_fidelity": 0.0
+    }
+  },
+  "generated_at": "2026-08-31T22:02:41.821801Z",
   "documents": [
     {
       "content_hash": "c1b4663b0b8088eff44c45e96683fbac0b611d9299722a21613dc0dfd774f512",
@@ -11,6 +24,8 @@
       "revision": "SBASA41E",
       "page_count": 146,
       "nda": false,
+      "vendor": "ti",
+      "vendor_evidence": "",
       "registered_at": "2026-08-01T09:30:34.094236Z"
     }
   ],
@@ -25,7 +40,8 @@
       "token_count": 213,
       "description": "Quad RF sampling 12GSPS transmit DACs",
       "n_tables": 0,
-      "n_figures": 0
+      "n_figures": 0,
+      "search_tokens": 114
     },
     {
       "number": "2",
@@ -37,7 +53,8 @@
       "token_count": 42,
       "description": "(no content)",
       "n_tables": 0,
-      "n_figures": 0
+      "n_figures": 0,
+      "search_tokens": 13
     },
     {
       "number": "3",
@@ -49,7 +66,8 @@
       "token_count": 468,
       "description": "The AFE7950 is a high performance, wide bandwidth multi-channel transceiver, integrating four RF sampling transmitter chains, four RF sampling receiver chains and two RF sampling feedback chains (six Parameters: AFE7950.",
       "n_tables": 1,
-      "n_figures": 0
+      "n_figures": 0,
+      "search_tokens": 229
     },
     {
       "number": "4",
@@ -61,7 +79,8 @@
       "token_count": 14,
       "description": "(no content)",
       "n_tables": 0,
-      "n_figures": 0
+      "n_figures": 0,
+      "search_tokens": 1
     },
     {
       "number": "4.1",
@@ -70,10 +89,11 @@
       "doc_hash": "c1b4663b0b8088eff44c45e96683fbac0b611d9299722a21613dc0dfd774f512",
       "page_start": 4,
       "page_end": 4,
-      "token_count": 658,
+      "token_count": 660,
       "description": "Parameters: PMAX(xRXIN+/-), TJ, Tstg.",
       "n_tables": 1,
-      "n_figures": 0
+      "n_figures": 0,
+      "search_tokens": 286
     },
     {
       "number": "4.2",
@@ -82,10 +102,11 @@
       "doc_hash": "c1b4663b0b8088eff44c45e96683fbac0b611d9299722a21613dc0dfd774f512",
       "page_start": 5,
       "page_end": 5,
-      "token_count": 133,
+      "token_count": 136,
       "description": "Parameters: V(ESD).",
       "n_tables": 1,
-      "n_figures": 0
+      "n_figures": 0,
+      "search_tokens": 66
     },
     {
       "number": "4.3",
@@ -94,10 +115,11 @@
       "doc_hash": "c1b4663b0b8088eff44c45e96683fbac0b611d9299722a21613dc0dfd774f512",
       "page_start": 6,
       "page_end": 6,
-      "token_count": 241,
+      "token_count": 243,
       "description": "Parameters: TA, TJ.",
       "n_tables": 1,
-      "n_figures": 0
+      "n_figures": 0,
+      "search_tokens": 107
     },
     {
       "number": "4.4",
@@ -106,10 +128,11 @@
       "doc_hash": "c1b4663b0b8088eff44c45e96683fbac0b611d9299722a21613dc0dfd774f512",
       "page_start": 6,
       "page_end": 6,
-      "token_count": 185,
+      "token_count": 187,
       "description": "Parameters: R\u03b8JA, R\u03b8JC(top), R\u03b8JB, \u03a8JT, \u03a8JB.",
       "n_tables": 1,
-      "n_figures": 0
+      "n_figures": 0,
+      "search_tokens": 78
     },
     {
       "number": "4.5",
@@ -118,10 +141,11 @@
       "doc_hash": "c1b4663b0b8088eff44c45e96683fbac0b611d9299722a21613dc0dfd774f512",
       "page_start": 7,
       "page_end": 13,
-      "token_count": 5942,
+      "token_count": 5945,
       "description": "Parameters: DACRES, fRFout, Pmax_FS, RTERM, ATTrange, ATTstep, ATTphase-err, Gflat.",
       "n_tables": 1,
-      "n_figures": 0
+      "n_figures": 0,
+      "search_tokens": 2887
     },
     {
       "number": "4.6",
@@ -130,10 +154,11 @@
       "doc_hash": "c1b4663b0b8088eff44c45e96683fbac0b611d9299722a21613dc0dfd774f512",
       "page_start": 14,
       "page_end": 17,
-      "token_count": 3493,
+      "token_count": 3496,
       "description": "Parameters: ADCRES, FRFin, PFS_CW,min, S11, ATTrange, ATTstep, NSD, NFmin.",
       "n_tables": 1,
-      "n_figures": 0
+      "n_figures": 0,
+      "search_tokens": 1575
     },
     {
       "number": "4.7",
@@ -142,10 +167,11 @@
       "doc_hash": "c1b4663b0b8088eff44c45e96683fbac0b611d9299722a21613dc0dfd774f512",
       "page_start": 18,
       "page_end": 19,
-      "token_count": 1114,
+      "token_count": 1116,
       "description": "Parameters: fVCO1, fVCO2, fVCO3, fVCO4, DIVDAC, DIVFBADC, DIVRXADC, PNVCO.",
       "n_tables": 1,
-      "n_figures": 0
+      "n_figures": 0,
+      "search_tokens": 561
     },
     {
       "number": "4.8",
@@ -154,10 +180,11 @@
       "doc_hash": "c1b4663b0b8088eff44c45e96683fbac0b611d9299722a21613dc0dfd774f512",
       "page_start": 20,
       "page_end": 20,
-      "token_count": 1243,
+      "token_count": 1245,
       "description": "Parameters: VSRDIFF, VSRCOM, ZSRdiff, FSerDes, TJ, VSTDIFF, VSTCOM, ZSTdiff.",
       "n_tables": 1,
-      "n_figures": 0
+      "n_figures": 0,
+      "search_tokens": 530
     },
     {
       "number": "4.9",
@@ -166,10 +193,11 @@
       "doc_hash": "c1b4663b0b8088eff44c45e96683fbac0b611d9299722a21613dc0dfd774f512",
       "page_start": 21,
       "page_end": 26,
-      "token_count": 9607,
+      "token_count": 9609,
       "description": "Parameters: IVDD1P8, IVDD1P2, IVDD0P9, Pdiss.",
       "n_tables": 1,
-      "n_figures": 0
+      "n_figures": 0,
+      "search_tokens": 5284
     },
     {
       "number": "4.10",
@@ -178,10 +206,11 @@
       "doc_hash": "c1b4663b0b8088eff44c45e96683fbac0b611d9299722a21613dc0dfd774f512",
       "page_start": 27,
       "page_end": 27,
-      "token_count": 430,
+      "token_count": 432,
       "description": "Parameters: ts(SYSREF), th(SYSREF), ts(SENB), th(SENB), ts(SDIO), th(SDIO), t(SCLK)_W, t(SCLK)_R.",
       "n_tables": 1,
-      "n_figures": 0
+      "n_figures": 0,
+      "search_tokens": 213
     },
     {
       "number": "4.11",
@@ -190,10 +219,11 @@
       "doc_hash": "c1b4663b0b8088eff44c45e96683fbac0b611d9299722a21613dc0dfd774f512",
       "page_start": 28,
       "page_end": 28,
-      "token_count": 683,
+      "token_count": 685,
       "description": "Parameters: tJESDTX, tJESDRX, tJESDFB.",
       "n_tables": 1,
-      "n_figures": 0
+      "n_figures": 0,
+      "search_tokens": 304
     },
     {
       "number": "4.12",
@@ -205,7 +235,8 @@
       "token_count": 17,
       "description": "(no content)",
       "n_tables": 0,
-      "n_figures": 0
+      "n_figures": 0,
+      "search_tokens": 2
     },
     {
       "number": "4.12.1",
@@ -217,7 +248,8 @@
       "token_count": 2089,
       "description": "Typical values at TA = +25\u00b0C with nominal supplies. 43 plots.",
       "n_tables": 0,
-      "n_figures": 43
+      "n_figures": 43,
+      "search_tokens": 1021
     },
     {
       "number": "4.12.2",
@@ -229,7 +261,8 @@
       "token_count": 1776,
       "description": "Typical values at TA = +25\u00b0C with nominal supplies. 34 plots.",
       "n_tables": 0,
-      "n_figures": 34
+      "n_figures": 34,
+      "search_tokens": 873
     },
     {
       "number": "4.12.3",
@@ -241,7 +274,8 @@
       "token_count": 2068,
       "description": "Typical values at TA = +25\u00b0C with nominal supplies. 40 plots.",
       "n_tables": 0,
-      "n_figures": 40
+      "n_figures": 40,
+      "search_tokens": 1055
     },
     {
       "number": "4.12.4",
@@ -253,7 +287,8 @@
       "token_count": 1335,
       "description": "Typical values at TA = +25\u00b0C with nominal supplies. 31 plots.",
       "n_tables": 0,
-      "n_figures": 31
+      "n_figures": 31,
+      "search_tokens": 671
     },
     {
       "number": "4.12.5",
@@ -265,7 +300,8 @@
       "token_count": 1798,
       "description": "Typical values at TA = +25\u00b0C with nominal supplies. 35 plots.",
       "n_tables": 0,
-      "n_figures": 35
+      "n_figures": 35,
+      "search_tokens": 898
     },
     {
       "number": "4.12.6",
@@ -277,7 +313,8 @@
       "token_count": 1085,
       "description": "Typical values at TA = +25\u00b0C with nominal supplies. 45 plots.",
       "n_tables": 0,
-      "n_figures": 45
+      "n_figures": 45,
+      "search_tokens": 519
     },
     {
       "number": "4.12.7",
@@ -286,10 +323,11 @@
       "doc_hash": "c1b4663b0b8088eff44c45e96683fbac0b611d9299722a21613dc0dfd774f512",
       "page_start": 79,
       "page_end": 89,
-      "token_count": 1388,
+      "token_count": 1392,
       "description": "Figure 4-285 TX 4xNR100MHz Output Spectrum at 9.61 GHz 51 plots.",
       "n_tables": 3,
-      "n_figures": 51
+      "n_figures": 51,
+      "search_tokens": 673
     },
     {
       "number": "4.12.8",
@@ -301,7 +339,8 @@
       "token_count": 1272,
       "description": "Typical values at TA = +25\u00b0C, ADC Sampling Rate = 2949.12 GHz. 31 plots.",
       "n_tables": 0,
-      "n_figures": 31
+      "n_figures": 31,
+      "search_tokens": 596
     },
     {
       "number": "4.12.9",
@@ -313,7 +352,8 @@
       "token_count": 1266,
       "description": "Typical values at TA = +25\u00b0C, ADC Sampling Rate = 2949.12 GHz. 30 plots.",
       "n_tables": 0,
-      "n_figures": 30
+      "n_figures": 30,
+      "search_tokens": 591
     },
     {
       "number": "4.12.10",
@@ -325,7 +365,8 @@
       "token_count": 1315,
       "description": "Typical values at TA = +25\u00b0C, ADC Sampling Rate = 2949.12 GHz. 34 plots.",
       "n_tables": 0,
-      "n_figures": 34
+      "n_figures": 34,
+      "search_tokens": 611
     },
     {
       "number": "4.12.11",
@@ -337,7 +378,8 @@
       "token_count": 1113,
       "description": "Typical values at TA = +25\u00b0C, ADC Sampling Rate = 2949.12 GHz. 27 plots.",
       "n_tables": 0,
-      "n_figures": 27
+      "n_figures": 27,
+      "search_tokens": 517
     },
     {
       "number": "4.12.12",
@@ -349,7 +391,8 @@
       "token_count": 1191,
       "description": "Typical values at TA = +25\u00b0C, ADC Sampling Rate = 2949.12 GHz. 29 plots.",
       "n_tables": 0,
-      "n_figures": 29
+      "n_figures": 29,
+      "search_tokens": 555
     },
     {
       "number": "4.12.13",
@@ -361,7 +404,8 @@
       "token_count": 589,
       "description": "Typical values at TA = +25\u00b0C, ADC Sampling Rate = 2949.12 GHz. 27 plots.",
       "n_tables": 0,
-      "n_figures": 27
+      "n_figures": 27,
+      "search_tokens": 311
     },
     {
       "number": "4.12.14",
@@ -373,7 +417,8 @@
       "token_count": 539,
       "description": "Typical values at TA = +25\u00b0C, ADC Sampling Rate = 2949.12 GHz. 26 plots.",
       "n_tables": 0,
-      "n_figures": 26
+      "n_figures": 26,
+      "search_tokens": 256
     },
     {
       "number": "4.12.15",
@@ -385,7 +430,8 @@
       "token_count": 1317,
       "description": "Typical values at TA = +25\u00b0C with nominal supplies. 31 plots.",
       "n_tables": 0,
-      "n_figures": 31
+      "n_figures": 31,
+      "search_tokens": 649
     },
     {
       "number": "5",
@@ -397,7 +443,8 @@
       "token_count": 1032,
       "description": "Changes from June 13, 2023 to May 1, 2025 (from Revision D (June 2023) to Revision E (May 2025))",
       "n_tables": 0,
-      "n_figures": 0
+      "n_figures": 0,
+      "search_tokens": 493
     },
     {
       "number": "6",
@@ -409,7 +456,8 @@
       "token_count": 18,
       "description": "(no content)",
       "n_tables": 0,
-      "n_figures": 0
+      "n_figures": 0,
+      "search_tokens": 3
     },
     {
       "number": "6.1",
@@ -421,7 +469,8 @@
       "token_count": 95,
       "description": "To receive notification of documentation updates, navigate to the device product folder on ti.com.",
       "n_tables": 0,
-      "n_figures": 0
+      "n_figures": 0,
+      "search_tokens": 36
     },
     {
       "number": "6.2",
@@ -433,7 +482,8 @@
       "token_count": 112,
       "description": "TI E2E\u2122 support forums are an engineer's go-to source for fast, verified answers and design help \u2014 straight from the experts.",
       "n_tables": 0,
-      "n_figures": 0
+      "n_figures": 0,
+      "search_tokens": 53
     },
     {
       "number": "6.3",
@@ -445,7 +495,8 @@
       "token_count": 40,
       "description": "TI E2E\u2122 is a trademark of Texas Instruments.",
       "n_tables": 0,
-      "n_figures": 0
+      "n_figures": 0,
+      "search_tokens": 12
     },
     {
       "number": "6.4",
@@ -457,7 +508,8 @@
       "token_count": 18,
       "description": "(no content)",
       "n_tables": 0,
-      "n_figures": 0
+      "n_figures": 0,
+      "search_tokens": 3
     },
     {
       "number": "6.5",
@@ -469,7 +521,8 @@
       "token_count": 33,
       "description": "This glossary lists and explains terms, acronyms, and definitions.",
       "n_tables": 0,
-      "n_figures": 0
+      "n_figures": 0,
+      "search_tokens": 9
     },
     {
       "number": "7",
@@ -481,7 +534,8 @@
       "token_count": 101,
       "description": "The following pages include mechanical, packaging, and orderable information.",
       "n_tables": 0,
-      "n_figures": 0
+      "n_figures": 0,
+      "search_tokens": 36
     }
   ],
   "stats": {
@@ -492,10 +546,23 @@
     "n_footnotes": 20,
     "n_specs": 619,
     "n_plot_files": 514,
-    "total_tokens": 46073,
-    "index_tokens": 2469,
+    "total_tokens": 46102,
+    "index_tokens": 2407,
     "boilerplate_tokens_removed": 0,
     "sections_with_pages": 39,
-    "sections_without_pages": 0
+    "sections_without_pages": 0,
+    "section_bytes": 186147,
+    "search_index_bytes": 54289,
+    "spec_confidence": {
+      "high": 613,
+      "medium": 3,
+      "low": 3
+    },
+    "plot_confidence": {
+      "high": 0,
+      "medium": 514,
+      "low": 0
+    },
+    "agent_doc_tokens": 1450
   }
 }

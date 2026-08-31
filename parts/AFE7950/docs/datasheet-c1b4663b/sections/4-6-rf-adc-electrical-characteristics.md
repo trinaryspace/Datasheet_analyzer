@@ -2,7 +2,7 @@
 
 <!-- source: SBASA41E p.14-17 -->
 
-## Table 1
+## Unnumbered table
 
 > **Test conditions:** Typical values at TA = +25°C, full temperature range is TA,MIN = -40°C to TJ,MAX = +110°C; RX Output Rate = 491.52MSPS below 6GHz input frequency and 1474.56MSPS above 6GHz input frequency, fADC = 2949.12MSPS; PLL clock mode with fREF = 491.52MHz below 6GHz input frequency and External clock mode with fCLK = 11796.48MHz above 6GHz input frequency; nominal power supplies; DSA Setting = 4dB below 6GHz and 3dB above 6GHz; SerDes rate =24.33Gbps; unless otherwise noted.
 

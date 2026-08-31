@@ -51,11 +51,6 @@ RECORDED_BIN = Path(__file__).parent.parent / "fixtures" / "recorded_http_bin"
 GOLDEN = Path(__file__).parent.parent / "fixtures" / "golden_qa_AFE7950.yaml"
 PARTS = Path(__file__).parent.parent.parent / "parts"
 
-#: Where `search_index_committed_corpus` parks the copied shared store,
-#: relative to the copied part directory — a `library_root` that keeps the
-#: whole copy inside one `tmp_path`.
-COPIED_LIBRARY = "_library"
-
 TINY_GIF = (
     b"GIF89a\x01\x00\x01\x00\x00\x00\x00!\xf9\x04\x00\x00\x00\x00\x00,"
     b"\x00\x00\x00\x00\x01\x00\x01\x00\x00\x02\x02D\x01\x00;"
@@ -540,24 +535,27 @@ class TestAnswerPacksOnAfe7953:
                 assert tight.citations[0] == wide.citations[0], q.id
                 assert tight.answers[0] == wide.answers[0], q.id
 
-    def test_a_corpus_published_before_search_says_rebuild_not_no_match(self, part_dir):
-        """The committed AFE7953 corpus predates `search_index.json`.
+    def test_the_republished_corpus_answers_through_the_search_route(self, part_dir):
+        """What the committed AFE7953 corpus could not do until phase 6.5.
 
-        A question that reaches neither a record nor a figure therefore has
-        no path left to run — and the pack must say the path could not run,
-        not that nothing in the datasheet answers it.
+        It was published before `search_index.json` existed, so a question
+        that reached neither a record nor a figure had no path left to run,
+        and the pack said so — "Rebuild to enable search", never "nothing in
+        this datasheet answers it". ADR 0008 made the tracked corpora current
+        and self-contained, which wrote the index, and the same question now
+        takes the search route and comes back cited.
         """
         from datasheet_analyzer.retrieve import ROUTE_UNAVAILABLE, Retriever
 
         retriever = Retriever.for_part(part_dir)
-        assert retriever.search_unavailable(), (
-            "recorded state: this corpus has no current search index. If it "
-            "has been republished, assert the search route here instead."
+        assert not retriever.search_unavailable(), (
+            "this corpus is expected to carry a current search index since ADR 0008"
         )
         pack = retriever.ask("What package does the AFE7953 come in?", budget=self.BUDGET)
-        assert pack.route == ROUTE_UNAVAILABLE
-        assert "No spec record, figure or section in this corpus answers" not in (pack.markdown)
-        assert "Rebuild to enable search" in pack.markdown
+        assert pack.route != ROUTE_UNAVAILABLE
+        assert pack.route == "search"
+        assert pack.citations, "a search answer without a citation is not an answer"
+        assert "Rebuild to enable search" not in pack.markdown
 
     def test_the_json_pack_validates_against_its_declared_schema(self, part_dir):
         from datasheet_analyzer.retrieve import Retriever, validate_pack
@@ -566,102 +564,6 @@ class TestAnswerPacksOnAfe7953:
         for q in self._questions():
             payload = retriever.ask(q.question, budget=self.BUDGET).as_dict()
             assert validate_pack(payload) == [], q.id
-
-
-def search_index_committed_corpus(src: Path, dst: Path) -> Path:
-    """Copy a committed corpus and give it the search index publish now writes.
-
-    The two reference corpora under `parts/` were published before
-    `search_index.json` existed, and AFE7953 cannot be rebuilt in a hermetic
-    test (no recorded TI pages). The index is *derived data*: it is built from
-    exactly the section markdown that is on disk, by the same
-    `build_search_index` the writer calls, so indexing a copy adds nothing to
-    the corpus and changes nothing in it — it only performs the publish step
-    the corpus predates. The committed corpus itself is left untouched, which
-    is what keeps `TestAnswerPacksOnAfe7953`'s "predates search" case honest.
-
-    `figures/` is deliberately not copied: the search path reads markdown.
-
-    Both reference corpora publish their documents *once*, into the shared
-    store (ticket 04), so the manifest names its sections `@library/docs/…`
-    and copying the part directory alone copies no section at all. The
-    library the manifest resolves against is therefore copied in beside it,
-    under `dst`, and the copy's `library_root` is re-pointed at that — the
-    one field whose whole job is to say where the shared store is, and the
-    one that must change when a corpus moves. Every reference in the copy
-    still names the same bytes; nothing else in the manifest is touched.
-    """
-    import shutil
-
-    from datasheet_analyzer.corpus_ref import (
-        corpus_relative,
-        is_library_ref,
-        library_root_of,
-    )
-    from datasheet_analyzer.publish.search_index import (
-        build_search_index,
-        write_search_index,
-    )
-    from datasheet_analyzer.retrieve import clear_index_cache
-    from datasheet_analyzer.structure.corpus import SectionPlan
-
-    no_figures = shutil.ignore_patterns("figures")
-    shutil.copytree(src, dst, ignore=no_figures)
-    manifest = CorpusManifest.model_validate_json(
-        (dst / "manifest.json").read_text(encoding="utf-8")
-    )
-    shared = sorted(
-        {
-            corpus_relative(sec.file).partition("/sections/")[0]
-            for sec in manifest.sections
-            if is_library_ref(sec.file)
-        }
-    )
-    if shared:
-        library = library_root_of(manifest, src)
-        assert library is not None, f"{src} names @library/… but records no root"
-        for doc_dir in shared:
-            shutil.copytree(library / doc_dir, dst / COPIED_LIBRARY / doc_dir, ignore=no_figures)
-        raw = json.loads((dst / "manifest.json").read_text(encoding="utf-8"))
-        raw["library_root"] = COPIED_LIBRARY
-        (dst / "manifest.json").write_text(json.dumps(raw, indent=2), encoding="utf-8")
-
-    # Resolve through `CorpusIndex`, never by joining onto `dst`: it is the
-    # reader's own rule for which root a `docs/<doc>/…` reference hangs off,
-    # so the index lands in the directory the retriever will look in — the
-    # part-local copy when a corpus carries one, the shared store otherwise.
-    clear_index_cache()
-    index = CorpusIndex.load(dst)
-    plans: dict[str, list[SectionPlan]] = {}
-    for sec in manifest.sections:
-        doc_dir, _, rel = sec.file.partition("/sections/")
-        markdown = index.corpus_path(sec.file)
-        assert markdown is not None and markdown.is_file(), sec.file
-        plans.setdefault(doc_dir, []).append(
-            SectionPlan(
-                section=SectionNode(number=sec.number, title=sec.title),
-                file=f"sections/{rel}",
-                markdown=markdown.read_text(encoding="utf-8"),
-                token_count=sec.token_count,
-            )
-        )
-    root = dst.resolve()
-    for doc_dir, doc_plans in plans.items():
-        target = index.doc_dir(doc_dir.rsplit("/", 1)[-1])
-        # The copy is self-contained, so nothing this writes may land outside
-        # it — that is what keeps the committed corpus (and the real shared
-        # library behind it) untouched.
-        assert target is not None and root in target.resolve().parents, doc_dir
-        write_search_index(
-            target,
-            build_search_index(
-                doc_plans,
-                part_number=manifest.part_number,
-                doc_hash=doc_dir.rsplit("-", 1)[-1],
-            ),
-        )
-    clear_index_cache()
-    return dst
 
 
 @pytest.mark.integration
@@ -718,14 +620,16 @@ class TestGoldenPathsOnTheReferenceCorpora:
             for r in results:
                 print(f"\nask-path golden, AFE7953: {r.question.id} -> {r.route}, {r.detail}\n")
 
-    def test_afe7953_search_path_needs_the_index_the_corpus_predates(self, tmp_path, capsys):
-        """Two facts, in one test, because they are the same fact.
+    def test_afe7953_answers_its_search_path_golden_from_the_committed_corpus(self, capsys):
+        """The gap ADR 0008 closed, asserted from the other side.
 
-        Against the committed corpus the search-path golden **fails, loudly**:
-        that corpus has no index, so the path never ran and nothing was
-        established — which is exactly what the verifier must say rather than
-        pass or shrug. Given the index that publish now writes, the same
-        question puts the answering section at rank 1.
+        Until phase 6.5 this corpus carried no `search_index.json` — it was
+        published before one existed, and republishing needed the network the
+        TI figure path uses — so the search-path golden reported `search
+        unavailable`: "could not look", never "nothing found". The rebuild
+        that made the tracked corpora current and self-contained wrote the
+        index, and the same question now puts the answering section at rank 1
+        against the bytes a fresh clone gets.
         """
         from datasheet_analyzer.evalh.citations import verify_search_queries
         from datasheet_analyzer.retrieve import clear_index_cache
@@ -733,20 +637,12 @@ class TestGoldenPathsOnTheReferenceCorpora:
         if not (PARTS / "AFE7953" / "manifest.json").exists():
             pytest.skip("committed parts/AFE7953 corpus not present")
         questions = load_golden_yaml(TestAnswerPacksOnAfe7953.GOLDEN)
-
-        (stale,) = verify_search_queries(questions, PARTS / "AFE7953")
-        assert not stale.ok
-        assert "search unavailable" in stale.detail
-
-        indexed = search_index_committed_corpus(PARTS / "AFE7953", tmp_path / "AFE7953")
         clear_index_cache()
-        (fresh,) = verify_search_queries(questions, indexed)
-        assert fresh.ok, fresh.detail
+        (result,) = verify_search_queries(questions, PARTS / "AFE7953")
+        assert "search unavailable" not in result.detail, result.detail
+        assert result.ok, result.detail
         with capsys.disabled():
-            print(
-                f"\nsearch-path golden, AFE7953 (index rebuilt from the "
-                f"published markdown): {fresh.detail}\n"
-            )
+            print(f"\nsearch-path golden, AFE7953 (committed corpus): {result.detail}\n")
 
 
 @pytest.mark.integration

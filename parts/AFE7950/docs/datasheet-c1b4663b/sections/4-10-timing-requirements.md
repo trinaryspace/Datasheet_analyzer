@@ -2,7 +2,7 @@
 
 <!-- source: SBASA41E p.27 -->
 
-## Table 1
+## Unnumbered table
 
 > **Test conditions:** Typical values at TA = +25°C, full temperature range is TA,MIN = -40°C to TJ,MAX = +110°C; TX Input Rate = 491.52MSPS, fDAC = 8847.36MSPS; fADC = 2949.12MSPS; nominal power supplies; 1 tone at -1 dBFS; DSA Attenuation =0dB; SerDes rate = 24.33Gbps; unless otherwise noted.
 

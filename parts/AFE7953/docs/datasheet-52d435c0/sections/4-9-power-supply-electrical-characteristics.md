@@ -2,7 +2,7 @@
 
 <!-- source: SBASAN1A p.21-24 -->
 
-## Table 1
+## Unnumbered table
 
 > **Test conditions:** Typical values at TA = +25°C, full temperature range is TA,MIN = -40°C to TJ,MAX = +110°C, nominal power supplies, 1 tone at -1 dBFS, DSA Attenuation =0dB, TX straight mode, unless otherwise noted.
 

@@ -44,6 +44,7 @@ from datasheet_analyzer.derive.cards import (
 )
 from datasheet_analyzer.derive.provenance import check_provenance, describe_problems
 from datasheet_analyzer.models import CARD_KINDS, CARD_LIMITS, CARD_THERMAL, Card
+from datasheet_analyzer.publish import document_dirs, read_manifest
 from datasheet_analyzer.retrieve.index import CorpusIndex
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -306,22 +307,57 @@ class TestRenderedCards:
                 assert cells[-1] not in ("", "—"), f"{part}/{card.card}: {line}"
 
 
-class TestUnaddressableRecordsAreRefusedNotGuessed:
-    """AD9081's records collide on `spec_record_id`; the card must not pretend.
+class TestAd9081RecordsAreIndividuallyAddressable:
+    """The collision phase 6 refused around, closed by phase 6.5 ticket 08.
 
-    `spec_record_id` is a pure function of `(section, table_index, row_index)`,
-    and AD9081's sections carry no numbers, so `table_index` restarts at 0 in
-    each of them and several records compute one id. The card refuses to cite
-    the records a resolver would not hand back, and says how many it refused.
+    `spec_record_id` was a pure function of `(section, table_index, row_index)`
+    and `build_specset` numbered tables *within* a section, so AD9081 — whose
+    sections carry no printed numbers — restarted `table_index` at 0 in every
+    one of them: 549 records carried 259 distinct ids, `rec_s-t0-r0` alone was
+    carried by 14, and the card cited the first record of each id and refused
+    the rest. Its interface card kept 1 row of the 21 its selectors matched.
+
+    The id now keys on the section's published file stem. Measured on the
+    rebuild: 549 records, 549 distinct ids, no card refusing a record for
+    sharing one, and the interface card publishing all 21 rows including the
+    JESD204B and JESD204C rate rows the datasheet prints on p.11.
     """
 
-    def test_the_refusal_is_recorded_rather_than_silent(self, built_cards):
+    def test_every_spec_record_id_is_distinct(self):
+        from datasheet_analyzer.models import SpecSet
+
+        part_dir = _part_dir("AD9081")
+        manifest = read_manifest(part_dir)
+        totals = []
+        for directory in document_dirs(manifest, part_dir=part_dir).values():
+            path = directory / "specs.json"
+            if not path.is_file():
+                continue
+            specset = SpecSet.model_validate_json(path.read_text(encoding="utf-8"))
+            ids = [record.id for record in specset.records]
+            totals.append((len(ids), len(set(ids))))
+            assert len(ids) == len(set(ids))
+        assert totals == [(549, 549)], totals
+
+    def test_no_card_refuses_a_record_for_sharing_an_id(self, built_cards):
         if "AD9081" not in built_cards:
             pytest.skip("AD9081 is not built under parts/")
-        cards = built_cards["AD9081"]
-        assert any(
-            "share a record id" in warning for card in cards.values() for warning in card.warnings
-        ), "AD9081 has colliding record ids and no card mentions it"
+        offenders = [
+            warning
+            for card in built_cards["AD9081"].values()
+            for warning in card.warnings
+            if "share a record id" in warning
+        ]
+        assert offenders == [], offenders
+
+    def test_the_interface_card_publishes_the_rows_its_selectors_match(self, built_cards):
+        if "AD9081" not in built_cards:
+            pytest.skip("AD9081 is not built under parts/")
+        interface = built_cards["AD9081"]["interface"]
+        assert len(interface.rows) == 21
+        labels = [row.label.upper() for row in interface.rows]
+        assert "JESD204B SERIAL INTERFACE RATE" in labels
+        assert "JESD204C SERIAL INTERFACE RATE" in labels
 
     def test_what_survives_the_refusal_still_resolves(self, built_cards):
         if "AD9081" not in built_cards:

@@ -8,7 +8,7 @@ Note:
 
 Figure 4-286 TX 100MHz NR EVM at 9.61 GHz
 
-## Table 1
+## Unnumbered table
 
 > **Test conditions:** Typical values at TA = +25°C with nominal supplies. Default conditions: TX input data rate = 1474.56 MSPS, fDAC = 11796.48MSPS (8x interpolation), Mixed mode, 1st Nyquist zone output, PLL clock mode with fREF = 491.52 MHz, AOUT = –1 dBFS, DSA = 0 dB, Sin(x)/x enabled, DSA calibrated, 9.6 GHz matching
 
@@ -22,7 +22,7 @@ Figure 4-286 TX 100MHz NR EVM at 9.61 GHz
 
 *Machine-readable: `tables/4-12-7-tx-typical-characteristics-at-9-6-ghz-t02.csv`*
 
-## Table 3
+## Unnumbered table
 
 | Includes PCB and cable losses. | Includes PCB and cable losses. | Includes PCB and cable losses. |
 

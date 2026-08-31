@@ -2,7 +2,7 @@
 
 <!-- source: SBASA41E p.5 -->
 
-## Table 1
+## Unnumbered table
 
 |  |  |  | VALUE | UNIT |
 | --- | --- | --- | --- | --- |

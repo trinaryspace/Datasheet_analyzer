@@ -109,6 +109,7 @@ def _cmd_build(args: argparse.Namespace) -> int:
             vendor=args.vendor,
             use_cache=not args.no_cache,
             use_llm=not args.no_llm,
+            self_contained=args.self_contained,
         )
     except BackendUnavailableError as exc:
         print(f"build error: {exc}", file=sys.stderr)
@@ -845,6 +846,14 @@ def main(argv: list[str] | None = None) -> int:
     )
     p_build.add_argument("--no-cache", action="store_true")
     p_build.add_argument("--no-llm", action="store_true")
+    p_build.add_argument(
+        "--self-contained",
+        action="store_true",
+        help=(
+            "publish every artifact under parts/<PART>/docs/ instead of the "
+            "shared library store (ADR 0008: what a tracked corpus must be)"
+        ),
+    )
     p_build.set_defaults(func=_cmd_build)
 
     p_batch = sub.add_parser(

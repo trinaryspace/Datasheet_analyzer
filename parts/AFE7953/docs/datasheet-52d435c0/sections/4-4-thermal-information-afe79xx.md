@@ -2,7 +2,7 @@
 
 <!-- source: SBASAN1A p.6 -->
 
-## Table 1
+## Unnumbered table
 
 | THERMAL METRIC(1) | THERMAL METRIC(1) | 17mmx17mm FC-BGA 400 PINS | UNIT |
 | --- | --- | --- | --- |

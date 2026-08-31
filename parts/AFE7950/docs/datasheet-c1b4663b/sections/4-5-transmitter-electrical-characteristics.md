@@ -2,7 +2,7 @@
 
 <!-- source: SBASA41E p.7-13 -->
 
-## Table 1
+## Unnumbered table
 
 > **Test conditions:** Typical values at TA = +25°C, full temperature range is TA,MIN = -40°C to TJ,MAX = +110°C; TX Input Rate = 491.52MSPS below 6GHz and 1474.56MSPS above 6GHz, fDAC = 11796.48MSPS; PLL clock mode below 6GHz output frequency and External clock mode above 6GHz output frequency; interleave mode for 1st Nyquist, non-interleave mix mode for 2nd Nyquist, nominal power supplies; 1 tone at -1 dBFS; DSA Attenuation =0dB; SerDes rate = 16.22Gbps, unless otherwise noted.
 

@@ -269,13 +269,31 @@ class TestSymbolMode:
         assert pdiss.warnings == []
 
     def test_every_row_of_both_parts_is_listed_with_its_page(self, pdiss):
+        """Each row cites the page it is printed on, checked against the PDF.
+
+        Section 4.9's table runs over six printed pages on AFE7950 and four on
+        AFE7953. Before per-row page pinning (phase 6.5, ticket 07) every row
+        of an HTML-derived table carried the page its *table* began on, so all
+        28 rows cited p.21 and most of them were wrong. The count is unchanged
+        — nothing was gained or lost — and the pages are now the printed ones.
+        """
+        import fitz
+
         rows = pdiss.rows_with(STATUS_AMBIGUOUS)
         assert len(rows) == 28
+        pdfs = {part: REPO_ROOT / f"{part.lower()}.pdf" for part in PAIR}
+        if not all(path.is_file() for path in pdfs.values()):
+            pytest.skip("the source PDFs are not readable from here")
+        pages = {}
+        for part, path in pdfs.items():
+            with fitz.open(path) as doc:
+                pages[part] = [page.get_text() for page in doc]
         by_part: dict[str, list[str]] = {}
         for row in rows:
             (part,) = row.cells
             value = row.cells[part].values["typ"]
-            assert value.page == 21
+            assert value.page is not None
+            assert value.verbatim in pages[part][value.page - 1], (part, value.verbatim, value.page)
             by_part.setdefault(part, []).append(value.verbatim)
         assert len(by_part["AFE7950"]) == 16
         assert len(by_part["AFE7953"]) == 12
@@ -395,7 +413,12 @@ class TestCrossVendorDeltas:
 
     def test_hand_verified_against_the_printed_pages(self, cross):
         """AFE7950 §4.8 p.20: `| VOL | Low-Level Output Voltage | … | 0.2 | V |`
-        LMX1204 §5.5 p.6: `| VOL | Low-level output voltage | IOL = 5 mA | … | 0.45 | V |`
+        LMX1204 §5.5 p.7: `| VOL | Low-level output voltage | IOL = 5 mA | … | 0.45 | V |`
+
+        The LMX1204 page moved from 6 to 7 in phase 6.5: `lmx1204.pdf` prints
+        `Low-level output voltage`, `IOL = 5 mA` and `0.45` on page **7** and
+        on no other page, and per-row page pinning (ticket 07) is what made
+        the citation say so. The old `6` was the page its table started on.
         """
         row = next(
             row
@@ -405,7 +428,7 @@ class TestCrossVendorDeltas:
         assert row.cells["AFE7950"].values["max"].verbatim == "0.2"
         assert row.cells["AFE7950"].values["max"].page == 20
         assert row.cells["LMX1204"].values["max"].verbatim == "0.45"
-        assert row.cells["LMX1204"].values["max"].page == 6
+        assert row.cells["LMX1204"].values["max"].page == 7
         delta = next(d for d in row.deltas if d.cell == "max")
         assert delta.value.value_si == pytest.approx(0.25)
         assert delta.value.verbatim == "+0.25 V"

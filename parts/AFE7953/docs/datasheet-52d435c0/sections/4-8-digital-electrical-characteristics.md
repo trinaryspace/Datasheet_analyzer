@@ -2,7 +2,7 @@
 
 <!-- source: SBASAN1A p.19-20 -->
 
-## Table 1
+## Unnumbered table
 
 > **Test conditions:** Typical values at TA = +25°C, full temperature range is TA,MIN = -40°C to TJ,MAX = +110°C (unless otherwise noted)
 

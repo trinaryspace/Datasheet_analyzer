@@ -59,22 +59,24 @@ GOLDEN_PARTS = ("AD9081", "AFE7950", "AFE7953", "HMC520A", "LM741", "QPA1003P")
 PART_DIRS = {"LM741": "lm741"}
 
 #: Parts whose documents have **no** `search_index.json` anywhere in this
-#: tree, so the full-text path cannot run for them. Recorded in
-#: `KNOWN_SHORTCOMINGS.md`: their corpora were published into a shared library
-#: that holds only their figures, and republishing them needs the network the
-#: TI figure path uses. Asserted as a *set* so the gate fails if it grows —
-#: and fails just as loudly when it shrinks and nobody updated this list.
-PARTS_WITHOUT_SEARCH = {"AFE7950", "AFE7953"}
+#: tree, so the full-text path cannot run for them. **Empty since phase 6.5,
+#: wave 2**: ADR 0008 settled that a tracked corpus is published
+#: self-contained and at the current pipeline version, and rebuilding
+#: AFE7950 and AFE7953 that way wrote the index they had never had. Kept as a
+#: *set* rather than deleted, because it is asserted below and must fail just
+#: as loudly if it grows again.
+PARTS_WITHOUT_SEARCH: set[str] = set()
 
 
 def _shelf_has_material() -> bool:
     """Whether this checkout has a corpus the phase-6 gate can be run against.
 
-    The gate measures pins, registers, cards and axes across *built* parts, and
-    the only corpora committed to the repository are the two pre-phase-5
-    reference ones above — which predate every artifact it looks for. So the
-    material it needs is whatever the developer has built locally, and a
-    cleared shelf makes the whole module inapplicable rather than failing.
+    The gate measures pins, registers, cards and axes across *built* parts.
+    The two corpora this repository commits (AFE7950, AFE7953) are current
+    since ADR 0008, but neither prints a pin table or a register map, so most
+    of what this module looks for still comes from parts a developer builds
+    locally — and a cleared shelf makes the whole module inapplicable rather
+    than failing.
 
     Skipping the module beats weakening a dozen individual assertions: the
     gate's claims about *published* artifacts stay exactly as strict, and they
@@ -82,12 +84,7 @@ def _shelf_has_material() -> bool:
     """
     if not PARTS.is_dir():
         return False
-    return any(
-        child.is_dir()
-        and child.name not in PARTS_WITHOUT_SEARCH
-        and (child / "manifest.json").exists()
-        for child in PARTS.iterdir()
-    )
+    return any(child.is_dir() and (child / "manifest.json").exists() for child in PARTS.iterdir())
 
 
 pytestmark = pytest.mark.skipif(

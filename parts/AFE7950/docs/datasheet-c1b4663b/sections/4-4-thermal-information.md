@@ -2,7 +2,7 @@
 
 <!-- source: SBASA41E p.6 -->
 
-## Table 1
+## Unnumbered table
 
 | THERMAL METRIC(1) | THERMAL METRIC(1) | AFE7950 ABJ or ALK (FC-BGA) 400 PINS | UNIT |
 | --- | --- | --- | --- |

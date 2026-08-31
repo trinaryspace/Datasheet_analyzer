@@ -31,11 +31,7 @@
 
 ## How to use this corpus
 
-- Every section file starts with `<!-- source: <doc> p.N[-M] -->` — cite those pages.
-- Tables are atomic: conditions and footnotes are inline with each table;
-  a machine-readable CSV twin lives next to it under `tables/`.
-- Plot lookup: `dsa plots / docs/<doc>/plots.json` -> open the image file (vision).
-- Answers must quote values WITH units and cite the page.
+- Read `AGENT.md` beside this file first: the retrieval protocol (both access paths, citations, the confidence rule).
 
 ## Section map — `datasheet-c1b4663b`
 
@@ -47,27 +43,27 @@
   The AFE7950 is a high performance, wide bandwidth multi-channel transceiver, integrating four RF sampling transmitter …
 - **4 Specifications** — p.4-133 — `docs/datasheet-c1b4663b/sections/4-specifications.md` (14 tok)
   (no content)
-- **4.1 Absolute Maximum Ratings** — p.4 — `docs/datasheet-c1b4663b/sections/4-1-absolute-maximum-ratings.md` (658 tok, 1 tables)
+- **4.1 Absolute Maximum Ratings** — p.4 — `docs/datasheet-c1b4663b/sections/4-1-absolute-maximum-ratings.md` (660 tok, 1 tables)
   Parameters: PMAX(xRXIN+/-), TJ, Tstg.
-- **4.2 ESD Ratings** — p.5 — `docs/datasheet-c1b4663b/sections/4-2-esd-ratings.md` (133 tok, 1 tables)
+- **4.2 ESD Ratings** — p.5 — `docs/datasheet-c1b4663b/sections/4-2-esd-ratings.md` (136 tok, 1 tables)
   Parameters: V(ESD).
-- **4.3 Recommended Operating Conditions** — p.6 — `docs/datasheet-c1b4663b/sections/4-3-recommended-operating-conditions.md` (241 tok, 1 tables)
+- **4.3 Recommended Operating Conditions** — p.6 — `docs/datasheet-c1b4663b/sections/4-3-recommended-operating-conditions.md` (243 tok, 1 tables)
   Parameters: TA, TJ.
-- **4.4 Thermal Information** — p.6 — `docs/datasheet-c1b4663b/sections/4-4-thermal-information.md` (185 tok, 1 tables)
+- **4.4 Thermal Information** — p.6 — `docs/datasheet-c1b4663b/sections/4-4-thermal-information.md` (187 tok, 1 tables)
   Parameters: RθJA, RθJC(top), RθJB, ΨJT, ΨJB.
-- **4.5 Transmitter Electrical Characteristics** — p.7-13 — `docs/datasheet-c1b4663b/sections/4-5-transmitter-electrical-characteristics.md` (5942 tok, 1 tables)
+- **4.5 Transmitter Electrical Characteristics** — p.7-13 — `docs/datasheet-c1b4663b/sections/4-5-transmitter-electrical-characteristics.md` (5945 tok, 1 tables)
   Parameters: DACRES, fRFout, Pmax_FS, RTERM, ATTrange, ATTstep, ATTphase-err, Gflat.
-- **4.6 RF ADC Electrical Characteristics** — p.14-17 — `docs/datasheet-c1b4663b/sections/4-6-rf-adc-electrical-characteristics.md` (3493 tok, 1 tables)
+- **4.6 RF ADC Electrical Characteristics** — p.14-17 — `docs/datasheet-c1b4663b/sections/4-6-rf-adc-electrical-characteristics.md` (3496 tok, 1 tables)
   Parameters: ADCRES, FRFin, PFS_CW,min, S11, ATTrange, ATTstep, NSD, NFmin.
-- **4.7 PLL/VCO/Clock Electrical Characteristics** — p.18-19 — `docs/datasheet-c1b4663b/sections/4-7-pll-vco-clock-electrical-characteristics.md` (1114 tok, 1 tables)
+- **4.7 PLL/VCO/Clock Electrical Characteristics** — p.18-19 — `docs/datasheet-c1b4663b/sections/4-7-pll-vco-clock-electrical-characteristics.md` (1116 tok, 1 tables)
   Parameters: fVCO1, fVCO2, fVCO3, fVCO4, DIVDAC, DIVFBADC, DIVRXADC, PNVCO.
-- **4.8 Digital Electrical Characteristics** — p.20 — `docs/datasheet-c1b4663b/sections/4-8-digital-electrical-characteristics.md` (1243 tok, 1 tables)
+- **4.8 Digital Electrical Characteristics** — p.20 — `docs/datasheet-c1b4663b/sections/4-8-digital-electrical-characteristics.md` (1245 tok, 1 tables)
   Parameters: VSRDIFF, VSRCOM, ZSRdiff, FSerDes, TJ, VSTDIFF, VSTCOM, ZSTdiff.
-- **4.9 Power Supply Electrical Characteristics** — p.21-26 — `docs/datasheet-c1b4663b/sections/4-9-power-supply-electrical-characteristics.md` (9607 tok, 1 tables)
+- **4.9 Power Supply Electrical Characteristics** — p.21-26 — `docs/datasheet-c1b4663b/sections/4-9-power-supply-electrical-characteristics.md` (9609 tok, 1 tables)
   Parameters: IVDD1P8, IVDD1P2, IVDD0P9, Pdiss.
-- **4.10 Timing Requirements** — p.27 — `docs/datasheet-c1b4663b/sections/4-10-timing-requirements.md` (430 tok, 1 tables)
+- **4.10 Timing Requirements** — p.27 — `docs/datasheet-c1b4663b/sections/4-10-timing-requirements.md` (432 tok, 1 tables)
   Parameters: ts(SYSREF), th(SYSREF), ts(SENB), th(SENB), ts(SDIO), th(SDIO), t(SCLK)_W, t(SCLK)_R.
-- **4.11 Switching Characteristics** — p.28 — `docs/datasheet-c1b4663b/sections/4-11-switching-characteristics.md` (683 tok, 1 tables)
+- **4.11 Switching Characteristics** — p.28 — `docs/datasheet-c1b4663b/sections/4-11-switching-characteristics.md` (685 tok, 1 tables)
   Parameters: tJESDTX, tJESDRX, tJESDFB.
 - **4.12 Typical Characteristics** — p.29-133 — `docs/datasheet-c1b4663b/sections/4-12-typical-characteristics.md` (17 tok)
   (no content)
@@ -83,7 +79,7 @@
   Typical values at TA = +25°C with nominal supplies. 35 plots.
 - **4.12.6 TX Typical Characteristics at 8.1 GHz** — p.69-78 — `docs/datasheet-c1b4663b/sections/4-12-6-tx-typical-characteristics-at-8-1-ghz.md` (1085 tok, 45 figs)
   Typical values at TA = +25°C with nominal supplies. 45 plots.
-- **4.12.7 TX Typical Characteristics at 9.6 GHz** — p.79-89 — `docs/datasheet-c1b4663b/sections/4-12-7-tx-typical-characteristics-at-9-6-ghz.md` (1388 tok, 3 tables, 51 figs)
+- **4.12.7 TX Typical Characteristics at 9.6 GHz** — p.79-89 — `docs/datasheet-c1b4663b/sections/4-12-7-tx-typical-characteristics-at-9-6-ghz.md` (1392 tok, 3 tables, 51 figs)
   Figure 4-285 TX 4xNR100MHz Output Spectrum at 9.61 GHz 51 plots.
 - **4.12.8 RX Typical Characteristics at 800 MHz** — p.90-96 — `docs/datasheet-c1b4663b/sections/4-12-8-rx-typical-characteristics-at-800-mhz.md` (1272 tok, 31 figs)
   Typical values at TA = +25°C, ADC Sampling Rate = 2949.12 GHz. 31 plots.

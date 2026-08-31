@@ -4,7 +4,7 @@
 
 Figure 4-274 TX 4xNR100 MHz Output Spectrum at 9.61 GHz
 
-## Table 1
+## Unnumbered table
 
 > **Test conditions:** Typical values at TA = +25°C with nominal supplies. Default conditions: TX input data rate = 491.52 MSPS, fDAC = 11796.48 MSPS (8x interpolation), Mixed mode, 1st Nyquist zone output, PLL clock mode with fREF = 491.52 MHz, AOUT = –1 dBFS, DSA = 0 dB, Sin(x)/x enabled, DSA calibrated, TX Clock Dither Enabled, 9.6GHz matching
 

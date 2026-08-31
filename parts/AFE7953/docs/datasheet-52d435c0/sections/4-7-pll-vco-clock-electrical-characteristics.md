@@ -2,7 +2,7 @@
 
 <!-- source: SBASAN1A p.17-18 -->
 
-## Table 1
+## Unnumbered table
 
 > **Test conditions:** Typical values at TA = +25°C, full temperature range is TA,MIN = -40°C to TJ,MAX = +110°C; Reference clock input frequency 491.52MHz (unless otherwise noted), fDAC = fVCO, fOUT = fDAC/4, normalized to fVCO.
 

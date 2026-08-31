@@ -2,7 +2,7 @@
 
 <!-- source: SBASAN1A p.4 -->
 
-## Table 1
+## Unnumbered table
 
 > **Test conditions:** over operating free-air temperature range (unless otherwise noted)(1)
 

@@ -30,6 +30,15 @@ __pycache__/
 # silently untrack it. Same for `/sessions/`.
 /library/
 
+# Design cards under a tracked corpus (ADR 0008). A card is a derived cache
+# keyed by `DSA_CARD_VERSION` and the corpus it was computed from, it is
+# rebuilt on demand by `load_or_build_card`, and `dsa build` retires it — so
+# committing it would churn on every rules change and never be the thing a
+# reader cites. The corpus itself (sections, specs, plots, pins, registers,
+# search index, figures) is tracked; this is the one part of a part directory
+# that is not.
+/parts/*/cards/
+
 # Saved conversations (DSA_SESSIONS_DIR, default `sessions/`). Personal
 # working state, and they can quote NDA material.
 /sessions/

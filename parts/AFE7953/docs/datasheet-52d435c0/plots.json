@@ -1,5 +1,5 @@
 {
-  "schema_version": "1",
+  "schema_version": "2",
   "part_number": "AFE7953",
   "doc_hash": "52d435c0095ec0b002e36dcbc56711ecc7c909945cc756768ed168907be3b131",
   "plots": [
@@ -17,7 +17,17 @@
         "tx",
         "800mhz",
         "fullscale"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Output Frequency",
+      "x_unit": "MHz",
+      "x_min": 600.0,
+      "x_max": 1500.0,
+      "y_label": "Output Full Scale",
+      "y_unit": "dBm",
+      "y_min": -2.0,
+      "y_max": 7.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.1-f002",
@@ -34,7 +44,17 @@
         "800mhz",
         "output power",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 40.0,
+      "y_label": "Output Power",
+      "y_unit": "dBm",
+      "y_min": -35.0,
+      "y_max": 5.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.1-f003",
@@ -51,7 +71,17 @@
         "800mhz",
         "gain error",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 40.0,
+      "y_label": "Calibrated Differential Gain Error",
+      "y_unit": "dB",
+      "y_min": -0.05,
+      "y_max": 0.05,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.1-f004",
@@ -68,7 +98,17 @@
         "800mhz",
         "gain error",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 40.0,
+      "y_label": "Calibrated Integrated Gain Error",
+      "y_unit": "dB",
+      "y_min": -0.02,
+      "y_max": 0.1,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.1-f005",
@@ -85,7 +125,17 @@
         "800mhz",
         "gain error",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 40.0,
+      "y_label": "Calibrated Differential Gain Error",
+      "y_unit": "dB",
+      "y_min": -0.05,
+      "y_max": 0.03,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.1-f006",
@@ -102,7 +152,17 @@
         "800mhz",
         "gain error",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 40.0,
+      "y_label": "Calibrated Integrated Gain Error",
+      "y_unit": "dB",
+      "y_min": -0.04,
+      "y_max": 0.1,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.1-f007",
@@ -119,7 +179,17 @@
         "800mhz",
         "phase error",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "",
+      "x_unit": "",
+      "x_min": null,
+      "x_max": null,
+      "y_label": "",
+      "y_unit": "",
+      "y_min": null,
+      "y_max": null,
+      "axis_confidence": "low"
     },
     {
       "id": "4.12.1-f008",
@@ -136,7 +206,17 @@
         "800mhz",
         "phase error",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 40.0,
+      "y_label": "Calibrated Integrated Phase Error",
+      "y_unit": "deg",
+      "y_min": -0.35,
+      "y_max": 0.2,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.1-f009",
@@ -153,7 +233,17 @@
         "800mhz",
         "phase error",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 40.0,
+      "y_label": "IMD3",
+      "y_unit": "dBc",
+      "y_min": -100.0,
+      "y_max": -65.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.1-f010",
@@ -170,7 +260,17 @@
         "800mhz",
         "imd",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "",
+      "x_unit": "",
+      "x_min": null,
+      "x_max": null,
+      "y_label": "",
+      "y_unit": "",
+      "y_min": null,
+      "y_max": null,
+      "axis_confidence": "low"
     },
     {
       "id": "4.12.1-f011",
@@ -186,7 +286,17 @@
         "tx",
         "800mhz",
         "imd"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Tone Spacing",
+      "x_unit": "MHz",
+      "x_min": 0.0,
+      "x_max": 400.0,
+      "y_label": "IMD3",
+      "y_unit": "dBc",
+      "y_min": -83.0,
+      "y_max": -71.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.1-f012",
@@ -202,7 +312,17 @@
         "tx",
         "800mhz",
         "imd"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Tone Spacing",
+      "x_unit": "MHz",
+      "x_min": 0.0,
+      "x_max": 400.0,
+      "y_label": "IMD3",
+      "y_unit": "dBc",
+      "y_min": -80.0,
+      "y_max": -70.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.1-f013",
@@ -218,7 +338,17 @@
         "tx",
         "800mhz",
         "imd"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Tone Spacing",
+      "x_unit": "MHz",
+      "x_min": 0.0,
+      "x_max": 400.0,
+      "y_label": "IMD3",
+      "y_unit": "dBc",
+      "y_min": -83.0,
+      "y_max": -72.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.1-f014",
@@ -234,7 +364,17 @@
         "tx",
         "800mhz",
         "imd"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "",
+      "x_unit": "",
+      "x_min": null,
+      "x_max": null,
+      "y_label": "",
+      "y_unit": "",
+      "y_min": null,
+      "y_max": null,
+      "axis_confidence": "low"
     },
     {
       "id": "4.12.1-f015",
@@ -249,7 +389,17 @@
       "tags": [
         "tx",
         "800mhz"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Output Frequency",
+      "x_unit": "MHz",
+      "x_min": 600.0,
+      "x_max": 1500.0,
+      "y_label": "Noise",
+      "y_unit": "dBFS/Hz",
+      "y_min": -159.0,
+      "y_max": -150.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.1-f016",
@@ -265,7 +415,17 @@
         "tx",
         "800mhz",
         "acpr"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "",
+      "x_unit": "",
+      "x_min": null,
+      "x_max": null,
+      "y_label": "",
+      "y_unit": "",
+      "y_min": null,
+      "y_max": null,
+      "axis_confidence": "low"
     },
     {
       "id": "4.12.1-f017",
@@ -282,7 +442,17 @@
         "800mhz",
         "acpr",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "",
+      "x_unit": "",
+      "x_min": null,
+      "x_max": null,
+      "y_label": "",
+      "y_unit": "",
+      "y_min": null,
+      "y_max": null,
+      "axis_confidence": "low"
     },
     {
       "id": "4.12.1-f018",
@@ -298,7 +468,17 @@
         "tx",
         "800mhz",
         "hd2"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "",
+      "x_unit": "",
+      "x_min": null,
+      "x_max": null,
+      "y_label": "",
+      "y_unit": "",
+      "y_min": null,
+      "y_max": null,
+      "axis_confidence": "low"
     },
     {
       "id": "4.12.1-f019",
@@ -314,7 +494,17 @@
         "tx",
         "800mhz",
         "hd3"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "",
+      "x_unit": "",
+      "x_min": null,
+      "x_max": null,
+      "y_label": "",
+      "y_unit": "",
+      "y_min": null,
+      "y_max": null,
+      "axis_confidence": "low"
     },
     {
       "id": "4.12.1-f020",
@@ -329,7 +519,17 @@
       "tags": [
         "tx",
         "800mhz"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Output Frequency",
+      "x_unit": "MHz",
+      "x_min": 0.0,
+      "x_max": 6000.0,
+      "y_label": "Amplitude",
+      "y_unit": "dBm",
+      "y_min": -110.0,
+      "y_max": 0.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.1-f021",
@@ -344,7 +544,17 @@
       "tags": [
         "tx",
         "800mhz"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Output Frequency",
+      "x_unit": "MHz",
+      "x_min": 0.0,
+      "x_max": 6000.0,
+      "y_label": "Amplitude",
+      "y_unit": "dBm",
+      "y_min": -110.0,
+      "y_max": 10.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.1-f022",
@@ -360,7 +570,17 @@
         "tx",
         "800mhz",
         "fullscale"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Temperature",
+      "x_unit": "°C",
+      "x_min": -40.0,
+      "x_max": 105.0,
+      "y_label": "Output Full Scale",
+      "y_unit": "dBm",
+      "y_min": 2.0,
+      "y_max": 6.5,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.1-f023",
@@ -377,7 +597,17 @@
         "800mhz",
         "gain error",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 40.0,
+      "y_label": "Uncalibrated Differential Gain Error",
+      "y_unit": "dB",
+      "y_min": -0.05,
+      "y_max": 0.05,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.1-f024",
@@ -394,7 +624,17 @@
         "800mhz",
         "gain error",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 40.0,
+      "y_label": "Uncalibrated Integrated Gain Error",
+      "y_unit": "dB",
+      "y_min": 0.0,
+      "y_max": 0.35,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.1-f025",
@@ -411,7 +651,17 @@
         "800mhz",
         "gain error",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 40.0,
+      "y_label": "Uncalibrated Differential Gain Error",
+      "y_unit": "dB",
+      "y_min": -0.05,
+      "y_max": 0.05,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.1-f026",
@@ -428,7 +678,17 @@
         "800mhz",
         "gain error",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 40.0,
+      "y_label": "Uncalibrated Integrated Gain Error",
+      "y_unit": "dB",
+      "y_min": -0.05,
+      "y_max": 0.5,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.1-f027",
@@ -445,7 +705,17 @@
         "800mhz",
         "phase error",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "",
+      "x_unit": "",
+      "x_min": null,
+      "x_max": null,
+      "y_label": "",
+      "y_unit": "",
+      "y_min": null,
+      "y_max": null,
+      "axis_confidence": "low"
     },
     {
       "id": "4.12.1-f028",
@@ -462,7 +732,17 @@
         "800mhz",
         "phase error",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "",
+      "x_unit": "",
+      "x_min": null,
+      "x_max": null,
+      "y_label": "",
+      "y_unit": "",
+      "y_min": null,
+      "y_max": null,
+      "axis_confidence": "low"
     },
     {
       "id": "4.12.1-f029",
@@ -479,7 +759,17 @@
         "800mhz",
         "phase error",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "",
+      "x_unit": "",
+      "x_min": null,
+      "x_max": null,
+      "y_label": "",
+      "y_unit": "",
+      "y_min": null,
+      "y_max": null,
+      "axis_confidence": "low"
     },
     {
       "id": "4.12.1-f030",
@@ -494,7 +784,17 @@
       "tags": [
         "tx",
         "800mhz"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "",
+      "x_unit": "",
+      "x_min": null,
+      "x_max": null,
+      "y_label": "",
+      "y_unit": "",
+      "y_min": null,
+      "y_max": null,
+      "axis_confidence": "low"
     },
     {
       "id": "4.12.1-f031",
@@ -510,7 +810,17 @@
         "tx",
         "800mhz",
         "imd"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Tone Spacing",
+      "x_unit": "MHz",
+      "x_min": 0.0,
+      "x_max": 400.0,
+      "y_label": "IMD3",
+      "y_unit": "dBc",
+      "y_min": -82.0,
+      "y_max": -68.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.1-f032",
@@ -526,7 +836,17 @@
         "tx",
         "800mhz",
         "imd"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Tone Spacing",
+      "x_unit": "MHz",
+      "x_min": 0.0,
+      "x_max": 400.0,
+      "y_label": "IMD3",
+      "y_unit": "dBc",
+      "y_min": -85.0,
+      "y_max": -71.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.1-f033",
@@ -542,7 +862,17 @@
         "tx",
         "800mhz",
         "imd"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Tone Spacing",
+      "x_unit": "MHz",
+      "x_min": 0.0,
+      "x_max": 400.0,
+      "y_label": "IMD3",
+      "y_unit": "dBc",
+      "y_min": -82.0,
+      "y_max": -73.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.1-f034",
@@ -558,7 +888,17 @@
         "tx",
         "800mhz",
         "imd"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Pout/tone",
+      "x_unit": "dBFS",
+      "x_min": -37.0,
+      "x_max": -7.0,
+      "y_label": "IMD3",
+      "y_unit": "dBc",
+      "y_min": -100.0,
+      "y_max": -60.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.1-f035",
@@ -574,7 +914,17 @@
         "tx",
         "800mhz",
         "imd"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Pout/tone",
+      "x_unit": "dBFS",
+      "x_min": -37.0,
+      "x_max": -7.0,
+      "y_label": "IMD3",
+      "y_unit": "dBc",
+      "y_min": -105.0,
+      "y_max": -60.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.1-f036",
@@ -589,7 +939,17 @@
       "tags": [
         "tx",
         "800mhz"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "",
+      "x_unit": "",
+      "x_min": null,
+      "x_max": null,
+      "y_label": "",
+      "y_unit": "",
+      "y_min": null,
+      "y_max": null,
+      "axis_confidence": "low"
     },
     {
       "id": "4.12.1-f037",
@@ -605,7 +965,17 @@
         "tx",
         "800mhz",
         "acpr"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Pout",
+      "x_unit": "dBFS",
+      "x_min": -32.0,
+      "x_max": -12.0,
+      "y_label": "Alternate channel ACPR",
+      "y_unit": "dBc",
+      "y_min": -70.0,
+      "y_max": -52.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.1-f038",
@@ -622,7 +992,17 @@
         "800mhz",
         "acpr",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "",
+      "x_unit": "",
+      "x_min": null,
+      "x_max": null,
+      "y_label": "",
+      "y_unit": "",
+      "y_min": null,
+      "y_max": null,
+      "axis_confidence": "low"
     },
     {
       "id": "4.12.1-f039",
@@ -638,7 +1018,17 @@
         "tx",
         "800mhz",
         "hd2"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "",
+      "x_unit": "",
+      "x_min": null,
+      "x_max": null,
+      "y_label": "",
+      "y_unit": "",
+      "y_min": null,
+      "y_max": null,
+      "axis_confidence": "low"
     },
     {
       "id": "4.12.1-f040",
@@ -654,7 +1044,17 @@
         "tx",
         "800mhz",
         "hd3"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "",
+      "x_unit": "",
+      "x_min": null,
+      "x_max": null,
+      "y_label": "",
+      "y_unit": "",
+      "y_min": null,
+      "y_max": null,
+      "axis_confidence": "low"
     },
     {
       "id": "4.12.1-f041",
@@ -669,7 +1069,17 @@
       "tags": [
         "tx",
         "800mhz"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Output Frequency",
+      "x_unit": "MHz",
+      "x_min": 0.0,
+      "x_max": 6000.0,
+      "y_label": "Amplitude",
+      "y_unit": "dBm",
+      "y_min": -110.0,
+      "y_max": 10.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.2-f001",
@@ -685,7 +1095,17 @@
         "tx",
         "1800mhz",
         "fullscale"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Output Frequency",
+      "x_unit": "MHz",
+      "x_min": 1200.0,
+      "x_max": 2700.0,
+      "y_label": "Output Full Scale",
+      "y_unit": "dBm",
+      "y_min": -2.5,
+      "y_max": 3.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.2-f002",
@@ -702,7 +1122,17 @@
         "1800mhz",
         "gain error",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 40.0,
+      "y_label": "Uncalibrated Differential Gain Error",
+      "y_unit": "dB",
+      "y_min": -0.05,
+      "y_max": 0.05,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.2-f003",
@@ -719,7 +1149,17 @@
         "1800mhz",
         "gain error",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 40.0,
+      "y_label": "Uncalibrated Integrated Gain Error",
+      "y_unit": "dB",
+      "y_min": 0.0,
+      "y_max": 0.35,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.2-f004",
@@ -736,7 +1176,17 @@
         "1800mhz",
         "gain error",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 40.0,
+      "y_label": "Uncalibrated Differential Gain Error",
+      "y_unit": "dB",
+      "y_min": -0.05,
+      "y_max": 0.05,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.2-f005",
@@ -753,7 +1203,17 @@
         "1800mhz",
         "gain error",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 40.0,
+      "y_label": "Uncalibrated Integrated Gain Error",
+      "y_unit": "dB",
+      "y_min": -0.05,
+      "y_max": 0.35,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.2-f006",
@@ -770,7 +1230,17 @@
         "1800mhz",
         "phase error",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 40.0,
+      "y_label": "Uncalibrated Differential Phase Error",
+      "y_unit": "deg",
+      "y_min": -0.02,
+      "y_max": 0.05,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.2-f007",
@@ -787,7 +1257,17 @@
         "1800mhz",
         "phase error",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 40.0,
+      "y_label": "Uncalibrated Integrated Phase Error",
+      "y_unit": "deg",
+      "y_min": 0.0,
+      "y_max": 0.4,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.2-f008",
@@ -804,7 +1284,17 @@
         "1800mhz",
         "phase error",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 40.0,
+      "y_label": "Uncalibrated Differential Phase Error",
+      "y_unit": "deg",
+      "y_min": -0.02,
+      "y_max": 0.03,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.2-f009",
@@ -821,7 +1311,17 @@
         "1800mhz",
         "phase error",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 40.0,
+      "y_label": "Uncalibrated Integrated Phase Error",
+      "y_unit": "deg",
+      "y_min": -0.02,
+      "y_max": 0.38,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.2-f010",
@@ -836,7 +1336,17 @@
       "tags": [
         "tx",
         "1800mhz"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 40.0,
+      "y_label": "Noise",
+      "y_unit": "dBFS/Hz",
+      "y_min": -159.0,
+      "y_max": -134.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.2-f011",
@@ -852,7 +1362,17 @@
         "tx",
         "1800mhz",
         "imd"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Tone Spacing",
+      "x_unit": "MHz",
+      "x_min": 0.0,
+      "x_max": 400.0,
+      "y_label": "IMD3",
+      "y_unit": "dBc",
+      "y_min": -82.0,
+      "y_max": -68.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.2-f012",
@@ -868,7 +1388,17 @@
         "tx",
         "1800mhz",
         "imd"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Pout/tone",
+      "x_unit": "dBFS",
+      "x_min": -37.0,
+      "x_max": -7.0,
+      "y_label": "IMD3",
+      "y_unit": "dBc",
+      "y_min": -105.0,
+      "y_max": -60.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.2-f013",
@@ -883,7 +1413,17 @@
       "tags": [
         "tx",
         "1800mhz"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "",
+      "x_unit": "",
+      "x_min": null,
+      "x_max": null,
+      "y_label": "",
+      "y_unit": "",
+      "y_min": null,
+      "y_max": null,
+      "axis_confidence": "low"
     },
     {
       "id": "4.12.2-f014",
@@ -899,7 +1439,17 @@
         "tx",
         "1800mhz",
         "acpr"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Pout",
+      "x_unit": "dBFS",
+      "x_min": -32.0,
+      "x_max": -12.0,
+      "y_label": "Alternate channel ACPR",
+      "y_unit": "dBc",
+      "y_min": -73.0,
+      "y_max": -55.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.2-f015",
@@ -916,7 +1466,17 @@
         "1800mhz",
         "acpr",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 40.0,
+      "y_label": "Alternate channel ACPR",
+      "y_unit": "dBc",
+      "y_min": -73.0,
+      "y_max": -49.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.2-f016",
@@ -932,7 +1492,17 @@
         "tx",
         "1800mhz",
         "hd3"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Output Frequency",
+      "x_unit": "MHz",
+      "x_min": 1200.0,
+      "x_max": 2700.0,
+      "y_label": "HD3",
+      "y_unit": "dBFS/Hz",
+      "y_min": -145.0,
+      "y_max": -65.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.2-f017",
@@ -947,7 +1517,17 @@
       "tags": [
         "tx",
         "1800mhz"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Output Frequency",
+      "x_unit": "MHz",
+      "x_min": 0.0,
+      "x_max": 9000.0,
+      "y_label": "Amplitude",
+      "y_unit": "dBm",
+      "y_min": -110.0,
+      "y_max": 0.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.2-f018",
@@ -963,7 +1543,17 @@
         "tx",
         "1800mhz",
         "output power"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Temperature",
+      "x_unit": "°C",
+      "x_min": -40.0,
+      "x_max": 105.0,
+      "y_label": "Output Full Scale",
+      "y_unit": "dBm",
+      "y_min": -3.0,
+      "y_max": 3.5,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.2-f019",
@@ -980,7 +1570,17 @@
         "1800mhz",
         "gain error",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 40.0,
+      "y_label": "Calibrated Differential Gain Error",
+      "y_unit": "dB",
+      "y_min": -0.05,
+      "y_max": 0.05,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.2-f020",
@@ -997,7 +1597,17 @@
         "1800mhz",
         "gain error",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "",
+      "x_unit": "",
+      "x_min": null,
+      "x_max": null,
+      "y_label": "",
+      "y_unit": "",
+      "y_min": null,
+      "y_max": null,
+      "axis_confidence": "low"
     },
     {
       "id": "4.12.2-f021",
@@ -1014,7 +1624,17 @@
         "1800mhz",
         "gain error",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 40.0,
+      "y_label": "Calibrated Differential Gain Error",
+      "y_unit": "dB",
+      "y_min": -0.05,
+      "y_max": 0.03,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.2-f022",
@@ -1031,7 +1651,17 @@
         "1800mhz",
         "gain error",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 40.0,
+      "y_label": "Calibrated Integrated Gain Error",
+      "y_unit": "dB",
+      "y_min": -0.04,
+      "y_max": 0.06,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.2-f023",
@@ -1048,7 +1678,17 @@
         "1800mhz",
         "phase error",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 40.0,
+      "y_label": "Calibrated Differential Phase Error",
+      "y_unit": "deg",
+      "y_min": -0.25,
+      "y_max": 0.25,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.2-f024",
@@ -1065,7 +1705,17 @@
         "1800mhz",
         "phase error",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "",
+      "x_unit": "",
+      "x_min": null,
+      "x_max": null,
+      "y_label": "",
+      "y_unit": "",
+      "y_min": null,
+      "y_max": null,
+      "axis_confidence": "low"
     },
     {
       "id": "4.12.2-f025",
@@ -1082,7 +1732,17 @@
         "1800mhz",
         "phase error",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 40.0,
+      "y_label": "Calibrated Differential Phase Error",
+      "y_unit": "deg",
+      "y_min": -0.02,
+      "y_max": 0.02,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.2-f026",
@@ -1099,7 +1759,17 @@
         "1800mhz",
         "phase error",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 40.0,
+      "y_label": "Calibrated Integrated Phase Error",
+      "y_unit": "deg",
+      "y_min": -0.3,
+      "y_max": 0.1,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.2-f027",
@@ -1116,7 +1786,17 @@
         "1800mhz",
         "imd",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 40.0,
+      "y_label": "IMD3",
+      "y_unit": "dBc",
+      "y_min": -95.0,
+      "y_max": -65.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.2-f028",
@@ -1132,7 +1812,17 @@
         "tx",
         "1800mhz",
         "imd"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Tone Spacing",
+      "x_unit": "MHz",
+      "x_min": 0.0,
+      "x_max": 400.0,
+      "y_label": "IMD3",
+      "y_unit": "dBc",
+      "y_min": -80.0,
+      "y_max": -68.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.2-f029",
@@ -1147,7 +1837,17 @@
       "tags": [
         "tx",
         "1800mhz"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Output Frequency",
+      "x_unit": "MHz",
+      "x_min": 1200.0,
+      "x_max": 2700.0,
+      "y_label": "Noise",
+      "y_unit": "dBFS/Hz",
+      "y_min": -160.0,
+      "y_max": -146.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.2-f030",
@@ -1163,7 +1863,17 @@
         "tx",
         "1800mhz",
         "acpr"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Pout",
+      "x_unit": "dBFS",
+      "x_min": -32.0,
+      "x_max": -12.0,
+      "y_label": "Ajacent channel ACPR",
+      "y_unit": "dBc",
+      "y_min": -72.0,
+      "y_max": -54.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.2-f031",
@@ -1180,7 +1890,17 @@
         "1800mhz",
         "acpr",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 40.0,
+      "y_label": "Ajacent channel ACPR",
+      "y_unit": "dBc",
+      "y_min": -72.0,
+      "y_max": -51.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.2-f032",
@@ -1196,7 +1916,17 @@
         "tx",
         "1800mhz",
         "hd2"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Output Frequency",
+      "x_unit": "MHz",
+      "x_min": 1200.0,
+      "x_max": 2700.0,
+      "y_label": "HD2",
+      "y_unit": "dBFS/Hz",
+      "y_min": -115.0,
+      "y_max": -55.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.2-f033",
@@ -1211,7 +1941,17 @@
       "tags": [
         "tx",
         "1800mhz"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Output Frequency",
+      "x_unit": "MHz",
+      "x_min": 0.0,
+      "x_max": 9000.0,
+      "y_label": "Amplitude",
+      "y_unit": "dBm",
+      "y_min": -110.0,
+      "y_max": 0.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.2-f034",
@@ -1226,7 +1966,17 @@
       "tags": [
         "tx",
         "1800mhz"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Output Frequency",
+      "x_unit": "MHz",
+      "x_min": 0.0,
+      "x_max": 9000.0,
+      "y_label": "Amplitude",
+      "y_unit": "dBm",
+      "y_min": -110.0,
+      "y_max": 10.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.3-f001",
@@ -1241,7 +1991,17 @@
       "tags": [
         "tx",
         "2600mhz"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Frequency",
+      "x_unit": "MHz",
+      "x_min": 2000.0,
+      "x_max": 3200.0,
+      "y_label": "Fullscale POUT",
+      "y_unit": "dBm",
+      "y_min": -2.0,
+      "y_max": 4.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.3-f002",
@@ -1258,7 +2018,17 @@
         "2600mhz",
         "gain error",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 40.0,
+      "y_label": "Uncalibrated Differential Gain Error",
+      "y_unit": "dB",
+      "y_min": -0.05,
+      "y_max": 0.05,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.3-f003",
@@ -1275,7 +2045,17 @@
         "2600mhz",
         "gain error",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 40.0,
+      "y_label": "Uncalibrated Integrated Gain Error",
+      "y_unit": "dB",
+      "y_min": 0.0,
+      "y_max": 0.45,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.3-f004",
@@ -1292,7 +2072,17 @@
         "2600mhz",
         "gain error",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 40.0,
+      "y_label": "Uncalibrated Differential Gain Error",
+      "y_unit": "dB",
+      "y_min": -0.05,
+      "y_max": 0.05,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.3-f005",
@@ -1309,7 +2099,17 @@
         "2600mhz",
         "gain error",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 40.0,
+      "y_label": "Uncalibrated Integrated Gain Error",
+      "y_unit": "dB",
+      "y_min": -0.05,
+      "y_max": 0.4,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.3-f006",
@@ -1326,7 +2126,17 @@
         "2600mhz",
         "phase error",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 40.0,
+      "y_label": "Uncalibrated Differential Phase Error",
+      "y_unit": "deg",
+      "y_min": -0.08,
+      "y_max": 0.08,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.3-f007",
@@ -1343,7 +2153,17 @@
         "2600mhz",
         "phase error",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 40.0,
+      "y_label": "Uncalibrated Integrated Phase Error",
+      "y_unit": "deg",
+      "y_min": -0.2,
+      "y_max": 0.2,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.3-f008",
@@ -1360,7 +2180,17 @@
         "2600mhz",
         "phase error",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 40.0,
+      "y_label": "Uncalibrated Differential Phase Error",
+      "y_unit": "deg",
+      "y_min": -0.04,
+      "y_max": 0.04,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.3-f009",
@@ -1377,7 +2207,17 @@
         "2600mhz",
         "phase error",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 40.0,
+      "y_label": "Uncalibrated Integrated Phase Error",
+      "y_unit": "deg",
+      "y_min": -0.3,
+      "y_max": 0.3,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.3-f010",
@@ -1392,7 +2232,17 @@
       "tags": [
         "tx",
         "2600mhz"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 40.0,
+      "y_label": "Noise",
+      "y_unit": "dBFS/Hz",
+      "y_min": -159.0,
+      "y_max": -132.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.3-f011",
@@ -1408,7 +2258,17 @@
         "tx",
         "2600mhz",
         "imd"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "",
+      "x_unit": "",
+      "x_min": null,
+      "x_max": null,
+      "y_label": "",
+      "y_unit": "",
+      "y_min": null,
+      "y_max": null,
+      "axis_confidence": "low"
     },
     {
       "id": "4.12.3-f012",
@@ -1424,7 +2284,17 @@
         "tx",
         "2600mhz",
         "imd"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "",
+      "x_unit": "",
+      "x_min": null,
+      "x_max": null,
+      "y_label": "",
+      "y_unit": "",
+      "y_min": null,
+      "y_max": null,
+      "axis_confidence": "low"
     },
     {
       "id": "4.12.3-f013",
@@ -1439,7 +2309,17 @@
       "tags": [
         "tx",
         "2600mhz"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Output Frequency",
+      "x_unit": "MHz",
+      "x_min": 2000.0,
+      "x_max": 3200.0,
+      "y_label": "Output Noise",
+      "y_unit": "dBFS/Hz",
+      "y_min": -160.0,
+      "y_max": -148.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.3-f014",
@@ -1455,7 +2335,17 @@
         "tx",
         "2600mhz",
         "acpr"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "",
+      "x_unit": "",
+      "x_min": null,
+      "x_max": null,
+      "y_label": "",
+      "y_unit": "",
+      "y_min": null,
+      "y_max": null,
+      "axis_confidence": "low"
     },
     {
       "id": "4.12.3-f015",
@@ -1472,7 +2362,17 @@
         "2600mhz",
         "acpr",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "",
+      "x_unit": "",
+      "x_min": null,
+      "x_max": null,
+      "y_label": "",
+      "y_unit": "",
+      "y_min": null,
+      "y_max": null,
+      "axis_confidence": "low"
     },
     {
       "id": "4.12.3-f016",
@@ -1489,7 +2389,17 @@
         "2600mhz",
         "acpr",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 40.0,
+      "y_label": "Ajacent channel ACPR",
+      "y_unit": "dBc",
+      "y_min": -66.0,
+      "y_max": -42.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.3-f017",
@@ -1506,7 +2416,17 @@
         "2600mhz",
         "acpr",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 40.0,
+      "y_label": "Ajacent channel ACPR",
+      "y_unit": "dBc",
+      "y_min": -66.0,
+      "y_max": -42.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.3-f018",
@@ -1522,7 +2442,17 @@
         "tx",
         "2600mhz",
         "hd2"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "",
+      "x_unit": "",
+      "x_min": null,
+      "x_max": null,
+      "y_label": "",
+      "y_unit": "",
+      "y_min": null,
+      "y_max": null,
+      "axis_confidence": "low"
     },
     {
       "id": "4.12.3-f019",
@@ -1537,7 +2467,17 @@
       "tags": [
         "tx",
         "2600mhz"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Frequency",
+      "x_unit": "MHz",
+      "x_min": 0.0,
+      "x_max": 9000.0,
+      "y_label": "Amplitude",
+      "y_unit": "dBm",
+      "y_min": -100.0,
+      "y_max": 0.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.3-f020",
@@ -1552,7 +2492,17 @@
       "tags": [
         "tx",
         "2600mhz"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Frequency",
+      "x_unit": "MHz",
+      "x_min": 0.0,
+      "x_max": 9000.0,
+      "y_label": "Amplitude",
+      "y_unit": "dBm",
+      "y_min": -90.0,
+      "y_max": 10.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.3-f021",
@@ -1569,7 +2519,17 @@
         "2600mhz",
         "output power",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "",
+      "x_unit": "",
+      "x_min": null,
+      "x_max": null,
+      "y_label": "",
+      "y_unit": "",
+      "y_min": null,
+      "y_max": null,
+      "axis_confidence": "low"
     },
     {
       "id": "4.12.3-f022",
@@ -1586,7 +2546,17 @@
         "2600mhz",
         "gain error",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 40.0,
+      "y_label": "Calibrated Differential Gain Error",
+      "y_unit": "dB",
+      "y_min": -0.05,
+      "y_max": 0.05,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.3-f023",
@@ -1603,7 +2573,17 @@
         "2600mhz",
         "gain error",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 40.0,
+      "y_label": "Calibrated Integrated Gain Error",
+      "y_unit": "dB",
+      "y_min": -0.04,
+      "y_max": 0.08,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.3-f024",
@@ -1620,7 +2600,17 @@
         "2600mhz",
         "gain error",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 40.0,
+      "y_label": "Calibrated Differential Gain Error",
+      "y_unit": "dB",
+      "y_min": -0.05,
+      "y_max": 0.03,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.3-f025",
@@ -1637,7 +2627,17 @@
         "2600mhz",
         "gain error",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 40.0,
+      "y_label": "Calibrated Integrated Gain Error",
+      "y_unit": "dB",
+      "y_min": -0.04,
+      "y_max": 0.08,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.3-f026",
@@ -1654,7 +2654,17 @@
         "2600mhz",
         "phase error",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 40.0,
+      "y_label": "Calibrated Differential Phase Error",
+      "y_unit": "deg",
+      "y_min": -0.3,
+      "y_max": 0.3,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.3-f027",
@@ -1671,7 +2681,17 @@
         "2600mhz",
         "phase error",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "",
+      "x_unit": "",
+      "x_min": null,
+      "x_max": null,
+      "y_label": "",
+      "y_unit": "",
+      "y_min": null,
+      "y_max": null,
+      "axis_confidence": "low"
     },
     {
       "id": "4.12.3-f028",
@@ -1688,7 +2708,17 @@
         "2600mhz",
         "phase error",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 40.0,
+      "y_label": "Calibrated Differential Phase Error",
+      "y_unit": "deg",
+      "y_min": -0.06,
+      "y_max": 0.04,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.3-f029",
@@ -1705,7 +2735,17 @@
         "2600mhz",
         "phase error",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 40.0,
+      "y_label": "Calibrated Integrated Phase Error",
+      "y_unit": "deg",
+      "y_min": -0.3,
+      "y_max": 0.3,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.3-f030",
@@ -1722,7 +2762,17 @@
         "2600mhz",
         "imd",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 40.0,
+      "y_label": "IMD3",
+      "y_unit": "dBc",
+      "y_min": -95.0,
+      "y_max": -70.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.3-f031",
@@ -1738,7 +2788,17 @@
         "tx",
         "2600mhz",
         "imd"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Tone Spacing",
+      "x_unit": "MHz",
+      "x_min": 0.0,
+      "x_max": 400.0,
+      "y_label": "IMD3",
+      "y_unit": "dBc",
+      "y_min": -80.0,
+      "y_max": -60.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.3-f032",
@@ -1754,7 +2814,17 @@
         "tx",
         "2600mhz",
         "imd"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Tone Spacing",
+      "x_unit": "MHz",
+      "x_min": 0.0,
+      "x_max": 400.0,
+      "y_label": "IMD3",
+      "y_unit": "dBc",
+      "y_min": -90.0,
+      "y_max": -65.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.3-f033",
@@ -1769,7 +2839,17 @@
       "tags": [
         "tx",
         "2600mhz"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "",
+      "x_unit": "",
+      "x_min": null,
+      "x_max": null,
+      "y_label": "",
+      "y_unit": "",
+      "y_min": null,
+      "y_max": null,
+      "axis_confidence": "low"
     },
     {
       "id": "4.12.3-f034",
@@ -1785,7 +2865,17 @@
         "tx",
         "2600mhz",
         "acpr"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Pout",
+      "x_unit": "dBFS",
+      "x_min": -30.0,
+      "x_max": -12.0,
+      "y_label": "alt-ACPR",
+      "y_unit": "dBc",
+      "y_min": -75.0,
+      "y_max": -55.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.3-f035",
@@ -1802,7 +2892,17 @@
         "2600mhz",
         "acpr",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 40.0,
+      "y_label": "Alternate channel ACPR",
+      "y_unit": "dBc",
+      "y_min": -72.0,
+      "y_max": -51.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.3-f036",
@@ -1819,7 +2919,17 @@
         "2600mhz",
         "acpr",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 40.0,
+      "y_label": "Alternate channel ACPR",
+      "y_unit": "dBc",
+      "y_min": -67.0,
+      "y_max": -43.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.3-f037",
@@ -1836,7 +2946,17 @@
         "2600mhz",
         "acpr",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 40.0,
+      "y_label": "Alternate channel ACPR",
+      "y_unit": "dBc",
+      "y_min": -67.0,
+      "y_max": -43.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.3-f038",
@@ -1852,7 +2972,17 @@
         "tx",
         "2600mhz",
         "hd3"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "",
+      "x_unit": "",
+      "x_min": null,
+      "x_max": null,
+      "y_label": "",
+      "y_unit": "",
+      "y_min": null,
+      "y_max": null,
+      "axis_confidence": "low"
     },
     {
       "id": "4.12.3-f039",
@@ -1867,7 +2997,17 @@
       "tags": [
         "tx",
         "2600mhz"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Frequency",
+      "x_unit": "MHz",
+      "x_min": 0.0,
+      "x_max": 9000.0,
+      "y_label": "Amplitude",
+      "y_unit": "dBm",
+      "y_min": -100.0,
+      "y_max": 0.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.3-f040",
@@ -1883,7 +3023,17 @@
         "tx",
         "2600mhz",
         "imd"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "",
+      "x_unit": "",
+      "x_min": null,
+      "x_max": null,
+      "y_label": "",
+      "y_unit": "",
+      "y_min": null,
+      "y_max": null,
+      "axis_confidence": "low"
     },
     {
       "id": "4.12.4-f001",
@@ -1899,7 +3049,17 @@
         "tx",
         "3500mhz",
         "output power"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Fundamental Frequency",
+      "x_unit": "MHz",
+      "x_min": 2800.0,
+      "x_max": 4200.0,
+      "y_label": "Output Power",
+      "y_unit": "dBm",
+      "y_min": -5.0,
+      "y_max": 5.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.4-f002",
@@ -1916,7 +3076,17 @@
         "3500mhz",
         "gain error",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "",
+      "x_unit": "",
+      "x_min": null,
+      "x_max": null,
+      "y_label": "",
+      "y_unit": "",
+      "y_min": null,
+      "y_max": null,
+      "axis_confidence": "low"
     },
     {
       "id": "4.12.4-f003",
@@ -1933,7 +3103,17 @@
         "3500mhz",
         "gain error",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 40.0,
+      "y_label": "Uncalibrated Integrated Gain Error",
+      "y_unit": "dB",
+      "y_min": 0.0,
+      "y_max": 0.5,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.4-f004",
@@ -1950,7 +3130,17 @@
         "3500mhz",
         "phase error",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 40.0,
+      "y_label": "Uncalibrated Differential Phase Error",
+      "y_unit": "deg",
+      "y_min": -0.04,
+      "y_max": 0.08,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.4-f005",
@@ -1967,7 +3157,17 @@
         "3500mhz",
         "phase error",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "",
+      "x_unit": "",
+      "x_min": null,
+      "x_max": null,
+      "y_label": "",
+      "y_unit": "",
+      "y_min": null,
+      "y_max": null,
+      "axis_confidence": "low"
     },
     {
       "id": "4.12.4-f006",
@@ -1984,7 +3184,17 @@
         "3500mhz",
         "gain error",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 40.0,
+      "y_label": "Uncalibrated Differential Gain Error",
+      "y_unit": "dB",
+      "y_min": -0.05,
+      "y_max": 0.05,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.4-f007",
@@ -2001,7 +3211,17 @@
         "3500mhz",
         "gain error",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 40.0,
+      "y_label": "Uncalibrated Integrated Gain Error",
+      "y_unit": "dB",
+      "y_min": -0.05,
+      "y_max": 0.5,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.4-f008",
@@ -2018,7 +3238,17 @@
         "3500mhz",
         "phase error",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 40.0,
+      "y_label": "Uncalibrated Differential Phase Error",
+      "y_unit": "deg",
+      "y_min": -0.06,
+      "y_max": 0.08,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.4-f009",
@@ -2035,7 +3265,17 @@
         "3500mhz",
         "phase error",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 40.0,
+      "y_label": "Uncalibrated Integrated Phase Error",
+      "y_unit": "deg",
+      "y_min": 0.0,
+      "y_max": 0.6,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.4-f010",
@@ -2052,7 +3292,17 @@
         "3500mhz",
         "nsd",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 40.0,
+      "y_label": "Noise",
+      "y_unit": "dBFS/Hz",
+      "y_min": -160.0,
+      "y_max": -130.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.4-f011",
@@ -2068,7 +3318,17 @@
         "tx",
         "3500mhz",
         "imd"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "POUT/tone",
+      "x_unit": "dBFS",
+      "x_min": -40.0,
+      "x_max": -5.0,
+      "y_label": "IMD3",
+      "y_unit": "dBc",
+      "y_min": -100.0,
+      "y_max": -50.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.4-f012",
@@ -2085,7 +3345,17 @@
         "3500mhz",
         "acpr",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 40.0,
+      "y_label": "Ajacent channel ACPR",
+      "y_unit": "dBc",
+      "y_min": -72.0,
+      "y_max": -48.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.4-f013",
@@ -2101,7 +3371,17 @@
         "tx",
         "3500mhz",
         "acpr"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "",
+      "x_unit": "",
+      "x_min": null,
+      "x_max": null,
+      "y_label": "",
+      "y_unit": "",
+      "y_min": null,
+      "y_max": null,
+      "axis_confidence": "low"
     },
     {
       "id": "4.12.4-f014",
@@ -2117,7 +3397,17 @@
         "tx",
         "3500mhz",
         "hd2"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "",
+      "x_unit": "",
+      "x_min": null,
+      "x_max": null,
+      "y_label": "",
+      "y_unit": "",
+      "y_min": null,
+      "y_max": null,
+      "axis_confidence": "low"
     },
     {
       "id": "4.12.4-f015",
@@ -2132,7 +3422,17 @@
       "tags": [
         "tx",
         "3500mhz"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Frequency",
+      "x_unit": "MHz",
+      "x_min": 0.0,
+      "x_max": 12000.0,
+      "y_label": "Amplitude",
+      "y_unit": "dBm",
+      "y_min": -110.0,
+      "y_max": 10.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.4-f016",
@@ -2147,7 +3447,17 @@
       "tags": [
         "tx",
         "3500mhz"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Frequency",
+      "x_unit": "MHz",
+      "x_min": 0.0,
+      "x_max": 12000.0,
+      "y_label": "Amplitude",
+      "y_unit": "dBm",
+      "y_min": -100.0,
+      "y_max": 0.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.4-f017",
@@ -2164,7 +3474,17 @@
         "3500mhz",
         "output power",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 40.0,
+      "y_label": "Output Power",
+      "y_unit": "dBm",
+      "y_min": -40.0,
+      "y_max": 5.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.4-f018",
@@ -2181,7 +3501,17 @@
         "3500mhz",
         "gain error",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 40.0,
+      "y_label": "Calibrated Differential Gain Error",
+      "y_unit": "dB",
+      "y_min": -0.05,
+      "y_max": 0.05,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.4-f019",
@@ -2198,7 +3528,17 @@
         "3500mhz",
         "gain error",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 40.0,
+      "y_label": "Calibrated Integrated Gain Error",
+      "y_unit": "dB",
+      "y_min": -0.06,
+      "y_max": 0.04,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.4-f020",
@@ -2215,7 +3555,17 @@
         "3500mhz",
         "phase error",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 40.0,
+      "y_label": "Calibrated Differential Phase Error",
+      "y_unit": "deg",
+      "y_min": -0.3,
+      "y_max": 0.3,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.4-f021",
@@ -2232,7 +3582,17 @@
         "3500mhz",
         "phase error",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 40.0,
+      "y_label": "Calibrated Integrated Phase Error",
+      "y_unit": "deg",
+      "y_min": -0.5,
+      "y_max": 0.2,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.4-f022",
@@ -2249,7 +3609,17 @@
         "3500mhz",
         "gain error",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 40.0,
+      "y_label": "Calibrated Differential Gain Error",
+      "y_unit": "dB",
+      "y_min": -0.05,
+      "y_max": 0.03,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.4-f023",
@@ -2266,7 +3636,17 @@
         "3500mhz",
         "gain error",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 40.0,
+      "y_label": "Calibrated Integrated Gain Error",
+      "y_unit": "dB",
+      "y_min": -0.06,
+      "y_max": 0.02,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.4-f024",
@@ -2283,7 +3663,17 @@
         "3500mhz",
         "phase error",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 40.0,
+      "y_label": "Calibrated Differential Phase Error",
+      "y_unit": "deg",
+      "y_min": -0.18,
+      "y_max": 0.06,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.4-f025",
@@ -2300,7 +3690,17 @@
         "3500mhz",
         "phase error",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 40.0,
+      "y_label": "Calibrated Integrated Phase Error",
+      "y_unit": "deg",
+      "y_min": -0.3,
+      "y_max": 0.1,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.4-f026",
@@ -2317,7 +3717,17 @@
         "3500mhz",
         "imd",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 40.0,
+      "y_label": "IMD3",
+      "y_unit": "dBc",
+      "y_min": -84.0,
+      "y_max": -66.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.4-f027",
@@ -2332,7 +3742,17 @@
       "tags": [
         "tx",
         "3500mhz"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "",
+      "x_unit": "",
+      "x_min": null,
+      "x_max": null,
+      "y_label": "",
+      "y_unit": "",
+      "y_min": null,
+      "y_max": null,
+      "axis_confidence": "low"
     },
     {
       "id": "4.12.4-f028",
@@ -2349,7 +3769,17 @@
         "3500mhz",
         "acpr",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 40.0,
+      "y_label": "Alternate channel ACPR",
+      "y_unit": "dBc",
+      "y_min": -73.0,
+      "y_max": -49.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.4-f029",
@@ -2365,7 +3795,17 @@
         "tx",
         "3500mhz",
         "acpr"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "POUT",
+      "x_unit": "dBFS",
+      "x_min": -32.0,
+      "x_max": -12.0,
+      "y_label": "Alternate Channel ACPR",
+      "y_unit": "dBc",
+      "y_min": -75.0,
+      "y_max": -55.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.4-f030",
@@ -2381,7 +3821,17 @@
         "tx",
         "3500mhz",
         "hd3"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "FOUT",
+      "x_unit": "MHz",
+      "x_min": 2800.0,
+      "x_max": 4200.0,
+      "y_label": "HD3",
+      "y_unit": "dBFS",
+      "y_min": -120.0,
+      "y_max": -60.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.4-f031",
@@ -2396,7 +3846,17 @@
       "tags": [
         "tx",
         "3500mhz"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Frequency",
+      "x_unit": "MHz",
+      "x_min": 0.0,
+      "x_max": 12000.0,
+      "y_label": "Amplitude",
+      "y_unit": "dBm",
+      "y_min": -100.0,
+      "y_max": 0.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.5-f001",
@@ -2411,7 +3871,17 @@
       "tags": [
         "tx",
         "4900mhz"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Output Frequency",
+      "x_unit": "MHz",
+      "x_min": 4300.0,
+      "x_max": 5500.0,
+      "y_label": "Output Full Scale",
+      "y_unit": "dBm",
+      "y_min": 0.0,
+      "y_max": 2.4,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.5-f002",
@@ -2428,7 +3898,17 @@
         "4900mhz",
         "output power",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Temperature",
+      "x_unit": "C",
+      "x_min": -45.0,
+      "x_max": 105.0,
+      "y_label": "Output Full Scale",
+      "y_unit": "dBm",
+      "y_min": -2.0,
+      "y_max": 2.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.5-f003",
@@ -2445,7 +3925,17 @@
         "4900mhz",
         "gain error",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 40.0,
+      "y_label": "Calibrated Differential Gain Error",
+      "y_unit": "dB",
+      "y_min": -0.05,
+      "y_max": 0.05,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.5-f004",
@@ -2462,7 +3952,17 @@
         "4900mhz",
         "gain error",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 40.0,
+      "y_label": "Calibrated Integrated Gain Error",
+      "y_unit": "dB",
+      "y_min": -0.1,
+      "y_max": 0.06,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.5-f005",
@@ -2479,7 +3979,17 @@
         "4900mhz",
         "gain error",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 40.0,
+      "y_label": "Calibrated Differential Gain Error",
+      "y_unit": "dB",
+      "y_min": -0.05,
+      "y_max": 0.03,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.5-f006",
@@ -2496,7 +4006,17 @@
         "4900mhz",
         "gain error",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 40.0,
+      "y_label": "Calibrated Integrated Gain Error",
+      "y_unit": "dB",
+      "y_min": -0.08,
+      "y_max": 0.04,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.5-f007",
@@ -2513,7 +4033,17 @@
         "4900mhz",
         "phase error",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 40.0,
+      "y_label": "Calibrated Differential Phase Error",
+      "y_unit": "deg",
+      "y_min": -0.25,
+      "y_max": 0.25,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.5-f008",
@@ -2530,7 +4060,17 @@
         "4900mhz",
         "phase error",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 40.0,
+      "y_label": "Calibrated Integrated Phase Error",
+      "y_unit": "deg",
+      "y_min": -0.35,
+      "y_max": 0.25,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.5-f009",
@@ -2547,7 +4087,17 @@
         "4900mhz",
         "phase error",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 40.0,
+      "y_label": "Calibrated Differential Phase Error",
+      "y_unit": "deg",
+      "y_min": -0.1,
+      "y_max": 0.1,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.5-f010",
@@ -2564,7 +4114,17 @@
         "4900mhz",
         "phase error",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 40.0,
+      "y_label": "Calibrated Integrated Phase Error",
+      "y_unit": "deg",
+      "y_min": -0.4,
+      "y_max": 0.2,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.5-f011",
@@ -2581,7 +4141,17 @@
         "4900mhz",
         "imd",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 40.0,
+      "y_label": "IMD3",
+      "y_unit": "dBc",
+      "y_min": -95.0,
+      "y_max": -65.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.5-f012",
@@ -2597,7 +4167,17 @@
         "tx",
         "4900mhz",
         "imd"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Tone Spacing",
+      "x_unit": "MHz",
+      "x_min": 0.0,
+      "x_max": 400.0,
+      "y_label": "IMD3",
+      "y_unit": "dBc",
+      "y_min": -70.0,
+      "y_max": -64.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.5-f013",
@@ -2612,7 +4192,17 @@
       "tags": [
         "tx",
         "4900mhz"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Output Frequency",
+      "x_unit": "MHz",
+      "x_min": 4300.0,
+      "x_max": 5500.0,
+      "y_label": "Noise",
+      "y_unit": "dBFS/Hz",
+      "y_min": -159.0,
+      "y_max": -139.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.5-f014",
@@ -2628,7 +4218,17 @@
         "tx",
         "4900mhz",
         "acpr"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Pout",
+      "x_unit": "dBFS",
+      "x_min": -32.0,
+      "x_max": -12.0,
+      "y_label": "Ajacent channel ACPR",
+      "y_unit": "dBc",
+      "y_min": -70.0,
+      "y_max": -52.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.5-f015",
@@ -2645,7 +4245,17 @@
         "4900mhz",
         "acpr",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 40.0,
+      "y_label": "Ajacent channel ACPR",
+      "y_unit": "dBc",
+      "y_min": -65.0,
+      "y_max": -41.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.5-f016",
@@ -2661,7 +4271,17 @@
         "tx",
         "4900mhz",
         "hd2"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "",
+      "x_unit": "",
+      "x_min": null,
+      "x_max": null,
+      "y_label": "",
+      "y_unit": "",
+      "y_min": null,
+      "y_max": null,
+      "axis_confidence": "low"
     },
     {
       "id": "4.12.5-f017",
@@ -2676,7 +4296,17 @@
       "tags": [
         "tx",
         "4900mhz"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Output Frequency",
+      "x_unit": "MHz",
+      "x_min": 0.0,
+      "x_max": 12000.0,
+      "y_label": "Amplitude",
+      "y_unit": "dBm",
+      "y_min": -110.0,
+      "y_max": 0.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.5-f018",
@@ -2691,7 +4321,17 @@
       "tags": [
         "tx",
         "4900mhz"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Output Frequency",
+      "x_unit": "MHz",
+      "x_min": 0.0,
+      "x_max": 12000.0,
+      "y_label": "Amplitude",
+      "y_unit": "dBm",
+      "y_min": -110.0,
+      "y_max": 10.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.5-f019",
@@ -2706,7 +4346,17 @@
       "tags": [
         "tx",
         "4900mhz"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Output Frequency",
+      "x_unit": "MHz",
+      "x_min": 4300.0,
+      "x_max": 5500.0,
+      "y_label": "Output Full Scale",
+      "y_unit": "dBm",
+      "y_min": -2.0,
+      "y_max": 0.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.5-f020",
@@ -2723,7 +4373,17 @@
         "4900mhz",
         "gain error",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 40.0,
+      "y_label": "Uncalibrated Differential Gain Error",
+      "y_unit": "dB",
+      "y_min": -0.05,
+      "y_max": 0.05,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.5-f021",
@@ -2740,7 +4400,17 @@
         "4900mhz",
         "gain error",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 40.0,
+      "y_label": "Uncalibrated Integrated Gain Error",
+      "y_unit": "dB",
+      "y_min": 0.0,
+      "y_max": 0.5,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.5-f022",
@@ -2757,7 +4427,17 @@
         "4900mhz",
         "gain error",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 40.0,
+      "y_label": "Uncalibrated Differential Gain Error",
+      "y_unit": "dB",
+      "y_min": -0.05,
+      "y_max": 0.05,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.5-f023",
@@ -2774,7 +4454,17 @@
         "4900mhz",
         "gain error",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 40.0,
+      "y_label": "Uncalibrated Integrated Gain Error",
+      "y_unit": "dB",
+      "y_min": -0.05,
+      "y_max": 0.5,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.5-f024",
@@ -2791,7 +4481,17 @@
         "4900mhz",
         "phase error",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 40.0,
+      "y_label": "Uncalibrated Differential Phase Error",
+      "y_unit": "deg",
+      "y_min": -0.1,
+      "y_max": 0.08,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.5-f025",
@@ -2808,7 +4508,17 @@
         "4900mhz",
         "phase error",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 40.0,
+      "y_label": "Uncalibrated Integrated Phase Error",
+      "y_unit": "deg",
+      "y_min": 0.0,
+      "y_max": 0.8,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.5-f026",
@@ -2825,7 +4535,17 @@
         "4900mhz",
         "phase error",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 40.0,
+      "y_label": "Uncalibrated Differential Phase Error",
+      "y_unit": "deg",
+      "y_min": -0.1,
+      "y_max": 0.08,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.5-f027",
@@ -2842,7 +4562,17 @@
         "4900mhz",
         "phase error",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 40.0,
+      "y_label": "Uncalibrated Integrated Phase Error",
+      "y_unit": "deg",
+      "y_min": 0.0,
+      "y_max": 0.8,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.5-f028",
@@ -2857,7 +4587,17 @@
       "tags": [
         "tx",
         "4900mhz"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 40.0,
+      "y_label": "Noise",
+      "y_unit": "dBFS/Hz",
+      "y_min": -158.0,
+      "y_max": -128.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.5-f029",
@@ -2873,7 +4613,17 @@
         "tx",
         "4900mhz",
         "imd"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Tone Spacing",
+      "x_unit": "MHz",
+      "x_min": 0.0,
+      "x_max": 400.0,
+      "y_label": "IMD3",
+      "y_unit": "dBc",
+      "y_min": -70.0,
+      "y_max": -64.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.5-f030",
@@ -2889,7 +4639,17 @@
         "tx",
         "4900mhz",
         "imd"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Pout/tone",
+      "x_unit": "dBFS",
+      "x_min": -37.0,
+      "x_max": -7.0,
+      "y_label": "IMD3",
+      "y_unit": "dBc",
+      "y_min": -95.0,
+      "y_max": -55.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.5-f031",
@@ -2904,7 +4664,17 @@
       "tags": [
         "tx",
         "4900mhz"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "",
+      "x_unit": "",
+      "x_min": null,
+      "x_max": null,
+      "y_label": "",
+      "y_unit": "",
+      "y_min": null,
+      "y_max": null,
+      "axis_confidence": "low"
     },
     {
       "id": "4.12.5-f032",
@@ -2920,7 +4690,17 @@
         "tx",
         "4900mhz",
         "acpr"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Pout",
+      "x_unit": "dBFS",
+      "x_min": -32.0,
+      "x_max": -12.0,
+      "y_label": "Alternate channel ACPR",
+      "y_unit": "dBc",
+      "y_min": -72.0,
+      "y_max": -54.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.5-f033",
@@ -2937,7 +4717,17 @@
         "4900mhz",
         "acpr",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 40.0,
+      "y_label": "Alternate channel ACPR",
+      "y_unit": "dBc",
+      "y_min": -72.0,
+      "y_max": -48.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.5-f034",
@@ -2953,7 +4743,17 @@
         "tx",
         "4900mhz",
         "hd3"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Output Frequency",
+      "x_unit": "MHz",
+      "x_min": 4300.0,
+      "x_max": 5500.0,
+      "y_label": "HD3",
+      "y_unit": "dBFS/Hz",
+      "y_min": -120.0,
+      "y_max": -60.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.5-f035",
@@ -2968,7 +4768,17 @@
       "tags": [
         "tx",
         "4900mhz"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Output Frequency",
+      "x_unit": "MHz",
+      "x_min": 0.0,
+      "x_max": 12000.0,
+      "y_label": "Amplitude",
+      "y_unit": "dBm",
+      "y_min": -110.0,
+      "y_max": 0.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.6-f001",
@@ -2984,7 +4794,17 @@
         "tx",
         "8100mhz",
         "output power"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Output Frequency",
+      "x_unit": "MHz",
+      "x_min": 7200.0,
+      "x_max": 9000.0,
+      "y_label": "Output Power",
+      "y_unit": "dBm",
+      "y_min": -10.0,
+      "y_max": 0.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.6-f002",
@@ -3000,7 +4820,17 @@
         "tx",
         "8100mhz",
         "output power"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Temperature",
+      "x_unit": "C",
+      "x_min": -40.0,
+      "x_max": 120.0,
+      "y_label": "Output Power",
+      "y_unit": "dBm",
+      "y_min": -10.0,
+      "y_max": 0.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.6-f003",
@@ -3016,7 +4846,17 @@
         "tx",
         "8100mhz",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA Setting",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 40.0,
+      "y_label": "Calibrated Amplitude Differential Nonlinearity",
+      "y_unit": "dB",
+      "y_min": -0.1,
+      "y_max": 0.1,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.6-f004",
@@ -3032,7 +4872,17 @@
         "tx",
         "8100mhz",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA Setting",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 40.0,
+      "y_label": "Calibrated Amplitude Differential Nonlinearity",
+      "y_unit": "dB",
+      "y_min": -0.1,
+      "y_max": 0.1,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.6-f005",
@@ -3048,7 +4898,17 @@
         "tx",
         "8100mhz",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA Setting",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 40.0,
+      "y_label": "Calibrated Amplitude Integrated Nonlinearity",
+      "y_unit": "dB",
+      "y_min": -1.0,
+      "y_max": 1.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.6-f006",
@@ -3064,7 +4924,17 @@
         "tx",
         "8100mhz",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "",
+      "x_unit": "",
+      "x_min": null,
+      "x_max": null,
+      "y_label": "",
+      "y_unit": "",
+      "y_min": null,
+      "y_max": null,
+      "axis_confidence": "low"
     },
     {
       "id": "4.12.6-f007",
@@ -3080,7 +4950,17 @@
         "tx",
         "8100mhz",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA Setting",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 40.0,
+      "y_label": "Calibrated Phase Differential Nonlinearity",
+      "y_unit": "deg",
+      "y_min": -0.5,
+      "y_max": 0.5,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.6-f008",
@@ -3096,7 +4976,17 @@
         "tx",
         "8100mhz",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA Setting",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 40.0,
+      "y_label": "Calibrated Phase Differential Nonlinearity",
+      "y_unit": "dB",
+      "y_min": -0.5,
+      "y_max": 0.5,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.6-f009",
@@ -3112,7 +5002,17 @@
         "tx",
         "8100mhz",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "",
+      "x_unit": "",
+      "x_min": null,
+      "x_max": null,
+      "y_label": "",
+      "y_unit": "",
+      "y_min": null,
+      "y_max": null,
+      "axis_confidence": "low"
     },
     {
       "id": "4.12.6-f010",
@@ -3128,7 +5028,17 @@
         "tx",
         "8100mhz",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA Setting",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 40.0,
+      "y_label": "Calibrated Phase Integrated Nonlinearity",
+      "y_unit": "dB",
+      "y_min": -2.0,
+      "y_max": 2.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.6-f011",
@@ -3143,7 +5053,17 @@
       "tags": [
         "tx",
         "8100mhz"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Frequency",
+      "x_unit": "MHz",
+      "x_min": 7900.0,
+      "x_max": 8300.0,
+      "y_label": "Amplitude",
+      "y_unit": "dBm",
+      "y_min": -120.0,
+      "y_max": 0.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.6-f012",
@@ -3158,7 +5078,17 @@
       "tags": [
         "tx",
         "8100mhz"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Frequency",
+      "x_unit": "MHz",
+      "x_min": 7900.0,
+      "x_max": 8300.0,
+      "y_label": "Amplitude",
+      "y_unit": "dBm",
+      "y_min": -120.0,
+      "y_max": 0.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.6-f013",
@@ -3173,7 +5103,17 @@
       "tags": [
         "tx",
         "8100mhz"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Frequency",
+      "x_unit": "MHz",
+      "x_min": 7900.0,
+      "x_max": 8300.0,
+      "y_label": "Amplitude",
+      "y_unit": "dBm",
+      "y_min": -120.0,
+      "y_max": 0.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.6-f014",
@@ -3188,7 +5128,17 @@
       "tags": [
         "tx",
         "8100mhz"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Frequency",
+      "x_unit": "MHz",
+      "x_min": 7900.0,
+      "x_max": 8300.0,
+      "y_label": "Amplitude",
+      "y_unit": "dBm",
+      "y_min": -120.0,
+      "y_max": 0.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.6-f015",
@@ -3203,7 +5153,17 @@
       "tags": [
         "tx",
         "8100mhz"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Frequency",
+      "x_unit": "MHz",
+      "x_min": 7900.0,
+      "x_max": 8300.0,
+      "y_label": "Amplitude",
+      "y_unit": "dBm",
+      "y_min": -120.0,
+      "y_max": 0.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.6-f016",
@@ -3219,7 +5179,17 @@
         "tx",
         "8100mhz",
         "imd"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Digital Amplitude per Tone",
+      "x_unit": "dBFS",
+      "x_min": -60.0,
+      "x_max": -5.0,
+      "y_label": "IMD3",
+      "y_unit": "dBc",
+      "y_min": -80.0,
+      "y_max": -40.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.6-f017",
@@ -3236,7 +5206,17 @@
         "8100mhz",
         "imd",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA Setting",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 40.0,
+      "y_label": "IMD3",
+      "y_unit": "dBc",
+      "y_min": -80.0,
+      "y_max": -40.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.6-f018",
@@ -3252,7 +5232,17 @@
         "tx",
         "8100mhz",
         "nsd"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Digital Amplitude",
+      "x_unit": "dBFS",
+      "x_min": -60.0,
+      "x_max": 0.0,
+      "y_label": "NSD at 50MHz Offset",
+      "y_unit": "dBFS/Hz",
+      "y_min": -160.0,
+      "y_max": -140.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.6-f019",
@@ -3269,7 +5259,17 @@
         "8100mhz",
         "nsd",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA Setting",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 40.0,
+      "y_label": "NSD at 50MHz offset",
+      "y_unit": "dBFS/Hz",
+      "y_min": -160.0,
+      "y_max": -120.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.6-f020",
@@ -3286,7 +5286,17 @@
         "8100mhz",
         "acpr",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA Setting",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 40.0,
+      "y_label": "ACPR",
+      "y_unit": "dBc",
+      "y_min": -60.0,
+      "y_max": -33.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.6-f021",
@@ -3302,7 +5312,17 @@
         "tx",
         "8100mhz",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA Setting",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 40.0,
+      "y_label": "NR 100MHz Composite EVM",
+      "y_unit": "%rms",
+      "y_min": 0.0,
+      "y_max": 8.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.6-f022",
@@ -3319,7 +5339,17 @@
         "8100mhz",
         "output power",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA Setting",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 40.0,
+      "y_label": "Output Power",
+      "y_unit": "dBm",
+      "y_min": -45.0,
+      "y_max": 0.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.6-f023",
@@ -3335,7 +5365,17 @@
         "tx",
         "8100mhz",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA Setting",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 40.0,
+      "y_label": "Uncalibrated Amplitude Differential Nonlinearity (dB",
+      "y_unit": "",
+      "y_min": -0.1,
+      "y_max": 0.1,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.6-f024",
@@ -3351,7 +5391,17 @@
         "tx",
         "8100mhz",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA Setting",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 40.0,
+      "y_label": "Uncalibrated Amplitude Differential Nonlinearity (dB",
+      "y_unit": "",
+      "y_min": -0.1,
+      "y_max": 0.1,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.6-f025",
@@ -3367,7 +5417,17 @@
         "tx",
         "8100mhz",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA Setting",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 40.0,
+      "y_label": "UnCalibrated Amplitude Integrated Nonlinearity (dB",
+      "y_unit": "",
+      "y_min": -1.0,
+      "y_max": 1.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.6-f026",
@@ -3383,7 +5443,17 @@
         "tx",
         "8100mhz",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA Setting",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 40.0,
+      "y_label": "Uncalibrated Amplitude Integrated Nonlinearity",
+      "y_unit": "dB",
+      "y_min": -1.0,
+      "y_max": 1.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.6-f027",
@@ -3399,7 +5469,17 @@
         "tx",
         "8100mhz",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA Setting",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 40.0,
+      "y_label": "UnCalibrated Phase Differential Nonlinearity",
+      "y_unit": "deg",
+      "y_min": -0.5,
+      "y_max": 0.5,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.6-f028",
@@ -3415,7 +5495,17 @@
         "tx",
         "8100mhz",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "",
+      "x_unit": "",
+      "x_min": null,
+      "x_max": null,
+      "y_label": "",
+      "y_unit": "",
+      "y_min": null,
+      "y_max": null,
+      "axis_confidence": "low"
     },
     {
       "id": "4.12.6-f029",
@@ -3431,7 +5521,17 @@
         "tx",
         "8100mhz",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA Setting",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 40.0,
+      "y_label": "Uncalibrated Phase Integrated Nonlinearity",
+      "y_unit": "deg",
+      "y_min": -2.0,
+      "y_max": 2.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.6-f030",
@@ -3447,7 +5547,17 @@
         "tx",
         "8100mhz",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA Setting",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 40.0,
+      "y_label": "Uncalibrated Phase Integrated Nonlinearity",
+      "y_unit": "dB",
+      "y_min": -2.0,
+      "y_max": 2.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.6-f031",
@@ -3462,7 +5572,17 @@
       "tags": [
         "tx",
         "8100mhz"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Frequency",
+      "x_unit": "MHz",
+      "x_min": 0.0,
+      "x_max": 12000.0,
+      "y_label": "Amplitude",
+      "y_unit": "dBm",
+      "y_min": -100.0,
+      "y_max": 0.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.6-f032",
@@ -3477,7 +5597,17 @@
       "tags": [
         "tx",
         "8100mhz"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Frequency",
+      "x_unit": "MHz",
+      "x_min": 0.0,
+      "x_max": 12000.0,
+      "y_label": "Amplitude",
+      "y_unit": "dBm",
+      "y_min": -100.0,
+      "y_max": 0.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.6-f033",
@@ -3492,7 +5622,17 @@
       "tags": [
         "tx",
         "8100mhz"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Frequency",
+      "x_unit": "MHz",
+      "x_min": 0.0,
+      "x_max": 12000.0,
+      "y_label": "Amplitude",
+      "y_unit": "dBm",
+      "y_min": -100.0,
+      "y_max": 0.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.6-f034",
@@ -3507,7 +5647,17 @@
       "tags": [
         "tx",
         "8100mhz"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Frequency",
+      "x_unit": "MHz",
+      "x_min": 0.0,
+      "x_max": 12000.0,
+      "y_label": "Amplitude",
+      "y_unit": "dBm",
+      "y_min": -100.0,
+      "y_max": 0.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.6-f035",
@@ -3522,7 +5672,17 @@
       "tags": [
         "tx",
         "8100mhz"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "",
+      "x_unit": "",
+      "x_min": null,
+      "x_max": null,
+      "y_label": "",
+      "y_unit": "",
+      "y_min": null,
+      "y_max": null,
+      "axis_confidence": "low"
     },
     {
       "id": "4.12.6-f036",
@@ -3538,7 +5698,17 @@
         "tx",
         "8100mhz",
         "imd"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Digital Amplitude per Tone",
+      "x_unit": "dBFS",
+      "x_min": -60.0,
+      "x_max": -5.0,
+      "y_label": "IMD3",
+      "y_unit": "dBc",
+      "y_min": -80.0,
+      "y_max": -40.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.6-f037",
@@ -3555,7 +5725,17 @@
         "8100mhz",
         "imd",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA Setting",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 40.0,
+      "y_label": "IMD3",
+      "y_unit": "dBc",
+      "y_min": -80.0,
+      "y_max": -40.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.6-f038",
@@ -3571,7 +5751,17 @@
         "tx",
         "8100mhz",
         "sfdr"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Tone Amplitude",
+      "x_unit": "dBFS",
+      "x_min": -65.0,
+      "x_max": -5.0,
+      "y_label": "2-tone SFDR",
+      "y_unit": "dBFS",
+      "y_min": -100.0,
+      "y_max": -60.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.6-f039",
@@ -3587,7 +5777,17 @@
         "tx",
         "8100mhz",
         "nsd"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Digital Amplitude",
+      "x_unit": "dBFS",
+      "x_min": -60.0,
+      "x_max": 0.0,
+      "y_label": "NSD at 50MHz Offset",
+      "y_unit": "dBFS/Hz",
+      "y_min": -160.0,
+      "y_max": -140.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.6-f040",
@@ -3604,7 +5804,17 @@
         "8100mhz",
         "nsd",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA Setting",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 40.0,
+      "y_label": "NSD at 50MHz offset",
+      "y_unit": "dBFS/Hz",
+      "y_min": -160.0,
+      "y_max": -120.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.6-f041",
@@ -3621,7 +5831,17 @@
         "8100mhz",
         "acpr",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 40.0,
+      "y_label": "Alternate channel ACPR",
+      "y_unit": "dBc",
+      "y_min": -67.0,
+      "y_max": -43.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.7-f001",
@@ -3637,7 +5857,17 @@
         "tx",
         "9600mhz",
         "output power"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Output Frequency",
+      "x_unit": "MHz",
+      "x_min": 8800.0,
+      "x_max": 10400.0,
+      "y_label": "Output Power",
+      "y_unit": "dBm",
+      "y_min": -14.0,
+      "y_max": -4.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.7-f002",
@@ -3654,7 +5884,17 @@
         "9600mhz",
         "output power",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA Setting",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 40.0,
+      "y_label": "Output Power",
+      "y_unit": "dBm",
+      "y_min": -50.0,
+      "y_max": 0.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.7-f003",
@@ -3670,7 +5910,17 @@
         "tx",
         "9600mhz",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA Setting",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 26.0,
+      "y_label": "Calibrated Amplitude Differential Nonlinearity",
+      "y_unit": "dB",
+      "y_min": -0.2,
+      "y_max": 0.2,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.7-f004",
@@ -3686,7 +5936,17 @@
         "tx",
         "9600mhz",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA Setting",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 26.0,
+      "y_label": "Calibrated Amplitude Differential Nonlinearity",
+      "y_unit": "dB",
+      "y_min": -0.2,
+      "y_max": 0.2,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.7-f005",
@@ -3702,7 +5962,17 @@
         "tx",
         "9600mhz",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA Setting",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 26.0,
+      "y_label": "Calibrated Amplitude Integrated Nonlinearity",
+      "y_unit": "dB",
+      "y_min": -1.0,
+      "y_max": 1.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.7-f006",
@@ -3718,7 +5988,17 @@
         "tx",
         "9600mhz",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA Setting",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 26.0,
+      "y_label": "Calibrated Amplitude Integrated Nonlinearity",
+      "y_unit": "dB",
+      "y_min": -1.0,
+      "y_max": 1.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.7-f007",
@@ -3734,7 +6014,17 @@
         "tx",
         "9600mhz",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA Setting",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 26.0,
+      "y_label": "Calibrated Phase Differential Nonlinearity",
+      "y_unit": "deg",
+      "y_min": -1.0,
+      "y_max": 1.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.7-f008",
@@ -3750,7 +6040,17 @@
         "tx",
         "9600mhz",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA Setting",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 26.0,
+      "y_label": "Calibrated Phase Differential Nonlinearity",
+      "y_unit": "deg",
+      "y_min": -1.0,
+      "y_max": 1.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.7-f009",
@@ -3766,7 +6066,17 @@
         "tx",
         "9600mhz",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA Setting",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 26.0,
+      "y_label": "Calibrated Phase Differential Nonlinearity",
+      "y_unit": "deg",
+      "y_min": -1.0,
+      "y_max": 1.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.7-f010",
@@ -3782,7 +6092,17 @@
         "tx",
         "9600mhz",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA Setting",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 26.0,
+      "y_label": "Calibrated Phase Integrated Nonlinearity",
+      "y_unit": "deg",
+      "y_min": -2.0,
+      "y_max": 2.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.7-f011",
@@ -3798,7 +6118,17 @@
         "tx",
         "9600mhz",
         "imd"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Tone Amplitude",
+      "x_unit": "dBFS",
+      "x_min": -60.0,
+      "x_max": -5.0,
+      "y_label": "IMD3",
+      "y_unit": "dBc or dBFS",
+      "y_min": -140.0,
+      "y_max": -40.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.7-f012",
@@ -3815,7 +6145,17 @@
         "9600mhz",
         "imd",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA Setting",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 40.0,
+      "y_label": "IMD3",
+      "y_unit": "dBc",
+      "y_min": -90.0,
+      "y_max": -50.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.7-f013",
@@ -3831,7 +6171,17 @@
         "tx",
         "9600mhz",
         "imd"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Tone Spacing",
+      "x_unit": "MHz",
+      "x_min": 0.0,
+      "x_max": 1000.0,
+      "y_label": "IMD3",
+      "y_unit": "dBc",
+      "y_min": -80.0,
+      "y_max": -50.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.7-f014",
@@ -3847,7 +6197,17 @@
         "tx",
         "9600mhz",
         "nsd"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Digital Amplitude",
+      "x_unit": "dBFS",
+      "x_min": -60.0,
+      "x_max": 0.0,
+      "y_label": "NSD",
+      "y_unit": "dBFS/Hz",
+      "y_min": -154.0,
+      "y_max": -144.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.7-f015",
@@ -3864,7 +6224,17 @@
         "9600mhz",
         "nsd",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "",
+      "x_unit": "",
+      "x_min": null,
+      "x_max": null,
+      "y_label": "",
+      "y_unit": "",
+      "y_min": null,
+      "y_max": null,
+      "axis_confidence": "low"
     },
     {
       "id": "4.12.7-f016",
@@ -3881,7 +6251,17 @@
         "9600mhz",
         "nsd",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA Setting",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 40.0,
+      "y_label": "NSD",
+      "y_unit": "dBFS/Hz",
+      "y_min": -150.0,
+      "y_max": -120.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.7-f017",
@@ -3896,7 +6276,17 @@
       "tags": [
         "tx",
         "9600mhz"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Frequency",
+      "x_unit": "MHz",
+      "x_min": 0.0,
+      "x_max": 12000.0,
+      "y_label": "Amplitude",
+      "y_unit": "dBm",
+      "y_min": -100.0,
+      "y_max": 0.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.7-f018",
@@ -3911,7 +6301,17 @@
       "tags": [
         "tx",
         "9600mhz"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Frequency",
+      "x_unit": "MHz",
+      "x_min": 0.0,
+      "x_max": 12000.0,
+      "y_label": "Amplitude",
+      "y_unit": "dBm",
+      "y_min": -100.0,
+      "y_max": 0.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.7-f019",
@@ -3926,7 +6326,17 @@
       "tags": [
         "tx",
         "9600mhz"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Frequency",
+      "x_unit": "MHz",
+      "x_min": 0.0,
+      "x_max": 12000.0,
+      "y_label": "Amplitude",
+      "y_unit": "dBm",
+      "y_min": -100.0,
+      "y_max": 0.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.7-f020",
@@ -3941,7 +6351,17 @@
       "tags": [
         "tx",
         "9600mhz"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Frequency",
+      "x_unit": "MHz",
+      "x_min": 0.0,
+      "x_max": 12000.0,
+      "y_label": "Amplitude",
+      "y_unit": "dBm",
+      "y_min": -100.0,
+      "y_max": 0.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.7-f021",
@@ -3956,7 +6376,17 @@
       "tags": [
         "tx",
         "9600mhz"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Frequency",
+      "x_unit": "MHz",
+      "x_min": 0.0,
+      "x_max": 12000.0,
+      "y_label": "Amplitude",
+      "y_unit": "dBm",
+      "y_min": -100.0,
+      "y_max": 0.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.7-f022",
@@ -3972,7 +6402,17 @@
         "tx",
         "9600mhz",
         "phase noise"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Offset Frequency",
+      "x_unit": "Hz",
+      "x_min": 102.0,
+      "x_max": 108.0,
+      "y_label": "Additive Phase Noise",
+      "y_unit": "dBc/Hz",
+      "y_min": -150.0,
+      "y_max": -80.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.7-f023",
@@ -3989,7 +6429,17 @@
         "9600mhz",
         "acpr",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA Setting",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 40.0,
+      "y_label": "NR 100MHz alt-ACPR",
+      "y_unit": "dBc",
+      "y_min": -60.0,
+      "y_max": -25.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.7-f024",
@@ -4005,7 +6455,17 @@
         "tx",
         "9600mhz",
         "output power"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Temperature",
+      "x_unit": "C",
+      "x_min": -40.0,
+      "x_max": 120.0,
+      "y_label": "Output Power",
+      "y_unit": "dBm",
+      "y_min": -10.0,
+      "y_max": 0.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.7-f025",
@@ -4021,7 +6481,17 @@
         "tx",
         "9600mhz",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA Setting",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 26.0,
+      "y_label": "Uncalibrated Amplitude Differential Nonlinearity (dB",
+      "y_unit": "",
+      "y_min": -0.2,
+      "y_max": 0.2,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.7-f026",
@@ -4037,7 +6507,17 @@
         "tx",
         "9600mhz",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA Setting",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 26.0,
+      "y_label": "Uncalibrated Amplitude Differential Nonlinearity (dB",
+      "y_unit": "",
+      "y_min": -0.2,
+      "y_max": 0.2,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.7-f027",
@@ -4053,7 +6533,17 @@
         "tx",
         "9600mhz",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA Setting",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 26.0,
+      "y_label": "Uncalibrated Amplitude Integrated Nonlinearity (dB",
+      "y_unit": "",
+      "y_min": -1.0,
+      "y_max": 1.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.7-f028",
@@ -4069,7 +6559,17 @@
         "tx",
         "9600mhz",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA Setting",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 26.0,
+      "y_label": "Uncalibrated Amplitude Integrated Nonlinearity",
+      "y_unit": "dB",
+      "y_min": -1.0,
+      "y_max": 1.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.7-f029",
@@ -4085,7 +6585,17 @@
         "tx",
         "9600mhz",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA Setting",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 26.0,
+      "y_label": "Uncalibrated Phase Differential Nonlinearity",
+      "y_unit": "deg",
+      "y_min": -1.0,
+      "y_max": 1.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.7-f030",
@@ -4101,7 +6611,17 @@
         "tx",
         "9600mhz",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA Setting",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 26.0,
+      "y_label": "Uncalibrated Phase Differential Nonlinearity",
+      "y_unit": "deg",
+      "y_min": -1.0,
+      "y_max": 1.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.7-f031",
@@ -4117,7 +6637,17 @@
         "tx",
         "9600mhz",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA Setting",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 26.0,
+      "y_label": "Uncalibrated Phase IntegratedNonlinearity",
+      "y_unit": "deg",
+      "y_min": -2.0,
+      "y_max": 2.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.7-f032",
@@ -4133,7 +6663,17 @@
         "tx",
         "9600mhz",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "",
+      "x_unit": "",
+      "x_min": null,
+      "x_max": null,
+      "y_label": "",
+      "y_unit": "",
+      "y_min": null,
+      "y_max": null,
+      "axis_confidence": "low"
     },
     {
       "id": "4.12.7-f033",
@@ -4149,7 +6689,17 @@
         "tx",
         "9600mhz",
         "imd"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Tone Amplitude",
+      "x_unit": "dBFS",
+      "x_min": -60.0,
+      "x_max": -5.0,
+      "y_label": "IMD3",
+      "y_unit": "dBc or dBFS",
+      "y_min": -140.0,
+      "y_max": -40.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.7-f034",
@@ -4166,7 +6716,17 @@
         "9600mhz",
         "imd",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA Setting",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 40.0,
+      "y_label": "IMD3",
+      "y_unit": "dBc",
+      "y_min": -90.0,
+      "y_max": -50.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.7-f035",
@@ -4182,7 +6742,17 @@
         "tx",
         "9600mhz",
         "imd"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Tone Spacing",
+      "x_unit": "MHz",
+      "x_min": 0.0,
+      "x_max": 1000.0,
+      "y_label": "IMD3",
+      "y_unit": "dBc",
+      "y_min": -80.0,
+      "y_max": -60.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.7-f036",
@@ -4198,7 +6768,17 @@
         "tx",
         "9600mhz",
         "imd"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Tone Spacing",
+      "x_unit": "MHz",
+      "x_min": 0.0,
+      "x_max": 1000.0,
+      "y_label": "IMD3",
+      "y_unit": "dBc",
+      "y_min": -70.0,
+      "y_max": -60.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.7-f037",
@@ -4214,7 +6794,17 @@
         "tx",
         "9600mhz",
         "nsd"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Digital Amplitude",
+      "x_unit": "dBFS",
+      "x_min": -60.0,
+      "x_max": 0.0,
+      "y_label": "NSD",
+      "y_unit": "dBFS/Hz",
+      "y_min": -154.0,
+      "y_max": -144.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.7-f038",
@@ -4231,7 +6821,17 @@
         "9600mhz",
         "nsd",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA Setting",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 40.0,
+      "y_label": "NSD",
+      "y_unit": "dBFS/Hz",
+      "y_min": -150.0,
+      "y_max": -120.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.7-f039",
@@ -4247,7 +6847,17 @@
         "tx",
         "9600mhz",
         "sfdr"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Tone Amplitude",
+      "x_unit": "dBFS",
+      "x_min": -60.0,
+      "x_max": -5.0,
+      "y_label": "2-tone SFDR",
+      "y_unit": "dBFS",
+      "y_min": -100.0,
+      "y_max": -60.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.7-f040",
@@ -4262,7 +6872,17 @@
       "tags": [
         "tx",
         "9600mhz"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Frequency",
+      "x_unit": "MHz",
+      "x_min": 9400.0,
+      "x_max": 9800.0,
+      "y_label": "Amplitude",
+      "y_unit": "dBm",
+      "y_min": -120.0,
+      "y_max": 0.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.7-f041",
@@ -4277,7 +6897,17 @@
       "tags": [
         "tx",
         "9600mhz"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Frequency",
+      "x_unit": "MHz",
+      "x_min": 9400.0,
+      "x_max": 9800.0,
+      "y_label": "Amplitude",
+      "y_unit": "dBm",
+      "y_min": -120.0,
+      "y_max": 0.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.7-f042",
@@ -4292,7 +6922,17 @@
       "tags": [
         "tx",
         "9600mhz"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Frequency",
+      "x_unit": "MHz",
+      "x_min": 9400.0,
+      "x_max": 9800.0,
+      "y_label": "Amplitude",
+      "y_unit": "dBm",
+      "y_min": -120.0,
+      "y_max": 0.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.7-f043",
@@ -4307,7 +6947,17 @@
       "tags": [
         "tx",
         "9600mhz"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Frequency",
+      "x_unit": "MHz",
+      "x_min": 9400.0,
+      "x_max": 9800.0,
+      "y_label": "Amplitude",
+      "y_unit": "dBm",
+      "y_min": -120.0,
+      "y_max": 0.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.7-f044",
@@ -4322,7 +6972,17 @@
       "tags": [
         "tx",
         "9600mhz"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Frequency",
+      "x_unit": "MHz",
+      "x_min": 9400.0,
+      "x_max": 9800.0,
+      "y_label": "Amplitude",
+      "y_unit": "dBm",
+      "y_min": -120.0,
+      "y_max": 0.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.7-f045",
@@ -4339,7 +6999,17 @@
         "9600mhz",
         "acpr",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA Setting",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 40.0,
+      "y_label": "NR 100MHz ACPR",
+      "y_unit": "dBc",
+      "y_min": -60.0,
+      "y_max": -25.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.7-f046",
@@ -4355,7 +7025,17 @@
         "tx",
         "9600mhz",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA Setting",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 40.0,
+      "y_label": "NR 100MHz Composite EVM",
+      "y_unit": "%rms",
+      "y_min": 0.0,
+      "y_max": 8.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.8-f001",
@@ -4371,7 +7051,17 @@
         "rx",
         "800mhz",
         "flatness"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Output Frequency",
+      "x_unit": "MHz",
+      "x_min": 700.0,
+      "x_max": 1100.0,
+      "y_label": "Relative Input Power",
+      "y_unit": "dB",
+      "y_min": -1.0,
+      "y_max": 0.4,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.8-f002",
@@ -4387,7 +7077,17 @@
         "rx",
         "800mhz",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "",
+      "x_unit": "",
+      "x_min": null,
+      "x_max": null,
+      "y_label": "",
+      "y_unit": "",
+      "y_min": null,
+      "y_max": null,
+      "axis_confidence": "low"
     },
     {
       "id": "4.12.8-f003",
@@ -4403,7 +7103,17 @@
         "rx",
         "800mhz",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "",
+      "x_unit": "",
+      "x_min": null,
+      "x_max": null,
+      "y_label": "",
+      "y_unit": "",
+      "y_min": null,
+      "y_max": null,
+      "axis_confidence": "low"
     },
     {
       "id": "4.12.8-f004",
@@ -4419,7 +7129,17 @@
         "rx",
         "800mhz",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "",
+      "x_unit": "",
+      "x_min": null,
+      "x_max": null,
+      "y_label": "",
+      "y_unit": "",
+      "y_min": null,
+      "y_max": null,
+      "axis_confidence": "low"
     },
     {
       "id": "4.12.8-f005",
@@ -4436,7 +7156,17 @@
         "800mhz",
         "phase error",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "",
+      "x_unit": "",
+      "x_min": null,
+      "x_max": null,
+      "y_label": "",
+      "y_unit": "",
+      "y_min": null,
+      "y_max": null,
+      "axis_confidence": "low"
     },
     {
       "id": "4.12.8-f006",
@@ -4453,7 +7183,17 @@
         "800mhz",
         "phase error",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 25.0,
+      "y_label": "Calibrated Integrated Phase Error",
+      "y_unit": "deg",
+      "y_min": -0.6,
+      "y_max": 0.6,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.8-f007",
@@ -4468,7 +7208,17 @@
       "tags": [
         "rx",
         "800mhz"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Temperature",
+      "x_unit": "qC",
+      "x_min": -40.0,
+      "x_max": 110.0,
+      "y_label": "Noise",
+      "y_unit": "dBFS/Hz",
+      "y_min": -156.0,
+      "y_max": -153.8,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.8-f008",
@@ -4483,7 +7233,17 @@
       "tags": [
         "rx",
         "800mhz"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Input Amplitude",
+      "x_unit": "dBFS",
+      "x_min": -30.0,
+      "x_max": 0.0,
+      "y_label": "Noise",
+      "y_unit": "dBFS/Hz",
+      "y_min": -157.0,
+      "y_max": -147.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.8-f009",
@@ -4500,7 +7260,17 @@
         "800mhz",
         "imd",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 16.0,
+      "y_label": "IMD5",
+      "y_unit": "dBFS",
+      "y_min": -110.0,
+      "y_max": -90.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.8-f010",
@@ -4516,7 +7286,17 @@
         "rx",
         "800mhz",
         "imd"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Input Amplitude",
+      "x_unit": "dBFS",
+      "x_min": -30.0,
+      "x_max": -6.0,
+      "y_label": "IMD3",
+      "y_unit": "dBFS",
+      "y_min": -120.0,
+      "y_max": -85.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.8-f011",
@@ -4533,7 +7313,17 @@
         "800mhz",
         "hd2",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA",
+      "x_unit": "dB",
+      "x_min": 3.0,
+      "x_max": 18.0,
+      "y_label": "HD2",
+      "y_unit": "dBc",
+      "y_min": -95.0,
+      "y_max": -55.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.8-f012",
@@ -4549,7 +7339,17 @@
         "rx",
         "800mhz",
         "hd2"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Input Amplitude",
+      "x_unit": "dBFS",
+      "x_min": -30.0,
+      "x_max": 0.0,
+      "y_label": "HD2",
+      "y_unit": "dBFS",
+      "y_min": -96.0,
+      "y_max": -61.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.8-f013",
@@ -4566,7 +7366,17 @@
         "800mhz",
         "hd3",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA",
+      "x_unit": "dB",
+      "x_min": 3.0,
+      "x_max": 18.0,
+      "y_label": "HD3",
+      "y_unit": "dBc",
+      "y_min": -87.0,
+      "y_max": -69.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.8-f014",
@@ -4582,7 +7392,17 @@
         "rx",
         "800mhz",
         "hd3"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Input Amplitude",
+      "x_unit": "dBFS",
+      "x_min": -30.0,
+      "x_max": 0.0,
+      "y_label": "HD3",
+      "y_unit": "dBFS",
+      "y_min": -125.0,
+      "y_max": -65.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.8-f015",
@@ -4598,7 +7418,17 @@
         "rx",
         "800mhz",
         "imd"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "",
+      "x_unit": "",
+      "x_min": null,
+      "x_max": null,
+      "y_label": "",
+      "y_unit": "",
+      "y_min": null,
+      "y_max": null,
+      "axis_confidence": "low"
     },
     {
       "id": "4.12.8-f016",
@@ -4613,7 +7443,17 @@
       "tags": [
         "rx",
         "800mhz"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "",
+      "x_unit": "",
+      "x_min": null,
+      "x_max": null,
+      "y_label": "",
+      "y_unit": "",
+      "y_min": null,
+      "y_max": null,
+      "axis_confidence": "low"
     },
     {
       "id": "4.12.8-f017",
@@ -4629,7 +7469,17 @@
         "rx",
         "800mhz",
         "fullscale"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Temperature",
+      "x_unit": "C",
+      "x_min": -40.0,
+      "x_max": 70.0,
+      "y_label": "Input FS",
+      "y_unit": "dB",
+      "y_min": -0.2,
+      "y_max": 0.13,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.8-f018",
@@ -4645,7 +7495,17 @@
         "rx",
         "800mhz",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 25.0,
+      "y_label": "Uncalibrated Differential Gain Error",
+      "y_unit": "dB",
+      "y_min": -0.1,
+      "y_max": 0.3,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.8-f019",
@@ -4661,7 +7521,17 @@
         "rx",
         "800mhz",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "",
+      "x_unit": "",
+      "x_min": null,
+      "x_max": null,
+      "y_label": "",
+      "y_unit": "",
+      "y_min": null,
+      "y_max": null,
+      "axis_confidence": "low"
     },
     {
       "id": "4.12.8-f020",
@@ -4678,7 +7548,17 @@
         "800mhz",
         "phase error",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 25.0,
+      "y_label": "Uncalibrated Differential Phase Error",
+      "y_unit": "deg",
+      "y_min": -0.4,
+      "y_max": 0.6,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.8-f021",
@@ -4695,7 +7575,17 @@
         "800mhz",
         "phase error",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "",
+      "x_unit": "",
+      "x_min": null,
+      "x_max": null,
+      "y_label": "",
+      "y_unit": "",
+      "y_min": null,
+      "y_max": null,
+      "axis_confidence": "low"
     },
     {
       "id": "4.12.8-f022",
@@ -4710,7 +7600,17 @@
       "tags": [
         "rx",
         "800mhz"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Output Frequency",
+      "x_unit": "MHz",
+      "x_min": -250.0,
+      "x_max": 250.0,
+      "y_label": "Amplitude",
+      "y_unit": "dBFS",
+      "y_min": -120.0,
+      "y_max": 0.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.8-f023",
@@ -4725,7 +7625,17 @@
       "tags": [
         "rx",
         "800mhz"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Input Amplitude",
+      "x_unit": "dBFS",
+      "x_min": -30.0,
+      "x_max": 0.0,
+      "y_label": "Noise",
+      "y_unit": "dBFS/Hz",
+      "y_min": -157.0,
+      "y_max": -147.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.8-f024",
@@ -4742,7 +7652,17 @@
         "800mhz",
         "imd",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 16.0,
+      "y_label": "IMD3",
+      "y_unit": "dBFS",
+      "y_min": -98.0,
+      "y_max": -80.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.8-f025",
@@ -4758,7 +7678,17 @@
         "rx",
         "800mhz",
         "imd"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Input Amplitude",
+      "x_unit": "dBFS",
+      "x_min": -36.0,
+      "x_max": -6.0,
+      "y_label": "IMD3",
+      "y_unit": "dBFS",
+      "y_min": -122.0,
+      "y_max": -86.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.8-f026",
@@ -4774,7 +7704,17 @@
         "rx",
         "800mhz",
         "imd"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Input Amplitude",
+      "x_unit": "dBFS",
+      "x_min": -36.0,
+      "x_max": -6.0,
+      "y_label": "IMD5",
+      "y_unit": "dBFS",
+      "y_min": -120.0,
+      "y_max": -85.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.8-f027",
@@ -4791,7 +7731,17 @@
         "800mhz",
         "hd2",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA",
+      "x_unit": "dB",
+      "x_min": 3.0,
+      "x_max": 18.0,
+      "y_label": "HD2",
+      "y_unit": "dBc",
+      "y_min": -87.0,
+      "y_max": -60.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.8-f028",
@@ -4808,7 +7758,17 @@
         "800mhz",
         "hd3",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "",
+      "x_unit": "",
+      "x_min": null,
+      "x_max": null,
+      "y_label": "",
+      "y_unit": "",
+      "y_min": null,
+      "y_max": null,
+      "axis_confidence": "low"
     },
     {
       "id": "4.12.8-f029",
@@ -4824,7 +7784,17 @@
         "rx",
         "800mhz",
         "hd3"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Input Amplitude",
+      "x_unit": "dBFS",
+      "x_min": -30.0,
+      "x_max": 0.0,
+      "y_label": "HD3",
+      "y_unit": "dBFS",
+      "y_min": -115.0,
+      "y_max": -70.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.8-f030",
@@ -4841,7 +7811,17 @@
         "800mhz",
         "hd2",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 16.0,
+      "y_label": "Non HD2/3 SFDR",
+      "y_unit": "dBFS",
+      "y_min": 80.0,
+      "y_max": 100.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.8-f031",
@@ -4857,7 +7837,17 @@
         "rx",
         "800mhz",
         "imd"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "",
+      "x_unit": "",
+      "x_min": null,
+      "x_max": null,
+      "y_label": "",
+      "y_unit": "",
+      "y_min": null,
+      "y_max": null,
+      "axis_confidence": "low"
     },
     {
       "id": "4.12.9-f001",
@@ -4873,7 +7863,17 @@
         "rx",
         "1900mhz",
         "flatness"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "",
+      "x_unit": "",
+      "x_min": null,
+      "x_max": null,
+      "y_label": "",
+      "y_unit": "",
+      "y_min": null,
+      "y_max": null,
+      "axis_confidence": "low"
     },
     {
       "id": "4.12.9-f002",
@@ -4889,7 +7889,17 @@
         "rx",
         "1900mhz",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "",
+      "x_unit": "",
+      "x_min": null,
+      "x_max": null,
+      "y_label": "",
+      "y_unit": "",
+      "y_min": null,
+      "y_max": null,
+      "axis_confidence": "low"
     },
     {
       "id": "4.12.9-f003",
@@ -4905,7 +7915,17 @@
         "rx",
         "1900mhz",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "",
+      "x_unit": "",
+      "x_min": null,
+      "x_max": null,
+      "y_label": "",
+      "y_unit": "",
+      "y_min": null,
+      "y_max": null,
+      "axis_confidence": "low"
     },
     {
       "id": "4.12.9-f004",
@@ -4921,7 +7941,17 @@
         "rx",
         "1900mhz",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "",
+      "x_unit": "",
+      "x_min": null,
+      "x_max": null,
+      "y_label": "",
+      "y_unit": "",
+      "y_min": null,
+      "y_max": null,
+      "axis_confidence": "low"
     },
     {
       "id": "4.12.9-f005",
@@ -4938,7 +7968,17 @@
         "1900mhz",
         "phase error",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "",
+      "x_unit": "",
+      "x_min": null,
+      "x_max": null,
+      "y_label": "",
+      "y_unit": "",
+      "y_min": null,
+      "y_max": null,
+      "axis_confidence": "low"
     },
     {
       "id": "4.12.9-f006",
@@ -4955,7 +7995,17 @@
         "1900mhz",
         "phase error",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 25.0,
+      "y_label": "Calibrated Integrated Phase Error",
+      "y_unit": "deg",
+      "y_min": -1.5,
+      "y_max": 1.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.9-f007",
@@ -4970,7 +8020,17 @@
       "tags": [
         "rx",
         "1900mhz"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Temperature",
+      "x_unit": "qC",
+      "x_min": -40.0,
+      "x_max": 110.0,
+      "y_label": "Noise",
+      "y_unit": "dBFS/Hz",
+      "y_min": -156.0,
+      "y_max": -154.6,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.9-f008",
@@ -4985,7 +8045,17 @@
       "tags": [
         "rx",
         "1900mhz"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "",
+      "x_unit": "",
+      "x_min": null,
+      "x_max": null,
+      "y_label": "",
+      "y_unit": "",
+      "y_min": null,
+      "y_max": null,
+      "axis_confidence": "low"
     },
     {
       "id": "4.12.9-f009",
@@ -5001,7 +8071,17 @@
         "rx",
         "1900mhz",
         "imd"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Input Amplitude",
+      "x_unit": "dBFS",
+      "x_min": -36.0,
+      "x_max": -6.0,
+      "y_label": "IMD3",
+      "y_unit": "dBFS",
+      "y_min": -124.0,
+      "y_max": -88.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.9-f010",
@@ -5018,7 +8098,17 @@
         "1900mhz",
         "hd2",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA",
+      "x_unit": "dB",
+      "x_min": 3.0,
+      "x_max": 19.0,
+      "y_label": "HD2",
+      "y_unit": "dBc",
+      "y_min": -105.0,
+      "y_max": -75.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.9-f011",
@@ -5034,7 +8124,17 @@
         "rx",
         "1900mhz",
         "hd2"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Input Amplitude",
+      "x_unit": "dBFS",
+      "x_min": -30.0,
+      "x_max": 0.0,
+      "y_label": "HD2",
+      "y_unit": "dBFS",
+      "y_min": -125.0,
+      "y_max": -75.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.9-f012",
@@ -5051,7 +8151,17 @@
         "1900mhz",
         "hd3",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "",
+      "x_unit": "",
+      "x_min": null,
+      "x_max": null,
+      "y_label": "",
+      "y_unit": "",
+      "y_min": null,
+      "y_max": null,
+      "axis_confidence": "low"
     },
     {
       "id": "4.12.9-f013",
@@ -5067,7 +8177,17 @@
         "rx",
         "1900mhz",
         "hd3"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Input Amplitude",
+      "x_unit": "dBFS",
+      "x_min": -30.0,
+      "x_max": 0.0,
+      "y_label": "HD3",
+      "y_unit": "dBFS",
+      "y_min": -120.0,
+      "y_max": -50.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.9-f014",
@@ -5083,7 +8203,17 @@
         "rx",
         "1900mhz",
         "sfdr"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "",
+      "x_unit": "",
+      "x_min": null,
+      "x_max": null,
+      "y_label": "",
+      "y_unit": "",
+      "y_min": null,
+      "y_max": null,
+      "axis_confidence": "low"
     },
     {
       "id": "4.12.9-f015",
@@ -5099,7 +8229,17 @@
         "rx",
         "1900mhz",
         "imd"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "",
+      "x_unit": "",
+      "x_min": null,
+      "x_max": null,
+      "y_label": "",
+      "y_unit": "",
+      "y_min": null,
+      "y_max": null,
+      "axis_confidence": "low"
     },
     {
       "id": "4.12.9-f016",
@@ -5115,7 +8255,17 @@
         "rx",
         "1900mhz",
         "fullscale"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Temperature",
+      "x_unit": "C",
+      "x_min": -40.0,
+      "x_max": 80.0,
+      "y_label": "Input FS",
+      "y_unit": "dB",
+      "y_min": -0.5,
+      "y_max": 0.3,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.9-f017",
@@ -5131,7 +8281,17 @@
         "rx",
         "1900mhz",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 25.0,
+      "y_label": "Uncalibrated Differential Gain Error",
+      "y_unit": "dB",
+      "y_min": -0.3,
+      "y_max": 0.15,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.9-f018",
@@ -5147,7 +8307,17 @@
         "rx",
         "1900mhz",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 25.0,
+      "y_label": "Uncalibrated Integrated Gain Error",
+      "y_unit": "dB",
+      "y_min": -1.3,
+      "y_max": 0.1,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.9-f019",
@@ -5164,7 +8334,17 @@
         "1900mhz",
         "phase error",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "",
+      "x_unit": "",
+      "x_min": null,
+      "x_max": null,
+      "y_label": "",
+      "y_unit": "",
+      "y_min": null,
+      "y_max": null,
+      "axis_confidence": "low"
     },
     {
       "id": "4.12.9-f020",
@@ -5181,7 +8361,17 @@
         "1900mhz",
         "phase error",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "",
+      "x_unit": "",
+      "x_min": null,
+      "x_max": null,
+      "y_label": "",
+      "y_unit": "",
+      "y_min": null,
+      "y_max": null,
+      "axis_confidence": "low"
     },
     {
       "id": "4.12.9-f021",
@@ -5196,7 +8386,17 @@
       "tags": [
         "rx",
         "1900mhz"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Output Frequency",
+      "x_unit": "MHz",
+      "x_min": -250.0,
+      "x_max": 250.0,
+      "y_label": "Amplitude",
+      "y_unit": "dBFS",
+      "y_min": -120.0,
+      "y_max": 0.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.9-f022",
@@ -5211,7 +8411,17 @@
       "tags": [
         "rx",
         "1900mhz"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Input Amplitude",
+      "x_unit": "dBFS",
+      "x_min": -30.0,
+      "x_max": 0.0,
+      "y_label": "Noise",
+      "y_unit": "dBFS/Hz",
+      "y_min": -157.0,
+      "y_max": -145.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.9-f023",
@@ -5228,7 +8438,17 @@
         "1900mhz",
         "imd",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 20.0,
+      "y_label": "IMD3",
+      "y_unit": "dBFS",
+      "y_min": -94.0,
+      "y_max": -70.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.9-f024",
@@ -5244,7 +8464,17 @@
         "rx",
         "1900mhz",
         "imd"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Input Amplitude",
+      "x_unit": "dBFS",
+      "x_min": -36.0,
+      "x_max": -6.0,
+      "y_label": "IMD3",
+      "y_unit": "dBFS",
+      "y_min": -125.0,
+      "y_max": -80.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.9-f025",
@@ -5261,7 +8491,17 @@
         "1900mhz",
         "hd2",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA",
+      "x_unit": "dB",
+      "x_min": 3.0,
+      "x_max": 19.0,
+      "y_label": "HD2",
+      "y_unit": "dBc",
+      "y_min": -102.0,
+      "y_max": -72.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.9-f026",
@@ -5277,7 +8517,17 @@
         "rx",
         "1900mhz",
         "hd2"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Input Amplitude",
+      "x_unit": "dBFS",
+      "x_min": -30.0,
+      "x_max": 0.0,
+      "y_label": "HD2",
+      "y_unit": "dBFS",
+      "y_min": -114.0,
+      "y_max": -74.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.9-f027",
@@ -5294,7 +8544,17 @@
         "1900mhz",
         "hd3",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA",
+      "x_unit": "dB",
+      "x_min": 3.0,
+      "x_max": 19.0,
+      "y_label": "HD3",
+      "y_unit": "dBc",
+      "y_min": -95.0,
+      "y_max": -65.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.9-f028",
@@ -5310,7 +8570,17 @@
         "rx",
         "1900mhz",
         "hd3"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Input Amplitude",
+      "x_unit": "dBFS",
+      "x_min": -30.0,
+      "x_max": 0.0,
+      "y_label": "HD3",
+      "y_unit": "dBFS",
+      "y_min": -115.0,
+      "y_max": -65.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.9-f029",
@@ -5327,7 +8597,17 @@
         "1900mhz",
         "hd2",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "",
+      "x_unit": "",
+      "x_min": null,
+      "x_max": null,
+      "y_label": "",
+      "y_unit": "",
+      "y_min": null,
+      "y_max": null,
+      "axis_confidence": "low"
     },
     {
       "id": "4.12.9-f030",
@@ -5342,7 +8622,17 @@
       "tags": [
         "rx",
         "1900mhz"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "",
+      "x_unit": "",
+      "x_min": null,
+      "x_max": null,
+      "y_label": "",
+      "y_unit": "",
+      "y_min": null,
+      "y_max": null,
+      "axis_confidence": "low"
     },
     {
       "id": "4.12.10-f001",
@@ -5358,7 +8648,17 @@
         "rx",
         "3500mhz",
         "flatness"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Input Frequency",
+      "x_unit": "MHz",
+      "x_min": 3400.0,
+      "x_max": 3800.0,
+      "y_label": "Relative Input Power",
+      "y_unit": "dB",
+      "y_min": -2.0,
+      "y_max": 2.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.10-f002",
@@ -5374,7 +8674,17 @@
         "rx",
         "3500mhz",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA Setting",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 25.0,
+      "y_label": "Differential Amplitude Error",
+      "y_unit": "dB",
+      "y_min": -0.5,
+      "y_max": 0.5,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.10-f003",
@@ -5390,7 +8700,17 @@
         "rx",
         "3500mhz",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA Setting",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 25.0,
+      "y_label": "Integrated Amplitude Error",
+      "y_unit": "dB",
+      "y_min": -1.0,
+      "y_max": 4.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.10-f004",
@@ -5407,7 +8727,17 @@
         "3500mhz",
         "phase error",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA Setting",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 25.0,
+      "y_label": "Differential Phase Error",
+      "y_unit": "q",
+      "y_min": -2.0,
+      "y_max": 2.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.10-f005",
@@ -5424,7 +8754,17 @@
         "3500mhz",
         "phase error",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA Setting",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 25.0,
+      "y_label": "Phase Integrated Nonlinearity",
+      "y_unit": "q",
+      "y_min": -5.0,
+      "y_max": 5.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.10-f006",
@@ -5439,7 +8779,17 @@
       "tags": [
         "rx",
         "3500mhz"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "",
+      "x_unit": "",
+      "x_min": null,
+      "x_max": null,
+      "y_label": "",
+      "y_unit": "",
+      "y_min": null,
+      "y_max": null,
+      "axis_confidence": "low"
     },
     {
       "id": "4.12.10-f007",
@@ -5455,7 +8805,17 @@
         "rx",
         "3500mhz",
         "imd"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA Setting",
+      "x_unit": "dB",
+      "x_min": -40.0,
+      "x_max": 0.0,
+      "y_label": "IMD3",
+      "y_unit": "dBFS",
+      "y_min": -120.0,
+      "y_max": -80.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.10-f008",
@@ -5472,7 +8832,17 @@
         "3500mhz",
         "hd2",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA",
+      "x_unit": "dB",
+      "x_min": 3.0,
+      "x_max": 18.0,
+      "y_label": "HD2",
+      "y_unit": "dBc",
+      "y_min": -92.0,
+      "y_max": -71.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.10-f009",
@@ -5488,7 +8858,17 @@
         "rx",
         "3500mhz",
         "hd2"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Input Level",
+      "x_unit": "dBFS",
+      "x_min": -30.0,
+      "x_max": 0.0,
+      "y_label": "HD2",
+      "y_unit": "dBFS",
+      "y_min": -110.0,
+      "y_max": -70.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.10-f010",
@@ -5505,7 +8885,17 @@
         "3500mhz",
         "hd3",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA",
+      "x_unit": "dB",
+      "x_min": 3.0,
+      "x_max": 18.0,
+      "y_label": "HD3",
+      "y_unit": "dBc",
+      "y_min": -79.0,
+      "y_max": -64.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.10-f011",
@@ -5521,7 +8911,17 @@
         "rx",
         "3500mhz",
         "hd3"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Input Level",
+      "x_unit": "dBFS",
+      "x_min": -30.0,
+      "x_max": 0.0,
+      "y_label": "HD3",
+      "y_unit": "dBFS",
+      "y_min": -110.0,
+      "y_max": -70.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.10-f012",
@@ -5537,7 +8937,17 @@
         "rx",
         "3500mhz",
         "sfdr"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Input Amplitude",
+      "x_unit": "dBFS",
+      "x_min": -30.0,
+      "x_max": 0.0,
+      "y_label": "In-band SFDR",
+      "y_unit": "dBFS",
+      "y_min": 70.0,
+      "y_max": 110.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.10-f013",
@@ -5553,7 +8963,17 @@
         "rx",
         "3500mhz",
         "imd"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "",
+      "x_unit": "",
+      "x_min": null,
+      "x_max": null,
+      "y_label": "",
+      "y_unit": "",
+      "y_min": null,
+      "y_max": null,
+      "axis_confidence": "low"
     },
     {
       "id": "4.12.10-f014",
@@ -5568,7 +8988,17 @@
       "tags": [
         "rx",
         "3500mhz"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "",
+      "x_unit": "",
+      "x_min": null,
+      "x_max": null,
+      "y_label": "",
+      "y_unit": "",
+      "y_min": null,
+      "y_max": null,
+      "axis_confidence": "low"
     },
     {
       "id": "4.12.10-f015",
@@ -5583,7 +9013,17 @@
       "tags": [
         "rx",
         "3500mhz"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "",
+      "x_unit": "",
+      "x_min": null,
+      "x_max": null,
+      "y_label": "",
+      "y_unit": "",
+      "y_min": null,
+      "y_max": null,
+      "axis_confidence": "low"
     },
     {
       "id": "4.12.10-f016",
@@ -5599,7 +9039,17 @@
         "rx",
         "3500mhz",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA Setting",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 25.0,
+      "y_label": "Amplitude Differential Nonlinearity",
+      "y_unit": "dB",
+      "y_min": -0.1,
+      "y_max": 0.1,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.10-f017",
@@ -5615,7 +9065,17 @@
         "rx",
         "3500mhz",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA Setting",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 25.0,
+      "y_label": "Integrated Amplitude Error",
+      "y_unit": "dB",
+      "y_min": -1.0,
+      "y_max": 1.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.10-f018",
@@ -5632,7 +9092,17 @@
         "3500mhz",
         "phase error",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA Setting",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 25.0,
+      "y_label": "Differential Phase Error",
+      "y_unit": "q",
+      "y_min": -2.5,
+      "y_max": 2.5,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.10-f019",
@@ -5649,7 +9119,17 @@
         "3500mhz",
         "phase error",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA Setting",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 25.0,
+      "y_label": "Integrated Phase Error",
+      "y_unit": "q",
+      "y_min": -2.5,
+      "y_max": 2.5,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.10-f020",
@@ -5666,7 +9146,17 @@
         "3500mhz",
         "imd",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA Setting",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 16.0,
+      "y_label": "IMD3",
+      "y_unit": "dBFS",
+      "y_min": -90.0,
+      "y_max": -60.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.10-f021",
@@ -5683,7 +9173,17 @@
         "3500mhz",
         "hd2",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA Setting",
+      "x_unit": "dB",
+      "x_min": 2.0,
+      "x_max": 20.0,
+      "y_label": "HD2",
+      "y_unit": "dBc",
+      "y_min": -100.0,
+      "y_max": -60.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.10-f022",
@@ -5699,7 +9199,17 @@
         "rx",
         "3500mhz",
         "hd2"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Input Amplitude",
+      "x_unit": "dBFS",
+      "x_min": -30.0,
+      "x_max": 0.0,
+      "y_label": "HD2",
+      "y_unit": "dBFS",
+      "y_min": -110.0,
+      "y_max": -70.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.10-f023",
@@ -5716,7 +9226,17 @@
         "3500mhz",
         "hd3",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA Setting",
+      "x_unit": "dB",
+      "x_min": 2.0,
+      "x_max": 20.0,
+      "y_label": "HD3",
+      "y_unit": "dBc",
+      "y_min": -100.0,
+      "y_max": -60.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.10-f024",
@@ -5732,7 +9252,17 @@
         "rx",
         "3500mhz",
         "hd3"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Input Amplitude",
+      "x_unit": "dBFS",
+      "x_min": -30.0,
+      "x_max": 0.0,
+      "y_label": "HD3",
+      "y_unit": "dBFS",
+      "y_min": -110.0,
+      "y_max": -60.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.10-f025",
@@ -5748,7 +9278,17 @@
         "rx",
         "3500mhz",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Input Level",
+      "x_unit": "dBFS",
+      "x_min": -30.0,
+      "x_max": 0.0,
+      "y_label": "Noise Spectral Density",
+      "y_unit": "dBFS",
+      "y_min": -160.0,
+      "y_max": -140.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.10-f026",
@@ -5766,7 +9306,17 @@
         "hd2",
         "sfdr",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA Setting",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 18.0,
+      "y_label": "SFDR excl. HD2/3",
+      "y_unit": "dBc",
+      "y_min": 60.0,
+      "y_max": 90.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.10-f027",
@@ -5782,7 +9332,17 @@
         "rx",
         "3500mhz",
         "imd"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "",
+      "x_unit": "",
+      "x_min": null,
+      "x_max": null,
+      "y_label": "",
+      "y_unit": "",
+      "y_min": null,
+      "y_max": null,
+      "axis_confidence": "low"
     },
     {
       "id": "4.12.11-f001",
@@ -5798,7 +9358,17 @@
         "rx",
         "2600mhz",
         "flatness"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Input Frequency",
+      "x_unit": "MHz",
+      "x_min": 2350.0,
+      "x_max": 2800.0,
+      "y_label": "Relative Input Power",
+      "y_unit": "dB",
+      "y_min": -2.0,
+      "y_max": 2.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.11-f002",
@@ -5815,7 +9385,17 @@
         "2600mhz",
         "phase error",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "",
+      "x_unit": "",
+      "x_min": null,
+      "x_max": null,
+      "y_label": "",
+      "y_unit": "",
+      "y_min": null,
+      "y_max": null,
+      "axis_confidence": "low"
     },
     {
       "id": "4.12.11-f003",
@@ -5830,7 +9410,17 @@
       "tags": [
         "rx",
         "2600mhz"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Temperature",
+      "x_unit": "qC",
+      "x_min": -40.0,
+      "x_max": 120.0,
+      "y_label": "NSD",
+      "y_unit": "dBFS",
+      "y_min": -156.0,
+      "y_max": -152.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.11-f004",
@@ -5845,7 +9435,17 @@
       "tags": [
         "rx",
         "2600mhz"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Input Amplitude",
+      "x_unit": "dBFS",
+      "x_min": -30.0,
+      "x_max": 0.0,
+      "y_label": "NSD",
+      "y_unit": "dBFS/Hz",
+      "y_min": -156.0,
+      "y_max": -146.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.11-f005",
@@ -5861,7 +9461,17 @@
         "rx",
         "2600mhz",
         "imd"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Input Level",
+      "x_unit": "dBFS",
+      "x_min": -40.0,
+      "x_max": 0.0,
+      "y_label": "IMD3",
+      "y_unit": "dBFS",
+      "y_min": -120.0,
+      "y_max": -70.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.11-f006",
@@ -5878,7 +9488,17 @@
         "2600mhz",
         "hd2",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "",
+      "x_unit": "",
+      "x_min": null,
+      "x_max": null,
+      "y_label": "",
+      "y_unit": "",
+      "y_min": null,
+      "y_max": null,
+      "axis_confidence": "low"
     },
     {
       "id": "4.12.11-f007",
@@ -5895,7 +9515,17 @@
         "2600mhz",
         "hd3",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "",
+      "x_unit": "",
+      "x_min": null,
+      "x_max": null,
+      "y_label": "",
+      "y_unit": "",
+      "y_min": null,
+      "y_max": null,
+      "axis_confidence": "low"
     },
     {
       "id": "4.12.11-f008",
@@ -5911,7 +9541,17 @@
         "rx",
         "2600mhz",
         "hd3"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "",
+      "x_unit": "",
+      "x_min": null,
+      "x_max": null,
+      "y_label": "",
+      "y_unit": "",
+      "y_min": null,
+      "y_max": null,
+      "axis_confidence": "low"
     },
     {
       "id": "4.12.11-f009",
@@ -5927,7 +9567,17 @@
         "rx",
         "2600mhz",
         "sfdr"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Input Amplitude",
+      "x_unit": "dBFS",
+      "x_min": -30.0,
+      "x_max": 0.0,
+      "y_label": "In-band SFDR",
+      "y_unit": "dBFS",
+      "y_min": 70.0,
+      "y_max": 100.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.11-f010",
@@ -5943,7 +9593,17 @@
         "rx",
         "2600mhz",
         "imd"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "",
+      "x_unit": "",
+      "x_min": null,
+      "x_max": null,
+      "y_label": "",
+      "y_unit": "",
+      "y_min": null,
+      "y_max": null,
+      "axis_confidence": "low"
     },
     {
       "id": "4.12.11-f011",
@@ -5959,7 +9619,17 @@
         "rx",
         "2600mhz",
         "fullscale"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Temperature",
+      "x_unit": "C",
+      "x_min": -40.0,
+      "x_max": 120.0,
+      "y_label": "Input Fullscale",
+      "y_unit": "dB",
+      "y_min": -2.0,
+      "y_max": 2.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.11-f012",
@@ -5974,7 +9644,17 @@
       "tags": [
         "rx",
         "2600mhz"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "",
+      "x_unit": "",
+      "x_min": null,
+      "x_max": null,
+      "y_label": "",
+      "y_unit": "",
+      "y_min": null,
+      "y_max": null,
+      "axis_confidence": "low"
     },
     {
       "id": "4.12.11-f013",
@@ -5989,7 +9669,17 @@
       "tags": [
         "rx",
         "2600mhz"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Input Amplitude",
+      "x_unit": "dBFS",
+      "x_min": -30.0,
+      "x_max": 0.0,
+      "y_label": "Noise Spectral Density",
+      "y_unit": "dBFS/Hz",
+      "y_min": -156.0,
+      "y_max": -150.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.11-f014",
@@ -6006,7 +9696,17 @@
         "2600mhz",
         "imd",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA Setting",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 16.0,
+      "y_label": "IMD3",
+      "y_unit": "dBFS",
+      "y_min": -90.0,
+      "y_max": -60.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.11-f015",
@@ -6022,7 +9722,17 @@
         "rx",
         "2600mhz",
         "imd"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Input Level",
+      "x_unit": "dBFS",
+      "x_min": -40.0,
+      "x_max": 0.0,
+      "y_label": "IMD3",
+      "y_unit": "dBFS",
+      "y_min": -125.0,
+      "y_max": -75.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.11-f016",
@@ -6038,7 +9748,17 @@
         "rx",
         "2600mhz",
         "hd2"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Input Level",
+      "x_unit": "dBFS",
+      "x_min": -30.0,
+      "x_max": 0.0,
+      "y_label": "HD2",
+      "y_unit": "dBFS",
+      "y_min": -110.0,
+      "y_max": -70.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.11-f017",
@@ -6055,7 +9775,17 @@
         "2600mhz",
         "hd3",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA Setting",
+      "x_unit": "dBc",
+      "x_min": 2.0,
+      "x_max": 18.0,
+      "y_label": "HD3",
+      "y_unit": "dBc",
+      "y_min": -100.0,
+      "y_max": -60.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.11-f018",
@@ -6071,7 +9801,17 @@
         "rx",
         "2600mhz",
         "hd3"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Input Level",
+      "x_unit": "dBFS",
+      "x_min": -30.0,
+      "x_max": 0.0,
+      "y_label": "HD3",
+      "y_unit": "dBFS",
+      "y_min": -110.0,
+      "y_max": -60.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.11-f019",
@@ -6088,7 +9828,17 @@
         "2600mhz",
         "hd2",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA Setting",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 18.0,
+      "y_label": "non-HD2/3 SFDR",
+      "y_unit": "dBFS",
+      "y_min": -100.0,
+      "y_max": -80.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.11-f020",
@@ -6103,7 +9853,17 @@
       "tags": [
         "rx",
         "2600mhz"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "",
+      "x_unit": "",
+      "x_min": null,
+      "x_max": null,
+      "y_label": "",
+      "y_unit": "",
+      "y_min": null,
+      "y_max": null,
+      "axis_confidence": "low"
     },
     {
       "id": "4.12.12-f001",
@@ -6119,7 +9879,17 @@
         "rx",
         "4900mhz",
         "flatness"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "",
+      "x_unit": "",
+      "x_min": null,
+      "x_max": null,
+      "y_label": "",
+      "y_unit": "",
+      "y_min": null,
+      "y_max": null,
+      "axis_confidence": "low"
     },
     {
       "id": "4.12.12-f002",
@@ -6135,7 +9905,17 @@
         "rx",
         "4900mhz",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Temperature",
+      "x_unit": "C",
+      "x_min": -40.0,
+      "x_max": 80.0,
+      "y_label": "Input Phase",
+      "y_unit": "degree",
+      "y_min": -35.0,
+      "y_max": 65.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.12-f003",
@@ -6151,7 +9931,17 @@
         "rx",
         "4900mhz",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "",
+      "x_unit": "",
+      "x_min": null,
+      "x_max": null,
+      "y_label": "",
+      "y_unit": "",
+      "y_min": null,
+      "y_max": null,
+      "axis_confidence": "low"
     },
     {
       "id": "4.12.12-f004",
@@ -6167,7 +9957,17 @@
         "rx",
         "4900mhz",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "",
+      "x_unit": "",
+      "x_min": null,
+      "x_max": null,
+      "y_label": "",
+      "y_unit": "",
+      "y_min": null,
+      "y_max": null,
+      "axis_confidence": "low"
     },
     {
       "id": "4.12.12-f005",
@@ -6184,7 +9984,17 @@
         "4900mhz",
         "phase error",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "",
+      "x_unit": "",
+      "x_min": null,
+      "x_max": null,
+      "y_label": "",
+      "y_unit": "",
+      "y_min": null,
+      "y_max": null,
+      "axis_confidence": "low"
     },
     {
       "id": "4.12.12-f006",
@@ -6201,7 +10011,17 @@
         "4900mhz",
         "phase error",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 25.0,
+      "y_label": "Calibrated Integrated Phase Error",
+      "y_unit": "deg",
+      "y_min": -3.0,
+      "y_max": 1.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.12-f007",
@@ -6216,7 +10036,17 @@
       "tags": [
         "rx",
         "4900mhz"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Temperature",
+      "x_unit": "qC",
+      "x_min": -40.0,
+      "x_max": 110.0,
+      "y_label": "Noise",
+      "y_unit": "dBFS/Hz",
+      "y_min": -156.0,
+      "y_max": -154.8,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.12-f008",
@@ -6231,7 +10061,17 @@
       "tags": [
         "rx",
         "4900mhz"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Input Amplitude",
+      "x_unit": "dBFS",
+      "x_min": -30.0,
+      "x_max": 0.0,
+      "y_label": "Noise",
+      "y_unit": "dBFS/Hz",
+      "y_min": -157.0,
+      "y_max": -145.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.12-f009",
@@ -6247,7 +10087,17 @@
         "rx",
         "4900mhz",
         "imd"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Input Amplitude",
+      "x_unit": "dBFS",
+      "x_min": -36.0,
+      "x_max": -6.0,
+      "y_label": "IMD3",
+      "y_unit": "dBFS",
+      "y_min": -130.0,
+      "y_max": -80.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.12-f010",
@@ -6264,7 +10114,17 @@
         "4900mhz",
         "hd2",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 16.0,
+      "y_label": "HD2",
+      "y_unit": "dBc",
+      "y_min": -94.0,
+      "y_max": -70.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.12-f011",
@@ -6280,7 +10140,17 @@
         "rx",
         "4900mhz",
         "hd2"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Input Amplitude",
+      "x_unit": "dBFS",
+      "x_min": -30.0,
+      "x_max": -1.0,
+      "y_label": "HD2",
+      "y_unit": "dBFS",
+      "y_min": -114.0,
+      "y_max": -72.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.12-f012",
@@ -6297,7 +10167,17 @@
         "4900mhz",
         "hd3",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "",
+      "x_unit": "",
+      "x_min": null,
+      "x_max": null,
+      "y_label": "",
+      "y_unit": "",
+      "y_min": null,
+      "y_max": null,
+      "axis_confidence": "low"
     },
     {
       "id": "4.12.12-f013",
@@ -6313,7 +10193,17 @@
         "rx",
         "4900mhz",
         "hd3"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Input Amplitude",
+      "x_unit": "dBFS",
+      "x_min": -30.0,
+      "x_max": -1.0,
+      "y_label": "HD3",
+      "y_unit": "dBFS",
+      "y_min": -108.0,
+      "y_max": -66.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.12-f014",
@@ -6330,7 +10220,17 @@
         "4900mhz",
         "hd2",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "",
+      "x_unit": "",
+      "x_min": null,
+      "x_max": null,
+      "y_label": "",
+      "y_unit": "",
+      "y_min": null,
+      "y_max": null,
+      "axis_confidence": "low"
     },
     {
       "id": "4.12.12-f015",
@@ -6345,7 +10245,17 @@
       "tags": [
         "rx",
         "4900mhz"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "",
+      "x_unit": "",
+      "x_min": null,
+      "x_max": null,
+      "y_label": "",
+      "y_unit": "",
+      "y_min": null,
+      "y_max": null,
+      "axis_confidence": "low"
     },
     {
       "id": "4.12.12-f016",
@@ -6361,7 +10271,17 @@
         "rx",
         "4900mhz",
         "fullscale"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Temperature",
+      "x_unit": "C",
+      "x_min": -40.0,
+      "x_max": 80.0,
+      "y_label": "Input FS",
+      "y_unit": "dB",
+      "y_min": -2.3,
+      "y_max": 1.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.12-f017",
@@ -6377,7 +10297,17 @@
         "rx",
         "4900mhz",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 25.0,
+      "y_label": "Uncalibrated Differential Gain Error",
+      "y_unit": "dB",
+      "y_min": -0.25,
+      "y_max": 0.15,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.12-f018",
@@ -6393,7 +10323,17 @@
         "rx",
         "4900mhz",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "",
+      "x_unit": "",
+      "x_min": null,
+      "x_max": null,
+      "y_label": "",
+      "y_unit": "",
+      "y_min": null,
+      "y_max": null,
+      "axis_confidence": "low"
     },
     {
       "id": "4.12.12-f019",
@@ -6410,7 +10350,17 @@
         "4900mhz",
         "phase error",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "",
+      "x_unit": "",
+      "x_min": null,
+      "x_max": null,
+      "y_label": "",
+      "y_unit": "",
+      "y_min": null,
+      "y_max": null,
+      "axis_confidence": "low"
     },
     {
       "id": "4.12.12-f020",
@@ -6427,7 +10377,17 @@
         "4900mhz",
         "phase error",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "",
+      "x_unit": "",
+      "x_min": null,
+      "x_max": null,
+      "y_label": "",
+      "y_unit": "",
+      "y_min": null,
+      "y_max": null,
+      "axis_confidence": "low"
     },
     {
       "id": "4.12.12-f021",
@@ -6442,7 +10402,17 @@
       "tags": [
         "rx",
         "4900mhz"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Output Frequency",
+      "x_unit": "MHz",
+      "x_min": -250.0,
+      "x_max": 250.0,
+      "y_label": "Amplitude",
+      "y_unit": "dBFS",
+      "y_min": -120.0,
+      "y_max": 0.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.12-f022",
@@ -6457,7 +10427,17 @@
       "tags": [
         "rx",
         "4900mhz"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Input Amplitude",
+      "x_unit": "dBFS",
+      "x_min": -30.0,
+      "x_max": 0.0,
+      "y_label": "Noise",
+      "y_unit": "dBFS/Hz",
+      "y_min": -157.0,
+      "y_max": -145.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.12-f023",
@@ -6474,7 +10454,17 @@
         "4900mhz",
         "imd",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 20.0,
+      "y_label": "IMD3",
+      "y_unit": "dBFS",
+      "y_min": -94.0,
+      "y_max": -64.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.12-f024",
@@ -6490,7 +10480,17 @@
         "rx",
         "4900mhz",
         "imd"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Input Amplitude",
+      "x_unit": "dBFS",
+      "x_min": -36.0,
+      "x_max": -6.0,
+      "y_label": "IMD3",
+      "y_unit": "dBFS",
+      "y_min": -125.0,
+      "y_max": -75.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.12-f025",
@@ -6507,7 +10507,17 @@
         "4900mhz",
         "hd2",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA",
+      "x_unit": "dB",
+      "x_min": 3.0,
+      "x_max": 18.0,
+      "y_label": "HD2",
+      "y_unit": "dBc",
+      "y_min": -94.0,
+      "y_max": -70.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.12-f026",
@@ -6524,7 +10534,17 @@
         "4900mhz",
         "hd3",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA",
+      "x_unit": "dB",
+      "x_min": 3.0,
+      "x_max": 19.0,
+      "y_label": "HD3",
+      "y_unit": "dBc",
+      "y_min": -82.0,
+      "y_max": -62.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.12-f027",
@@ -6540,7 +10560,17 @@
         "rx",
         "4900mhz",
         "hd3"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Input Amplitude",
+      "x_unit": "dBFS",
+      "x_min": -30.0,
+      "x_max": -1.0,
+      "y_label": "HD3",
+      "y_unit": "dBFS",
+      "y_min": -110.0,
+      "y_max": -65.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.12-f028",
@@ -6556,7 +10586,17 @@
         "rx",
         "4900mhz",
         "sfdr"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Input Amplitude",
+      "x_unit": "dBFS",
+      "x_min": -30.0,
+      "x_max": -6.0,
+      "y_label": "Inband SFDR",
+      "y_unit": "dBFS",
+      "y_min": 66.0,
+      "y_max": 102.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.12-f029",
@@ -6572,7 +10612,17 @@
         "rx",
         "4900mhz",
         "imd"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "",
+      "x_unit": "",
+      "x_min": null,
+      "x_max": null,
+      "y_label": "",
+      "y_unit": "",
+      "y_min": null,
+      "y_max": null,
+      "axis_confidence": "low"
     },
     {
       "id": "4.12.13-f001",
@@ -6587,7 +10637,17 @@
       "tags": [
         "rx",
         "8100mhz"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Input Frequency",
+      "x_unit": "MHz",
+      "x_min": 7900.0,
+      "x_max": 8300.0,
+      "y_label": "Amplitude",
+      "y_unit": "dB",
+      "y_min": -1.0,
+      "y_max": 1.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.13-f002",
@@ -6602,7 +10662,17 @@
       "tags": [
         "rx",
         "8100mhz"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "",
+      "x_unit": "",
+      "x_min": null,
+      "x_max": null,
+      "y_label": "",
+      "y_unit": "",
+      "y_min": null,
+      "y_max": null,
+      "axis_confidence": "low"
     },
     {
       "id": "4.12.13-f003",
@@ -6617,7 +10687,17 @@
       "tags": [
         "rx",
         "8100mhz"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "",
+      "x_unit": "",
+      "x_min": null,
+      "x_max": null,
+      "y_label": "",
+      "y_unit": "",
+      "y_min": null,
+      "y_max": null,
+      "axis_confidence": "low"
     },
     {
       "id": "4.12.13-f004",
@@ -6633,7 +10713,17 @@
         "rx",
         "8100mhz",
         "imd"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "",
+      "x_unit": "",
+      "x_min": null,
+      "x_max": null,
+      "y_label": "",
+      "y_unit": "",
+      "y_min": null,
+      "y_max": null,
+      "axis_confidence": "low"
     },
     {
       "id": "4.12.13-f005",
@@ -6649,7 +10739,17 @@
         "rx",
         "8100mhz",
         "imd"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "",
+      "x_unit": "",
+      "x_min": null,
+      "x_max": null,
+      "y_label": "",
+      "y_unit": "",
+      "y_min": null,
+      "y_max": null,
+      "axis_confidence": "low"
     },
     {
       "id": "4.12.13-f006",
@@ -6665,7 +10765,17 @@
         "rx",
         "8100mhz",
         "nsd"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "",
+      "x_unit": "",
+      "x_min": null,
+      "x_max": null,
+      "y_label": "",
+      "y_unit": "",
+      "y_min": null,
+      "y_max": null,
+      "axis_confidence": "low"
     },
     {
       "id": "4.12.13-f007",
@@ -6682,7 +10792,17 @@
         "8100mhz",
         "nsd",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA Setting",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 20.0,
+      "y_label": "Noise Spectral Density",
+      "y_unit": "dBFS/Hz",
+      "y_min": -162.0,
+      "y_max": -142.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.13-f008",
@@ -6699,7 +10819,17 @@
         "8100mhz",
         "hd2",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA Setting",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 20.0,
+      "y_label": "HD2",
+      "y_unit": "dBFS",
+      "y_min": -110.0,
+      "y_max": -40.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.13-f009",
@@ -6716,7 +10846,17 @@
         "8100mhz",
         "hd3",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "",
+      "x_unit": "",
+      "x_min": null,
+      "x_max": null,
+      "y_label": "",
+      "y_unit": "",
+      "y_min": null,
+      "y_max": null,
+      "axis_confidence": "low"
     },
     {
       "id": "4.12.13-f010",
@@ -6731,7 +10871,17 @@
       "tags": [
         "rx",
         "8100mhz"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Output Frequency",
+      "x_unit": "MHz",
+      "x_min": -250.0,
+      "x_max": 250.0,
+      "y_label": "Amplitude",
+      "y_unit": "dBFS",
+      "y_min": -120.0,
+      "y_max": 0.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.13-f011",
@@ -6746,7 +10896,17 @@
       "tags": [
         "rx",
         "8100mhz"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Output Frequency",
+      "x_unit": "MHz",
+      "x_min": -250.0,
+      "x_max": 250.0,
+      "y_label": "Amplitude",
+      "y_unit": "dBFS",
+      "y_min": -120.0,
+      "y_max": 0.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.13-f012",
@@ -6761,7 +10921,17 @@
       "tags": [
         "rx",
         "8100mhz"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Output Frequency",
+      "x_unit": "MHz",
+      "x_min": -250.0,
+      "x_max": 250.0,
+      "y_label": "Amplitude",
+      "y_unit": "dBFS",
+      "y_min": -120.0,
+      "y_max": 0.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.13-f013",
@@ -6776,7 +10946,17 @@
       "tags": [
         "rx",
         "8100mhz"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Output Frequency",
+      "x_unit": "MHz",
+      "x_min": -250.0,
+      "x_max": 250.0,
+      "y_label": "Amplitude",
+      "y_unit": "dBFS",
+      "y_min": -120.0,
+      "y_max": 0.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.13-f014",
@@ -6791,7 +10971,17 @@
       "tags": [
         "rx",
         "8100mhz"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Output Frequency",
+      "x_unit": "MHz",
+      "x_min": -250.0,
+      "x_max": 250.0,
+      "y_label": "Amplitude",
+      "y_unit": "dBFS",
+      "y_min": -120.0,
+      "y_max": 0.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.13-f015",
@@ -6807,7 +10997,17 @@
         "rx",
         "8100mhz",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Input Frequency",
+      "x_unit": "MHz",
+      "x_min": 7900.0,
+      "x_max": 8300.0,
+      "y_label": "Amplitude",
+      "y_unit": "dB",
+      "y_min": -1.0,
+      "y_max": 1.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.13-f016",
@@ -6822,7 +11022,17 @@
       "tags": [
         "rx",
         "8100mhz"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "",
+      "x_unit": "",
+      "x_min": null,
+      "x_max": null,
+      "y_label": "",
+      "y_unit": "",
+      "y_min": null,
+      "y_max": null,
+      "axis_confidence": "low"
     },
     {
       "id": "4.12.13-f017",
@@ -6837,7 +11047,17 @@
       "tags": [
         "rx",
         "8100mhz"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "",
+      "x_unit": "",
+      "x_min": null,
+      "x_max": null,
+      "y_label": "",
+      "y_unit": "",
+      "y_min": null,
+      "y_max": null,
+      "axis_confidence": "low"
     },
     {
       "id": "4.12.13-f018",
@@ -6854,7 +11074,17 @@
         "8100mhz",
         "imd",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA Setting",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 20.0,
+      "y_label": "IMD3",
+      "y_unit": "dBFS",
+      "y_min": -100.0,
+      "y_max": -50.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.13-f019",
@@ -6870,7 +11100,17 @@
         "rx",
         "8100mhz",
         "nsd"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Input Amplitude",
+      "x_unit": "dBFS",
+      "x_min": -100.0,
+      "x_max": 0.0,
+      "y_label": "NSD",
+      "y_unit": "dBFS/Hz",
+      "y_min": -154.0,
+      "y_max": -144.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.13-f020",
@@ -6887,7 +11127,17 @@
         "8100mhz",
         "nsd",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "",
+      "x_unit": "",
+      "x_min": null,
+      "x_max": null,
+      "y_label": "",
+      "y_unit": "",
+      "y_min": null,
+      "y_max": null,
+      "axis_confidence": "low"
     },
     {
       "id": "4.12.13-f021",
@@ -6903,7 +11153,17 @@
         "rx",
         "8100mhz",
         "hd2"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Input Amplitude",
+      "x_unit": "dBFS",
+      "x_min": -60.0,
+      "x_max": 0.0,
+      "y_label": "HD2",
+      "y_unit": "dBFS",
+      "y_min": -120.0,
+      "y_max": -80.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.13-f022",
@@ -6919,7 +11179,17 @@
         "rx",
         "8100mhz",
         "hd3"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Input Amplitude",
+      "x_unit": "dBFS",
+      "x_min": -60.0,
+      "x_max": 0.0,
+      "y_label": "HD3",
+      "y_unit": "dBFS",
+      "y_min": -120.0,
+      "y_max": -80.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.13-f023",
@@ -6935,7 +11205,17 @@
         "rx",
         "8100mhz",
         "sfdr"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Digital Amplitude per Tone",
+      "x_unit": "dBFS",
+      "x_min": -100.0,
+      "x_max": 0.0,
+      "y_label": "2-tone SFDR",
+      "y_unit": "dBFS",
+      "y_min": -100.0,
+      "y_max": -72.5,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.13-f024",
@@ -6950,7 +11230,17 @@
       "tags": [
         "rx",
         "8100mhz"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Output Frequency",
+      "x_unit": "MHz",
+      "x_min": -250.0,
+      "x_max": 250.0,
+      "y_label": "Amplitude",
+      "y_unit": "dBFS",
+      "y_min": -120.0,
+      "y_max": 0.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.13-f025",
@@ -6965,7 +11255,17 @@
       "tags": [
         "rx",
         "8100mhz"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Output Frequency",
+      "x_unit": "MHz",
+      "x_min": -250.0,
+      "x_max": 250.0,
+      "y_label": "Amplitude",
+      "y_unit": "dBFS",
+      "y_min": -120.0,
+      "y_max": 0.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.13-f026",
@@ -6980,7 +11280,17 @@
       "tags": [
         "rx",
         "8100mhz"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Output Frequency",
+      "x_unit": "MHz",
+      "x_min": -250.0,
+      "x_max": 250.0,
+      "y_label": "Amplitude",
+      "y_unit": "dBFS",
+      "y_min": -120.0,
+      "y_max": 0.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.13-f027",
@@ -6995,7 +11305,17 @@
       "tags": [
         "rx",
         "8100mhz"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Output Frequency",
+      "x_unit": "MHz",
+      "x_min": -250.0,
+      "x_max": 250.0,
+      "y_label": "Amplitude",
+      "y_unit": "dBFS",
+      "y_min": -120.0,
+      "y_max": 0.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.13-f028",
@@ -7010,7 +11330,17 @@
       "tags": [
         "rx",
         "8100mhz"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Output Frequency",
+      "x_unit": "MHz",
+      "x_min": -250.0,
+      "x_max": 250.0,
+      "y_label": "Amplitude",
+      "y_unit": "dBFS",
+      "y_min": -120.0,
+      "y_max": 0.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.14-f001",
@@ -7025,7 +11355,17 @@
       "tags": [
         "rx",
         "9600mhz"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Input Frequency",
+      "x_unit": "MHz",
+      "x_min": 9400.0,
+      "x_max": 9800.0,
+      "y_label": "Input Amplitude",
+      "y_unit": "dB",
+      "y_min": -1.0,
+      "y_max": 1.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.14-f002",
@@ -7040,7 +11380,17 @@
       "tags": [
         "rx",
         "9600mhz"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "",
+      "x_unit": "",
+      "x_min": null,
+      "x_max": null,
+      "y_label": "",
+      "y_unit": "",
+      "y_min": null,
+      "y_max": null,
+      "axis_confidence": "low"
     },
     {
       "id": "4.12.14-f003",
@@ -7055,7 +11405,17 @@
       "tags": [
         "rx",
         "9600mhz"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "",
+      "x_unit": "",
+      "x_min": null,
+      "x_max": null,
+      "y_label": "",
+      "y_unit": "",
+      "y_min": null,
+      "y_max": null,
+      "axis_confidence": "low"
     },
     {
       "id": "4.12.14-f004",
@@ -7071,7 +11431,17 @@
         "rx",
         "9600mhz",
         "imd"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Input Amplitude per Tone",
+      "x_unit": "dBFS",
+      "x_min": -60.0,
+      "x_max": 0.0,
+      "y_label": "IMD3",
+      "y_unit": "dBFS",
+      "y_min": -120.0,
+      "y_max": -60.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.14-f005",
@@ -7088,7 +11458,17 @@
         "9600mhz",
         "imd",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA Setting",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 20.0,
+      "y_label": "IMD3",
+      "y_unit": "dBFS",
+      "y_min": -100.0,
+      "y_max": -40.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.14-f006",
@@ -7104,7 +11484,17 @@
         "rx",
         "9600mhz",
         "nsd"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Input Amplitude",
+      "x_unit": "dBFS",
+      "x_min": -100.0,
+      "x_max": 0.0,
+      "y_label": "NSD",
+      "y_unit": "dBFS/Hz",
+      "y_min": -154.0,
+      "y_max": -144.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.14-f007",
@@ -7121,7 +11511,17 @@
         "9600mhz",
         "nsd",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA Setting",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 20.0,
+      "y_label": "Noise Spectral Density",
+      "y_unit": "dBFS/Hz",
+      "y_min": -160.0,
+      "y_max": -140.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.14-f008",
@@ -7138,7 +11538,17 @@
         "9600mhz",
         "hd2",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA Setting",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 20.0,
+      "y_label": "HD2",
+      "y_unit": "dBFS",
+      "y_min": -110.0,
+      "y_max": -40.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.14-f009",
@@ -7155,7 +11565,17 @@
         "9600mhz",
         "hd3",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA Setting",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 20.0,
+      "y_label": "HD3",
+      "y_unit": "dBFS",
+      "y_min": -100.0,
+      "y_max": 0.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.14-f010",
@@ -7170,7 +11590,17 @@
       "tags": [
         "rx",
         "9600mhz"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Frequency",
+      "x_unit": "MHz",
+      "x_min": -750.0,
+      "x_max": 750.0,
+      "y_label": "Amplitude",
+      "y_unit": "dBFS",
+      "y_min": -120.0,
+      "y_max": 0.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.14-f011",
@@ -7185,7 +11615,17 @@
       "tags": [
         "rx",
         "9600mhz"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Output Frequency",
+      "x_unit": "MHz",
+      "x_min": -250.0,
+      "x_max": 250.0,
+      "y_label": "Amplitude",
+      "y_unit": "dBFS",
+      "y_min": -120.0,
+      "y_max": 0.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.14-f012",
@@ -7200,7 +11640,17 @@
       "tags": [
         "rx",
         "9600mhz"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Output Frequency",
+      "x_unit": "MHz",
+      "x_min": -250.0,
+      "x_max": 250.0,
+      "y_label": "Amplitude",
+      "y_unit": "dBFS",
+      "y_min": -120.0,
+      "y_max": 0.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.14-f013",
@@ -7215,7 +11665,17 @@
       "tags": [
         "rx",
         "9600mhz"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "",
+      "x_unit": "",
+      "x_min": null,
+      "x_max": null,
+      "y_label": "",
+      "y_unit": "",
+      "y_min": null,
+      "y_max": null,
+      "axis_confidence": "low"
     },
     {
       "id": "4.12.14-f014",
@@ -7230,7 +11690,17 @@
       "tags": [
         "rx",
         "9600mhz"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Output Frequency",
+      "x_unit": "MHz",
+      "x_min": -250.0,
+      "x_max": 250.0,
+      "y_label": "Amplitude",
+      "y_unit": "dBFS",
+      "y_min": -120.0,
+      "y_max": 0.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.14-f015",
@@ -7245,7 +11715,17 @@
       "tags": [
         "rx",
         "9600mhz"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Input Frequency",
+      "x_unit": "MHz",
+      "x_min": 9400.0,
+      "x_max": 9800.0,
+      "y_label": "Input Amplitude",
+      "y_unit": "dB",
+      "y_min": -1.0,
+      "y_max": 1.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.14-f016",
@@ -7260,7 +11740,17 @@
       "tags": [
         "rx",
         "9600mhz"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "",
+      "x_unit": "",
+      "x_min": null,
+      "x_max": null,
+      "y_label": "",
+      "y_unit": "",
+      "y_min": null,
+      "y_max": null,
+      "axis_confidence": "low"
     },
     {
       "id": "4.12.14-f017",
@@ -7275,7 +11765,17 @@
       "tags": [
         "rx",
         "9600mhz"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "",
+      "x_unit": "",
+      "x_min": null,
+      "x_max": null,
+      "y_label": "",
+      "y_unit": "",
+      "y_min": null,
+      "y_max": null,
+      "axis_confidence": "low"
     },
     {
       "id": "4.12.14-f018",
@@ -7292,7 +11792,17 @@
         "9600mhz",
         "imd",
         "dsa"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "DSA Setting",
+      "x_unit": "dB",
+      "x_min": 0.0,
+      "x_max": 20.0,
+      "y_label": "IMD3",
+      "y_unit": "dBFS",
+      "y_min": -100.0,
+      "y_max": -40.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.14-f019",
@@ -7308,7 +11818,17 @@
         "rx",
         "9600mhz",
         "imd"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Tone Spacing",
+      "x_unit": "MHz",
+      "x_min": 0.0,
+      "x_max": 500.0,
+      "y_label": "IMD3",
+      "y_unit": "dBFS",
+      "y_min": -130.0,
+      "y_max": -50.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.14-f020",
@@ -7324,7 +11844,17 @@
         "rx",
         "9600mhz",
         "nsd"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Input Amplitude",
+      "x_unit": "dBFS",
+      "x_min": -100.0,
+      "x_max": 0.0,
+      "y_label": "NSD",
+      "y_unit": "dBFS/Hz",
+      "y_min": -153.0,
+      "y_max": -143.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.14-f021",
@@ -7340,7 +11870,17 @@
         "rx",
         "9600mhz",
         "hd2"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Input Amplitude",
+      "x_unit": "dBFS",
+      "x_min": -60.0,
+      "x_max": 0.0,
+      "y_label": "HD2",
+      "y_unit": "dBFS",
+      "y_min": -120.0,
+      "y_max": -80.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.14-f022",
@@ -7356,7 +11896,17 @@
         "rx",
         "9600mhz",
         "hd3"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Input Amplitude",
+      "x_unit": "dBFS",
+      "x_min": -60.0,
+      "x_max": 0.0,
+      "y_label": "HD3",
+      "y_unit": "dBFS",
+      "y_min": -120.0,
+      "y_max": -50.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.14-f023",
@@ -7371,7 +11921,17 @@
       "tags": [
         "rx",
         "9600mhz"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Output Frequency",
+      "x_unit": "MHz",
+      "x_min": -250.0,
+      "x_max": 250.0,
+      "y_label": "Amplitude",
+      "y_unit": "dBFS",
+      "y_min": -120.0,
+      "y_max": 0.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.14-f024",
@@ -7386,7 +11946,17 @@
       "tags": [
         "rx",
         "9600mhz"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Output Frequency",
+      "x_unit": "MHz",
+      "x_min": -250.0,
+      "x_max": 250.0,
+      "y_label": "Amplitude",
+      "y_unit": "dBFS",
+      "y_min": -120.0,
+      "y_max": 0.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.14-f025",
@@ -7401,7 +11971,17 @@
       "tags": [
         "rx",
         "9600mhz"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Output Frequency",
+      "x_unit": "MHz",
+      "x_min": -250.0,
+      "x_max": 250.0,
+      "y_label": "Amplitude",
+      "y_unit": "dBFS",
+      "y_min": -120.0,
+      "y_max": 0.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.14-f026",
@@ -7416,7 +11996,17 @@
       "tags": [
         "rx",
         "9600mhz"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Output Frequency",
+      "x_unit": "MHz",
+      "x_min": -250.0,
+      "x_max": 250.0,
+      "y_label": "Amplitude",
+      "y_unit": "dBFS",
+      "y_min": -120.0,
+      "y_max": 0.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.14-f027",
@@ -7431,7 +12021,17 @@
       "tags": [
         "rx",
         "9600mhz"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Output Frequency",
+      "x_unit": "MHz",
+      "x_min": -250.0,
+      "x_max": 250.0,
+      "y_label": "Amplitude",
+      "y_unit": "dBFS",
+      "y_min": -120.0,
+      "y_max": 0.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.14-f028",
@@ -7446,7 +12046,17 @@
       "tags": [
         "rx",
         "9600mhz"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Output Frequency",
+      "x_unit": "MHz",
+      "x_min": -250.0,
+      "x_max": 250.0,
+      "y_label": "Amplitude",
+      "y_unit": "dBFS",
+      "y_min": -120.0,
+      "y_max": 0.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.15-f001",
@@ -7461,7 +12071,17 @@
       "tags": [
         "pll-clock",
         "phase noise"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "",
+      "x_unit": "",
+      "x_min": null,
+      "x_max": null,
+      "y_label": "",
+      "y_unit": "",
+      "y_min": null,
+      "y_max": null,
+      "axis_confidence": "low"
     },
     {
       "id": "4.12.15-f002",
@@ -7476,7 +12096,17 @@
       "tags": [
         "pll-clock",
         "phase noise"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Offset Frequency",
+      "x_unit": "Hz",
+      "x_min": 1000.0,
+      "x_max": 100000000.0,
+      "y_label": "Phase Noise",
+      "y_unit": "dBc/Hz",
+      "y_min": -160.0,
+      "y_max": -80.0,
+      "axis_confidence": "low"
     },
     {
       "id": "4.12.15-f003",
@@ -7491,7 +12121,17 @@
       "tags": [
         "pll-clock",
         "phase noise"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Offset Frequency",
+      "x_unit": "Hz",
+      "x_min": 1000.0,
+      "x_max": 100000000.0,
+      "y_label": "Phase Noise",
+      "y_unit": "dBc/Hz",
+      "y_min": -160.0,
+      "y_max": -80.0,
+      "axis_confidence": "low"
     },
     {
       "id": "4.12.15-f004",
@@ -7506,7 +12146,17 @@
       "tags": [
         "pll-clock",
         "phase noise"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "freq_offset",
+      "x_unit": "KHz",
+      "x_min": 1000.0,
+      "x_max": 100000000.0,
+      "y_label": "Phase Noise",
+      "y_unit": "dBc/Hz",
+      "y_min": -160.0,
+      "y_max": -80.0,
+      "axis_confidence": "low"
     },
     {
       "id": "4.12.15-f005",
@@ -7521,7 +12171,17 @@
       "tags": [
         "pll-clock",
         "phase noise"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Temperature",
+      "x_unit": "qC",
+      "x_min": -40.0,
+      "x_max": 100.0,
+      "y_label": "Phase Noise at 600kHz Offset",
+      "y_unit": "dBc/Hz",
+      "y_min": -130.0,
+      "y_max": -120.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.15-f006",
@@ -7536,7 +12196,17 @@
       "tags": [
         "pll-clock",
         "phase noise"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Temperature",
+      "x_unit": "qC",
+      "x_min": -40.0,
+      "x_max": 100.0,
+      "y_label": "Phase Noise at 1MHz Offset",
+      "y_unit": "dBc/Hz",
+      "y_min": -135.0,
+      "y_max": -125.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.15-f007",
@@ -7551,7 +12221,17 @@
       "tags": [
         "pll-clock",
         "phase noise"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Temperature",
+      "x_unit": "qC",
+      "x_min": -40.0,
+      "x_max": 100.0,
+      "y_label": "Phase Noise at 5MHz Offset",
+      "y_unit": "dBc/Hz",
+      "y_min": -150.0,
+      "y_max": -140.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.15-f008",
@@ -7566,7 +12246,17 @@
       "tags": [
         "pll-clock",
         "phase noise"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Offset Frequency",
+      "x_unit": "Hz",
+      "x_min": 1000.0,
+      "x_max": 100000000.0,
+      "y_label": "Phase Noise",
+      "y_unit": "dBc/Hz",
+      "y_min": -160.0,
+      "y_max": -80.0,
+      "axis_confidence": "low"
     },
     {
       "id": "4.12.15-f009",
@@ -7581,7 +12271,17 @@
       "tags": [
         "pll-clock",
         "phase noise"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Offset Frequency",
+      "x_unit": "Hz",
+      "x_min": 1000.0,
+      "x_max": 100000000.0,
+      "y_label": "Phase Noise",
+      "y_unit": "dBc/Hz",
+      "y_min": -160.0,
+      "y_max": -80.0,
+      "axis_confidence": "low"
     },
     {
       "id": "4.12.15-f010",
@@ -7596,7 +12296,17 @@
       "tags": [
         "pll-clock",
         "phase noise"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Temperature",
+      "x_unit": "qC",
+      "x_min": -40.0,
+      "x_max": 100.0,
+      "y_label": "Integrated Phase Noise",
+      "y_unit": "dBc",
+      "y_min": -60.0,
+      "y_max": -40.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.15-f011",
@@ -7611,7 +12321,17 @@
       "tags": [
         "pll-clock",
         "phase noise"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Temperature",
+      "x_unit": "qC",
+      "x_min": -40.0,
+      "x_max": 100.0,
+      "y_label": "Phase Noise at 800kHz Offset",
+      "y_unit": "dBc/Hz",
+      "y_min": -135.0,
+      "y_max": -125.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.15-f012",
@@ -7626,7 +12346,17 @@
       "tags": [
         "pll-clock",
         "phase noise"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Temperature",
+      "x_unit": "qC",
+      "x_min": -40.0,
+      "x_max": 100.0,
+      "y_label": "Phase Noise at 1.8MHz Offset",
+      "y_unit": "dBc/Hz",
+      "y_min": -140.0,
+      "y_max": -130.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.15-f013",
@@ -7641,7 +12371,17 @@
       "tags": [
         "pll-clock",
         "phase noise"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Temperature",
+      "x_unit": "qC",
+      "x_min": -40.0,
+      "x_max": 100.0,
+      "y_label": "Phase Noise at 50MHz Offset",
+      "y_unit": "dBc/Hz",
+      "y_min": -160.0,
+      "y_max": -150.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.15-f014",
@@ -7656,7 +12396,17 @@
       "tags": [
         "pll-clock",
         "phase noise"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Offset Frequency",
+      "x_unit": "Hz",
+      "x_min": 1000.0,
+      "x_max": 100000000.0,
+      "y_label": "Phase Noise",
+      "y_unit": "dBc/Hz",
+      "y_min": -160.0,
+      "y_max": -80.0,
+      "axis_confidence": "low"
     },
     {
       "id": "4.12.15-f015",
@@ -7671,7 +12421,17 @@
       "tags": [
         "pll-clock",
         "phase noise"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Offset Frequency",
+      "x_unit": "Hz",
+      "x_min": 1000.0,
+      "x_max": 100000000.0,
+      "y_label": "Phase Noise",
+      "y_unit": "dBc/Hz",
+      "y_min": -160.0,
+      "y_max": -80.0,
+      "axis_confidence": "low"
     },
     {
       "id": "4.12.15-f016",
@@ -7686,7 +12446,17 @@
       "tags": [
         "pll-clock",
         "phase noise"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Offset Frequency",
+      "x_unit": "Hz",
+      "x_min": 1000.0,
+      "x_max": 100000000.0,
+      "y_label": "Phase Noise",
+      "y_unit": "dBc/Hz",
+      "y_min": -160.0,
+      "y_max": -80.0,
+      "axis_confidence": "low"
     },
     {
       "id": "4.12.15-f017",
@@ -7701,7 +12471,17 @@
       "tags": [
         "pll-clock",
         "phase noise"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Offset Frequency",
+      "x_unit": "Hz",
+      "x_min": 1000.0,
+      "x_max": 100000000.0,
+      "y_label": "Phase Noise",
+      "y_unit": "dBc/Hz",
+      "y_min": -160.0,
+      "y_max": -80.0,
+      "axis_confidence": "low"
     },
     {
       "id": "4.12.15-f018",
@@ -7716,7 +12496,17 @@
       "tags": [
         "pll-clock",
         "phase noise"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Offset Frequency",
+      "x_unit": "Hz",
+      "x_min": 1000.0,
+      "x_max": 100000000.0,
+      "y_label": "Phase Noise",
+      "y_unit": "dBc/Hz",
+      "y_min": -160.0,
+      "y_max": -80.0,
+      "axis_confidence": "low"
     },
     {
       "id": "4.12.15-f019",
@@ -7731,7 +12521,17 @@
       "tags": [
         "pll-clock",
         "phase noise"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Offset Frequency",
+      "x_unit": "Hz",
+      "x_min": 1000.0,
+      "x_max": 100000000.0,
+      "y_label": "Phase Noise",
+      "y_unit": "dBc/Hz",
+      "y_min": -160.0,
+      "y_max": -80.0,
+      "axis_confidence": "low"
     },
     {
       "id": "4.12.15-f020",
@@ -7746,7 +12546,17 @@
       "tags": [
         "pll-clock",
         "phase noise"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Temperature",
+      "x_unit": "qC",
+      "x_min": -40.0,
+      "x_max": 120.0,
+      "y_label": "Integrated Phase Noise",
+      "y_unit": "dBc",
+      "y_min": -60.0,
+      "y_max": -40.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.15-f021",
@@ -7761,7 +12571,17 @@
       "tags": [
         "pll-clock",
         "phase noise"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Temperature",
+      "x_unit": "qC",
+      "x_min": -40.0,
+      "x_max": 100.0,
+      "y_label": "Phase Noise at 800kHz Offset",
+      "y_unit": "dBc/Hz",
+      "y_min": -135.0,
+      "y_max": -125.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.15-f022",
@@ -7776,7 +12596,17 @@
       "tags": [
         "pll-clock",
         "phase noise"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Temperature",
+      "x_unit": "qC",
+      "x_min": -40.0,
+      "x_max": 100.0,
+      "y_label": "Phase Noise at 1.8MHz Offset",
+      "y_unit": "dBc/Hz",
+      "y_min": -140.0,
+      "y_max": -130.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.15-f023",
@@ -7791,7 +12621,17 @@
       "tags": [
         "pll-clock",
         "phase noise"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Temperature",
+      "x_unit": "qC",
+      "x_min": -40.0,
+      "x_max": 100.0,
+      "y_label": "Phase Noise at 50MHz Offset",
+      "y_unit": "dBc/Hz",
+      "y_min": -160.0,
+      "y_max": -150.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.15-f024",
@@ -7806,7 +12646,17 @@
       "tags": [
         "pll-clock",
         "phase noise"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Offset Frequency",
+      "x_unit": "Hz",
+      "x_min": 1000.0,
+      "x_max": 100000000.0,
+      "y_label": "Phase Noise",
+      "y_unit": "dBc/Hz",
+      "y_min": -160.0,
+      "y_max": -80.0,
+      "axis_confidence": "low"
     },
     {
       "id": "4.12.15-f025",
@@ -7821,7 +12671,17 @@
       "tags": [
         "pll-clock",
         "phase noise"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Offset Frequency",
+      "x_unit": "Hz",
+      "x_min": 1000.0,
+      "x_max": 100000000.0,
+      "y_label": "Phase Noise",
+      "y_unit": "dBc/Hz",
+      "y_min": -160.0,
+      "y_max": -80.0,
+      "axis_confidence": "low"
     },
     {
       "id": "4.12.15-f026",
@@ -7836,7 +12696,17 @@
       "tags": [
         "pll-clock",
         "phase noise"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Temperature",
+      "x_unit": "qC",
+      "x_min": -40.0,
+      "x_max": 100.0,
+      "y_label": "Phase Noise at 600kHz Offset",
+      "y_unit": "dBc/Hz",
+      "y_min": -130.0,
+      "y_max": -120.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.15-f027",
@@ -7851,7 +12721,17 @@
       "tags": [
         "pll-clock",
         "phase noise"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Temperature",
+      "x_unit": "qC",
+      "x_min": -40.0,
+      "x_max": 100.0,
+      "y_label": "Phase Noise at 1MHz Offset",
+      "y_unit": "dBc/Hz",
+      "y_min": -135.0,
+      "y_max": -125.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.15-f028",
@@ -7866,7 +12746,17 @@
       "tags": [
         "pll-clock",
         "phase noise"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Temperature",
+      "x_unit": "qC",
+      "x_min": -40.0,
+      "x_max": 100.0,
+      "y_label": "Phase Noise at 5MHz Offset",
+      "y_unit": "dBc/Hz",
+      "y_min": -150.0,
+      "y_max": -140.0,
+      "axis_confidence": "high"
     },
     {
       "id": "4.12.15-f029",
@@ -7881,7 +12771,17 @@
       "tags": [
         "pll-clock",
         "phase noise"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Offset Frequency",
+      "x_unit": "Hz",
+      "x_min": 1000.0,
+      "x_max": 100000000.0,
+      "y_label": "Phase Noise",
+      "y_unit": "dBc/Hz",
+      "y_min": -160.0,
+      "y_max": -80.0,
+      "axis_confidence": "low"
     },
     {
       "id": "4.12.15-f030",
@@ -7896,7 +12796,17 @@
       "tags": [
         "pll-clock",
         "phase noise"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Offset Frequency",
+      "x_unit": "Hz",
+      "x_min": 1000.0,
+      "x_max": 100000000.0,
+      "y_label": "Phase Noise",
+      "y_unit": "dBc/Hz",
+      "y_min": -160.0,
+      "y_max": -80.0,
+      "axis_confidence": "low"
     },
     {
       "id": "4.12.15-f031",
@@ -7911,7 +12821,17 @@
       "tags": [
         "pll-clock",
         "phase noise"
-      ]
+      ],
+      "confidence": "medium",
+      "x_label": "Phase Noise",
+      "x_unit": "dBc",
+      "x_min": -40.0,
+      "x_max": 120.0,
+      "y_label": "Temperature",
+      "y_unit": "qC",
+      "y_min": -160.0,
+      "y_max": -60.0,
+      "axis_confidence": "high"
     }
   ]
 }
