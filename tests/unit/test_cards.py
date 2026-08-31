@@ -96,7 +96,7 @@ from datasheet_analyzer.models import (
     SpecSet,
     SpecUnit,
 )
-from datasheet_analyzer.publish import cards_current
+from datasheet_analyzer.publish import cards_current, retire_cards
 
 DOC = "datasheet-1f2e3d4c"
 DOC_HASH = "1f2e3d4c" + "0" * 56
@@ -1222,3 +1222,57 @@ class TestCorpusKey:
         _republish_to_library(part_dir, tmp_path / "library")
         assert cards_current(part_dir, "1") is False
         assert load_card(part_dir, CARD_POWER, card_version="1") is None
+
+
+class TestRetiringCardsOnRepublish:
+    """The hole `corpus_key` cannot close, and what closes it instead.
+
+    `corpus_key` keys on *where* each document resolved, which is exactly what
+    a move changes — and exactly what a **rebuild in place** does not. Phase
+    6.5's rebuild found the cost: AFE7950's power card survived with a matching
+    `corpus_key`, `card_version` and `schema_version`, and 112 of its 143
+    values then cited p.21 for a record the rebuilt corpus prints on p.22,
+    because per-row page pinning had moved them.
+
+    So a build retires the cards it supersedes. Missing is a documented state
+    that rebuilds on demand; stale-but-current-looking is the one state
+    invariant 8 exists to prevent.
+    """
+
+    def test_a_rebuild_in_place_leaves_the_key_unchanged(self, tmp_path):
+        """The defect itself, pinned: the key cannot see a republish in place."""
+        part_dir = tmp_path / "parts" / "REF9000"
+        publish_corpus(part_dir, "REF9000", reference_records(), sections=SECTIONS)
+        before = part_corpus_key(part_dir)
+        publish_corpus(part_dir, "REF9000", reference_records(), sections=SECTIONS)
+        assert part_corpus_key(part_dir) == before
+
+    def test_retiring_removes_every_card_file_and_reports_how_many(self, tmp_path):
+        part_dir = tmp_path / "parts" / "REF9000"
+        publish_corpus(part_dir, "REF9000", reference_records(), sections=SECTIONS)
+        publish_part_cards(part_dir, "REF9000")
+        cards_dir = part_dir / CARDS_DIRNAME
+        published = sorted(path.name for path in cards_dir.iterdir())
+        assert published, "the fixture must publish cards, or this proves nothing"
+
+        removed = retire_cards(part_dir)
+
+        assert removed == len(published)
+        assert sorted(path.name for path in cards_dir.iterdir()) == []
+
+    def test_retiring_a_part_with_no_cards_is_a_no_op(self, tmp_path):
+        part_dir = tmp_path / "parts" / "REF9000"
+        publish_corpus(part_dir, "REF9000", reference_records(), sections=SECTIONS)
+        assert retire_cards(part_dir) == 0
+
+    def test_the_reader_rebuilds_what_the_build_retired(self, tmp_path):
+        part_dir = tmp_path / "parts" / "REF9000"
+        publish_corpus(part_dir, "REF9000", reference_records(), sections=SECTIONS)
+        before = load_or_build_card(part_dir, "REF9000", CARD_POWER, card_version="1")
+        assert before.rows
+
+        retire_cards(part_dir)
+        assert load_card(part_dir, CARD_POWER, card_version="1") is None
+
+        after = load_or_build_card(part_dir, "REF9000", CARD_POWER, card_version="1")
+        assert [row.label for row in after.rows] == [row.label for row in before.rows]

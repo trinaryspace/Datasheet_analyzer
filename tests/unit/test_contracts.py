@@ -284,11 +284,18 @@ def test_cached_extraction_still_deserializes(tmp_path: Path):
     assert raw.sections[0].page_start == 2
 
 
-def test_pdf_layout_output_version_is_untouched():
-    """Highlighting derives geometry on demand precisely so this stays put."""
+def test_pdf_layout_output_version_moves_only_on_a_deliberate_re_extraction():
+    """It gates the whole extraction cache, so it changes on purpose or not at all.
+
+    Highlighting derives geometry on demand precisely so this stays put.
+    `tables-09` is phase 6.5's one permitted bump (wave 2, ticket 09): wave 1
+    changed what the layout engine reads, and the corpus was re-extracted and
+    rebuilt in the same change. Anything that moves it again owns the same
+    rebuild.
+    """
     from datasheet_analyzer.extract.pdf_layout import PdfLayoutBackend
 
-    assert PdfLayoutBackend.output_version == "tables-08"
+    assert PdfLayoutBackend.output_version == "tables-09"
 
 
 # --- applicability ------------------------------------------------------------

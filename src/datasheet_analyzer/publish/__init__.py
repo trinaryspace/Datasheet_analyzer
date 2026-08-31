@@ -37,6 +37,7 @@ from datasheet_analyzer.publish.writer import (
     read_manifest,
     registers_current,
     resolve_artifact_ref,
+    retire_cards,
     specs_current,
     write_corpus,
 )
@@ -63,6 +64,7 @@ __all__ = [
     "registers_current",
     "resolve_artifact_ref",
     "resolve_plot_file",
+    "retire_cards",
     "search_index_current",
     "specs_current",
     "write_corpus",

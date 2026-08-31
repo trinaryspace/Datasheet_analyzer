@@ -57,7 +57,7 @@ from datasheet_analyzer.models import (
     RawDocument,
     SourceDocument,
 )
-from datasheet_analyzer.publish import write_corpus
+from datasheet_analyzer.publish import retire_cards, write_corpus
 from datasheet_analyzer.publish.plots import (
     fetch_plot_images,
     render_figure_regions,
@@ -427,6 +427,7 @@ def build_part(
     use_llm: bool = True,
     on_progress: Callable[[str], None] | None = None,
     store: LibraryStore | None = None,
+    self_contained: bool = False,
 ) -> BuildResult:
     """Build one part corpus end to end.
 
@@ -443,6 +444,14 @@ def build_part(
     it, not the contents of a folder. `None` constructs the store named by
     ``settings``. `parts/<PART>/sources.json` is regenerated from the resolved
     set at publish time and is never read back as the source of truth.
+
+    ``self_contained`` (ADR 0008) publishes every artifact under
+    ``parts/<PART>/docs/`` instead of the shared library store, so the part
+    directory alone is a complete, readable corpus. That is what a *tracked*
+    reference corpus must be: `/library/` is gitignored local shelf state, so
+    a committed corpus carrying `@library/…` references is unreadable on a
+    fresh clone. Default `False` keeps publish-once/reference-many for the
+    working shelf.
     """
     pdf_path = Path(pdf_path)
     part_dir = settings.parts_dir / part_number
@@ -495,10 +504,11 @@ def build_part(
     # once, under the library's shared document store; each part's manifest
     # references it. Plot pixels are rendered into the root the publisher will
     # use, so a figure is never orphaned from the record that names it.
-    shared_docs_dir = settings.library_dir / "docs"
+    shared_docs_dir = None if self_contained else settings.library_dir / "docs"
 
     def _doc_out_dir(raw: RawDocument) -> Path:
-        return shared_docs_dir / doc_dir_name(raw)
+        root = (part_dir / "docs") if shared_docs_dir is None else shared_docs_dir
+        return root / doc_dir_name(raw)
 
     all_plans: list[tuple[RawDocument, list[SectionPlan], dict[str, str]]] = []
     _progress("structuring")
@@ -602,6 +612,13 @@ def build_part(
         plotsets=plotsets,
         shared_docs_dir=shared_docs_dir,
     )
+    # Every design card on disk was computed from the corpus this build just
+    # replaced, so it is retired here rather than left looking current
+    # (`publish.retire_cards`). `load_or_build_card` rebuilds on demand.
+    retired = retire_cards(part_dir)
+    if retired:
+        log.info("retired %d stale design-card file(s) after republish", retired)
+
     # `pins.json` lands beside the document's other artifacts, wherever they
     # were published. Written only for a document that actually yielded a pin
     # table: a part with none publishes no file at all rather than an empty
@@ -612,10 +629,10 @@ def build_part(
     for raw in docs:
         build = pinbuilds.get(raw.source.content_hash)
         if build is not None and build.pinset is not None:
-            write_pinset(_doc_out_dir(raw), build.pinset, shared=True)
+            write_pinset(_doc_out_dir(raw), build.pinset, shared=not self_contained)
         regbuild = registerbuilds.get(raw.source.content_hash)
         if regbuild is not None and regbuild.registerset is not None:
-            write_registerset(_doc_out_dir(raw), regbuild.registerset, shared=True)
+            write_registerset(_doc_out_dir(raw), regbuild.registerset, shared=not self_contained)
 
     # sources.json is derived: regenerated here from the resolved document
     # set so `dsa status` and the batch skip gate keep reading what they

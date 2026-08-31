@@ -301,6 +301,39 @@ def cards_current(part_dir: Path, card_version: str) -> bool:
     return True
 
 
+def retire_cards(part_dir: Path | str) -> int:
+    """Remove a part's published design cards. Returns how many files went.
+
+    A card is a pure function of the *published corpus* — which records the
+    selectors matched, and what page each one prints on — so republishing the
+    corpus makes every card on disk a statement about bytes that no longer
+    exist. `corpus_key` cannot see that: it keys on *where* each document
+    resolved (which is what a moved document changes) and two builds of the
+    same part into the same place resolve identically.
+
+    Measured, on the phase 6.5 rebuild that found this: AFE7950's power card
+    survived a rebuild with a matching `corpus_key`, `card_version` and
+    `schema_version`, and **112 of its 143 values then cited p.21 for a record
+    the rebuilt corpus prints on p.22** — per-row page pinning had moved them.
+    `audit_card` caught it, which is the system working; serving it would have
+    been the failure.
+
+    Retiring beats re-keying because a card is cheap to rebuild and
+    `load_or_build_card` does it on demand: *missing* is a documented state
+    that reads as "not built yet", where *stale but current-looking* is the
+    one state invariant 8 exists to prevent.
+    """
+    cards_dir = Path(part_dir) / CARDS_DIRNAME
+    if not cards_dir.is_dir():
+        return 0
+    removed = 0
+    for path in sorted(cards_dir.iterdir()):
+        if path.is_file() and path.suffix in {".json", ".md"}:
+            path.unlink()
+            removed += 1
+    return removed
+
+
 def _shared_neutral(artifact: SpecSet | PlotSet, shared: bool):
     """A shared artifact carries no part number; a per-part one is unchanged.
 
