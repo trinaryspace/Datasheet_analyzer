@@ -730,13 +730,18 @@ ran establishes nothing.
 - `docs/adr/` — architecture decision records, including
   `0005-documents-apply-to-parts.md` (why a document applies to parts instead
   of belonging to one), `0006-auto-resolved-scope.md` (why there is still no
-  "all parts" scope) and `0007-deterministic-derived-artifacts.md` (why no
-  model may appear anywhere in a derived value's path)
+  "all parts" scope), `0007-deterministic-derived-artifacts.md` (why no
+  model may appear anywhere in a derived value's path) and
+  `0008-tracked-corpora-are-current-and-self-contained.md` (what version a
+  committed corpus must be at, and why it may not reference the library)
 - `KNOWN_SHORTCOMINGS.md` — what this tool cannot currently do, why, what it
   does instead, and what would close each entry
 - `PHASE_1_REPORT.md` / `PHASE_2_REPORT.md` / `PHASE_3_REPORT.md` /
-  `PHASE_4_REPORT.md` / `PHASE_5_REPORT.md` / `PHASE_6_REPORT.md` — measured
-  results per phase (all six phases are shipped; PHASE 4 covers the
+  `PHASE_4_REPORT.md` / `PHASE_5_REPORT.md` / `PHASE_6_REPORT.md` /
+  `PHASE_6_5_REPORT.md` — measured
+  results per phase (all shipped; PHASE 6.5 is the fidelity pass that added no
+  capability and made the layer under the derived artifacts read the page
+  correctly; PHASE 4 covers the
   vendor-neutral layout core + four-part gate, PHASE 5 the agent-native access
   surface: retrieval core, aliases, search, confidence, `ask`, projects, MCP,
   `AGENT.md`; PHASE 6 the design-time content: the numeric layer, pins,

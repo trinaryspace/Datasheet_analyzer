@@ -21,6 +21,11 @@ Reference parts (built corpora under `parts/`):
 | AFE7950 | `afe7950.pdf` | SBASA41E | 146 | 39 | 619 | 514 |
 | AFE7953 | `afe7953.pdf` | SBASAN1A | 134 | 39 | 536 | 492 |
 
+Both are committed at pipeline **0.5.0**, published self-contained (ADR
+0008): every section, `specs.json`, `plots.json`, `search_index.json` and
+figure lives under `parts/<PART>/docs/`, and no manifest reference needs the
+gitignored `/library/` to resolve.
+
 Gate parts (built in-tests from the ungated `tests/fixtures/pdf/` copies; measured in `PHASE_4_REPORT.md`):
 
 | Part | Vendor | Revision | Pages | Sections | Tables acc/rej | Specs | Plot files | Verify |
@@ -46,6 +51,7 @@ source .venv/Scripts/activate       # puts `dsa` and `python` on PATH
 dsa build afe7950.pdf --part AFE7950                    # corpus + specs.json + plots.json
 dsa build afe7953.pdf --part AFE7953                    # second reference part
 dsa build ad9081.pdf --part AD9081 --vendor adi         # explicit vendor override (default: detected + pinned)
+dsa build afe7950.pdf --part AFE7950 --self-contained    # publish under parts/<PART>/docs/ instead of the shared library (ADR 0008: what a *tracked* corpus must be)
 dsa build lm741.pdf --part LM741                         # brand-less: pin --vendor unknown for the layout floor
 dsa verify --part AD9081 --pdf tests/fixtures/pdf/ad9081.pdf --specs  # non-TI golden (per-part yaml)
 dsa batch datasheets/                                   # one part corpus per PDF in a dir (unchanged parts skipped; --workers N parallel, default 4)
@@ -75,9 +81,10 @@ dsa serve                                              # the local workbench in 
 dsa serve --mcp                                        # the corpus as MCP tools over local stdio (needs the [mcp] extra)
 dsa status                                             # vendor + evidence + confidence mix + per-doc extraction stats + projects
 
-# test (fully offline, ~85 s — the ungated phase-4 gate builds four real PDFs)
+# test (fully offline — the ungated phase-4 gate builds four real PDFs)
 python -m pytest tests/ -q
 python -m ruff check src tests
+python -m ruff format --check .    # standing gate since phase 6.5, wave 0
 ```
 
 Without activation, call `.venv/Scripts/dsa.exe` / `.venv/Scripts/python.exe`
@@ -483,10 +490,18 @@ The protocol also ships in-repo as the Claude Code skill
 
 ## Definition of done (every change)
 
-1. New code lands with its tests in the same change; `pytest` and `ruff` green.
+1. New code lands with its tests in the same change; `pytest`, `ruff check`
+   and `ruff format --check .` green.
 2. Pain-point tests exist for anything that can silently corrupt data
    (span/footnote/provenance class bugs).
 3. Integration proof on the real AFE7950 (hermetic fixtures) still passes.
 4. Shipped capabilities update the docs: measured numbers in the relevant
    `PHASE_<N>_REPORT.md` or README, and this file if architecture/conventions
    changed.
+5. A change that alters published output owns the rebuild of the **tracked**
+   corpora (ADR 0008): `parts/AFE7950` and `parts/AFE7953` are committed at
+   `PIPELINE_VERSION`, published `--self-contained`, and
+   `tests/integration/test_corpus_currency.py` fails if they are not.
+   `PdfLayoutBackend.output_version` gates the whole extraction cache, and a
+   change under `structure/` does **not** — see `KNOWN_SHORTCOMINGS.md`;
+   landing one needs a deliberate `dsa build --no-cache`.

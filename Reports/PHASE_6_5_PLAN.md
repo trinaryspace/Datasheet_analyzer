@@ -1,7 +1,10 @@
 # PHASE 6.5 PLAN — Extraction Fidelity
 
-**Status: planned.** Execution contract for `.scratch/extraction-fidelity/`.
-Superseded on landing by `Reports/PHASE_6_5_REPORT.md`.
+**Status: superseded.** This was the execution contract for
+`.scratch/extraction-fidelity/`. It landed; the measured results are in
+`Reports/PHASE_6_5_REPORT.md`, and wave 1's own write-up is
+`Reports/PHASE_6_5_WAVE_1_REPORT.md`. Kept as the record of what was planned
+and why, against which the report can be read.
 
 **Depends on Phase 6.** Every defect below was found by Phase 6's gates and is
 recorded with a measured number in `KNOWN_SHORTCOMINGS.md`. Nothing here is a

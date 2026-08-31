@@ -48,10 +48,20 @@ prints.
 parameter whose recommended maximum equals its absolute-maximum rating — a
 genuine design hazard that is invisible when the two tables are read pages
 apart. The phase gate asks for at least one such parameter to be flagged **if
-one exists in the reference parts**. None does: across all eleven built parts
-the only comparable pairs are AFE7950/AFE7953's `TJ` (150 °C rating against a
-110 °C recommended maximum, margin 40 °C) and their `DVDD0P9` rail (1.2 V
-against 0.95 V, margin 0.25 V), both hand-verified against the printed pages.
+one exists in the reference parts**. None does. **Re-measured across all
+eleven rebuilt parts: 6 comparable pairs, 0 of them equal** —
+
+| Part | Parameter | Rating | Recommended max | Margin |
+|---|---|---|---|---|
+| AFE7950 | `DVDD0P9, VDDT0P9` | 1.2 V | 0.95 V | 0.25 V |
+| AFE7950 | Junction temperature | 150 °C | 110 °C | 40 °C |
+| AFE7953 | `DVDD0P9, VDDT0P9` | 1.2 V | 0.95 V | 0.25 V |
+| AFE7953 | Junction temperature | 150 °C | 110 °C | 40 °C |
+| LMX1204 | Power supply voltage | 2.75 V | 2.6 V | 0.15 V |
+| LMX1204 | Junction temperature | 150 °C | 125 °C | 25 °C |
+
+No pair has zero margin, and none is negative. LMX1204's two pairs are new
+here: it was not a built part when phase 6 recorded this entry.
 
 **What the tool does instead.** The flag is proved on a synthetic corpus in
 `tests/unit/test_cards.py::TestLimitsCard`, and

@@ -48,20 +48,22 @@ wave 2 is what rebuilds. Write an ADR answering:
 
 **Blocked by:** 05, 06, 07, 08 — all of wave 1.
 
-**Status:** blocked
+**Status:** done — `Reports/PHASE_6_5_REPORT.md`
 
-- [ ] `output_version` bumped once; no other cache-key change in this phase
-- [ ] Full re-extract and rebuild of all eleven parts completed
-- [ ] Every acceptance-gate item in `Reports/PHASE_6_5_PLAN.md` measured and
+- [x] `output_version` bumped once; no other cache-key change in this phase
+- [x] Full re-extract and rebuild of all eleven parts completed
+- [x] Every acceptance-gate item in `Reports/PHASE_6_5_PLAN.md` measured and
       recorded with its number
-- [ ] Every Phase 6 gate at or above its recorded number
-- [ ] Bit fields re-attempted; un-parked or re-parked on the gate's verdict
-- [ ] `KNOWN_SHORTCOMINGS.md` updated — closed entries deleted, surviving
+- [x] Every Phase 6 gate at or above its recorded number
+- [x] Bit fields re-attempted; **re-parked** on the gate's verdict — four of
+      the six sampled registers read exactly right (was two), recall 43% (was
+      11%), precision 100%; four is not six
+- [x] `KNOWN_SHORTCOMINGS.md` updated — closed entries deleted, surviving
       entries re-measured
-- [ ] ADR written answering the three corpus-versioning questions
-- [ ] `Reports/PHASE_6_5_REPORT.md` written; `Reports/PHASE_6_5_PLAN.md` marked
+- [x] ADR written answering the three corpus-versioning questions
+- [x] `Reports/PHASE_6_5_REPORT.md` written; `Reports/PHASE_6_5_PLAN.md` marked
       superseded
-- [ ] `pytest` offline and green; `ruff check` and `ruff format --check` clean
+- [x] `pytest` offline and green; `ruff check` and `ruff format --check` clean
 
 **Owns:** the rebuild; `src/datasheet_analyzer/extract/pdf_layout.py`
 (`output_version` only), `Reports/PHASE_6_5_REPORT.md`,
