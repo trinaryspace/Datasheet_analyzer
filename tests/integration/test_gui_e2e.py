@@ -54,8 +54,7 @@ from datasheet_analyzer.publish import document_dirs, read_manifest
 PAGE_W, PAGE_H = 612.0, 792.0
 
 #: AD9081-style column left edges, the geometry the layout engine is tuned to.
-X = {"param": 56.0, "conditions": 222.0, "min": 435.0, "typ": 460.0,
-     "max": 515.0, "unit": 548.0}
+X = {"param": 56.0, "conditions": 222.0, "min": 435.0, "typ": 460.0, "max": 515.0, "unit": 548.0}
 PITCH = 13.0
 CAP_Y = 140.0
 HDR_Y = 153.0
@@ -71,8 +70,9 @@ SPEC_NEEDLE = "DAC RESOLUTION"
 DEADLINE = 300.0
 
 
-def _write(path: Path, pages: list[list[tuple[float, float, str]]],
-           toc: list[list] | None = None) -> Path:
+def _write(
+    path: Path, pages: list[list[tuple[float, float, str]]], toc: list[list] | None = None
+) -> Path:
     doc = fitz.open()
     for lines in pages:
         page = doc.new_page(width=PAGE_W, height=PAGE_H)
@@ -127,8 +127,10 @@ def _register_map(directory: Path) -> Path:
     return _write(
         directory / "ad9081_register_map.pdf",
         [
-            [(56.0, 72.0, "AD9081 Register Map"),
-             (56.0, 96.0, "0x0000 SPI configuration register, reset value 0x00.")],
+            [
+                (56.0, 72.0, "AD9081 Register Map"),
+                (56.0, 96.0, "0x0000 SPI configuration register, reset value 0x00."),
+            ],
             [(56.0, 72.0, "0x0100 DAC page select register, reset value 0x01.")],
         ],
     )
@@ -139,9 +141,11 @@ def _app_note(directory: Path) -> Path:
     return _write(
         directory / "afe79xx_app_note.pdf",
         [
-            [(56.0, 72.0, "JESD204C Interface Guide"),
-             (56.0, 96.0, "Applies to AFE7950 and AFE7952 transceivers."),
-             (56.0, 120.0, "Link initialization is identical on both devices.")],
+            [
+                (56.0, 72.0, "JESD204C Interface Guide"),
+                (56.0, 96.0, "Applies to AFE7950 and AFE7952 transceivers."),
+                (56.0, 120.0, "Link initialization is identical on both devices."),
+            ],
             [(56.0, 72.0, "Lane mapping is fixed by the SERDES configuration register.")],
         ],
     )
@@ -368,9 +372,7 @@ def registry(settings: Settings) -> JobRegistry:
 
 @pytest.fixture(scope="module")
 def model() -> FakeAnthropic:
-    return FakeAnthropic(
-        find_spec_script("The AD9081 DAC resolution is 16 bits (§1, p.1).")
-    )
+    return FakeAnthropic(find_spec_script("The AD9081 DAC resolution is 16 bits (§1, p.1)."))
 
 
 @pytest.fixture(scope="module")
@@ -388,7 +390,7 @@ def http(settings, registry, model, classifier, request):
     app = create_app(settings)
     app.dependency_overrides[deps.get_settings_dep] = lambda: settings
     app.dependency_overrides[deps.get_job_registry] = lambda: registry
-    app.dependency_overrides[chat_router.get_chat_client_factory] = lambda: (lambda: model)
+    app.dependency_overrides[chat_router.get_chat_client_factory] = lambda: lambda: model
     with TestClient(app) as client:
         yield client
 
@@ -470,9 +472,7 @@ class TestTheWholePath:
     def test_2b_the_scan_wrote_nothing(self, settings: Settings):
         """A scan is a proposal: it may not build, publish or register."""
         assert not settings.parts_dir.exists() or not list(settings.parts_dir.iterdir())
-        assert not settings.library_dir.exists() or not list(
-            settings.library_dir.glob("*.json")
-        )
+        assert not settings.library_dir.exists() or not list(settings.library_dir.glob("*.json"))
 
     def test_3_start_builds_every_confirmed_proposal(self, http, inbox, walk, registry):
         """The review screen's confirmed rows, used verbatim.
@@ -549,9 +549,7 @@ class TestTheWholePath:
             assert not local.exists() or not list(local.iterdir())
         walk["note_hash"] = hash_a
 
-    def test_4b_afe7952_is_a_part_whose_corpus_is_only_the_app_note(
-        self, settings: Settings, walk
-    ):
+    def test_4b_afe7952_is_a_part_whose_corpus_is_only_the_app_note(self, settings: Settings, walk):
         manifest = read_manifest(part_dir(settings, FAMILY_PARTS[1]))
         assert manifest is not None
         assert manifest.part_number == FAMILY_PARTS[1]
@@ -559,9 +557,7 @@ class TestTheWholePath:
         assert manifest.documents[0].doc_type.value == "app_note"
         assert manifest.sections, "the note's sections must be published"
 
-    def test_4c_ad9081_holds_its_own_two_documents_and_not_the_note(
-        self, settings: Settings, walk
-    ):
+    def test_4c_ad9081_holds_its_own_two_documents_and_not_the_note(self, settings: Settings, walk):
         manifest = read_manifest(part_dir(settings, DATASHEET_PART))
         assert manifest is not None
         hashes = {d.content_hash for d in manifest.documents}

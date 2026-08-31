@@ -60,8 +60,7 @@ def get_categories(settings: SettingsDep) -> CategoriesOut:
         filed[record.part_number] = record.category
     return CategoriesOut(
         categories=[
-            CategoryOut(id=c.id, name=c.name, count=counts.get(c.id, 0))
-            for c in store.categories()
+            CategoryOut(id=c.id, name=c.name, count=counts.get(c.id, 0)) for c in store.categories()
         ],
         # The same records the counts come from. The Library groups by this,
         # so a category's number and its contents can never disagree.

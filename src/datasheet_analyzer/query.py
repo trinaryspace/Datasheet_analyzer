@@ -38,9 +38,7 @@ class SpecQuery:
         section: str = "",
     ) -> list[SpecRecord]:
         """Case-insensitive substring match on symbol/name/section (ANDed)."""
-        hits = Retriever.for_part(self.part_dir).specs(
-            symbol=symbol, name=name, section=section
-        )
+        hits = Retriever.for_part(self.part_dir).specs(symbol=symbol, name=name, section=section)
         return [h.record for h in hits]
 
 

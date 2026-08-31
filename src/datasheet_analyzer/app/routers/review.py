@@ -320,17 +320,13 @@ def scan_directory(directory: str, settings: Settings) -> ScanOut:
         raise HTTPException(status_code=400, detail=f"scan directory not found: {raw}")
     pdfs, skipped = _pdfs_in(path)
     if not pdfs:
-        raise HTTPException(
-            status_code=400, detail=f"no PDF files anywhere under directory: {raw}"
-        )
+        raise HTTPException(status_code=400, detail=f"no PDF files anywhere under directory: {raw}")
 
     known_parts = [d.name for d in discover_parts(settings.parts_dir)]
     client = _llm_client(settings)
 
     def one(pdf_path: Path) -> DocProposal:
-        proposal = _propose(
-            pdf_path, known_parts=known_parts, client=client, settings=settings
-        )
+        proposal = _propose(pdf_path, known_parts=known_parts, client=client, settings=settings)
         # Classified here rather than on the client: it takes a manifest read
         # per part, and the browser has neither the manifests nor the gate.
         state, reason = classify(

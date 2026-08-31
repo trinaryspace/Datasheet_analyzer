@@ -55,8 +55,9 @@ class TestSection45Parsing:
     """Section 4.5: the 204-row TX parametric table with 73 rowspans."""
 
     def test_one_atomic_table_with_all_rows(self, ti_sec_4_5_html):
-        sec = parse_section(ti_sec_4_5_html, SEC45_URL, number="4.5",
-                            title="Transmitter Electrical Characteristics")
+        sec = parse_section(
+            ti_sec_4_5_html, SEC45_URL, number="4.5", title="Transmitter Electrical Characteristics"
+        )
         assert len(sec.tables) == 1
         t = sec.tables[0]
         # every body row survives; none split, none dropped (204 incl. spacers)
@@ -64,8 +65,9 @@ class TestSection45Parsing:
         assert t.n_cols == 7
 
     def test_conditions_preamble_attached_to_table(self, ti_sec_4_5_html):
-        sec = parse_section(ti_sec_4_5_html, SEC45_URL, number="4.5",
-                            title="Transmitter Electrical Characteristics")
+        sec = parse_section(
+            ti_sec_4_5_html, SEC45_URL, number="4.5", title="Transmitter Electrical Characteristics"
+        )
         cond = sec.tables[0].conditions
         assert "Typical values at TA = +25°C" in cond
         assert "11796.48MSPS" in cond
@@ -73,8 +75,9 @@ class TestSection45Parsing:
         assert not any("Typical values at TA" in p for p in sec.paragraphs)
 
     def test_rowspan_expansion_on_real_data(self, ti_sec_4_5_html):
-        sec = parse_section(ti_sec_4_5_html, SEC45_URL, number="4.5",
-                            title="Transmitter Electrical Characteristics")
+        sec = parse_section(
+            ti_sec_4_5_html, SEC45_URL, number="4.5", title="Transmitter Electrical Characteristics"
+        )
         g = sec.tables[0].grid
         # find the DACRES row: DAC resolution | 14 | bits
         dacres = [r for r in g if r and r[0] == "DACRES"]
@@ -89,8 +92,9 @@ class TestSection45Parsing:
 
     def test_exact_spec_values_present(self, ti_sec_4_5_html):
         """Golden values cross-checked against the PDF page 7."""
-        sec = parse_section(ti_sec_4_5_html, SEC45_URL, number="4.5",
-                            title="Transmitter Electrical Characteristics")
+        sec = parse_section(
+            ti_sec_4_5_html, SEC45_URL, number="4.5", title="Transmitter Electrical Characteristics"
+        )
         g = sec.tables[0].grid
         flat = "\n".join(" | ".join(r) for r in g)
         for needle in ["DSA Attenuation range", "40", "±0.1", "±0.2"]:
@@ -103,8 +107,9 @@ class TestSection45Parsing:
         assert rterm and "50" in rterm[0] and "Ω" in rterm[0]
 
     def test_footnotes_parsed_and_markers_cited(self, ti_sec_4_5_html):
-        sec = parse_section(ti_sec_4_5_html, SEC45_URL, number="4.5",
-                            title="Transmitter Electrical Characteristics")
+        sec = parse_section(
+            ti_sec_4_5_html, SEC45_URL, number="4.5", title="Transmitter Electrical Characteristics"
+        )
         t = sec.tables[0]
         markers = {f.marker for f in t.footnotes}
         assert {"(1)", "(2)", "(3)"} <= markers
@@ -117,8 +122,9 @@ class TestSection45Parsing:
         assert set(t.cited_markers) <= markers
 
     def test_headers(self, ti_sec_4_5_html):
-        sec = parse_section(ti_sec_4_5_html, SEC45_URL, number="4.5",
-                            title="Transmitter Electrical Characteristics")
+        sec = parse_section(
+            ti_sec_4_5_html, SEC45_URL, number="4.5", title="Transmitter Electrical Characteristics"
+        )
         h = sec.tables[0].headers
         assert h[:3] == ["PARAMETER", "PARAMETER", "TEST CONDITIONS"]
         assert h[3:] == ["MIN", "TYP", "MAX", "UNIT"]
@@ -128,8 +134,12 @@ class TestSection4121Parsing:
     """Section 4.12.1: plot gallery — figures with captions + conditions."""
 
     def test_figures_cataloged_with_captions(self, ti_sec_4_12_1_html):
-        sec = parse_section(ti_sec_4_12_1_html, SEC4121_URL, number="4.12.1",
-                            title="TX Typical Characteristics 800 MHz")
+        sec = parse_section(
+            ti_sec_4_12_1_html,
+            SEC4121_URL,
+            number="4.12.1",
+            title="TX Typical Characteristics 800 MHz",
+        )
         assert len(sec.figures) >= 40
         captions = [f.caption for f in sec.figures]
         assert any("TX Output Fullscale vs Output Frequency" in c for c in captions)
@@ -137,14 +147,22 @@ class TestSection4121Parsing:
         assert all(f.image_url for f in sec.figures)
 
     def test_figure_conditions_captured(self, ti_sec_4_12_1_html):
-        sec = parse_section(ti_sec_4_12_1_html, SEC4121_URL, number="4.12.1",
-                            title="TX Typical Characteristics 800 MHz")
+        sec = parse_section(
+            ti_sec_4_12_1_html,
+            SEC4121_URL,
+            number="4.12.1",
+            title="TX Typical Characteristics 800 MHz",
+        )
         conds = " ".join(f.conditions for f in sec.figures)
         assert "DSA = 0" in conds or "matching" in conds
 
     def test_figure_tables_not_misparsed_as_parametric(self, ti_sec_4_12_1_html):
-        sec = parse_section(ti_sec_4_12_1_html, SEC4121_URL, number="4.12.1",
-                            title="TX Typical Characteristics 800 MHz")
+        sec = parse_section(
+            ti_sec_4_12_1_html,
+            SEC4121_URL,
+            number="4.12.1",
+            title="TX Typical Characteristics 800 MHz",
+        )
         # the 43 <table> wrappers around images must not become data tables
         assert sec.tables == []
 
@@ -158,7 +176,8 @@ class TestSectionParseEdgeCases:
             parse_section(
                 empty_page,
                 "https://www.ti.com/document-viewer/AFE7950/datasheet/GUID-00000000",
-                number="9.9", title="Nonexistent Section",
+                number="9.9",
+                title="Nonexistent Section",
             )
 
     def test_last_resort_container_for_id_less_pages(self):
@@ -169,8 +188,10 @@ class TestSectionParseEdgeCases:
             + "</div></body></html>"
         )
         sec = parse_section(
-            page, "https://www.ti.com/document-viewer/X/datasheet/GUID-ZZZ",
-            number="5", title="Revision History",
+            page,
+            "https://www.ti.com/document-viewer/X/datasheet/GUID-ZZZ",
+            number="5",
+            title="Revision History",
         )
         assert sec.paragraphs and "Changes from June 2023" in sec.paragraphs[0]
 
@@ -185,8 +206,10 @@ class TestSectionParseEdgeCases:
             "</div></body></html>"
         )
         sec = parse_section(
-            page, "https://www.ti.com/document-viewer/X/datasheet/GUID-LIST1",
-            number="1", title="Features",
+            page,
+            "https://www.ti.com/document-viewer/X/datasheet/GUID-LIST1",
+            number="1",
+            title="Features",
         )
         assert sec.paragraphs[0] == "• Maximum RF signal bandwidth:"
         assert sec.paragraphs[1] == "  • 4TX or 2FB: 1200MHz or 2TX: 2400MHz"
@@ -202,8 +225,10 @@ class TestSectionParseEdgeCases:
             "</div></body></html>"
         )
         sec = parse_section(
-            page, "https://www.ti.com/document-viewer/X/datasheet/GUID-FURN1",
-            number="4.5", title="TX",
+            page,
+            "https://www.ti.com/document-viewer/X/datasheet/GUID-FURN1",
+            number="4.5",
+            title="TX",
         )
         assert sec.paragraphs == ["Real content paragraph."]
 

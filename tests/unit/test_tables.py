@@ -164,9 +164,7 @@ def test_unicode_units_survive_end_to_end():
 
 
 def test_markdown_escapes_pipes():
-    t = html_table_to_block(
-        "<table><tbody><tr><td>a|b</td><td>1</td></tr></tbody></table>"
-    )
+    t = html_table_to_block("<table><tbody><tr><td>a|b</td><td>1</td></tr></tbody></table>")
     assert "a\\|b" in t.markdown
 
 

@@ -84,8 +84,10 @@ class TestAskPathRule:
 
     def test_questions_without_the_marker_are_not_ask_questions(self, part):
         plain = GoldenQuestion(
-            id="q1", question="What is the maximum junction temperature?",
-            expected_substrings=["105"], pages=[6],
+            id="q1",
+            question="What is the maximum junction temperature?",
+            expected_substrings=["105"],
+            pages=[6],
         )
         assert verify_ask_queries([plain], part) == []
 
@@ -142,7 +144,9 @@ class TestSearchPathRule:
 
     def test_questions_without_the_marker_are_not_search_questions(self, part):
         plain = GoldenQuestion(
-            id="q1", question="Where is SYSREF?", expected_substrings=["SYSREF"],
+            id="q1",
+            question="Where is SYSREF?",
+            expected_substrings=["SYSREF"],
             pages=[7],
         )
         assert verify_search_queries([plain], part) == []
@@ -173,10 +177,12 @@ class TestSearchPathRule:
         )
         assert not strict.ok
         (widened,) = verify_search_queries(
-            [_search(
-                expected_substrings=["14 bits"],
-                search_query={**query, "rank": "2"},
-            )],
+            [
+                _search(
+                    expected_substrings=["14 bits"],
+                    search_query={**query, "rank": "2"},
+                )
+            ],
             part,
         )
         assert widened.ok
@@ -210,8 +216,7 @@ class TestShippedBenchmarks:
     def test_every_built_part_carries_both_new_paths(self, name):
         questions = load_golden(FIXTURES / f"golden_qa_{name}.yaml")
         assert [q.id for q in questions if q.ask_query is not None], (
-            f"{name}: no ask-path question — the designer's-words claim is "
-            "unproven for this part"
+            f"{name}: no ask-path question — the designer's-words claim is unproven for this part"
         )
         assert [q.id for q in questions if q.search_query is not None], (
             f"{name}: no search-path question"
@@ -235,9 +240,7 @@ class TestShippedBenchmarks:
         a typo (`ask-query`, `searchquery`) would silently drop the question
         from both new tables instead of failing, so the raw keys are checked
         against the model's own field names."""
-        raw = yaml.safe_load(
-            (FIXTURES / f"golden_qa_{name}.yaml").read_text(encoding="utf-8")
-        )
+        raw = yaml.safe_load((FIXTURES / f"golden_qa_{name}.yaml").read_text(encoding="utf-8"))
         allowed = set(GoldenQuestion.model_fields)
         for item in raw["questions"]:
             unknown = set(item) - allowed

@@ -192,9 +192,7 @@ def build_job(
     if is_document_only(job):
         where = job.applicability.label if document is not None else "the library"
         on_progress(f"filed as a supporting document for {where}")
-        on_progress(
-            "it joins each part's corpus the next time that part is built"
-        )
+        on_progress("it joins each part's corpus the next time that part is built")
         return
     build_part(
         Path(job.pdf_path),
@@ -595,4 +593,3 @@ def reset_default_registry() -> None:
     global _DEFAULT_REGISTRY
     with _DEFAULT_LOCK:
         _DEFAULT_REGISTRY = None
-

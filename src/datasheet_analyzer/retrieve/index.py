@@ -182,9 +182,7 @@ class CorpusIndex:
         if cached is not None:
             return cached
         try:
-            path = resolve_artifact_ref(
-                rel, part_dir=self.part_dir, library_dir=self.library_dir
-            )
+            path = resolve_artifact_ref(rel, part_dir=self.part_dir, library_dir=self.library_dir)
         except ValueError as exc:
             log.warning("skipping unresolvable %s %s: %s", kind, rel, exc)
             self._section_text[rel] = ""

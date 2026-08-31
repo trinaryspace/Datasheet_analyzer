@@ -95,9 +95,7 @@ class TestPhase3Plots:
         doc = result.manifest.documents[0]
         plots_path = _doc_dir(result, doc) / "plots.json"
         assert plots_path.exists()
-        plotset = PlotSet.model_validate_json(
-            plots_path.read_text(encoding="utf-8")
-        )
+        plotset = PlotSet.model_validate_json(plots_path.read_text(encoding="utf-8"))
         assert plotset.schema_version
         # A shared document is part-*neutral* (ticket 04): the part
         # identity lives in the manifest that references it, never in the
@@ -195,9 +193,7 @@ def format_plot_answer_for_test(records: list) -> str:
 
 @pytest.mark.integration
 @pytest.mark.llm
-@pytest.mark.skipif(
-    not Settings().llm_available, reason="no ANTHROPIC_API_KEY available"
-)
+@pytest.mark.skipif(not Settings().llm_available, reason="no ANTHROPIC_API_KEY available")
 class TestPhase3VisionSmoke:
     def test_vision_reads_one_golden_plot(self, built):
         result, settings = built
@@ -217,6 +213,6 @@ class TestPhase3VisionSmoke:
             image_bytes=image_bytes,
             image_media_type="image/gif",
         )
-        assert any(
-            word in answer for word in ("dBm", "Output", "Gain", "Power", "Fullscale")
-        ), f"unexpected vision answer: {answer!r}"
+        assert any(word in answer for word in ("dBm", "Output", "Gain", "Power", "Fullscale")), (
+            f"unexpected vision answer: {answer!r}"
+        )

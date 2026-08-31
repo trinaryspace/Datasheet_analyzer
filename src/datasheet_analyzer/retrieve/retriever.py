@@ -85,8 +85,21 @@ PLOT_VOCABULARY = re.compile(
 # on them ranks nothing and would let every figure match. `diagram` is
 # deliberately not here — it names a figure rather than describing all of them.
 _PLOT_WORDS = frozenset(
-    {"plot", "plots", "curve", "curves", "vs", "versus", "graph", "graphs",
-     "figure", "figures", "show", "shows", "showing"}
+    {
+        "plot",
+        "plots",
+        "curve",
+        "curves",
+        "vs",
+        "versus",
+        "graph",
+        "graphs",
+        "figure",
+        "figures",
+        "show",
+        "shows",
+        "showing",
+    }
 )
 
 # One candidate record on its way to becoming a hit: the document it came
@@ -203,9 +216,7 @@ class Retriever:
             if low in (rec.symbol.lower(), _without_glued_marker(rec.symbol).lower())
         ]
         if exact:
-            children = [
-                (doc, rec) for doc, rec in pool if rec.symbol.lower().startswith(low + " ")
-            ]
+            children = [(doc, rec) for doc, rec in pool if rec.symbol.lower().startswith(low + " ")]
             # pool order, not exact-then-children order: the parent row still
             # prints before its children as the table printed them.
             keep = {id(rec) for _doc, rec in exact} | {id(rec) for _doc, rec in children}
@@ -227,7 +238,8 @@ class Retriever:
                 for doc, rec in pool:
                     printed = _printed_as(rec)
                     if not (
-                        entry_low in (
+                        entry_low
+                        in (
                             rec.symbol.lower(),
                             _without_glued_marker(rec.symbol).lower(),
                         )
@@ -333,7 +345,12 @@ class Retriever:
                             rec, doc=doc.name, doc_hash=doc.doc_hash, part=self.part
                         ),
                         matched_via=_plot_matched_via(
-                            rec, q, caption, conditions, section, tags,
+                            rec,
+                            q,
+                            caption,
+                            conditions,
+                            section,
+                            tags,
                             axis=bool(x_label or y_label or near_x or near_y),
                         ),
                         confidence=record_confidence(rec),
@@ -466,8 +483,7 @@ class Retriever:
         return [
             (doc.name, doc.search)
             for doc in self.index.docs
-            if doc.search is not None
-            and doc.search.schema_version == SEARCH_SCHEMA_VERSION
+            if doc.search is not None and doc.search.schema_version == SEARCH_SCHEMA_VERSION
         ]
 
     def section_text(self, section: SectionFile) -> str:
@@ -652,9 +668,7 @@ def _build_hits(candidates: list[_Candidate], *, part: str = "") -> list[SpecHit
     return [
         SpecHit(
             record=rec,
-            citation=Citation.for_spec(
-                rec, doc=doc.name, doc_hash=doc.doc_hash, part=part
-            ),
+            citation=Citation.for_spec(rec, doc=doc.name, doc_hash=doc.doc_hash, part=part),
             matched_via=matched_via,
             confidence=record_confidence(rec),
         )
@@ -675,9 +689,7 @@ def _covers_page(sec: SectionFile, page: int) -> bool:
     return sec.page_start <= page <= (sec.page_end or sec.page_start)
 
 
-def _axis_match(
-    rec: PlotRecord, x_label: str, y_label: str, near_x: str, near_y: str
-) -> bool:
+def _axis_match(rec: PlotRecord, x_label: str, y_label: str, near_x: str, near_y: str) -> bool:
     """True when a record passes every axis filter that was asked for.
 
     A figure with no axis catalog fails any axis filter — the catalog says

@@ -30,8 +30,14 @@ def cache_name(url: str) -> str:
 
 
 class CachingFetcher:
-    def __init__(self, cache_dir: Path, *, timeout_s: int = 60, delay_s: float = 0.25,
-                 user_agent: str = "datasheet-analyzer/0.1"):
+    def __init__(
+        self,
+        cache_dir: Path,
+        *,
+        timeout_s: int = 60,
+        delay_s: float = 0.25,
+        user_agent: str = "datasheet-analyzer/0.1",
+    ):
         self.cache_dir = Path(cache_dir)
         self.timeout_s = timeout_s
         self.delay_s = delay_s
@@ -46,9 +52,7 @@ class CachingFetcher:
             self.n_cache_hits += 1
             return cached.read_text(encoding="utf-8")
         log.info("fetch: %s", url[:110])
-        resp = requests.get(
-            url, timeout=self.timeout_s, headers={"User-Agent": self.user_agent}
-        )
+        resp = requests.get(url, timeout=self.timeout_s, headers={"User-Agent": self.user_agent})
         resp.raise_for_status()
         cached.write_text(resp.text, encoding="utf-8")
         self.n_fetches += 1
@@ -110,8 +114,14 @@ class BinaryFetcher(Protocol):
 class CachingBinaryFetcher:
     """Bytes variant of CachingFetcher: .cache/http-bin/<sha1(url)>.<ext>."""
 
-    def __init__(self, cache_dir: Path, *, timeout_s: int = 60, delay_s: float = 0.25,
-                 user_agent: str = "datasheet-analyzer/0.1"):
+    def __init__(
+        self,
+        cache_dir: Path,
+        *,
+        timeout_s: int = 60,
+        delay_s: float = 0.25,
+        user_agent: str = "datasheet-analyzer/0.1",
+    ):
         self.cache_dir = Path(cache_dir)
         self.timeout_s = timeout_s
         self.delay_s = delay_s
@@ -126,9 +136,7 @@ class CachingBinaryFetcher:
             self.n_cache_hits += 1
             return cached.read_bytes()
         log.info("fetch binary: %s", url[:110])
-        resp = requests.get(
-            url, timeout=self.timeout_s, headers={"User-Agent": self.user_agent}
-        )
+        resp = requests.get(url, timeout=self.timeout_s, headers={"User-Agent": self.user_agent})
         resp.raise_for_status()
         cached.write_bytes(resp.content)
         self.n_fetches += 1

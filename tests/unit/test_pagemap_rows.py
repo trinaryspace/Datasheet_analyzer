@@ -51,9 +51,11 @@ REGISTER_PAGES = [
 class TestTheRowThatSpills:
     def test_the_last_row_cites_the_page_it_printed_on(self):
         table = _table(
-            [["0x0", "R0", "Powerdown"],
-             ["0x56", "R86", "CLKOUT Divider"],
-             ["0x5A", "R90", "LOGICLK Divider"]],
+            [
+                ["0x0", "R0", "Powerdown"],
+                ["0x56", "R86", "CLKOUT Divider"],
+                ["0x5A", "R90", "LOGICLK Divider"],
+            ],
             page=2,
         )
         pinned, total = pin_table_row_pages([_section(table, start=2, end=3)], REGISTER_PAGES)

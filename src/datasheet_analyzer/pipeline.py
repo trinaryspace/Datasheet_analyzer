@@ -172,7 +172,10 @@ def _annotate_axes(plotset: PlotSet, raw: RawDocument) -> None:
     coverage = annotate_plot_axes(plotset, source)
     log.info(
         "plot axes: %d/%d figures read at high confidence (%.0f%%), %d log-scale",
-        coverage.high, coverage.total, 100 * coverage.high_fraction, coverage.log_axes,
+        coverage.high,
+        coverage.total,
+        100 * coverage.high_fraction,
+        coverage.log_axes,
     )
 
 
@@ -233,7 +236,9 @@ def _derive_registers(raw: RawDocument, part_number: str) -> RegisterBuild:
     if build.registerset is not None:
         log.info(
             "registers: %d records from %d table(s) in %s",
-            build.n_registers, build.accepted_tables, raw.source.path,
+            build.n_registers,
+            build.accepted_tables,
+            raw.source.path,
         )
     for warning in build.warnings:
         log.warning("registers: %s", warning)
@@ -377,7 +382,9 @@ def _extract_document(
         # field invalidation).
         log.info(
             "stale extraction cache (%s v%r != v%r) — re-extracting",
-            backend_name, raw.extractor_version, output_version,
+            backend_name,
+            raw.extractor_version,
+            output_version,
         )
         raw = None
     cached = raw is not None
@@ -400,8 +407,7 @@ def _extract_document(
         if backend_name != "pdf_text":
             texts = page_texts(pdf_path)
             pinned = pin_table_pages(raw.sections, texts)
-            log.info("table pages pinned: %d/%d", pinned,
-                     sum(len(s.tables) for s in raw.sections))
+            log.info("table pages pinned: %d/%d", pinned, sum(len(s.tables) for s in raw.sections))
             # Rows next, at the same bar. `pdf_layout` already measured its
             # own; this is the HTML path, which has no geometry to measure.
             rows_pinned, rows_total = pin_table_row_pages(raw.sections, texts)
@@ -450,9 +456,7 @@ def build_part(
     # acquire: ask the Library which documents apply to this part, migrating a
     # legacy sources.json in on first touch; bootstrap from the CLI pdf when
     # nothing applies yet.
-    inventory = _acquire(
-        pdf_path, part_dir, part_number=part_number, vendor=vendor, store=store
-    )
+    inventory = _acquire(pdf_path, part_dir, part_number=part_number, vendor=vendor, store=store)
 
     # identity drift: a detection contradicting a pin warns loudly but never
     # re-routes (the pinned value stays authoritative).
@@ -469,9 +473,7 @@ def build_part(
     docs: list[RawDocument] = []
     any_cached = True
     for source in inventory:
-        raw, cached = _extract_document(
-            source, Path(source.path), settings, use_cache
-        )
+        raw, cached = _extract_document(source, Path(source.path), settings, use_cache)
         any_cached = any_cached and cached
         docs.append(raw)
 
@@ -524,7 +526,9 @@ def build_part(
         if raw.extractor == "pdf_layout":
             doc_abs = _doc_out_dir(raw)
             rendered = render_figure_regions(
-                plotset, doc_abs, Path(raw.source.path),
+                plotset,
+                doc_abs,
+                Path(raw.source.path),
                 dpi=settings.plot_image_dpi,
             )
             log.info("plot pixels: %d clip-rendered (pdf_layout)", rendered)
@@ -589,7 +593,9 @@ def build_part(
     # publish
     _progress("publishing")
     manifest = write_corpus(
-        part_dir, all_plans, index_md,
+        part_dir,
+        all_plans,
+        index_md,
         pipeline_version=PIPELINE_VERSION,
         vendor=part_vendor,
         specsets=specsets,
@@ -616,6 +622,9 @@ def build_part(
     # always read, and a hand edit never survives a build.
     save_inventory(inventory, part_dir)
     return BuildResult(
-        part_dir=part_dir, manifest=manifest, index_md=index_md,
-        used_llm=used_llm, cached_extraction=any_cached,
+        part_dir=part_dir,
+        manifest=manifest,
+        index_md=index_md,
+        used_llm=used_llm,
+        cached_extraction=any_cached,
     )

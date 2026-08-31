@@ -144,9 +144,9 @@ class TestNeitherFrontEndKeepsACopy:
     instead of calling the shared one."""
 
     CLI_SOURCE = Path(cli.__file__).read_text(encoding="utf-8")
-    SERVER_SOURCE = Path(
-        find_spec("datasheet_analyzer.mcp_server.server").origin
-    ).read_text(encoding="utf-8")
+    SERVER_SOURCE = Path(find_spec("datasheet_analyzer.mcp_server.server").origin).read_text(
+        encoding="utf-8"
+    )
 
     @pytest.mark.parametrize("source_name", ["CLI_SOURCE", "SERVER_SOURCE"])
     def test_the_front_end_calls_the_shared_resolver(self, source_name):
@@ -254,8 +254,17 @@ class TestTheProjectGapWarning:
 #: that carried only the eight-character directory name (`doc`) could not
 #: supply one.
 SECTION_HIT_KEYS = {
-    "section", "title", "file", "part", "doc", "doc_hash", "page_start",
-    "page_end", "citation", "matched_via", "confidence",
+    "section",
+    "title",
+    "file",
+    "part",
+    "doc",
+    "doc_hash",
+    "page_start",
+    "page_end",
+    "citation",
+    "matched_via",
+    "confidence",
 }
 
 
@@ -361,9 +370,7 @@ class TestServeTheWorkbench:
         monkeypatch.setattr("datasheet_analyzer.cli.get_settings", lambda: serve_settings)
         return uvicorn, app_main
 
-    def test_plain_serve_runs_the_app_on_the_configured_host_and_port(
-        self, wired, serve_settings
-    ):
+    def test_plain_serve_runs_the_app_on_the_configured_host_and_port(self, wired, serve_settings):
         uvicorn, _app_main = wired
         assert cli.main(["serve"]) == 0
         assert len(uvicorn.calls) == 1
@@ -383,9 +390,7 @@ class TestServeTheWorkbench:
 
     def test_it_never_starts_the_mcp_server(self, wired, monkeypatch):
         started: list[str] = []
-        monkeypatch.setattr(
-            "datasheet_analyzer.cli._serve_mcp", lambda: started.append("mcp") or 0
-        )
+        monkeypatch.setattr("datasheet_analyzer.cli._serve_mcp", lambda: started.append("mcp") or 0)
         assert cli.main(["serve"]) == 0
         assert started == []
 
@@ -426,7 +431,7 @@ class TestServeWithoutTheWebExtra:
     def test_it_prints_an_install_hint_naming_the_extra(self, missing_web, capsys):
         cli.main(["serve"])
         err = capsys.readouterr().err
-        assert '.[web]' in err
+        assert ".[web]" in err
         assert "not installed" in err
 
     def test_the_hint_is_a_message_not_a_traceback(self, missing_web, capsys):
@@ -442,9 +447,7 @@ class TestServeWithoutTheWebExtra:
 
 
 class TestServeMcpIsUnchanged:
-    def test_the_mcp_flag_still_hands_off_to_the_stdio_server(
-        self, monkeypatch, serve_settings
-    ):
+    def test_the_mcp_flag_still_hands_off_to_the_stdio_server(self, monkeypatch, serve_settings):
         pytest.importorskip("mcp")
         from datasheet_analyzer.mcp_server import server as mcp_server
 
@@ -469,9 +472,7 @@ class TestServeMcpIsUnchanged:
         assert cli.main(["serve", "--mcp"]) == 0
         assert uvicorn.calls == []
 
-    def test_without_the_mcp_sdk_it_still_prints_its_own_hint(
-        self, monkeypatch, serve_settings
-    ):
+    def test_without_the_mcp_sdk_it_still_prints_its_own_hint(self, monkeypatch, serve_settings):
         monkeypatch.setitem(sys.modules, "datasheet_analyzer.mcp_server", None)
         monkeypatch.setattr("datasheet_analyzer.cli.get_settings", lambda: serve_settings)
         assert cli.main(["serve", "--mcp"]) == 2
@@ -480,9 +481,7 @@ class TestServeMcpIsUnchanged:
 class TestTheWebExtraIsDeclared:
     """`dsa serve` must be installable the way `dsa serve --mcp` already is."""
 
-    PYPROJECT = (
-        Path(__file__).resolve().parents[2] / "pyproject.toml"
-    ).read_text(encoding="utf-8")
+    PYPROJECT = (Path(__file__).resolve().parents[2] / "pyproject.toml").read_text(encoding="utf-8")
 
     def test_pyproject_declares_a_web_extra(self):
         assert "\nweb = [" in self.PYPROJECT
@@ -493,4 +492,4 @@ class TestTheWebExtraIsDeclared:
         assert package in web_block
 
     def test_the_hint_names_the_extra_the_pyproject_declares(self):
-        assert '.[web]' in cli.WEB_INSTALL_HINT
+        assert ".[web]" in cli.WEB_INSTALL_HINT

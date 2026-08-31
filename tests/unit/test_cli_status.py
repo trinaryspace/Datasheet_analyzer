@@ -84,20 +84,19 @@ def _build_status_part(tmp_path, datasheet_pdf, settings, with_map=False) -> obj
     ds = register_source(datasheet_pdf, part_number="P1", doc_type="datasheet")
     sources = [ds]
     if with_map:
-        sources.append(register_source(_prose_companion_pdf(tmp_path),
-                                       part_number="P1",
-                                       doc_type="errata"))
+        sources.append(
+            register_source(_prose_companion_pdf(tmp_path), part_number="P1", doc_type="errata")
+        )
     append_to_inventory(sources, settings.parts_dir / "P1")
-    return build_part(datasheet_pdf, part_number="P1", settings=settings,
-                      vendor="unknown", use_llm=False)
+    return build_part(
+        datasheet_pdf, part_number="P1", settings=settings, vendor="unknown", use_llm=False
+    )
 
 
 def test_status_shows_per_doc_counts_and_reasons(tmp_path, monkeypatch, capsys):
     pdf = tmp_path / "stats.pdf"
-    _make_pdf(pdf, [_ok_table_page(), _bad_table_page()],
-              toc=[[1, "1 Spec", 1]])
-    settings = Settings(parts_dir=tmp_path / "parts",
-                        cache_dir=tmp_path / ".cache").resolve()
+    _make_pdf(pdf, [_ok_table_page(), _bad_table_page()], toc=[[1, "1 Spec", 1]])
+    settings = Settings(parts_dir=tmp_path / "parts", cache_dir=tmp_path / ".cache").resolve()
     result = _build_status_part(tmp_path, pdf, settings)
     doc = result.manifest.documents[0]
 
@@ -119,8 +118,7 @@ def test_status_shows_per_doc_counts_and_reasons(tmp_path, monkeypatch, capsys):
 def test_status_zeros_are_honest_for_non_layout_docs(tmp_path, monkeypatch, capsys):
     pdf = tmp_path / "multi.pdf"
     _make_pdf(pdf, [_ok_table_page()], toc=[[1, "1 Spec", 1]])
-    settings = Settings(parts_dir=tmp_path / "parts",
-                        cache_dir=tmp_path / ".cache").resolve()
+    settings = Settings(parts_dir=tmp_path / "parts", cache_dir=tmp_path / ".cache").resolve()
     result = _build_status_part(tmp_path, pdf, settings, with_map=True)
     assert result.manifest.stats.n_documents == 2
     map_doc = next(d for d in result.manifest.documents if d.doc_type.value == "errata")

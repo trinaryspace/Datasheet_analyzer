@@ -51,10 +51,18 @@ from datasheet_analyzer.tokens import count_tokens
 # claim about what a datasheet says, so an empty citation list is the honest
 # answer there rather than a manufactured one.
 CITING_TOOLS = (
-    "search", "find_spec", "find_plots", "read_section", "get_figure", "ask",
+    "search",
+    "find_spec",
+    "find_plots",
+    "read_section",
+    "get_figure",
+    "ask",
     # Phase 6: a derived value is only usable if it names the printed page it
     # was copied from, so these cite exactly like the extracted surfaces.
-    "find_pin", "find_register", "get_card", "compare_parts",
+    "find_pin",
+    "find_register",
+    "get_card",
+    "compare_parts",
 )
 
 #: One representative call per tool — the whole surface, in one list, so a cap
@@ -126,9 +134,19 @@ class TestEveryToolOverTheMemoryTransport:
 
         names = {t.name for t in over_session(server, _work).tools}
         assert names == {
-            "list_parts", "list_projects", "get_index", "search", "find_spec",
-            "read_section", "find_plots", "get_figure", "ask",
-            "find_pin", "find_register", "get_card", "compare_parts",
+            "list_parts",
+            "list_projects",
+            "get_index",
+            "search",
+            "find_spec",
+            "read_section",
+            "find_plots",
+            "get_figure",
+            "ask",
+            "find_pin",
+            "find_register",
+            "get_card",
+            "compare_parts",
         }
 
     def test_every_tool_ships_its_declared_response_schema(self, server):
@@ -156,9 +174,7 @@ class TestEveryToolOverTheMemoryTransport:
             ("compare_parts", {"parts": ["TEST", "OTHER"], "symbol": "TJ"}),
         ],
     )
-    def test_every_response_validates_against_its_declared_schema(
-        self, server, tool, arguments
-    ):
+    def test_every_response_validates_against_its_declared_schema(self, server, tool, arguments):
         payload = payload_of(call(server, tool, **arguments))
         assert R.validate_response(payload, tool) == []
         assert payload["tool"] == tool
@@ -183,12 +199,12 @@ class TestEveryToolOverTheMemoryTransport:
     def test_every_hit_carries_a_confidence_grade(self, server, tool, arguments, where):
         payload = payload_of(call(server, tool, **arguments))
         assert payload[where]
-        assert all(hit["confidence"] in {"high", "medium", "low", "unknown"}
-                   for hit in payload[where])
+        assert all(
+            hit["confidence"] in {"high", "medium", "low", "unknown"} for hit in payload[where]
+        )
 
     def test_find_spec_answers_a_designer_s_words_through_the_alias_ladder(self, server):
-        payload = payload_of(call(server, "find_spec", part="TEST",
-                                  name="junction temperature"))
+        payload = payload_of(call(server, "find_spec", part="TEST", name="junction temperature"))
         top = payload["hits"][0]
         assert top["symbol"] == "TJ"
         assert top["max"] == "105"
@@ -197,8 +213,7 @@ class TestEveryToolOverTheMemoryTransport:
         assert top["matched_via"].startswith("alias:")
 
     def test_find_spec_with_no_match_suggests_instead_of_guessing(self, server):
-        payload = payload_of(call(server, "find_spec", part="TEST",
-                                  symbol="ZZQQ"))
+        payload = payload_of(call(server, "find_spec", part="TEST", symbol="ZZQQ"))
         assert payload["hits"] == []
         assert payload["suggestions"]
 
@@ -209,9 +224,7 @@ class TestEveryToolOverTheMemoryTransport:
         assert top["citation"] == "§4.5, p.7-8"
         assert "SYSREF" in top["snippet"]
 
-    def test_read_section_returns_the_corpus_markdown_with_its_citation(
-        self, server, settings
-    ):
+    def test_read_section_returns_the_corpus_markdown_with_its_citation(self, server, settings):
         payload = payload_of(call(server, "read_section", part="TEST", ref="4.3"))
         assert payload["citation"] == "§4.3, p.6"
         assert "junction temperature" in payload["text"]
@@ -219,8 +232,9 @@ class TestEveryToolOverTheMemoryTransport:
         assert payload["text"] == on_disk
 
     def test_read_section_resolves_a_title_as_well_as_a_number(self, server):
-        payload = payload_of(call(server, "read_section", part="TEST",
-                                  ref="Transmitter Electrical"))
+        payload = payload_of(
+            call(server, "read_section", part="TEST", ref="Transmitter Electrical")
+        )
         assert payload["section"] == "4.5"
         assert payload["matched_via"] == "title"
 
@@ -231,8 +245,7 @@ class TestEveryToolOverTheMemoryTransport:
         assert R.validate_response(payload, "read_section") == []
 
     def test_ask_returns_the_answer_pack_the_cli_returns(self, server, settings):
-        payload = payload_of(call(server, "ask", part="TEST",
-                                  question="max junction temperature"))
+        payload = payload_of(call(server, "ask", part="TEST", question="max junction temperature"))
         pack = payload["pack"]
         assert pack["route"] == "spec"
         assert pack["answers"][0]["citation"] == "§4.3, p.6"
@@ -262,13 +275,15 @@ class TestEveryToolOverTheMemoryTransport:
         assert project["built"] is True
 
     def test_a_project_scoped_answer_names_the_part_it_came_from(self, server):
-        payload = payload_of(call(server, "find_spec", project="rf-frontend",
-                                  name="junction temperature"))
+        payload = payload_of(
+            call(server, "find_spec", project="rf-frontend", name="junction temperature")
+        )
         assert {hit["part"] for hit in payload["hits"]} == {"TEST", "OTHER"}
 
     def test_naming_both_part_and_project_is_refused_not_guessed(self, server):
-        payload = payload_of(call(server, "search", part="TEST",
-                                  project="rf-frontend", query="sysref"))
+        payload = payload_of(
+            call(server, "search", part="TEST", project="rf-frontend", query="sysref")
+        )
         assert payload["hits"] == []
         assert "exactly one" in payload["error"]
         assert R.validate_response(payload, "search") == []
@@ -279,18 +294,14 @@ class TestEveryToolOverTheMemoryTransport:
         assert "dsa build" in payload["error"]
         assert R.validate_response(payload, "get_index") == []
 
-    def test_a_corpus_with_no_search_index_is_told_to_rebuild_not_told_nothing(
-        self, settings
-    ):
+    def test_a_corpus_with_no_search_index_is_told_to_rebuild_not_told_nothing(self, settings):
         """An empty result and an unrunnable path are different findings."""
         for stale in (settings.parts_dir / "TEST").rglob("search_index.json"):
             stale.unlink()
         # the loaded corpus is cached on manifest identity, which deleting an
         # artifact behind its back does not change — a rebuild would
         clear_index_cache()
-        payload = payload_of(
-            call(S.build_server(settings), "search", part="TEST", query="sysref")
-        )
+        payload = payload_of(call(S.build_server(settings), "search", part="TEST", query="sysref"))
         assert payload["hits"] == []
         assert "rebuild" in payload["error"].lower()
 
@@ -337,7 +348,7 @@ class TestTheDerivedTools:
         assert payload["hits"][0]["expanded_from"] == "A1, A2"
 
     def test_a_part_with_no_pin_table_is_named_not_silently_empty(self, tmp_path):
-        """"No pin table was published" and "this device has no pins" differ."""
+        """ "No pin table was published" and "this device has no pins" differ."""
         build_part(tmp_path / "parts" / "DRY")
         for pins in (tmp_path / "parts" / "DRY").rglob("pins.json"):
             pins.unlink()
@@ -355,9 +366,7 @@ class TestTheDerivedTools:
         ids = {
             form: [
                 hit["id"]
-                for hit in payload_of(
-                    call(server, "find_register", part="TEST", addr=form)
-                )["hits"]
+                for hit in payload_of(call(server, "find_register", part="TEST", addr=form))["hits"]
             ]
             for form in ("0x1A04", "0x1a04", "6660")
         }
@@ -415,9 +424,7 @@ class TestTheDerivedTools:
         assert R.validate_response(payload, "get_card") == []
 
     def test_compare_parts_aligns_a_symbol_and_reports_its_coverage(self, server):
-        payload = payload_of(
-            call(server, "compare_parts", parts=["TEST", "OTHER"], symbol="TJ")
-        )
+        payload = payload_of(call(server, "compare_parts", parts=["TEST", "OTHER"], symbol="TJ"))
         assert payload["parts"] == ["TEST", "OTHER"]
         row = payload["rows"][0]
         assert row["symbol"] == "TJ"
@@ -497,8 +504,7 @@ class TestGetFigure:
     def test_an_uncataloged_file_inside_the_part_is_still_refused(self, server, settings):
         loose = settings.parts_dir / "TEST" / "docs" / DOC / "figures" / "loose.png"
         loose.write_bytes(PNG_BYTES)
-        result = call(server, "get_figure", part="TEST",
-                      file=f"docs/{DOC}/figures/loose.png")
+        result = call(server, "get_figure", part="TEST", file=f"docs/{DOC}/figures/loose.png")
         assert result.is_error
         assert "no cataloged figure" in payload_of(result)["error"]
 
@@ -540,9 +546,7 @@ class TestTheResponseCap:
             assert payload["over_cap"] is False
 
     @pytest.mark.parametrize("tool,arguments", ALL_CALLS)
-    def test_the_default_cap_truncates_nothing_on_a_small_corpus(
-        self, settings, tool, arguments
-    ):
+    def test_the_default_cap_truncates_nothing_on_a_small_corpus(self, settings, tool, arguments):
         payload = payload_of(call(S.build_server(settings), tool, **arguments))
         assert payload["truncated"] is False
         assert payload["over_cap"] is False
@@ -571,18 +575,14 @@ class TestTheResponseCap:
     def test_the_caller_s_own_max_tokens_bounds_the_text_and_is_named(self, settings):
         """`max_tokens` is a reading budget: it bounds the text, not the cite."""
         server = S.build_server(self._capped(settings, 6000))
-        payload = payload_of(
-            call(server, "read_section", part="TEST", ref="4.3", max_tokens=20)
-        )
+        payload = payload_of(call(server, "read_section", part="TEST", ref="4.3", max_tokens=20))
         assert payload["truncated"] is True
         assert "max_tokens=20" in payload["notice"]
         assert "DSA_MCP_MAX_TOKENS" in payload["notice"]
         assert 0 < count_tokens(payload["text"]) <= 20
         assert payload["citation"] == "§4.3, p.6"
 
-    def test_an_answer_pack_shrinks_by_budget_rather_than_losing_a_citation(
-        self, settings
-    ):
+    def test_an_answer_pack_shrinks_by_budget_rather_than_losing_a_citation(self, settings):
         server = S.build_server(self._capped(settings, 800))
         payload = payload_of(call(server, "ask", part="TEST", question="supply voltage"))
         pack = payload["pack"]
@@ -592,12 +592,9 @@ class TestTheResponseCap:
         assert all(line["citation"] for line in pack["answers"])
         assert "DSA_MCP_MAX_TOKENS" in payload["notice"]
 
-    def test_a_cap_below_the_citation_floor_says_over_cap_instead_of_lying(
-        self, settings
-    ):
+    def test_a_cap_below_the_citation_floor_says_over_cap_instead_of_lying(self, settings):
         server = S.build_server(self._capped(settings, 20))
-        payload = payload_of(call(server, "ask", part="TEST",
-                                  question="max junction temperature"))
+        payload = payload_of(call(server, "ask", part="TEST", question="max junction temperature"))
         assert payload["over_cap"] is True
         assert payload["notice"]
         assert payload["pack"]["answers"][0]["citation"] == "§4.3, p.6"
@@ -619,9 +616,7 @@ class TestResources:
     def test_both_index_resources_resolve_and_return_their_text(self, server):
         async def _work(session):
             part = await session.read_resource("dsa://part/TEST/INDEX.md")
-            project = await session.read_resource(
-                "dsa://project/rf-frontend/PROJECT_INDEX.md"
-            )
+            project = await session.read_resource("dsa://project/rf-frontend/PROJECT_INDEX.md")
             return part, project
 
         part, project = over_session(server, _work)

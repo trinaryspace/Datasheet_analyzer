@@ -40,8 +40,7 @@ PAGE_W, PAGE_H = 612.0, 792.0
 DPIS = 150
 
 
-def _make_pdf(path: Path, pages, toc: list[list] | None = None
-              ) -> None:
+def _make_pdf(path: Path, pages, toc: list[list] | None = None) -> None:
     """pages: list of pages; each page = list of (x, y, text) lines plus
     optional drawing rects ((x0, y0, x1, y1, fill) entries)."""
     doc = fitz.open()
@@ -64,8 +63,7 @@ def _build(tmp_path, name: str, pages, toc=None) -> object:
     pdf = Path(tmp_path) / name
     _make_pdf(pdf, pages, toc)
     settings = Settings(parts_dir=tmp_path / "parts", cache_dir=tmp_path / ".cache").resolve()
-    return build_part(pdf, part_number="P1", settings=settings,
-                      vendor="unknown", use_llm=False)
+    return build_part(pdf, part_number="P1", settings=settings, vendor="unknown", use_llm=False)
 
 
 def _doc_dir(result) -> Path:
@@ -79,6 +77,7 @@ def _doc_dir(result) -> Path:
     return document_dirs(result.manifest, part_dir=result.part_dir)[
         result.manifest.documents[0].content_hash
     ]
+
 
 def _artifact(result, ref: str) -> Path:
     """Absolute path of one artifact reference, per the root it hangs off.
@@ -125,16 +124,16 @@ def _figure_page() -> list:
 
 class TestFigureRendering:
     def test_vector_region_renders_png_under_caption(self, tmp_path):
-        result = _build(tmp_path, "fig1.pdf", [_figure_page()],
-                        toc=[[1, "1 Typical Performance", 1]])
+        result = _build(
+            tmp_path, "fig1.pdf", [_figure_page()], toc=[[1, "1 Typical Performance", 1]]
+        )
         md = _section_md(result, "1-typical-performance")
         # the caption is cataloged under ## Figures, never duplicated as prose
         assert "## Figures" in md
         assert "- **Figure 1. Absolute Output Power** (p.1)" in md
         assert md.count("Figure 1. Absolute Output Power") == 1
 
-        plots = json.loads((_doc_dir(result) / "plots.json").read_text(
-            encoding="utf-8"))["plots"]
+        plots = json.loads((_doc_dir(result) / "plots.json").read_text(encoding="utf-8"))["plots"]
         assert len(plots) == 1
         rec = plots[0]
         assert rec["caption"] == "Figure 1. Absolute Output Power"
@@ -163,14 +162,13 @@ class TestFigureRendering:
         # AD9081 p27 shape: two stacked vector plots, one caption each; the
         # shapes sit at different x so each clip can be told apart by pixel
         page = [
-            (100.0, 120.0, 200.0, 220.0, (0.0, 0.0, 0.0)),      # figure 6 art
+            (100.0, 120.0, 200.0, 220.0, (0.0, 0.0, 0.0)),  # figure 6 art
             (56.0, 260.0, "Figure 6. HD2 vs. fOUT over Digital Scale, 6 GSPS"),
-            (300.0, 330.0, 400.0, 430.0, (0.0, 0.0, 0.0)),      # figure 7 art
+            (300.0, 330.0, 400.0, 430.0, (0.0, 0.0, 0.0)),  # figure 7 art
             (56.0, 470.0, "Figure 7. HD2 vs. fOUT over Digital Scale, 12 GSPS"),
         ]
         result = _build(tmp_path, "fig2.pdf", [page])
-        plots = json.loads((_doc_dir(result) / "plots.json").read_text(
-            encoding="utf-8"))["plots"]
+        plots = json.loads((_doc_dir(result) / "plots.json").read_text(encoding="utf-8"))["plots"]
         assert [p["figure_number"] for p in plots] == ["6", "7"]
 
         f1, f2 = sorted(_plot_files(result))
@@ -191,8 +189,7 @@ class TestFigureRendering:
             (351.0, 252.2, "Figure 43. Input P1dB vs. RF Frequency at Various Temperatures"),
         ]
         result = _build(tmp_path, "fig3.pdf", [page])
-        plots = json.loads((_doc_dir(result) / "plots.json").read_text(
-            encoding="utf-8"))["plots"]
+        plots = json.loads((_doc_dir(result) / "plots.json").read_text(encoding="utf-8"))["plots"]
         assert len(plots) == 2
         files = sorted(_plot_files(result))
         assert len(files) == 2
@@ -209,19 +206,22 @@ class TestTitleAnchoredFigures:
     headings never fire). Through the build_part seam."""
 
     @staticmethod
-    def _make_title_pdf(path: Path, title: str, body_first_x: float,
-                        big_rect: bool, body_words: int) -> None:
+    def _make_title_pdf(
+        path: Path, title: str, body_first_x: float, big_rect: bool, body_words: int
+    ) -> None:
         """A 14 pt title inside an 18 pt emphasis band, a big drawn rect
         below (optional), and a body-prose line either in the title's own
         column (x=36) or the neighboring one (x=316)."""
         doc = fitz.open()
         page = doc.new_page(width=612.0, height=792.0)
         font = fitz.Font("helv")
-        page.draw_rect(fitz.Rect(36.0, 92.0, 295.0, 110.0),
-                       color=(0, 0, 0), width=1.0, fill=(0.85, 0.85, 0.85))
+        page.draw_rect(
+            fitz.Rect(36.0, 92.0, 295.0, 110.0), color=(0, 0, 0), width=1.0, fill=(0.85, 0.85, 0.85)
+        )
         if big_rect:
-            page.draw_rect(fitz.Rect(36.0, 120.0, 295.0, 300.0),
-                           color=(0, 0, 0), fill=(0.2, 0.2, 0.2))
+            page.draw_rect(
+                fitz.Rect(36.0, 120.0, 295.0, 300.0), color=(0, 0, 0), fill=(0.2, 0.2, 0.2)
+            )
         tw = fitz.TextWriter(page.rect)
         tw.append((36.0, 107.0), title, font=font, fontsize=14.04)
         tw.write_text(page)
@@ -232,23 +232,27 @@ class TestTitleAnchoredFigures:
         doc.save(str(path))
         doc.close()
 
-    def _build(self, tmp_path, name: str, title, body_first_x, big_rect,
-               body_words, body_size=9.96) -> object:
+    def _build(
+        self, tmp_path, name: str, title, body_first_x, big_rect, body_words, body_size=9.96
+    ) -> object:
         pdf = Path(tmp_path) / name
         self._make_title_pdf(pdf, title, body_first_x, big_rect, body_words)
-        settings = Settings(parts_dir=tmp_path / "parts",
-                            cache_dir=tmp_path / ".cache").resolve()
-        res = build_part(pdf, part_number="P1", settings=settings,
-                         vendor="unknown", use_llm=False)
+        settings = Settings(parts_dir=tmp_path / "parts", cache_dir=tmp_path / ".cache").resolve()
+        res = build_part(pdf, part_number="P1", settings=settings, vendor="unknown", use_llm=False)
         return res
 
     def test_title_band_with_rect_below_yields_figure(self, tmp_path):
         # neighbor-column prose (the 'Applications' bullets at x=316) must
         # not block the title's claim
-        result = self._build(tmp_path, "bd.pdf", "Functional Block Diagram",
-                             body_first_x=316.0, big_rect=True, body_words=7)
-        plots = json.loads((_doc_dir(result) / "plots.json").read_text(
-            encoding="utf-8"))["plots"]
+        result = self._build(
+            tmp_path,
+            "bd.pdf",
+            "Functional Block Diagram",
+            body_first_x=316.0,
+            big_rect=True,
+            body_words=7,
+        )
+        plots = json.loads((_doc_dir(result) / "plots.json").read_text(encoding="utf-8"))["plots"]
         assert len(plots) == 1
         rec = plots[0]
         assert rec["caption"] == "Functional Block Diagram"
@@ -266,10 +270,17 @@ class TestTitleAnchoredFigures:
     def test_same_column_prose_below_band_blocks_figure(self, tmp_path):
         # body prose directly under the title band in its own x-column is a
         # heading with a paragraph below, not a figure — even with a rect
-        result = self._build(tmp_path, "bd2.pdf", "General Description Text",
-                             body_first_x=36.0, big_rect=True, body_words=9)
-        assert json.loads((_doc_dir(result) / "plots.json").read_text(
-            encoding="utf-8"))["plots"] == []
+        result = self._build(
+            tmp_path,
+            "bd2.pdf",
+            "General Description Text",
+            body_first_x=36.0,
+            big_rect=True,
+            body_words=9,
+        )
+        assert (
+            json.loads((_doc_dir(result) / "plots.json").read_text(encoding="utf-8"))["plots"] == []
+        )
         md = _section_md(result, "1-page-one")
         assert "payload payload payload payload payload payload payload payload payload" in md
 
@@ -277,10 +288,15 @@ class TestTitleAnchoredFigures:
         # a short footnote-styled line below a title band is not prose and
         # never becomes a figure (p15 'Power Dissipation...' shape keeps
         # only the title)
-        result = self._build(tmp_path, "bd3.pdf", "Power Dissipation and Maximum Gate Current",
-                             body_first_x=316.0, big_rect=True, body_words=3)
-        plots = json.loads((_doc_dir(result) / "plots.json").read_text(
-            encoding="utf-8"))["plots"]
+        result = self._build(
+            tmp_path,
+            "bd3.pdf",
+            "Power Dissipation and Maximum Gate Current",
+            body_first_x=316.0,
+            big_rect=True,
+            body_words=3,
+        )
+        plots = json.loads((_doc_dir(result) / "plots.json").read_text(encoding="utf-8"))["plots"]
         assert len(plots) == 1
         assert plots[0]["caption"] == "Power Dissipation and Maximum Gate Current"
 
@@ -330,8 +346,7 @@ class TestFigureBoundaries:
         ]
         toc = [[1, "DAC", 1], [1, "ADC: 4 GSPS", 2]]
         result = _build(tmp_path, "fig7.pdf", [page1, page2], toc=toc)
-        plots = json.loads((_doc_dir(result) / "plots.json").read_text(
-            encoding="utf-8"))["plots"]
+        plots = json.loads((_doc_dir(result) / "plots.json").read_text(encoding="utf-8"))["plots"]
         assert len(plots) == 2
         ids = [p["id"] for p in plots]
         assert len(set(ids)) == 2, ids
@@ -348,12 +363,14 @@ class TestFigureBoundaries:
         # lm741 p10 shape: "the waveforms in Figure 2 show the input ..."
         # is prose — never a figure record, never consumed
         page = [
-            (56.0, 96.0,
-             "The waveforms in Figure 2 show the input and output signals of the amplifier."),
+            (
+                56.0,
+                96.0,
+                "The waveforms in Figure 2 show the input and output signals of the amplifier.",
+            ),
         ]
         result = _build(tmp_path, "fig5.pdf", [page])
-        plots = json.loads((_doc_dir(result) / "plots.json").read_text(
-            encoding="utf-8"))["plots"]
+        plots = json.loads((_doc_dir(result) / "plots.json").read_text(encoding="utf-8"))["plots"]
         assert plots == []
         assert not _plot_files(result)
         md = _section_md(result, "1-page-1")
@@ -366,7 +383,8 @@ class TestFigureBoundaries:
             (56.0, 260.0, "Block Diagram"),
         ]
         result = _build(tmp_path, "fig6.pdf", [page])
-        assert json.loads((_doc_dir(result) / "plots.json").read_text(
-            encoding="utf-8"))["plots"] == []
+        assert (
+            json.loads((_doc_dir(result) / "plots.json").read_text(encoding="utf-8"))["plots"] == []
+        )
         md = _section_md(result, "1-page-1")
         assert "Block Diagram" in md

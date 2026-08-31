@@ -64,9 +64,7 @@ def list_projects(projects_dir: Path) -> list[str]:
     root = Path(projects_dir)
     if not root.is_dir():
         return []
-    return sorted(
-        d.name for d in root.iterdir() if d.is_dir() and (d / PROJECT_FILE).exists()
-    )
+    return sorted(d.name for d in root.iterdir() if d.is_dir() and (d / PROJECT_FILE).exists())
 
 
 def load_project(name: str, projects_dir: Path) -> Project:
@@ -79,8 +77,7 @@ def load_project(name: str, projects_dir: Path) -> Project:
     path = project_dir(name, projects_dir) / PROJECT_FILE
     if not path.exists():
         raise ProjectError(
-            f"no project {name!r} at {path.parent} — create it with "
-            f"`dsa project new {name}`"
+            f"no project {name!r} at {path.parent} — create it with `dsa project new {name}`"
         )
     try:
         return Project.model_validate_json(path.read_text(encoding="utf-8"))

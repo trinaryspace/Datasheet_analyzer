@@ -113,9 +113,7 @@ class TestColumnEdgeTolerance:
         """Shifting both edges keeps every span in exactly one band."""
         lefts = [56.0, 222.0, 435.0, 460.0]
         for x in (56.0, 55.95, 221.9, 222.0, 434.99, 460.0, 700.0):
-            hits = sum(
-                _in_band(x, lo, hi) for lo, hi in zip(lefts, lefts[1:] + [float("inf")])
-            )
+            hits = sum(_in_band(x, lo, hi) for lo, hi in zip(lefts, lefts[1:] + [float("inf")]))
             assert hits == 1, f"x={x} landed in {hits} bands"
 
 
@@ -146,10 +144,16 @@ class TestHeaderUnfold:
     def test_a_folded_data_row_is_given_back(self, tmp_path):
         self._dir = tmp_path
         row = self._row(
-            (76.0, 120.0, "Bit"), (140.0, 120.0, "Field"), (260.0, 120.0, "Type"),
-            (340.0, 120.0, "Reset"), (420.0, 120.0, "Description"),
-            (76.0, 134.0, "15:0"), (140.0, 134.0, "rb_CLKPOS"), (260.0, 134.0, "R"),
-            (340.0, 134.0, "0xFFFF"), (420.0, 134.0, "MSBs of the field."),
+            (76.0, 120.0, "Bit"),
+            (140.0, 120.0, "Field"),
+            (260.0, 120.0, "Type"),
+            (340.0, 120.0, "Reset"),
+            (420.0, 120.0, "Description"),
+            (76.0, 134.0, "15:0"),
+            (140.0, 134.0, "rb_CLKPOS"),
+            (260.0, 134.0, "R"),
+            (340.0, 134.0, "0xFFFF"),
+            (420.0, 134.0, "MSBs of the field."),
         )
         block = _block_from([row], self.LEFTS, "Table 1-13.", "", 11)
 
@@ -161,10 +165,13 @@ class TestHeaderUnfold:
         second line. It fills *some* columns, not every one the header did."""
         self._dir = tmp_path
         row = self._row(
-            (76.0, 120.0, "Pin"), (140.0, 120.0, "Lead finish/"),
-            (260.0, 120.0, "MSL rating/"), (340.0, 120.0, "Qty"),
+            (76.0, 120.0, "Pin"),
+            (140.0, 120.0, "Lead finish/"),
+            (260.0, 120.0, "MSL rating/"),
+            (340.0, 120.0, "Qty"),
             (420.0, 120.0, "Package"),
-            (140.0, 130.0, "Ball material"), (260.0, 130.0, "Peak reflow"),
+            (140.0, 130.0, "Ball material"),
+            (260.0, 130.0, "Peak reflow"),
         )
         block = _block_from([row], self.LEFTS, "", "", 3)
 
@@ -205,17 +212,25 @@ class TestWrappedIdentifiers:
         return spans
 
     def test_the_join_happens_in_the_cell(self, tmp_path):
-        spans = self._merged(tmp_path, "ident.pdf", [
-            (108.73, 120.0, "SYSREFREQ_DELAY_ST"),
-            (108.73, 130.0, "EPSIZE"),
-        ])
+        spans = self._merged(
+            tmp_path,
+            "ident.pdf",
+            [
+                (108.73, 120.0, "SYSREFREQ_DELAY_ST"),
+                (108.73, 130.0, "EPSIZE"),
+            ],
+        )
         assert _cell(spans, 108.0, 400.0) == "SYSREFREQ_DELAY_STEPSIZE"
 
     def test_a_wrapped_sentence_in_the_same_cell_keeps_its_space(self, tmp_path):
-        spans = self._merged(tmp_path, "prose.pdf", [
-            (108.73, 120.0, "Analog supply for the analog"),
-            (108.73, 130.0, "section and the clock core."),
-        ])
+        spans = self._merged(
+            tmp_path,
+            "prose.pdf",
+            [
+                (108.73, 120.0, "Analog supply for the analog"),
+                (108.73, 130.0, "section and the clock core."),
+            ],
+        )
         assert _cell(spans, 108.0, 400.0) == (
             "Analog supply for the analog section and the clock core."
         )
@@ -229,17 +244,22 @@ class TestTheChainEndToEnd:
         """Every fix above, on the shape that lost HMC520A its 24 pins."""
         pdf = _pdf(
             tmp_path / "pins.pdf",
-            [[
-                (54.0, 110.0, "Table 4. Pin Function Descriptions"),
-                (54.0, 130.0, "Pin No."), (131.0, 130.0, "Mnemonic"),
-                (185.0, 130.0, "Description"),
-                (54.0, 144.0, "12"), (131.0, 144.0, "GND"),
-                (185.0, 144.0, "Ground return."),
-                (54.0, 158.0, "15"), (131.0, 158.0, "LO"),
-                (185.0, 158.0, "LO Port. See Figure 4."),
-                (131.0, 172.0, "EPAD"),
-                (185.0, 172.0, "Exposed Pad. Connect to GND."),
-            ]],
+            [
+                [
+                    (54.0, 110.0, "Table 4. Pin Function Descriptions"),
+                    (54.0, 130.0, "Pin No."),
+                    (131.0, 130.0, "Mnemonic"),
+                    (185.0, 130.0, "Description"),
+                    (54.0, 144.0, "12"),
+                    (131.0, 144.0, "GND"),
+                    (185.0, 144.0, "Ground return."),
+                    (54.0, 158.0, "15"),
+                    (131.0, 158.0, "LO"),
+                    (185.0, 158.0, "LO Port. See Figure 4."),
+                    (131.0, 172.0, "EPAD"),
+                    (185.0, 172.0, "Exposed Pad. Connect to GND."),
+                ]
+            ],
             rulings=(54.0, 131.0, 185.0),
         )
         pages = _load_pages(pdf)

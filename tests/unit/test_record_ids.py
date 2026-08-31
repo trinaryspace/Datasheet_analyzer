@@ -141,8 +141,11 @@ class TestWhatTableIndexMeans:
         specs = build_specset(document, "ADI9000")
 
         for record in specs.records:
-            section = next(s for s in document.sections if s.number == record.section
-                           and section_stem(s) == record.section_key)
+            section = next(
+                s
+                for s in document.sections
+                if s.number == record.section and section_stem(s) == record.section_key
+            )
             assert record.table_index < len(section.tables)
 
 

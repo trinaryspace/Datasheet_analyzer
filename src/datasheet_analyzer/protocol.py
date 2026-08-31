@@ -322,17 +322,14 @@ def build_part_agent_markdown(
         part_number,
         pack_header=f"## {part_number} — <revision>",
         answer=(
-            "TJ  Operating junction temperature: <value> <unit> (max) — "
-            "§<n>, p.<page>  [high]"
+            "TJ  Operating junction temperature: <value> <unit> (max) — §<n>, p.<page>  [high]"
         ),
     )
     body += _mcp_block("part", part_number)
     return "\n".join(body)
 
 
-def build_project_agent_markdown(
-    project_name: str, part_numbers: list[str] | None = None
-) -> str:
+def build_project_agent_markdown(project_name: str, part_numbers: list[str] | None = None) -> str:
     """`projects/<NAME>/AGENT.md` — the same protocol, scoped to a design.
 
     One addition a part cannot have: a project answer must name the part it
@@ -350,10 +347,7 @@ def build_project_agent_markdown(
     glance = [
         f"- project **{project_name}** — "
         + (f"{len(parts)} parts: {listed}" if parts else "no parts yet"),
-        (
-            "- map: `PROJECT_INDEX.md` — then the member part's own `INDEX.md` and "
-            "`AGENT.md`"
-        ),
+        ("- map: `PROJECT_INDEX.md` — then the member part's own `INDEX.md` and `AGENT.md`"),
     ]
     body = _header(
         f"{project_name} — agent protocol",
@@ -435,8 +429,7 @@ def build_skill_markdown() -> str:
         "<PART>",
         pack_header="## <PART> — <revision>",
         answer=(
-            "TJ  Operating junction temperature: <value> <unit> (max) — "
-            "§<n>, p.<page>  [high]"
+            "TJ  Operating junction temperature: <value> <unit> (max) — §<n>, p.<page>  [high]"
         ),
     )
     body += _mcp_block("part", "<PART>")

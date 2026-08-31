@@ -47,17 +47,20 @@ PAGE_W, PAGE_H = 612.0, 792.0
 def _squash_text(text: str) -> str:
     return re.sub(r"[^a-z0-9]+", "", text.lower())
 
+
 # AD9081-style column left edges (x0 of each column's text).
-X = {"param": 56.0, "conditions": 222.0, "min": 435.0, "typ": 460.0,
-     "max": 515.0, "unit": 548.0}
+X = {"param": 56.0, "conditions": 222.0, "min": 435.0, "typ": 460.0, "max": 515.0, "unit": 548.0}
 PITCH = 13.0
 CAP_Y = 140.0
 HDR_Y = 153.0
 
 
-def _make_pdf(path: Path, pages, toc: list[list] | None = None,
-              drawings: list[tuple[float, float, float, float]] | None = None
-              ) -> None:
+def _make_pdf(
+    path: Path,
+    pages,
+    toc: list[list] | None = None,
+    drawings: list[tuple[float, float, float, float]] | None = None,
+) -> None:
     """pages: list of pages; each page = list of (x, y, text) lines.
     drawings: optional (x0, y0, x1, y1) ruling strokes drawn on page 1."""
     doc = fitz.open()
@@ -89,35 +92,44 @@ def _spec_pages() -> list[list[tuple[float, float, str]]]:
     """The canonical 6-column spec table (AD9081 page 5 geometry): partial
     rulings (no vertical lines between Min/Typ/Max), indented sub-rows,
     conditions preamble above the caption, footnote + prose lines below."""
-    return [[
-        (56.0, 112.0, "Nominal supplies with DAC output current = 26 mA, unless noted."),
-        (56.0, 124.0, "For the minimum and maximum values, TA corresponds to 80 C."),
-        (56.0, CAP_Y, "Table 3. DAC DC Specifications"),
-        *_spec_header(),
-        (56.0, HDR_Y + PITCH, "DAC RESOLUTION"),
-        (X["min"], HDR_Y + PITCH, "16"),
-        (X["unit"], HDR_Y + PITCH, "Bit"),
-        (62.4, HDR_Y + 2 * PITCH, "Gain Error"),
-        (X["typ"], HDR_Y + 2 * PITCH, "1.5"),
-        (X["unit"], HDR_Y + 2 * PITCH, "% FSR"),
-        (56.0, HDR_Y + 3 * PITCH, "Integral Nonlinearity (INL)"),
-        (X["conditions"], HDR_Y + 3 * PITCH, "Shuffling disabled"),
-        (X["typ"], HDR_Y + 3 * PITCH, "8.0"),
-        (X["unit"], HDR_Y + 3 * PITCH, "LSB"),
-        (62.4, HDR_Y + 4 * PITCH, "Gain Matching"),
-        (X["typ"], HDR_Y + 4 * PITCH, "0.7"),
-        (X["unit"], HDR_Y + 4 * PITCH, "% FSR"),
-        (59.5, CAP_Y + 78.0, "1  For dc-coupled applications, the maximum output current applies."),
-        (56.0, CAP_Y + 91.0, "Stresses at or above those listed under the rating table may cause damage."),
-    ]]
+    return [
+        [
+            (56.0, 112.0, "Nominal supplies with DAC output current = 26 mA, unless noted."),
+            (56.0, 124.0, "For the minimum and maximum values, TA corresponds to 80 C."),
+            (56.0, CAP_Y, "Table 3. DAC DC Specifications"),
+            *_spec_header(),
+            (56.0, HDR_Y + PITCH, "DAC RESOLUTION"),
+            (X["min"], HDR_Y + PITCH, "16"),
+            (X["unit"], HDR_Y + PITCH, "Bit"),
+            (62.4, HDR_Y + 2 * PITCH, "Gain Error"),
+            (X["typ"], HDR_Y + 2 * PITCH, "1.5"),
+            (X["unit"], HDR_Y + 2 * PITCH, "% FSR"),
+            (56.0, HDR_Y + 3 * PITCH, "Integral Nonlinearity (INL)"),
+            (X["conditions"], HDR_Y + 3 * PITCH, "Shuffling disabled"),
+            (X["typ"], HDR_Y + 3 * PITCH, "8.0"),
+            (X["unit"], HDR_Y + 3 * PITCH, "LSB"),
+            (62.4, HDR_Y + 4 * PITCH, "Gain Matching"),
+            (X["typ"], HDR_Y + 4 * PITCH, "0.7"),
+            (X["unit"], HDR_Y + 4 * PITCH, "% FSR"),
+            (
+                59.5,
+                CAP_Y + 78.0,
+                "1  For dc-coupled applications, the maximum output current applies.",
+            ),
+            (
+                56.0,
+                CAP_Y + 91.0,
+                "Stresses at or above those listed under the rating table may cause damage.",
+            ),
+        ]
+    ]
 
 
 def _build(tmp_path, name: str, pages, toc=None) -> object:
     pdf = Path(tmp_path) / name
     _make_pdf(pdf, pages, toc)
     settings = Settings(parts_dir=tmp_path / "parts", cache_dir=tmp_path / ".cache").resolve()
-    return build_part(pdf, part_number="P1", settings=settings,
-                      vendor="unknown", use_llm=False)
+    return build_part(pdf, part_number="P1", settings=settings, vendor="unknown", use_llm=False)
 
 
 def _doc_dir(result) -> Path:
@@ -131,6 +143,7 @@ def _doc_dir(result) -> Path:
     return document_dirs(result.manifest, part_dir=result.part_dir)[
         result.manifest.documents[0].content_hash
     ]
+
 
 def _artifact(result, ref: str) -> Path:
     """Absolute path of one artifact reference, per the root it hangs off.
@@ -154,8 +167,7 @@ def _section_md(result, stem: str) -> str:
 
 def _blob(result) -> str:
     return "\n".join(
-        _artifact(result, sec.file).read_text(encoding="utf-8")
-        for sec in result.manifest.sections
+        _artifact(result, sec.file).read_text(encoding="utf-8") for sec in result.manifest.sections
     )
 
 
@@ -167,14 +179,15 @@ class TestCaptionAnchoredTables:
     _pages = staticmethod(_spec_pages)
 
     def test_spec_table_builds_atomic_block_with_conditions(self, tmp_path):
-        result = _build(tmp_path, "t3.pdf", self._pages(),
-                        toc=[[1, "1 Specifications", 1]])
+        result = _build(tmp_path, "t3.pdf", self._pages(), toc=[[1, "1 Specifications", 1]])
         assert result.manifest.stats.n_tables == 1
 
         md = _section_md(result, "1-specifications")
         assert "## Table 3. DAC DC Specifications" in md
-        assert "> **Test conditions:** Nominal supplies with DAC output current = 26 mA," \
-               " unless noted. For the minimum and maximum values, TA corresponds to 80 C." in md
+        assert (
+            "> **Test conditions:** Nominal supplies with DAC output current = 26 mA,"
+            " unless noted. For the minimum and maximum values, TA corresponds to 80 C." in md
+        )
         header_md = "| Parameter | Test Conditions/Comments | Min | Typ | Max | Unit |"
         assert header_md in md
         # indented sub-row shares the parameter column; empty cells stay empty
@@ -190,14 +203,12 @@ class TestCaptionAnchoredTables:
         table_rows = md.split("## Table 3.")[1].split("**Test conditions:**")[1]
         assert "| 1 For dc-coupled" not in table_rows
 
-        csv = (_doc_dir(result) / "tables" / "1-specifications-t01.csv").read_text(
-            encoding="utf-8")
+        csv = (_doc_dir(result) / "tables" / "1-specifications-t01.csv").read_text(encoding="utf-8")
         assert "Parameter,Test Conditions/Comments,Min,Typ,Max,Unit" in csv
         assert "Integral Nonlinearity (INL),Shuffling disabled,,8.0,,LSB" in csv
 
     def test_spec_records_resolve_via_query(self, tmp_path):
-        result = _build(tmp_path, "t3q.pdf", self._pages(),
-                        toc=[[1, "1 Specifications", 1]])
+        result = _build(tmp_path, "t3q.pdf", self._pages(), toc=[[1, "1 Specifications", 1]])
         specs = json.loads(_specs_path(result).read_text(encoding="utf-8"))
         assert specs["records"], "specs.json has no records"
 
@@ -219,10 +230,10 @@ class TestCaptionAnchoredTables:
     def test_table_page_pinned_and_verified_against_pdf_text(self, tmp_path):
         pdf = Path(tmp_path) / "t3p.pdf"
         _make_pdf(pdf, self._pages(), toc=[[1, "1 Specifications", 1]])
-        settings = Settings(parts_dir=tmp_path / "parts",
-                            cache_dir=tmp_path / ".cache").resolve()
-        result = build_part(pdf, part_number="P1", settings=settings,
-                            vendor="unknown", use_llm=False)
+        settings = Settings(parts_dir=tmp_path / "parts", cache_dir=tmp_path / ".cache").resolve()
+        result = build_part(
+            pdf, part_number="P1", settings=settings, vendor="unknown", use_llm=False
+        )
         record = SpecQuery(result.part_dir).find(symbol="Gain Error")[0]
         assert record.page == 1
         # the pinned page's own text must contain the table's cells
@@ -233,17 +244,19 @@ class TestCaptionAnchoredTables:
 
 class TestHonestDegradation:
     def test_captionless_tabular_cluster_stays_paragraphs(self, tmp_path):
-        pages = [[
-            (56.0, 96.0, "Gain Error"),
-            (X["typ"], 96.0, "1.5"),
-            (X["unit"], 96.0, "% FSR"),
-            (56.0, 109.0, "Gain Matching"),
-            (X["typ"], 109.0, "0.7"),
-            (X["unit"], 109.0, "% FSR"),
-            (56.0, 122.0, "Offset Error"),
-            (X["typ"], 122.0, "0.05"),
-            (X["unit"], 122.0, "% FSR"),
-        ]]
+        pages = [
+            [
+                (56.0, 96.0, "Gain Error"),
+                (X["typ"], 96.0, "1.5"),
+                (X["unit"], 96.0, "% FSR"),
+                (56.0, 109.0, "Gain Matching"),
+                (X["typ"], 109.0, "0.7"),
+                (X["unit"], 109.0, "% FSR"),
+                (56.0, 122.0, "Offset Error"),
+                (X["typ"], 122.0, "0.05"),
+                (X["unit"], 122.0, "% FSR"),
+            ]
+        ]
         result = _build(tmp_path, "nocap.pdf", pages)
         assert result.manifest.stats.n_tables == 0
         assert not list(_doc_dir(result).glob("tables/*")), "no CSV twins expected"
@@ -257,17 +270,19 @@ class TestHonestDegradation:
         # every row scatters its words at positions no other row shares — no
         # column is stable across rows, so the reconstruction gate rejects;
         # the words stay honest paragraphs, nothing is dropped
-        pages = [[
-            (56.0, 96.0, "Table 7. Noise"),
-            (56.0, 120.0, "Alpha Beta Gamma"),
-            (300.0, 120.0, "Delta"),
-            (166.0, 134.0, "Epsilon Zeta"),
-            (450.0, 134.0, "Eta"),
-            (86.0, 148.0, "Theta"),
-            (380.0, 148.0, "Iota"),
-            (240.0, 162.0, "Kappa Lambda"),
-            (120.0, 162.0, "Mu"),
-        ]]
+        pages = [
+            [
+                (56.0, 96.0, "Table 7. Noise"),
+                (56.0, 120.0, "Alpha Beta Gamma"),
+                (300.0, 120.0, "Delta"),
+                (166.0, 134.0, "Epsilon Zeta"),
+                (450.0, 134.0, "Eta"),
+                (86.0, 148.0, "Theta"),
+                (380.0, 148.0, "Iota"),
+                (240.0, 162.0, "Kappa Lambda"),
+                (120.0, 162.0, "Mu"),
+            ]
+        ]
         result = _build(tmp_path, "garbage.pdf", pages)
         assert result.manifest.stats.n_tables == 0
         doc = result.manifest.documents[0]
@@ -287,21 +302,23 @@ class TestHonestDegradation:
         # rulings is geometrically indistinguishable from a dense table only
         # when the PDF draws a ruling; without one the gate stays honest and
         # yields no table
-        pages = [[
-            (56.0, 96.0, "Table 7. Noise"),
-            (56.0, 120.0, "Alpha"),
-            (340.0, 120.0, "Beta"),
-            (500.0, 120.0, "Gamma"),
-            (120.0, 134.0, "Delta"),
-            (380.0, 134.0, "Epsilon"),
-            (520.0, 134.0, "Zeta"),
-            (90.0, 148.0, "Eta"),
-            (300.0, 148.0, "Theta"),
-            (480.0, 148.0, "Iota"),
-            (150.0, 162.0, "Kappa"),
-            (290.0, 162.0, "Lambda"),
-            (540.0, 162.0, "Mu"),
-        ]]
+        pages = [
+            [
+                (56.0, 96.0, "Table 7. Noise"),
+                (56.0, 120.0, "Alpha"),
+                (340.0, 120.0, "Beta"),
+                (500.0, 120.0, "Gamma"),
+                (120.0, 134.0, "Delta"),
+                (380.0, 134.0, "Epsilon"),
+                (520.0, 134.0, "Zeta"),
+                (90.0, 148.0, "Eta"),
+                (300.0, 148.0, "Theta"),
+                (480.0, 148.0, "Iota"),
+                (150.0, 162.0, "Kappa"),
+                (290.0, 162.0, "Lambda"),
+                (540.0, 162.0, "Mu"),
+            ]
+        ]
         result = _build(tmp_path, "dense.pdf", pages)
         assert result.manifest.stats.n_tables == 0
         doc = result.manifest.documents[0]
@@ -312,27 +329,31 @@ class TestHonestDegradation:
 
 class TestRegionEdgeCases:
     def test_multiline_wrapped_cell_merges_into_one_row(self, tmp_path):
-        pages = [[
-            (56.0, CAP_Y, "Table 3. DAC DC Specifications"),
-            *_spec_header(),
-            (56.0, HDR_Y + PITCH, "Output Common-Mode Voltage"),
-            (X["conditions"], HDR_Y + PITCH, "Bias each output to a negative rail"),
-            (X["min"], HDR_Y + PITCH, "0"),
-            (X["max"], HDR_Y + PITCH, "0.3"),
-            (X["unit"], HDR_Y + PITCH, "V"),
-            # wrapped continuation: 11pt gap (0.85 * 13pt pitch) -> same row;
-            # the continued value sits slightly inside its column, as PDFs do
-            (X["conditions"], HDR_Y + PITCH + 11.0, "across a 25 ohm resistor, selected"),
-            (X["min"] + 4.0, HDR_Y + PITCH + 11.0, "0.2"),
-            (56.0, HDR_Y + PITCH + 24.0, "Differential Resistance"),
-            (X["max"], HDR_Y + PITCH + 24.0, "100"),
-            (X["unit"], HDR_Y + PITCH + 24.0, "Ohm"),
-        ]]
+        pages = [
+            [
+                (56.0, CAP_Y, "Table 3. DAC DC Specifications"),
+                *_spec_header(),
+                (56.0, HDR_Y + PITCH, "Output Common-Mode Voltage"),
+                (X["conditions"], HDR_Y + PITCH, "Bias each output to a negative rail"),
+                (X["min"], HDR_Y + PITCH, "0"),
+                (X["max"], HDR_Y + PITCH, "0.3"),
+                (X["unit"], HDR_Y + PITCH, "V"),
+                # wrapped continuation: 11pt gap (0.85 * 13pt pitch) -> same row;
+                # the continued value sits slightly inside its column, as PDFs do
+                (X["conditions"], HDR_Y + PITCH + 11.0, "across a 25 ohm resistor, selected"),
+                (X["min"] + 4.0, HDR_Y + PITCH + 11.0, "0.2"),
+                (56.0, HDR_Y + PITCH + 24.0, "Differential Resistance"),
+                (X["max"], HDR_Y + PITCH + 24.0, "100"),
+                (X["unit"], HDR_Y + PITCH + 24.0, "Ohm"),
+            ]
+        ]
         result = _build(tmp_path, "wrap.pdf", pages)
         md = _section_md(result, "1-page-1")
         # one grid row, one cell with the full wrapped text
-        assert ("| Output Common-Mode Voltage | Bias each output to a negative rail"
-                " across a 25 ohm resistor, selected | 0 0.2 |  | 0.3 | V |") in md
+        assert (
+            "| Output Common-Mode Voltage | Bias each output to a negative rail"
+            " across a 25 ohm resistor, selected | 0 0.2 |  | 0.3 | V |"
+        ) in md
         # the continuation text must not appear as its own row
         row_blob = md.split("## Table 3.")[1]
         assert "| across a 25 ohm" not in row_blob
@@ -370,11 +391,17 @@ class TestRegionEdgeCases:
         # ticket 09: every row lands in one section and keeps the page it
         # was printed on — continuation rows cite their own page, not the
         # block's caption page
-        records = [r for r in json.loads(_specs_path(result).read_text(encoding="utf-8"))["records"]
-                   if r["symbol"] == "JESD204 Data Rate"]
+        records = [
+            r
+            for r in json.loads(_specs_path(result).read_text(encoding="utf-8"))["records"]
+            if r["symbol"] == "JESD204 Data Rate"
+        ]
         assert records and records[0]["page"] == 2
-        first_page = [r for r in json.loads(_specs_path(result).read_text(encoding="utf-8"))["records"]
-                      if r["symbol"] == "DAC Data Rate"]
+        first_page = [
+            r
+            for r in json.loads(_specs_path(result).read_text(encoding="utf-8"))["records"]
+            if r["symbol"] == "DAC Data Rate"
+        ]
         assert first_page and first_page[0]["page"] == 1
 
     def test_continuation_rows_verify_on_their_own_page(self, tmp_path):
@@ -382,31 +409,35 @@ class TestRegionEdgeCases:
         # pinned to the exact PDF page that printed them — the corpus-verify
         # gate's ≥80% band closes towards 100% minus the known blind spots
         pdf = Path(tmp_path) / "contp.pdf"
-        _make_pdf(pdf, [
+        _make_pdf(
+            pdf,
             [
-                (56.0, CAP_Y, "Table 9. Input Data Rate Specifications"),
-                *_spec_header(),
-                (56.0, HDR_Y + PITCH, "DAC Data Rate"),
-                (X["typ"], HDR_Y + PITCH, "9"),
-                (X["unit"], HDR_Y + PITCH, "GSPS"),
-                (62.4, HDR_Y + 2 * PITCH, "ADC Data Rate"),
-                (X["typ"], HDR_Y + 2 * PITCH, "3"),
-                (X["unit"], HDR_Y + 2 * PITCH, "GSPS"),
+                [
+                    (56.0, CAP_Y, "Table 9. Input Data Rate Specifications"),
+                    *_spec_header(),
+                    (56.0, HDR_Y + PITCH, "DAC Data Rate"),
+                    (X["typ"], HDR_Y + PITCH, "9"),
+                    (X["unit"], HDR_Y + PITCH, "GSPS"),
+                    (62.4, HDR_Y + 2 * PITCH, "ADC Data Rate"),
+                    (X["typ"], HDR_Y + 2 * PITCH, "3"),
+                    (X["unit"], HDR_Y + 2 * PITCH, "GSPS"),
+                ],
+                [
+                    (56.0, 96.0, "Table 9. Input Data Rate Specifications"),
+                    (56.0, 120.0, "JESD204 Data Rate"),
+                    (X["typ"], 120.0, "16"),
+                    (X["unit"], 120.0, "Gbps"),
+                    (62.4, 134.0, "SYSREF Data Rate"),
+                    (X["typ"], 134.0, "300"),
+                    (X["unit"], 134.0, "MHz"),
+                ],
             ],
-            [
-                (56.0, 96.0, "Table 9. Input Data Rate Specifications"),
-                (56.0, 120.0, "JESD204 Data Rate"),
-                (X["typ"], 120.0, "16"),
-                (X["unit"], 120.0, "Gbps"),
-                (62.4, 134.0, "SYSREF Data Rate"),
-                (X["typ"], 134.0, "300"),
-                (X["unit"], 134.0, "MHz"),
-            ],
-        ], toc=[[1, "1 Specifications", 1]])
-        settings = Settings(parts_dir=tmp_path / "parts",
-                            cache_dir=tmp_path / ".cache").resolve()
-        result = build_part(pdf, part_number="P1", settings=settings,
-                            vendor="unknown", use_llm=False)
+            toc=[[1, "1 Specifications", 1]],
+        )
+        settings = Settings(parts_dir=tmp_path / "parts", cache_dir=tmp_path / ".cache").resolve()
+        result = build_part(
+            pdf, part_number="P1", settings=settings, vendor="unknown", use_llm=False
+        )
         page_texts = [_squash_text(p.get_text()) for p in fitz.open(str(pdf))]
         checked = 0
         for rec in json.loads(_specs_path(result).read_text(encoding="utf-8"))["records"]:
@@ -454,46 +485,48 @@ class TestRowSpanMaterialization:
         for y, cells in sorted(per_row.items()):
             tw = fitz.TextWriter(page.rect)
             for k, (x, text) in enumerate(cells):
-                tw.append((x, y), text, font=font,
-                          fontsize=11.0 + 0.06 * (k % 2))
+                tw.append((x, y), text, font=font, fontsize=11.0 + 0.06 * (k % 2))
             tw.write_text(page)
         doc.set_toc([[1, "1 Specifications", 1]])
         doc.save(str(path))
         doc.close()
 
     def _span_pages(self):
-        return [[
-            (56.0, CAP_Y, "Table 3. DAC DC Specifications"),
-            *_spec_header(),
-            (56.0, HDR_Y + PITCH, "DAC RESOLUTION"),
-            (X["min"], HDR_Y + PITCH, "16"),
-            (X["unit"], HDR_Y + PITCH, "Bit"),
-            (self.XB["band"], HDR_Y + 2 * PITCH, "DAC ACCURACY"),
-            (self.XB["param"], HDR_Y + 3 * PITCH, "Gain Error"),
-            (X["typ"], HDR_Y + 3 * PITCH, "1.5"),
-            (X["unit"], HDR_Y + 3 * PITCH, "% FSR"),
-            (self.XB["param"], HDR_Y + 4 * PITCH, "Full-Scale Output Current Range"),
-            (X["conditions"], HDR_Y + 4 * PITCH,
-             "AC coupling, setting resistance (RSET) = 5 kOhm"),
-            (self.XB["child"], HDR_Y + 5 * PITCH, "AC Coupling"),
-            (X["conditions"], HDR_Y + 5 * PITCH, "Output common-mode voltage (VCM) = 0 V"),
-            (X["min"], HDR_Y + 5 * PITCH, "6.43"),
-            (X["typ"], HDR_Y + 5 * PITCH, "37.75"),
-            (X["unit"], HDR_Y + 5 * PITCH, "mA"),
-            (self.XB["child"], HDR_Y + 6 * PITCH, "DC Coupling"),
-            (X["conditions"], HDR_Y + 6 * PITCH, "50 ohm shunt to a negative supply"),
-            (X["min"], HDR_Y + 6 * PITCH, "6.43"),
-            (X["typ"], HDR_Y + 6 * PITCH, "37.75"),
-            (X["unit"], HDR_Y + 6 * PITCH, "mA"),
-        ]]
+        return [
+            [
+                (56.0, CAP_Y, "Table 3. DAC DC Specifications"),
+                *_spec_header(),
+                (56.0, HDR_Y + PITCH, "DAC RESOLUTION"),
+                (X["min"], HDR_Y + PITCH, "16"),
+                (X["unit"], HDR_Y + PITCH, "Bit"),
+                (self.XB["band"], HDR_Y + 2 * PITCH, "DAC ACCURACY"),
+                (self.XB["param"], HDR_Y + 3 * PITCH, "Gain Error"),
+                (X["typ"], HDR_Y + 3 * PITCH, "1.5"),
+                (X["unit"], HDR_Y + 3 * PITCH, "% FSR"),
+                (self.XB["param"], HDR_Y + 4 * PITCH, "Full-Scale Output Current Range"),
+                (
+                    X["conditions"],
+                    HDR_Y + 4 * PITCH,
+                    "AC coupling, setting resistance (RSET) = 5 kOhm",
+                ),
+                (self.XB["child"], HDR_Y + 5 * PITCH, "AC Coupling"),
+                (X["conditions"], HDR_Y + 5 * PITCH, "Output common-mode voltage (VCM) = 0 V"),
+                (X["min"], HDR_Y + 5 * PITCH, "6.43"),
+                (X["typ"], HDR_Y + 5 * PITCH, "37.75"),
+                (X["unit"], HDR_Y + 5 * PITCH, "mA"),
+                (self.XB["child"], HDR_Y + 6 * PITCH, "DC Coupling"),
+                (X["conditions"], HDR_Y + 6 * PITCH, "50 ohm shunt to a negative supply"),
+                (X["min"], HDR_Y + 6 * PITCH, "6.43"),
+                (X["typ"], HDR_Y + 6 * PITCH, "37.75"),
+                (X["unit"], HDR_Y + 6 * PITCH, "mA"),
+            ]
+        ]
 
     def _build(self, tmp_path, name: str) -> object:
         pdf = Path(tmp_path) / name
         self._make_span_pdf(pdf, self._span_pages()[0])
-        settings = Settings(parts_dir=tmp_path / "parts",
-                            cache_dir=tmp_path / ".cache").resolve()
-        return build_part(pdf, part_number="P1", settings=settings,
-                          vendor="unknown", use_llm=False)
+        settings = Settings(parts_dir=tmp_path / "parts", cache_dir=tmp_path / ".cache").resolve()
+        return build_part(pdf, part_number="P1", settings=settings, vendor="unknown", use_llm=False)
 
     def test_child_rows_materialize_the_spanning_symbol(self, tmp_path):
         result = self._build(tmp_path, "span.pdf")
@@ -501,15 +534,21 @@ class TestRowSpanMaterialization:
         md = _section_md(result, "1-specifications")
         # children carry the parent symbol verbatim in front of their own
         # text — the association the unruled grid loses today
-        assert ("| Full-Scale Output Current Range AC Coupling "
-                "| Output common-mode voltage (VCM) = 0 V "
-                "| 6.43 | 37.75 |  | mA |") in md
-        assert ("| Full-Scale Output Current Range DC Coupling "
-                "| 50 ohm shunt to a negative supply "
-                "| 6.43 | 37.75 |  | mA |") in md
+        assert (
+            "| Full-Scale Output Current Range AC Coupling "
+            "| Output common-mode voltage (VCM) = 0 V "
+            "| 6.43 | 37.75 |  | mA |"
+        ) in md
+        assert (
+            "| Full-Scale Output Current Range DC Coupling "
+            "| 50 ohm shunt to a negative supply "
+            "| 6.43 | 37.75 |  | mA |"
+        ) in md
         # the parent row itself is unchanged and still honestly value-less
-        assert ("| Full-Scale Output Current Range "
-                "| AC coupling, setting resistance (RSET) = 5 kOhm |  |  |  |  |") in md
+        assert (
+            "| Full-Scale Output Current Range "
+            "| AC coupling, setting resistance (RSET) = 5 kOhm |  |  |  |  |"
+        ) in md
         # the band header is never replicated into an independent row
         assert "| DAC ACCURACY Gain Error" not in md
         assert "| Gain Error |  |  | 1.5 |  | % FSR |" in md
@@ -530,8 +569,7 @@ class TestRowSpanMaterialization:
         assert ac.min == "6.43" and ac.typ == "37.75" and ac.unit.canonical == "mA"
         dc = next(r for r in children if "DC Coupling" in r.symbol)
         assert dc.typ == "37.75" and dc.unit.canonical == "mA"
-        csv = (_doc_dir(result) / "tables" / "1-specifications-t01.csv").read_text(
-            encoding="utf-8")
+        csv = (_doc_dir(result) / "tables" / "1-specifications-t01.csv").read_text(encoding="utf-8")
         assert "Full-Scale Output Current Range AC Coupling," in csv
         assert "DAC ACCURACY Gain Error" not in csv
 
@@ -546,14 +584,22 @@ class TestCaptionlessSemantics:
     (inter-span clustering), and captionless tables render as "Unnumbered
     table" — never a fabricated "Table N"."""
 
-    X: ClassVar[dict[str, float]] = {"p": 42.8, "min": 322.9, "typ": 391.8,
-                                     "max": 460.0, "unit": 526.1}
+    X: ClassVar[dict[str, float]] = {
+        "p": 42.8,
+        "min": 322.9,
+        "typ": 391.8,
+        "max": 460.0,
+        "unit": 526.1,
+    }
 
     @staticmethod
-    def _make_span_pdf(path: Path, lines: list[tuple[float, float, str]],
-                       toc, rects: list[tuple[float, float, float, float]],
-                       rulings: list[tuple[float, float, float]] | None = None
-                       ) -> None:
+    def _make_span_pdf(
+        path: Path,
+        lines: list[tuple[float, float, str]],
+        toc,
+        rects: list[tuple[float, float, float, float]],
+        rulings: list[tuple[float, float, float]] | None = None,
+    ) -> None:
         """lines: (x, y, text, fontsize); one fitz.TextWriter item per cell
         on the shared row baseline, with a strictly *decreasing* per-cell
         size (sz - 0.06k). The real PDFs print one span per cell on one
@@ -583,14 +629,11 @@ class TestCaptionlessSemantics:
         doc.save(str(path))
         doc.close()
 
-    def _build(self, tmp_path, name: str, lines, toc, rects,
-               rulings=None) -> object:
+    def _build(self, tmp_path, name: str, lines, toc, rects, rulings=None) -> object:
         pdf = Path(tmp_path) / name
         self._make_span_pdf(pdf, lines, toc, rects, rulings)
-        settings = Settings(parts_dir=tmp_path / "parts",
-                            cache_dir=tmp_path / ".cache").resolve()
-        return build_part(pdf, part_number="P1", settings=settings,
-                          vendor="unknown", use_llm=False)
+        settings = Settings(parts_dir=tmp_path / "parts", cache_dir=tmp_path / ".cache").resolve()
+        return build_part(pdf, part_number="P1", settings=settings, vendor="unknown", use_llm=False)
 
     def test_heading_anchored_table_with_12pt_header_words(self, tmp_path):
         # QPA1003P p2 electrical shape: the 14 pt heading is inside a drawn
@@ -604,22 +647,34 @@ class TestCaptionlessSemantics:
             (self.X["max"], 126.0, "Max", 12.0),
             (self.X["unit"], 126.0, "Units", 12.0),
             (self.X["p"], 140.5, "Operational Frequency Range", 10.0),
-            (self.X["min"], 140.5, "1", 10.0), (self.X["typ"], 140.5, "-", 10.0),
-            (self.X["max"], 140.5, "8", 10.0), (self.X["unit"], 140.5, "GHz", 10.0),
+            (self.X["min"], 140.5, "1", 10.0),
+            (self.X["typ"], 140.5, "-", 10.0),
+            (self.X["max"], 140.5, "8", 10.0),
+            (self.X["unit"], 140.5, "GHz", 10.0),
             (self.X["p"], 155.0, "Output Power @ PIN = 15 dBm", 10.0),
-            (self.X["min"], 155.0, "39.7", 10.0), (self.X["typ"], 155.0, "40.7", 10.0),
-            (self.X["max"], 155.0, "41.3", 10.0), (self.X["unit"], 155.0, "dBm", 10.0),
+            (self.X["min"], 155.0, "39.7", 10.0),
+            (self.X["typ"], 155.0, "40.7", 10.0),
+            (self.X["max"], 155.0, "41.3", 10.0),
+            (self.X["unit"], 155.0, "dBm", 10.0),
             (self.X["p"], 169.5, "Output Power @ PIN = 15 dBm", 10.0),
-            (self.X["min"], 169.5, "39.7", 10.0), (self.X["typ"], 169.5, "40.7", 10.0),
-            (self.X["max"], 169.5, "41.3", 10.0), (self.X["unit"], 169.5, "dBm", 10.0),
+            (self.X["min"], 169.5, "39.7", 10.0),
+            (self.X["typ"], 169.5, "40.7", 10.0),
+            (self.X["max"], 169.5, "41.3", 10.0),
+            (self.X["unit"], 169.5, "dBm", 10.0),
         ]
         rects = [(36.0, 92.0, 576.0, 110.0)]
-        rulings = [(x, 135.0, 181.0) for x in
-                   (self.X["p"], self.X["min"], self.X["typ"],
-                    self.X["max"], self.X["unit"])]
-        result = self._build(tmp_path, "hdr.pdf", lines,
-                             toc=[[1, "1 Specifications", 1]], rects=rects,
-                             rulings=rulings)
+        rulings = [
+            (x, 135.0, 181.0)
+            for x in (self.X["p"], self.X["min"], self.X["typ"], self.X["max"], self.X["unit"])
+        ]
+        result = self._build(
+            tmp_path,
+            "hdr.pdf",
+            lines,
+            toc=[[1, "1 Specifications", 1]],
+            rects=rects,
+            rulings=rulings,
+        )
         assert result.manifest.stats.n_tables == 1
         md = _section_md(result, "1-specifications")
         # rendered as the honest captionless form, never a fabricated number
@@ -640,20 +695,28 @@ class TestCaptionlessSemantics:
         lines = [
             (36.0, 100.0, "Absolute Maximum Ratings", 14.04),
             (316.0, 100.0, "Recommended Operating Conditions", 14.04),
-            (48.6, 126.0, "Parameter", 12.0), (217.1, 126.0, "Value / Range", 12.0),
-            (323.3, 126.0, "Parameter", 12.0), (486.5, 126.0, "Value / Range", 12.0),
-            (39.6, 140.5, "Drain Voltage (VD)", 10.0), (235.4, 140.5, "+29.5 V", 10.0),
-            (319.7, 140.5, "Drain Voltage (VD)", 10.0), (508.8, 140.5, "+28 V", 10.0),
-            (39.6, 155.0, "Drain Current", 10.0), (235.4, 155.0, "1300 mA", 10.0),
-            (319.7, 155.0, "Drain Current (IDQ)", 10.0), (508.8, 155.0, "650 mA", 10.0),
-            (39.6, 169.5, "Storage Temperature", 10.0), (235.4, 169.5, "-55 to 150 C", 10.0),
-            (319.7, 169.5, "Temperature (TBASE)", 10.0), (508.8, 169.5, "-40 to 85 C", 10.0),
+            (48.6, 126.0, "Parameter", 12.0),
+            (217.1, 126.0, "Value / Range", 12.0),
+            (323.3, 126.0, "Parameter", 12.0),
+            (486.5, 126.0, "Value / Range", 12.0),
+            (39.6, 140.5, "Drain Voltage (VD)", 10.0),
+            (235.4, 140.5, "+29.5 V", 10.0),
+            (319.7, 140.5, "Drain Voltage (VD)", 10.0),
+            (508.8, 140.5, "+28 V", 10.0),
+            (39.6, 155.0, "Drain Current", 10.0),
+            (235.4, 155.0, "1300 mA", 10.0),
+            (319.7, 155.0, "Drain Current (IDQ)", 10.0),
+            (508.8, 155.0, "650 mA", 10.0),
+            (39.6, 169.5, "Storage Temperature", 10.0),
+            (235.4, 169.5, "-55 to 150 C", 10.0),
+            (319.7, 169.5, "Temperature (TBASE)", 10.0),
+            (508.8, 169.5, "-40 to 85 C", 10.0),
         ]
         rects = [(36.0, 92.0, 295.0, 110.0), (316.0, 92.0, 576.0, 110.0)]
         rulings = [(x, 121.0, 192.0) for x in (39.6, 217.1, 319.7, 486.5)]
-        result = self._build(tmp_path, "pair.pdf", lines,
-                             toc=[[1, "1 Pair", 1]], rects=rects,
-                             rulings=rulings)
+        result = self._build(
+            tmp_path, "pair.pdf", lines, toc=[[1, "1 Pair", 1]], rects=rects, rulings=rulings
+        )
         assert result.manifest.stats.n_tables == 2
         md = _section_md(result, "1-pair")
         assert md.count("## Unnumbered table") == 2
@@ -683,9 +746,14 @@ class TestCaptionlessSemantics:
             (36.0, 146.0, "amplifier on GaN on SiC process with 1 to 8 GHz", 10.0),
             (36.0, 160.0, "coverage and 10 W of saturated output power.", 10.0),
         ]
-        result = self._build(tmp_path, "prose.pdf", lines,
-                             toc=[[1, "1 Page One", 1]],
-                             rects=[(36.0, 92.0, 576.0, 110.0)], rulings=[])
+        result = self._build(
+            tmp_path,
+            "prose.pdf",
+            lines,
+            toc=[[1, "1 Page One", 1]],
+            rects=[(36.0, 92.0, 576.0, 110.0)],
+            rulings=[],
+        )
         assert result.manifest.stats.n_tables == 0
         md = _section_md(result, "1-page-one")
         assert "## Unnumbered table" not in md
@@ -699,14 +767,19 @@ class TestCaptionlessSemantics:
         # grid never gains their ragged fragments as cells
         lines = [
             (56.0, 96.0, "Table 1. Electrical Characteristics", 11.0),
-            (56.0, 116.0, "PARAMETER", 8.5), (450.0, 116.0, "MIN", 8.5),
+            (56.0, 116.0, "PARAMETER", 8.5),
+            (450.0, 116.0, "MIN", 8.5),
             (520.0, 116.0, "UNIT", 8.5),
-            (56.0, 140.0, "Input offset voltage", 8.5), (450.0, 140.0, "5", 8.5),
+            (56.0, 140.0, "Input offset voltage", 8.5),
+            (450.0, 140.0, "5", 8.5),
             (520.0, 140.0, "mV", 8.5),
-            (56.0, 148.0, "Input bias current", 8.5), (450.0, 148.0, "80", 8.5),
-            (56.0, 156.0, "Input resistance", 8.5), (450.0, 156.0, "2", 8.5),
+            (56.0, 148.0, "Input bias current", 8.5),
+            (450.0, 148.0, "80", 8.5),
+            (56.0, 156.0, "Input resistance", 8.5),
+            (450.0, 156.0, "2", 8.5),
             (520.0, 156.0, "MOhm", 8.5),
-            (56.0, 164.0, "Slew rate", 8.5), (520.0, 164.0, "V/us", 8.5),
+            (56.0, 164.0, "Slew rate", 8.5),
+            (520.0, 164.0, "V/us", 8.5),
             (54.0, 192.0, "(1)", 8.06),
             (71.88, 192.0, "For military specifications", 8.0),
             (164.39, 192.0, "see", 7.94),
@@ -715,8 +788,9 @@ class TestCaptionlessSemantics:
             (260.66, 192.0, "and RETS741AX for", 7.76),
             (335.84, 192.0, "LM741A.", 7.7),
         ]
-        result = self._build(tmp_path, "notes.pdf", lines,
-                             toc=[[1, "1 Specifications", 1]], rects=[])
+        result = self._build(
+            tmp_path, "notes.pdf", lines, toc=[[1, "1 Specifications", 1]], rects=[]
+        )
         assert result.manifest.stats.n_tables == 1
         md = _section_md(result, "1-specifications")
         foot = md.split("**Footnotes:**")[1].split("##")[0]
@@ -736,7 +810,8 @@ class TestCaptionlessSemantics:
         # be caught by the header-token guard anyway.
         lines = [
             (36.0, 100.0, "Handling Precautions", 14.04),
-            (39.6, 126.0, "Parameter", 9.96), (197.8, 126.0, "Rating", 9.96),
+            (39.6, 126.0, "Parameter", 9.96),
+            (197.8, 126.0, "Rating", 9.96),
             (39.6, 140.5, "ESD - Human Body Model (HBM)", 10.0),
             (213.5, 140.5, "0B", 10.0),
             (39.6, 155.0, "MSL - Moisture Sensitivity Level", 10.0),
@@ -744,9 +819,9 @@ class TestCaptionlessSemantics:
         ]
         rects = [(36.0, 92.0, 576.0, 110.0)]
         rulings = [(39.6, 135.0, 166.0), (213.5, 135.0, 166.0)]
-        result = self._build(tmp_path, "prec.pdf", lines,
-                             toc=[[1, "1 Handling", 1]], rects=rects,
-                             rulings=rulings)
+        result = self._build(
+            tmp_path, "prec.pdf", lines, toc=[[1, "1 Handling", 1]], rects=rects, rulings=rulings
+        )
         assert result.manifest.stats.n_tables == 1
         md = _section_md(result, "1-handling")
         assert "## Unnumbered table" in md
@@ -771,23 +846,25 @@ class TestRetryLadder:
         # (unstable -> rejected) and only the all-word splits recover the
         # table. Mirrors AD9081 Tables 17/20/21 (2-word headers over body
         # columns the header never declares).
-        pages = [[
-            (56.0, CAP_Y, "Table 4. Reference Clock"),
-            (350.0, HDR_Y, "SYMBOL"),
-            (480.0, HDR_Y, "VALUE"),
-            (56.0, HDR_Y + PITCH, "LVDS Clock Divide"),
-            (406.0, HDR_Y + PITCH, "1.2"),
-            (540.0, HDR_Y + PITCH, "V"),
-            (56.0, HDR_Y + 2 * PITCH, "CMOS Clock Divide"),
-            (406.0, HDR_Y + 2 * PITCH, "3.3"),
-            (540.0, HDR_Y + 2 * PITCH, "V"),
-            (56.0, HDR_Y + 3 * PITCH, "Device Clock Divide"),
-            (406.0, HDR_Y + 3 * PITCH, "0.9"),
-            (540.0, HDR_Y + 3 * PITCH, "V"),
-            (56.0, HDR_Y + 4 * PITCH, "SYSREF Clock Divide"),
-            (406.0, HDR_Y + 4 * PITCH, "1.8"),
-            (540.0, HDR_Y + 4 * PITCH, "V"),
-        ]]
+        pages = [
+            [
+                (56.0, CAP_Y, "Table 4. Reference Clock"),
+                (350.0, HDR_Y, "SYMBOL"),
+                (480.0, HDR_Y, "VALUE"),
+                (56.0, HDR_Y + PITCH, "LVDS Clock Divide"),
+                (406.0, HDR_Y + PITCH, "1.2"),
+                (540.0, HDR_Y + PITCH, "V"),
+                (56.0, HDR_Y + 2 * PITCH, "CMOS Clock Divide"),
+                (406.0, HDR_Y + 2 * PITCH, "3.3"),
+                (540.0, HDR_Y + 2 * PITCH, "V"),
+                (56.0, HDR_Y + 3 * PITCH, "Device Clock Divide"),
+                (406.0, HDR_Y + 3 * PITCH, "0.9"),
+                (540.0, HDR_Y + 3 * PITCH, "V"),
+                (56.0, HDR_Y + 4 * PITCH, "SYSREF Clock Divide"),
+                (406.0, HDR_Y + 4 * PITCH, "1.8"),
+                (540.0, HDR_Y + 4 * PITCH, "V"),
+            ]
+        ]
         result = _build(tmp_path, "rescue.pdf", pages)
         assert result.manifest.stats.n_tables == 1
         md = _section_md(result, "1-page-1")
@@ -796,8 +873,7 @@ class TestRetryLadder:
         assert "| SYSREF Clock Divide |  | 1.8 |  | V |" in md
         doc = result.manifest.documents[0]
         stats = result.manifest.extraction_stats[doc.content_hash]
-        assert (stats.tables_detected, stats.tables_accepted, stats.tables_rejected) \
-            == (1, 1, 0)
+        assert (stats.tables_detected, stats.tables_accepted, stats.tables_rejected) == (1, 1, 0)
 
     def test_coarse_split_never_beats_the_header_declared_columns(self, tmp_path):
         # Min@435 and Typ@460 sit 25 pt apart: a coarse τ=28 all-word split
@@ -805,32 +881,35 @@ class TestRetryLadder:
         # fine split but kept by the coarse one, would win a raw word-fidelity
         # comparison. The header-declared separation must win: the merged cell
         # must never reach the corpus.
-        result = _build(tmp_path, "guard.pdf", _spec_pages(),
-                        toc=[[1, "1 Specifications", 1]])
+        result = _build(tmp_path, "guard.pdf", _spec_pages(), toc=[[1, "1 Specifications", 1]])
         assert result.manifest.stats.n_tables == 1
         md = _section_md(result, "1-specifications")
         assert "| Parameter | Test Conditions/Comments | Min | Typ | Max | Unit |" in md
         table_region = md.split("## Table 3.")[1]
         assert "| Min Typ |" not in table_region
-        assert "| Integral Nonlinearity (INL) | Shuffling disabled |  | 8.0 |  | LSB |" in table_region
+        assert (
+            "| Integral Nonlinearity (INL) | Shuffling disabled |  | 8.0 |  | LSB |" in table_region
+        )
 
     def test_unrecoverable_ladder_degrades_to_paragraphs_with_exact_reason(self, tmp_path):
         # Every row scatters its words on tracks no other row shares: every
         # split of every tau yields an unstable grid. The ladder exhausts,
         # the words stay honest paragraphs and the gate's own verdict is the
         # recorded reason.
-        pages = [[
-            (56.0, 96.0, "Table 7. Noise"),
-            (56.0, 120.0, "Alpha Beta"),
-            (306.0, 120.0, "Gamma"),
-            (100.0, 134.0, "Delta Epsilon"),
-            (410.0, 134.0, "Zeta"),
-            (175.0, 148.0, "Eta"),
-            (465.0, 148.0, "Theta"),
-            (240.0, 162.0, "Iota Kappa"),
-            (520.0, 162.0, "Lambda"),
-            (560.0, 176.0, "Mu Nu"),
-        ]]
+        pages = [
+            [
+                (56.0, 96.0, "Table 7. Noise"),
+                (56.0, 120.0, "Alpha Beta"),
+                (306.0, 120.0, "Gamma"),
+                (100.0, 134.0, "Delta Epsilon"),
+                (410.0, 134.0, "Zeta"),
+                (175.0, 148.0, "Eta"),
+                (465.0, 148.0, "Theta"),
+                (240.0, 162.0, "Iota Kappa"),
+                (520.0, 162.0, "Lambda"),
+                (560.0, 176.0, "Mu Nu"),
+            ]
+        ]
         result = _build(tmp_path, "trapped.pdf", pages)
         assert result.manifest.stats.n_tables == 0
         doc = result.manifest.documents[0]
@@ -846,18 +925,22 @@ class TestRetryLadder:
 
 class TestMechanics:
     def test_extraction_stats_recorded_in_manifest(self, tmp_path):
-        result = _build(tmp_path, "mech.pdf", [
+        result = _build(
+            tmp_path,
+            "mech.pdf",
             [
-                (56.0, CAP_Y, "Table 3. DAC DC Specifications"),
-                *_spec_header(),
-                (56.0, HDR_Y + PITCH, "DAC RESOLUTION"),
-                (X["min"], HDR_Y + PITCH, "16"),
-                (X["unit"], HDR_Y + PITCH, "Bit"),
-                (62.4, HDR_Y + 2 * PITCH, "Gain Error"),
-                (X["typ"], HDR_Y + 2 * PITCH, "1.5"),
-                (X["unit"], HDR_Y + 2 * PITCH, "% FSR"),
-            ]
-        ])
+                [
+                    (56.0, CAP_Y, "Table 3. DAC DC Specifications"),
+                    *_spec_header(),
+                    (56.0, HDR_Y + PITCH, "DAC RESOLUTION"),
+                    (X["min"], HDR_Y + PITCH, "16"),
+                    (X["unit"], HDR_Y + PITCH, "Bit"),
+                    (62.4, HDR_Y + 2 * PITCH, "Gain Error"),
+                    (X["typ"], HDR_Y + 2 * PITCH, "1.5"),
+                    (X["unit"], HDR_Y + 2 * PITCH, "% FSR"),
+                ]
+            ],
+        )
         doc = result.manifest.documents[0]
         stats = result.manifest.extraction_stats[doc.content_hash]
         assert stats.backend == "pdf_layout"
@@ -891,10 +974,14 @@ class TestMechanics:
         payload["extractor_version"] = ""
         cache_file.write_text(json.dumps(payload), encoding="utf-8")
 
-        settings = Settings(parts_dir=tmp_path / "parts",
-                            cache_dir=tmp_path / ".cache").resolve()
-        again = build_part(Path(tmp_path) / "stale.pdf", part_number="P1",
-                           settings=settings, vendor="unknown", use_llm=False)
+        settings = Settings(parts_dir=tmp_path / "parts", cache_dir=tmp_path / ".cache").resolve()
+        again = build_part(
+            Path(tmp_path) / "stale.pdf",
+            part_number="P1",
+            settings=settings,
+            vendor="unknown",
+            use_llm=False,
+        )
         assert not again.cached_extraction, "stale pdf_layout cache must be re-extracted"
         assert again.manifest.stats.n_tables == 1
 
@@ -902,22 +989,23 @@ class TestMechanics:
         # dense two-column value table (every cell filled, no header row):
         # the ruling hint lets the gate accept what geometry alone cannot
         # distinguish from garbage
-        pages = [[
-            (56.0, 96.0, "Table 2-1 - Power Consumption"),
-            (56.0, 120.0, "Power"),
-            (X["typ"], 120.0, "1.2"),
-            (X["unit"], 120.0, "W"),
-            (56.0, 134.0, "Aux"),
-            (X["typ"], 134.0, "0.3"),
-            (X["unit"], 134.0, "W"),
-        ]]
+        pages = [
+            [
+                (56.0, 96.0, "Table 2-1 - Power Consumption"),
+                (56.0, 120.0, "Power"),
+                (X["typ"], 120.0, "1.2"),
+                (X["unit"], 120.0, "W"),
+                (56.0, 134.0, "Aux"),
+                (X["typ"], 134.0, "0.3"),
+                (X["unit"], 134.0, "W"),
+            ]
+        ]
         pdf = Path(tmp_path) / "dash.pdf"
-        _make_pdf(pdf, pages,
-                  drawings=[(X["unit"] - 6.0, 112.0, X["unit"] - 6.0, 148.0)])
-        settings = Settings(parts_dir=tmp_path / "parts",
-                            cache_dir=tmp_path / ".cache").resolve()
-        result = build_part(pdf, part_number="P1", settings=settings,
-                            vendor="unknown", use_llm=False)
+        _make_pdf(pdf, pages, drawings=[(X["unit"] - 6.0, 112.0, X["unit"] - 6.0, 148.0)])
+        settings = Settings(parts_dir=tmp_path / "parts", cache_dir=tmp_path / ".cache").resolve()
+        result = build_part(
+            pdf, part_number="P1", settings=settings, vendor="unknown", use_llm=False
+        )
         assert result.manifest.stats.n_tables == 1
         md = _blob(result)
         assert re.search(r"## Table 2-1", md)

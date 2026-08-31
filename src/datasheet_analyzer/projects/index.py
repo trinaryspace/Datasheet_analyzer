@@ -171,8 +171,7 @@ def build_project_index_markdown(
             lines.append(f"- {head}")
             if not m.built:
                 lines.append(
-                    f"  no corpus on disk — build it: "
-                    f"`dsa build <pdf> --part {m.part_number}`"
+                    f"  no corpus on disk — build it: `dsa build <pdf> --part {m.part_number}`"
                 )
                 continue
             lines.append(f"  `{m.index_path}`")

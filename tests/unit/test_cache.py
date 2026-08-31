@@ -22,9 +22,7 @@ def _settings(tmp_path) -> Settings:
 
 def _raw(hash_char: str, extractor: str = "ti_html", page_count: int = 0) -> RawDocument:
     return RawDocument(
-        source=SourceDocument(
-            content_hash=hash_char * 64, path="x.pdf", page_count=page_count
-        ),
+        source=SourceDocument(content_hash=hash_char * 64, path="x.pdf", page_count=page_count),
         extractor=extractor,
     )
 

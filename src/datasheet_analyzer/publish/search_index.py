@@ -34,9 +34,7 @@ log = logging.getLogger(__name__)
 INDEX_FILENAME = "search_index.json"
 
 
-def build_search_index(
-    plans: list[SectionPlan], *, part_number: str, doc_hash: str
-) -> SearchIndex:
+def build_search_index(plans: list[SectionPlan], *, part_number: str, doc_hash: str) -> SearchIndex:
     """Index one document's rendered sections.
 
     Sections keep plan (reading) order; every token map is sorted, so the

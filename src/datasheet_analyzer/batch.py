@@ -206,8 +206,7 @@ class EventEmitter:
     def header(self, batch_dir: Path, jobs: list[BatchJob]) -> None:
         """Run-level header event carrying the full job list in run order."""
         job_list = [
-            {"job": idx, "part": j.part, "pdf": j.pdf_path.name}
-            for idx, j in enumerate(jobs, 1)
+            {"job": idx, "part": j.part, "pdf": j.pdf_path.name} for idx, j in enumerate(jobs, 1)
         ]
         self._sink(None, None, "header", str(batch_dir), {"jobs": job_list})
 
@@ -248,10 +247,7 @@ def _refresh_pdf_source(job: BatchJob, settings: Settings) -> None:
     part_dir = settings.parts_dir / job.part
     inventory = load_inventory(part_dir)
     current = compute_content_hash(job.pdf_path)
-    stale = [
-        s for s in inventory
-        if _same_path(s.path, job.pdf_path) and s.content_hash != current
-    ]
+    stale = [s for s in inventory if _same_path(s.path, job.pdf_path) and s.content_hash != current]
     if not stale:
         return
     fresh = register_source(job.pdf_path, part_number=job.part, doc_type="datasheet")
@@ -380,16 +376,12 @@ def skip_reason(job: BatchJob, *, settings: Settings, force: bool = False) -> st
         manifest_path = part_dir / "manifest.json"
         if not manifest_path.exists():
             return ""
-        manifest = CorpusManifest.model_validate_json(
-            manifest_path.read_text(encoding="utf-8")
-        )
+        manifest = CorpusManifest.model_validate_json(manifest_path.read_text(encoding="utf-8"))
         if manifest.pipeline_version != PIPELINE_VERSION:
             return ""
         if _extractor_stale(manifest):
             return ""
-        if _publish_artifacts_stale(
-            part_dir, manifest, card_version=settings.card_version
-        ):
+        if _publish_artifacts_stale(part_dir, manifest, card_version=settings.card_version):
             return ""
         pdf_hash = compute_content_hash(job.pdf_path)
         published = {s.content_hash for s in manifest.documents}
@@ -408,8 +400,10 @@ def skip_reason(job: BatchJob, *, settings: Settings, force: bool = False) -> st
         # of what was built, and — per this function's own rationale — are the
         # guard that stops a failed rebuild arming the skip on a stale corpus.
         if pdf_hash in published:
-            return (f"already built: PDF sha256, pipeline version "
-                    f"{PIPELINE_VERSION} and extractor versions match")
+            return (
+                f"already built: PDF sha256, pipeline version "
+                f"{PIPELINE_VERSION} and extractor versions match"
+            )
         return ""
     except (OSError, ValueError):  # JSONDecodeError etc. — never raise
         return ""
@@ -558,8 +552,10 @@ def _dispatch_job(
 def _print_summary(report: BatchReport) -> None:
     counts = report.counts
     print("# Batch summary")
-    print(f"{len(report.jobs)} jobs: {counts['done']} done, {counts['failed']} failed, "
-          f"{counts['skipped']} skipped")
+    print(
+        f"{len(report.jobs)} jobs: {counts['done']} done, {counts['failed']} failed, "
+        f"{counts['skipped']} skipped"
+    )
     print()
     print("| # | Part | Status | Detail |")
     print("|---|------|--------|--------|")
@@ -620,20 +616,30 @@ def run_batch(
     if workers == 1:
         for idx, job in enumerate(jobs, 1):
             _dispatch_job(
-                idx, job, emitter=emitter, settings=settings,
-                use_cache=use_cache, use_llm=use_llm, force=force,
+                idx,
+                job,
+                emitter=emitter,
+                settings=settings,
+                use_cache=use_cache,
+                use_llm=use_llm,
+                force=force,
                 completed=completed,
             )
     else:
         pending: dict[Future, int] = {}
-        with ThreadPoolExecutor(
-            max_workers=workers, thread_name_prefix="dsa-batch"
-        ) as executor:
+        with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="dsa-batch") as executor:
             for idx, job in enumerate(jobs, 1):
                 _dispatch_job(
-                    idx, job, emitter=emitter, settings=settings,
-                    use_cache=use_cache, use_llm=use_llm, force=force,
-                    completed=completed, executor=executor, pending=pending,
+                    idx,
+                    job,
+                    emitter=emitter,
+                    settings=settings,
+                    use_cache=use_cache,
+                    use_llm=use_llm,
+                    force=force,
+                    completed=completed,
+                    executor=executor,
+                    pending=pending,
                 )
 
             for future in as_completed(pending):

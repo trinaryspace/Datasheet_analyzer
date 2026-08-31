@@ -143,7 +143,9 @@ def main(argv: list[str] | None = None) -> int:
         total_rows += total
         all_uncovered.update(uncovered)
         pct = covered / total if total else 0.0
-        print(f"  {part_dir.name:<10} {covered:>4}/{total:<4} distinct spec rows covered ({pct:.0%})")
+        print(
+            f"  {part_dir.name:<10} {covered:>4}/{total:<4} distinct spec rows covered ({pct:.0%})"
+        )
 
     pct = total_covered / total_rows if total_rows else 0.0
     print(f"  {'TOTAL':<10} {total_covered:>4}/{total_rows:<4} ({pct:.0%})")

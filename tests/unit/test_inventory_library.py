@@ -180,8 +180,12 @@ class TestLibraryResolution:
     def test_build_resolves_documents_from_the_library(self, settings, store, corpus):
         """The part is the *view* of what covers it, not a folder listing."""
         result = build_part(
-            corpus["datasheet"], part_number="AD9081", settings=settings,
-            vendor="adi", use_llm=False, store=store,
+            corpus["datasheet"],
+            part_number="AD9081",
+            settings=settings,
+            vendor="adi",
+            use_llm=False,
+            store=store,
         )
         assert _hashes(result) == {
             _hash_of(store, corpus["datasheet"]),
@@ -193,12 +197,14 @@ class TestLibraryResolution:
         part_dir = settings.parts_dir / "AD9081"
         part_dir.mkdir(parents=True)
         # a stale derived view naming only the datasheet
-        save_inventory(
-            [store.get(_hash_of(store, corpus["datasheet"])).source], part_dir
-        )
+        save_inventory([store.get(_hash_of(store, corpus["datasheet"])).source], part_dir)
         result = build_part(
-            corpus["datasheet"], part_number="AD9081", settings=settings,
-            vendor="adi", use_llm=False, store=store,
+            corpus["datasheet"],
+            part_number="AD9081",
+            settings=settings,
+            vendor="adi",
+            use_llm=False,
+            store=store,
         )
         assert _hash_of(store, corpus["all"]) in _hashes(result)
 
@@ -206,31 +212,44 @@ class TestLibraryResolution:
         note = _hash_of(store, corpus["all"])
         for part in ("AD9081", "AFE7950"):
             result = build_part(
-                corpus["datasheet"], part_number=part, settings=settings,
-                vendor="adi", use_llm=False, store=store,
+                corpus["datasheet"],
+                part_number=part,
+                settings=settings,
+                vendor="adi",
+                use_llm=False,
+                store=store,
             )
             assert note in _hashes(result), part
 
     def test_family_document_covers_afe7950_and_not_ad9081(self, settings, store, corpus):
         fam = _hash_of(store, corpus["family"])
         afe = build_part(
-            corpus["family"], part_number="AFE7950", settings=settings,
-            use_llm=False, store=store,
+            corpus["family"],
+            part_number="AFE7950",
+            settings=settings,
+            use_llm=False,
+            store=store,
         )
         ad = build_part(
-            corpus["datasheet"], part_number="AD9081", settings=settings,
-            vendor="adi", use_llm=False, store=store,
+            corpus["datasheet"],
+            part_number="AD9081",
+            settings=settings,
+            vendor="adi",
+            use_llm=False,
+            store=store,
         )
         assert fam in _hashes(afe)
         assert fam not in _hashes(ad)
 
-    def test_part_no_document_covers_bootstraps_from_the_named_pdf(
-        self, settings, corpus
-    ):
+    def test_part_no_document_covers_bootstraps_from_the_named_pdf(self, settings, corpus):
         empty = FakeLibraryStore()
         result = build_part(
-            corpus["datasheet"], part_number="AD9081", settings=settings,
-            vendor="adi", use_llm=False, store=empty,
+            corpus["datasheet"],
+            part_number="AD9081",
+            settings=settings,
+            vendor="adi",
+            use_llm=False,
+            store=empty,
         )
         assert len(result.manifest.documents) == 1
         (doc,) = empty.for_part("AD9081")
@@ -248,21 +267,27 @@ class TestTheNamedPdfIsAlwaysPartOfTheBuild:
         digest = _hash_of(store, corpus["datasheet"])
 
         result = build_part(
-            moved, part_number="AD9081", settings=settings,
-            vendor="adi", use_llm=False, store=store,
+            moved,
+            part_number="AD9081",
+            settings=settings,
+            vendor="adi",
+            use_llm=False,
+            store=store,
         )
         assert digest in _hashes(result)
         assert len(store.all()) == 3  # nothing new was invented
         assert Path(store.get(digest).source.path) == moved
 
-    def test_naming_a_document_for_another_part_widens_it(
-        self, settings, store, corpus
-    ):
+    def test_naming_a_document_for_another_part_widens_it(self, settings, store, corpus):
         """Applicability is appended to, never overwritten."""
         digest = _hash_of(store, corpus["datasheet"])
         result = build_part(
-            corpus["datasheet"], part_number="AFE7950", settings=settings,
-            vendor="adi", use_llm=False, store=store,
+            corpus["datasheet"],
+            part_number="AFE7950",
+            settings=settings,
+            vendor="adi",
+            use_llm=False,
+            store=store,
         )
         assert digest in _hashes(result)
         app = store.get(digest).applicability
@@ -286,22 +311,31 @@ class TestTheNamedPdfIsAlwaysPartOfTheBuild:
             part_number="AD9081",
         )
         result = build_part(
-            rev_b, part_number="AD9081", settings=settings,
-            vendor="adi", use_llm=False, store=store,
+            rev_b,
+            part_number="AD9081",
+            settings=settings,
+            vendor="adi",
+            use_llm=False,
+            store=store,
         )
         assert newer.content_hash in _hashes(result)
         assert _hash_of(store, corpus["datasheet"]) not in _hashes(result)
         # superseded for this build, still a real document in the Library
-        assert len(
-            [d for d in store.for_part("AD9081") if d.source.doc_type == DocType.DATASHEET]
-        ) == 2
+        assert (
+            len([d for d in store.for_part("AD9081") if d.source.doc_type == DocType.DATASHEET])
+            == 2
+        )
 
     def test_user_labels_survive_a_build(self, settings, store, corpus):
         digest = _hash_of(store, corpus["datasheet"])
         store.set_labels(digest, ["reviewed", "thermal"])
         build_part(
-            corpus["datasheet"], part_number="AD9081", settings=settings,
-            vendor="adi", use_llm=False, store=store,
+            corpus["datasheet"],
+            part_number="AD9081",
+            settings=settings,
+            vendor="adi",
+            use_llm=False,
+            store=store,
         )
         assert store.get(digest).labels == ["reviewed", "thermal"]
 
@@ -312,8 +346,12 @@ class TestTheNamedPdfIsAlwaysPartOfTheBuild:
 class TestDerivedSourcesJson:
     def test_written_with_the_generated_marker(self, settings, store, corpus):
         build_part(
-            corpus["datasheet"], part_number="AD9081", settings=settings,
-            vendor="adi", use_llm=False, store=store,
+            corpus["datasheet"],
+            part_number="AD9081",
+            settings=settings,
+            vendor="adi",
+            use_llm=False,
+            store=store,
         )
         path = settings.parts_dir / "AD9081" / "sources.json"
         data = json.loads(path.read_text(encoding="utf-8"))
@@ -325,21 +363,33 @@ class TestDerivedSourcesJson:
     def test_byte_stable_across_two_identical_builds(self, settings, store, corpus):
         path = settings.parts_dir / "AD9081" / "sources.json"
         build_part(
-            corpus["datasheet"], part_number="AD9081", settings=settings,
-            vendor="adi", use_llm=False, store=store,
+            corpus["datasheet"],
+            part_number="AD9081",
+            settings=settings,
+            vendor="adi",
+            use_llm=False,
+            store=store,
         )
         first = path.read_bytes()
         build_part(
-            corpus["datasheet"], part_number="AD9081", settings=settings,
-            vendor="adi", use_llm=False, store=store,
+            corpus["datasheet"],
+            part_number="AD9081",
+            settings=settings,
+            vendor="adi",
+            use_llm=False,
+            store=store,
         )
         assert path.read_bytes() == first
 
     def test_hand_editing_has_no_effect_on_the_next_build(self, settings, store, corpus):
         path = settings.parts_dir / "AD9081" / "sources.json"
         build_part(
-            corpus["datasheet"], part_number="AD9081", settings=settings,
-            vendor="adi", use_llm=False, store=store,
+            corpus["datasheet"],
+            part_number="AD9081",
+            settings=settings,
+            vendor="adi",
+            use_llm=False,
+            store=store,
         )
         pristine = path.read_bytes()
 
@@ -352,8 +402,12 @@ class TestDerivedSourcesJson:
         path.write_text(json.dumps(tampered, indent=2), encoding="utf-8")
 
         result = build_part(
-            corpus["datasheet"], part_number="AD9081", settings=settings,
-            vendor="adi", use_llm=False, store=store,
+            corpus["datasheet"],
+            part_number="AD9081",
+            settings=settings,
+            vendor="adi",
+            use_llm=False,
+            store=store,
         )
         assert result.manifest.vendor == "adi"
         assert len(result.manifest.documents) == 2  # the dropped doc came back
@@ -396,8 +450,10 @@ class TestLegacyMigration:
         part_dir = settings.parts_dir / "LEGACY9000"
         part_dir.mkdir(parents=True)
         src = register_source(
-            corpus["datasheet"], part_number="LEGACY9000",
-            doc_type=DocType.DATASHEET, vendor="adi",
+            corpus["datasheet"],
+            part_number="LEGACY9000",
+            doc_type=DocType.DATASHEET,
+            vendor="adi",
         )
         (part_dir / "sources.json").write_text(
             json.dumps([src.model_dump(mode="json")], indent=2), encoding="utf-8"
@@ -408,8 +464,11 @@ class TestLegacyMigration:
         part_dir = self._legacy_part(settings, corpus)
         empty = FakeLibraryStore()
         result = build_part(
-            corpus["datasheet"], part_number="LEGACY9000", settings=settings,
-            use_llm=False, store=empty,
+            corpus["datasheet"],
+            part_number="LEGACY9000",
+            settings=settings,
+            use_llm=False,
+            store=empty,
         )
         assert len(result.manifest.documents) == 1
         (doc,) = empty.for_part("LEGACY9000")
@@ -423,8 +482,11 @@ class TestLegacyMigration:
         empty = FakeLibraryStore()
         for _ in range(2):
             build_part(
-                corpus["datasheet"], part_number="LEGACY9000", settings=settings,
-                use_llm=False, store=empty,
+                corpus["datasheet"],
+                part_number="LEGACY9000",
+                settings=settings,
+                use_llm=False,
+                store=empty,
             )
         assert len(empty.all()) == 1
         assert len(empty.for_part("LEGACY9000")) == 1
@@ -439,8 +501,10 @@ class TestLegacyMigration:
         part_dir = settings.parts_dir / "GONE"
         part_dir.mkdir(parents=True)
         ghost = SourceDocument(
-            content_hash="ab" * 32, path=str(settings.parts_dir / "nope.pdf"),
-            part_number="GONE", doc_type=DocType.APP_NOTE,
+            content_hash="ab" * 32,
+            path=str(settings.parts_dir / "nope.pdf"),
+            part_number="GONE",
+            doc_type=DocType.APP_NOTE,
         )
         save_inventory([ghost], part_dir)
         assert resolve_documents(part_dir, part_number="GONE", store=None) == []
@@ -452,8 +516,12 @@ class TestLegacyMigration:
 class TestVendorIsStillPinnedAtAcquire:
     def test_override_is_recorded_with_evidence(self, settings, store, corpus):
         result = build_part(
-            corpus["datasheet"], part_number="AD9081", settings=settings,
-            vendor="adi", use_llm=False, store=store,
+            corpus["datasheet"],
+            part_number="AD9081",
+            settings=settings,
+            vendor="adi",
+            use_llm=False,
+            store=store,
         )
         assert result.manifest.vendor == "adi"
         ds = store.get(_hash_of(store, corpus["datasheet"])).source
@@ -461,12 +529,11 @@ class TestVendorIsStillPinnedAtAcquire:
         assert ds.vendor_evidence == "cli-override: --vendor adi"
         # and the derived view carries the same pinned record
         (written,) = [
-            s for s in read_sources_file(settings.parts_dir / "AD9081")
+            s
+            for s in read_sources_file(settings.parts_dir / "AD9081")
             if s.doc_type == DocType.DATASHEET
         ]
-        assert (written.vendor, written.vendor_evidence) == (
-            "adi", "cli-override: --vendor adi"
-        )
+        assert (written.vendor, written.vendor_evidence) == ("adi", "cli-override: --vendor adi")
 
     def test_legacy_record_without_evidence_is_backfilled(self, settings, corpus):
         part_dir = settings.parts_dir / "AD9081"
@@ -477,8 +544,11 @@ class TestVendorIsStillPinnedAtAcquire:
 
         fake = FakeLibraryStore()
         build_part(
-            corpus["datasheet"], part_number="AD9081", settings=settings,
-            use_llm=False, store=fake,
+            corpus["datasheet"],
+            part_number="AD9081",
+            settings=settings,
+            use_llm=False,
+            store=fake,
         )
         (doc,) = fake.for_part("AD9081")
         assert doc.source.vendor == "adi"
@@ -497,8 +567,11 @@ class TestVendorIsStillPinnedAtAcquire:
             )
         )
         result = build_part(
-            corpus["datasheet"], part_number="AD9081", settings=settings,
-            use_llm=False, store=store,
+            corpus["datasheet"],
+            part_number="AD9081",
+            settings=settings,
+            use_llm=False,
+            store=store,
         )
         assert result.manifest.vendor == "adi"
         assert store.get(_hash_of(store, corpus["datasheet"])).source.vendor_evidence == (
@@ -511,8 +584,12 @@ class TestStatusAndCache:
         self, settings, store, corpus, monkeypatch, capsys
     ):
         build_part(
-            corpus["datasheet"], part_number="AD9081", settings=settings,
-            vendor="adi", use_llm=False, store=store,
+            corpus["datasheet"],
+            part_number="AD9081",
+            settings=settings,
+            vendor="adi",
+            use_llm=False,
+            store=store,
         )
         monkeypatch.setattr("datasheet_analyzer.cli.get_settings", lambda: settings)
         code = cli.main(["status"])
@@ -524,12 +601,20 @@ class TestStatusAndCache:
 
     def test_extraction_cache_is_hit_for_an_unchanged_pdf(self, settings, store, corpus):
         first = build_part(
-            corpus["datasheet"], part_number="AD9081", settings=settings,
-            vendor="adi", use_llm=False, store=store,
+            corpus["datasheet"],
+            part_number="AD9081",
+            settings=settings,
+            vendor="adi",
+            use_llm=False,
+            store=store,
         )
         second = build_part(
-            corpus["datasheet"], part_number="AD9081", settings=settings,
-            vendor="adi", use_llm=False, store=store,
+            corpus["datasheet"],
+            part_number="AD9081",
+            settings=settings,
+            vendor="adi",
+            use_llm=False,
+            store=store,
         )
         assert first.cached_extraction is False
         assert second.cached_extraction is True
@@ -543,14 +628,16 @@ class TestStoreInjection:
     def test_injected_store_is_the_one_used(self, settings, corpus):
         fake = FakeLibraryStore()
         build_part(
-            corpus["datasheet"], part_number="AD9081", settings=settings,
-            vendor="adi", use_llm=False, store=fake,
+            corpus["datasheet"],
+            part_number="AD9081",
+            settings=settings,
+            vendor="adi",
+            use_llm=False,
+            store=fake,
         )
         assert len(fake.for_part("AD9081")) == 1
 
-    def test_default_path_constructs_a_store_from_settings(
-        self, settings, corpus, monkeypatch
-    ):
+    def test_default_path_constructs_a_store_from_settings(self, settings, corpus, monkeypatch):
         fake = FakeLibraryStore()
         seen: list[Settings | None] = []
 
@@ -563,8 +650,11 @@ class TestStoreInjection:
             classmethod(_for_settings),
         )
         build_part(
-            corpus["datasheet"], part_number="AD9081", settings=settings,
-            vendor="adi", use_llm=False,
+            corpus["datasheet"],
+            part_number="AD9081",
+            settings=settings,
+            vendor="adi",
+            use_llm=False,
         )
         assert seen == [settings]
         assert len(fake.for_part("AD9081")) == 1

@@ -28,12 +28,15 @@ def test_caching_binary_fetcher_roundtrip(tmp_path, monkeypatch):
     def fake_get(u, *, timeout, headers):
         calls.append(u)
         assert u == url
+
         class Resp:
             status_code = 200
             content = payload
+
             @staticmethod
             def raise_for_status():
                 pass
+
         return Resp()
 
     monkeypatch.setattr("datasheet_analyzer.extract.http.requests.get", fake_get)

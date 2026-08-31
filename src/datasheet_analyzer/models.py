@@ -846,8 +846,7 @@ class SpecRecord(BaseModel):
         Serialized into `specs.json` so a reader that never constructs the
         model can still resolve a citation.
         """
-        return spec_record_id(self.section_key or self.section,
-                              self.table_index, self.row_index)
+        return spec_record_id(self.section_key or self.section, self.table_index, self.row_index)
 
 
 class SpecTableInfo(BaseModel):

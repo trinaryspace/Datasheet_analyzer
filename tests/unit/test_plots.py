@@ -70,9 +70,7 @@ class TestBuildPlotset:
         assert plotset.schema_version
         assert plotset.part_number == "AFE7950"
         assert plotset.doc_hash == afe7950_raw.source.content_hash
-        assert len(plotset.plots) == 514, (
-            f"expected 514 plots, got {len(plotset.plots)}"
-        )
+        assert len(plotset.plots) == 514, f"expected 514 plots, got {len(plotset.plots)}"
         # IDs are stable: sorted by section order then figure order.
         ids = [p.id for p in plotset.plots]
         assert len(set(ids)) == len(ids)

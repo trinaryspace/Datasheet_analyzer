@@ -26,6 +26,7 @@ class PdfTextBackend:
     def is_available(self) -> tuple[bool, str]:
         try:
             import fitz  # noqa: F401
+
             return True, ""
         except ImportError as exc:
             return False, str(exc)

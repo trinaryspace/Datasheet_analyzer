@@ -97,11 +97,17 @@ def test_a_figure_with_unread_axes_is_ruled_out(built, capsys):
 def test_json_query_block_reports_what_narrowed(built, capsys):
     cli.main(
         [
-            "plots", "--part", "TEST",
-            "--x-label", "Output Frequency",
-            "--y-label", "Full Scale",
-            "--near-x", "1.0GHz",
-            "--near-y", "0dBm",
+            "plots",
+            "--part",
+            "TEST",
+            "--x-label",
+            "Output Frequency",
+            "--y-label",
+            "Full Scale",
+            "--near-x",
+            "1.0GHz",
+            "--near-y",
+            "0dBm",
             "--json",
         ]
     )
@@ -125,9 +131,7 @@ def test_project_scope_accepts_the_same_filters(built, capsys):
     invocation raised `TypeError` before ticket 02 — the flags could not have
     been wired without extending that seam too.
     """
-    code = cli.main(
-        ["plots", "--project", "rf-frontend", "--y-label", "Full Scale", "--json"]
-    )
+    code = cli.main(["plots", "--project", "rf-frontend", "--y-label", "Full Scale", "--json"])
     _payload, ids = _hits(capsys)
     assert code == 0
     assert ids == [WITH_AXES, WITH_AXES]  # one per member part

@@ -73,9 +73,7 @@ def assign_roles(headers: list[str]) -> tuple[list[str], list[str]]:
         except StopIteration:
             first_numeric = len(roles)
         empties = [
-            i
-            for i in range(first_numeric)
-            if not headers[i].strip() and roles[i] == "other"
+            i for i in range(first_numeric) if not headers[i].strip() and roles[i] == "other"
         ]
         inferred = ["symbol", "name", "conditions"]
         for idx, inferred_role in zip(empties, inferred):
@@ -96,9 +94,7 @@ def assign_roles(headers: list[str]) -> tuple[list[str], list[str]]:
                 roles[candidate] = "value"
 
     unmapped_headers = [
-        headers[i].strip()
-        for i, r in enumerate(roles)
-        if r == "other" and headers[i].strip()
+        headers[i].strip() for i, r in enumerate(roles) if r == "other" and headers[i].strip()
     ]
     return roles, unmapped_headers
 
@@ -111,8 +107,6 @@ def classify_table(headers: list[str], roles: list[str]) -> str:
 
     if has_name_symbol and has_numeric and has_unit:
         return "parametric"
-    if has_name_symbol and not has_unit and not any(
-        r in {"min", "typ", "max"} for r in roles
-    ):
+    if has_name_symbol and not has_unit and not any(r in {"min", "typ", "max"} for r in roles):
         return "info"
     return "unmapped"

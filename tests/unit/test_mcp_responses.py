@@ -125,9 +125,7 @@ class TestMcpServerIsFormatOnly:
             assert set(row) == set(R.CARD_ROW_SCHEMA["required"])
             assert R.validate_pack(row, R.CARD_ROW_SCHEMA) == []
 
-    def test_the_declared_comparison_row_shape_is_what_the_response_builds(
-        self, settings
-    ):
+    def test_the_declared_comparison_row_shape_is_what_the_response_builds(self, settings):
         comparison, reason = compare_parts(
             ["TEST", "OTHER"], symbol="TJ", parts_dir=settings.parts_dir
         )
@@ -138,9 +136,7 @@ class TestMcpServerIsFormatOnly:
             assert set(row) == set(R.COMPARE_ROW_SCHEMA["required"])
             assert R.validate_pack(row, R.COMPARE_ROW_SCHEMA) == []
 
-    def test_the_provenance_envelope_is_declared_down_to_its_last_field(
-        self, settings
-    ):
+    def test_the_provenance_envelope_is_declared_down_to_its_last_field(self, settings):
         """The nested check that makes the declared card shape worth shipping.
 
         A card's `values` is keyed by column name, so the schema declares what
@@ -167,8 +163,14 @@ class TestMcpServerIsFormatOnly:
         """
         hit = Retriever.for_part(settings.parts_dir / "TEST").specs(symbol="TJ")[0].as_dict()
         payload = R.error_response(
-            "find_spec", "", max_tokens=6000, part="TEST",
-            hits=[hit], suggestions=[], count=1, total=1,
+            "find_spec",
+            "",
+            max_tokens=6000,
+            part="TEST",
+            hits=[hit],
+            suggestions=[],
+            count=1,
+            total=1,
         )
         assert R.validate_response(payload, "find_spec") == []
         hit["confidence"] = "excellent"
@@ -239,16 +241,12 @@ class TestTheOptionalExtra:
 
         monkeypatch.setitem(sys.modules, "mcp", None)
         monkeypatch.delitem(sys.modules, "datasheet_analyzer.mcp_server", raising=False)
-        monkeypatch.delitem(
-            sys.modules, "datasheet_analyzer.mcp_server.responses", raising=False
-        )
+        monkeypatch.delitem(sys.modules, "datasheet_analyzer.mcp_server.responses", raising=False)
         module = importlib.import_module("datasheet_analyzer.mcp_server.responses")
         assert module.CAP_SETTING == "DSA_MCP_MAX_TOKENS"
         assert set(module.SCHEMAS) >= {"ask", "search", "get_figure"}
 
-    def test_serve_without_the_extra_errors_with_an_install_hint(
-        self, monkeypatch, capsys
-    ):
+    def test_serve_without_the_extra_errors_with_an_install_hint(self, monkeypatch, capsys):
         monkeypatch.setitem(sys.modules, "mcp", None)
         monkeypatch.setitem(sys.modules, "mcp.server", None)
         for name in list(sys.modules):
@@ -260,9 +258,7 @@ class TestTheOptionalExtra:
         assert '".[mcp]"' in err
         assert "pip install" in err
 
-    def test_serve_without_the_mcp_flag_never_starts_the_mcp_server(
-        self, monkeypatch, capsys
-    ):
+    def test_serve_without_the_mcp_flag_never_starts_the_mcp_server(self, monkeypatch, capsys):
         """`--mcp` selects the MCP transport and nothing else selects it.
 
         `dsa serve` used to be an error that named `--mcp` as the only

@@ -10,17 +10,14 @@ from datasheet_analyzer.models import PlotRecord, PlotSet
 from datasheet_analyzer.query import find_plots, format_plot_answer
 
 
-def _write_plotset(tmp_path: Path, plots: list[PlotRecord], doc_type: str = "datasheet",
-                   hash8: str = "a1b2c3d4") -> Path:
+def _write_plotset(
+    tmp_path: Path, plots: list[PlotRecord], doc_type: str = "datasheet", hash8: str = "a1b2c3d4"
+) -> Path:
     part_dir = tmp_path / "parts" / "TEST"
     doc_dir = part_dir / f"docs/{doc_type}-{hash8}"
     doc_dir.mkdir(parents=True, exist_ok=True)
-    plotset = PlotSet(
-        schema_version="1", part_number="TEST", doc_hash="x" * 64, plots=plots
-    )
-    (doc_dir / "plots.json").write_text(
-        plotset.model_dump_json(indent=2), encoding="utf-8"
-    )
+    plotset = PlotSet(schema_version="1", part_number="TEST", doc_hash="x" * 64, plots=plots)
+    (doc_dir / "plots.json").write_text(plotset.model_dump_json(indent=2), encoding="utf-8")
     return part_dir
 
 

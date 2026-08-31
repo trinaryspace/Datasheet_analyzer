@@ -71,11 +71,15 @@ def _sections() -> list[SectionNode]:
     """Three sections whose vocabulary is deliberately non-overlapping."""
     return [
         _section(
-            "1", "Features", (1, 1),
+            "1",
+            "Features",
+            (1, 1),
             ["Quad RF sampling transmit DACs with an integrated digital up converter."],
         ),
         _section(
-            "4.3", "Recommended Operating Conditions", (6, 6),
+            "4.3",
+            "Recommended Operating Conditions",
+            (6, 6),
             [
                 (
                     "Operating junction temperature TJ ranges from -40 to 105 °C. "
@@ -88,7 +92,9 @@ def _sections() -> list[SectionNode]:
             ],
         ),
         _section(
-            "4.5", "Transmitter Electrical Characteristics", (7, 8),
+            "4.5",
+            "Transmitter Electrical Characteristics",
+            (7, 8),
             [
                 (
                     "SYSREF setup time must be met for deterministic latency. "
@@ -306,7 +312,9 @@ class TestBm25Ranking:
     def test_ties_across_documents_break_on_the_document_name(self):
         section = SearchSection(file="sections/a.md", length=4, tokens={"sysref": 1})
         index = SearchIndex(
-            schema_version=SEARCH_SCHEMA_VERSION, sections=[section], df={"sysref": 1},
+            schema_version=SEARCH_SCHEMA_VERSION,
+            sections=[section],
+            df={"sysref": 1},
             avgdl=4.0,
         )
         scored = score_sections([("errata-2", index), ("datasheet-1", index)], "sysref")
@@ -325,12 +333,8 @@ class TestBm25Ranking:
 
 
 class TestGlyphsAreSearchableEndToEnd:
-    @pytest.mark.parametrize(
-        ("glyph", "expected"), [(OHM_TI, "4.5"), (OHM_ADI, "4.3")]
-    )
-    def test_each_ohm_glyph_finds_only_the_section_that_prints_it(
-        self, retriever, glyph, expected
-    ):
+    @pytest.mark.parametrize(("glyph", "expected"), [(OHM_TI, "4.5"), (OHM_ADI, "4.3")])
+    def test_each_ohm_glyph_finds_only_the_section_that_prints_it(self, retriever, glyph, expected):
         hits = retriever.search(glyph)
         assert [h.section.number for h in hits] == [expected]
 
@@ -365,7 +369,8 @@ class TestHitsAreCitedByConstruction:
             s for s in CorpusIndex.load(retriever.part_dir).sections if s.number == "4.3"
         )
         assert (hit.citation.page_start, hit.citation.page_end) == (
-            section.page_start, section.page_end,
+            section.page_start,
+            section.page_end,
         )
 
     def test_json_shape_is_owned_by_the_hit(self, retriever):
@@ -461,9 +466,7 @@ class TestHonestDegradation:
 class TestSearchCli:
     @pytest.fixture
     def wired(self, part, monkeypatch) -> Path:
-        settings = Settings(
-            parts_dir=part.parent, cache_dir=part.parent / ".cache"
-        ).resolve()
+        settings = Settings(parts_dir=part.parent, cache_dir=part.parent / ".cache").resolve()
         monkeypatch.setattr("datasheet_analyzer.cli.get_settings", lambda: settings)
         return part
 

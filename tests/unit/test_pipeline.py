@@ -11,7 +11,7 @@ from datasheet_analyzer.config import Settings
 from datasheet_analyzer.pipeline import build_part
 from datasheet_analyzer.publish.writer import document_dirs
 
-SYN =Path(__file__).parent.parent / "fixtures" / "synthetic"
+SYN = Path(__file__).parent.parent / "fixtures" / "synthetic"
 
 
 @pytest.fixture
@@ -38,9 +38,7 @@ def synthetic_env(tmp_path, monkeypatch, make_synthetic_pdf):
 
     # pipeline constructs its own backend via get_backend; patch the registry
     # entry to return our pre-wired instance for this test.
-    monkeypatch.setattr(
-        "datasheet_analyzer.pipeline.get_backend", lambda name: backend
-    )
+    monkeypatch.setattr("datasheet_analyzer.pipeline.get_backend", lambda name: backend)
     return pdf, settings
 
 
@@ -56,9 +54,7 @@ def test_full_build_produces_navigable_corpus(synthetic_env):
     # Where the document's artifacts landed is a fact of the manifest, not of
     # the layout: ticket 04 publishes a document once into the shared store
     # and points every part that references it there.
-    doc = document_dirs(result.manifest, part_dir=part)[
-        result.manifest.documents[0].content_hash
-    ]
+    doc = document_dirs(result.manifest, part_dir=part)[result.manifest.documents[0].content_hash]
     features = (doc / "sections" / "1-features.md").read_text(encoding="utf-8")
     absmax = (doc / "sections" / "4-1-absolute-maximum-ratings.md").read_text(encoding="utf-8")
 
@@ -116,7 +112,10 @@ def test_progress_callback_fires_at_stage_boundaries(synthetic_env):
         seen.append(stage)
 
     result = build_part(
-        pdf, part_number="TEST9000", settings=settings, use_llm=False,
+        pdf,
+        part_number="TEST9000",
+        settings=settings,
+        use_llm=False,
         on_progress=on_progress,
     )
     assert seen == list(BUILD_STAGES)
@@ -127,6 +126,7 @@ def test_progress_callback_fires_at_stage_boundaries(synthetic_env):
 def test_no_cache_flag_forces_reextract(synthetic_env):
     pdf, settings = synthetic_env
     build_part(pdf, part_number="TEST9000", settings=settings, use_llm=False)
-    again = build_part(pdf, part_number="TEST9000", settings=settings,
-                       use_cache=False, use_llm=False)
+    again = build_part(
+        pdf, part_number="TEST9000", settings=settings, use_cache=False, use_llm=False
+    )
     assert not again.cached_extraction

@@ -89,7 +89,11 @@ class TestPinTablePages:
         pages[6] = "Pmax_FS 4.2 dBm RTERM 50 Ω ATTrange 40 dB"  # page 7
         pages[8] = "unrelated content"
         sec = SectionNode(
-            number="4.5", title="TX", level=2, page_start=7, page_end=13,
+            number="4.5",
+            title="TX",
+            level=2,
+            page_start=7,
+            page_end=13,
             tables=[self._table()],
         )
         pinned = pin_table_pages([sec], pages)
@@ -99,7 +103,11 @@ class TestPinTablePages:
     def test_no_pin_when_values_absent(self):
         pages = ["nothing relevant"] * 13
         sec = SectionNode(
-            number="4.5", title="TX", level=2, page_start=7, page_end=13,
+            number="4.5",
+            title="TX",
+            level=2,
+            page_start=7,
+            page_end=13,
             tables=[self._table()],
         )
         assert pin_table_pages([sec], pages) == 0
@@ -109,7 +117,11 @@ class TestPinTablePages:
         pages = ["Pmax_FS 4.2 dBm RTERM 50 Ω ATTrange 40 dB"] + [""] * 20
         # table's values live on page 1, but section starts at p7: must NOT pin
         sec = SectionNode(
-            number="4.5", title="TX", level=2, page_start=7, page_end=13,
+            number="4.5",
+            title="TX",
+            level=2,
+            page_start=7,
+            page_end=13,
             tables=[self._table()],
         )
         assert pin_table_pages([sec], pages) == 0

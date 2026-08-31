@@ -116,9 +116,7 @@ def inventory() -> dict[str, list[dict]]:
 def seeded_corpora(tmp_path: Path, inventory) -> dict[str, Path]:
     """Six corpora rebuilt from the recorded vocabulary — real symbols, real
     names, real units, real pages, hermetic and instant."""
-    return {
-        part: _write_part(tmp_path / part, rows) for part, rows in inventory.items()
-    }
+    return {part: _write_part(tmp_path / part, rows) for part, rows in inventory.items()}
 
 
 @pytest.fixture
@@ -150,7 +148,7 @@ class TestLexiconIsData:
 
         lexfile = tmp_path / "aliases.yaml"
         lexfile.write_text(
-            "TJ:\n  names: [how hot can the die get]\n  expect_unit: \"°C\"\n",
+            'TJ:\n  names: [how hot can the die get]\n  expect_unit: "°C"\n',
             encoding="utf-8",
         )
         monkeypatch.setattr(
@@ -237,8 +235,7 @@ class TestResolutionLadder:
         part = _write_part(
             tmp_path / "P",
             [
-                {"symbol": "Supply", "name": "voltage", "max": "±22", "unit": "V",
-                 "page": 4},
+                {"symbol": "Supply", "name": "voltage", "max": "±22", "unit": "V", "page": 4},
                 {"symbol": "XYZ", "name": "wibble frobnicator", "page": 9},
             ],
         )
@@ -246,9 +243,7 @@ class TestResolutionLadder:
         assert [h.record.symbol for h in hits] == ["Supply"]
         assert hits[0].matched_via == "alias:supply voltages"
 
-    def test_the_split_cell_row_is_reachable_in_the_real_lm741_vocabulary(
-        self, seeded_corpora
-    ):
+    def test_the_split_cell_row_is_reachable_in_the_real_lm741_vocabulary(self, seeded_corpora):
         """The same, over LM741's recorded symbols rather than a stand-in."""
         hits = Retriever.for_part(seeded_corpora["LM741"]).specs(
             name="What are the absolute maximum supply voltages of the LM741 variants?"
@@ -277,13 +272,27 @@ class TestExpectUnitDisambiguates:
             tmp_path / "P",
             [
                 # deliberately first in document order, and deliberately not °C
-                {"symbol": "TJ", "name": "Total Jitter Tolerance", "unit": "UI",
-                 "max": "0.42", "page": 20},
+                {
+                    "symbol": "TJ",
+                    "name": "Total Jitter Tolerance",
+                    "unit": "UI",
+                    "max": "0.42",
+                    "page": 20,
+                },
                 # no unit at all: the record a filter would quietly drop
-                {"symbol": "TJ", "name": "Junction temperature (unitless print)",
-                 "max": "150", "page": 4},
-                {"symbol": "TJ", "name": "Operating junction temperature",
-                 "unit": "°C", "max": "105", "page": 6},
+                {
+                    "symbol": "TJ",
+                    "name": "Junction temperature (unitless print)",
+                    "max": "150",
+                    "page": 4,
+                },
+                {
+                    "symbol": "TJ",
+                    "name": "Operating junction temperature",
+                    "unit": "°C",
+                    "max": "105",
+                    "page": 6,
+                },
             ],
         )
 
@@ -357,9 +366,7 @@ class TestCliReportsTheRung:
         assert "p.4" in out
 
     def test_json_output_carries_matched_via_and_citation(self, settings, capsys):
-        code = cli.main(
-            ["query", "--part", "AFE7950", "--name", "junction temperature", "--json"]
-        )
+        code = cli.main(["query", "--part", "AFE7950", "--name", "junction temperature", "--json"])
         assert code == 0
         payload = json.loads(capsys.readouterr().out)
         assert payload["part"] == "AFE7950"
@@ -379,9 +386,7 @@ class TestCliReportsTheRung:
         assert "Nearest candidates:" in out
 
     def test_no_match_json_carries_candidates(self, settings, capsys):
-        code = cli.main(
-            ["query", "--part", "AFE7950", "--name", "flux capacitor rating", "--json"]
-        )
+        code = cli.main(["query", "--part", "AFE7950", "--name", "flux capacitor rating", "--json"])
         assert code == 1
         payload = json.loads(capsys.readouterr().out)
         assert payload["hits"] == []
@@ -418,8 +423,7 @@ class TestSeedingIsReproducible:
                 (r["symbol"], r["name"], r["unit_canonical"]) for r in inventory[part]
             )
             assert (
-                sorted((r["symbol"], r["name"], r["unit_canonical"]) for r in harvested)
-                == recorded
+                sorted((r["symbol"], r["name"], r["unit_canonical"]) for r in harvested) == recorded
             ), part
 
     def test_alias_hit_rate_over_the_goldens_is_measured(self, seeded_corpora, capsys):
@@ -442,10 +446,7 @@ class TestSeedingIsReproducible:
             resolved = sum(
                 1
                 for q in questions
-                if any(
-                    h.matched_via.startswith("alias")
-                    for h in retriever.specs(name=q.question)
-                )
+                if any(h.matched_via.startswith("alias") for h in retriever.specs(name=q.question))
             )
             covered, n_rows, _ = module.coverage(lexicon, module.harvest(seeded_corpora[part]))
             total += len(questions)
@@ -458,8 +459,13 @@ class TestSeedingIsReproducible:
             )
         rate = hits / total if total else 0.0
         report = "\n".join(
-            ["", f"alias lexicon: {len(lexicon.entries)} entries over 6 built corpora", *rows,
-             f"  {'TOTAL':<9} golden {hits:>2}/{total:<2} ({rate:.0%}) resolved via alias", ""]
+            [
+                "",
+                f"alias lexicon: {len(lexicon.entries)} entries over 6 built corpora",
+                *rows,
+                f"  {'TOTAL':<9} golden {hits:>2}/{total:<2} ({rate:.0%}) resolved via alias",
+                "",
+            ]
         )
         with capsys.disabled():
             print(report)

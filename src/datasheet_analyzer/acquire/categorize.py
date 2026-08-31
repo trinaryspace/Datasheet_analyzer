@@ -159,9 +159,7 @@ def categorize(
     # Confident when the model and the keywords agree, or when the keywords had
     # nothing to say and the model committed to a real category. A model that
     # contradicts a clear keyword hit is exactly the case worth a human glance.
-    confident = category != UNCATEGORIZED and (
-        guessed == UNCATEGORIZED or guessed == category
-    )
+    confident = category != UNCATEGORIZED and (guessed == UNCATEGORIZED or guessed == category)
     if guessed not in (UNCATEGORIZED, category):
         evidence += f" (keywords suggested {guessed})"
     return category, evidence, confident

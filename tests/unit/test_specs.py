@@ -13,8 +13,9 @@ SEC45_URL = (
 
 
 def _parse_45(ti_sec_4_5_html):
-    sec = parse_section(ti_sec_4_5_html, SEC45_URL, number="4.5",
-                        title="Transmitter Electrical Characteristics")
+    sec = parse_section(
+        ti_sec_4_5_html, SEC45_URL, number="4.5", title="Transmitter Electrical Characteristics"
+    )
     sec.page_start = 7
     sec.page_end = 13
     return sec
@@ -39,9 +40,9 @@ class TestRowExtraction:
         sec.tables[0].page = 7
         records, _ = table_to_records(sec, sec.tables[0], 0)
         row = next(
-            r for r in records
-            if "DSA Attenuation step accuracy" in r.name
-            and "after calibration" in r.conditions
+            r
+            for r in records
+            if "DSA Attenuation step accuracy" in r.name and "after calibration" in r.conditions
         )
         assert row.typ == "±0.1"
         assert row.unit.canonical == "dB"
@@ -51,8 +52,7 @@ class TestRowExtraction:
         sec = _parse_45(ti_sec_4_5_html)
         records, _ = table_to_records(sec, sec.tables[0], 0)
         attphase = next(
-            r for r in records
-            if "Phase accuracy" in r.name or "850MHz" in r.conditions
+            r for r in records if "Phase accuracy" in r.name or "850MHz" in r.conditions
         )
         assert attphase.cited_markers == ["(2)"]
         dacres = next(r for r in records if r.symbol == "DACRES")
@@ -113,13 +113,21 @@ class TestPageAndEdgeCases:
 class TestSpecSetBuild:
     def test_build_specset_schema_validates(self, ti_sec_4_5_html):
         sec = _parse_45(ti_sec_4_5_html)
-        raw = type("Raw", (), {
-            "source": type("Source", (), {
-                "content_hash": "a" * 64,
-            })(),
-            "sections": [sec],
-            "extractor": "ti_html",
-        })()
+        raw = type(
+            "Raw",
+            (),
+            {
+                "source": type(
+                    "Source",
+                    (),
+                    {
+                        "content_hash": "a" * 64,
+                    },
+                )(),
+                "sections": [sec],
+                "extractor": "ti_html",
+            },
+        )()
         specset = build_specset(raw, "AFE7950")
         assert specset.schema_version
         assert specset.part_number == "AFE7950"

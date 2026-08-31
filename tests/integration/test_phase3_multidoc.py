@@ -32,11 +32,13 @@ def _make_register_map_pdf(tmp_path: Path) -> Path:
         page = doc.new_page()
         page.insert_text((300, 750), str(i + 1))
         page.insert_text((72, 72), f"{title} content on page {i + 1}.")
-    doc.set_toc([
-        [1, "1 Overview", 1],
-        [1, "2 Register Summary", 2],
-        [2, "2.1 Control Registers", 3],
-    ])
+    doc.set_toc(
+        [
+            [1, "1 Overview", 1],
+            [1, "2 Register Summary", 2],
+            [2, "2.1 Control Registers", 3],
+        ]
+    )
     doc.save(str(pdf_path))
     doc.close()
     return pdf_path
@@ -126,9 +128,7 @@ class TestPhase3MultiDoc:
         tables — the whole point of the re-route.
         """
         result, _settings, reg_source = built
-        reg_dir = document_dirs(result.manifest, part_dir=result.part_dir)[
-            reg_source.content_hash
-        ]
+        reg_dir = document_dirs(result.manifest, part_dir=result.part_dir)[reg_source.content_hash]
         assert reg_dir.name == f"register_map-{reg_source.content_hash[:8]}"
         assert reg_dir.exists()
         assert result.manifest.extraction_stats[reg_source.content_hash].backend == "pdf_layout"

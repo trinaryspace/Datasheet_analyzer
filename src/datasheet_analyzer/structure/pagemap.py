@@ -169,9 +169,7 @@ def _row_needles(row: list[str]) -> list[str]:
     for cell in row:
         c = cell.strip()
         has_digit = any(ch.isdigit() for ch in c)
-        if (has_digit and len(c) >= 3 and not c.isdigit()) or (
-            _SYMBOL.match(c) and not has_digit
-        ):
+        if (has_digit and len(c) >= 3 and not c.isdigit()) or (_SYMBOL.match(c) and not has_digit):
             out.append(_squash(c))
     return [n for n in out if len(n) >= 2]
 

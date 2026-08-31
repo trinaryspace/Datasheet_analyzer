@@ -393,8 +393,8 @@ class TestCliIsFormatOnly:
     @pytest.mark.parametrize(
         "token",
         [
-            "rglob",              # walking the corpus
-            "specs.json",         # parsing corpus artifacts
+            "rglob",  # walking the corpus
+            "specs.json",  # parsing corpus artifacts
             "plots.json",
             "search_index.json",
             "model_validate_json",
@@ -403,8 +403,8 @@ class TestCliIsFormatOnly:
             "SpecRecord",
             "PlotRecord",
             "SearchIndex",
-            "bm25",               # ranking belongs to retrieve/search.py
-            "§",                  # hand-built citation strings
+            "bm25",  # ranking belongs to retrieve/search.py
+            "§",  # hand-built citation strings
             "p.{",
         ],
     )

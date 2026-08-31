@@ -113,7 +113,9 @@ def test_every_json_verb_is_exercised():
 
     def first_literal(call: ast.Call) -> str | None:
         head = call.args[0] if call.args else None
-        return head.value if isinstance(head, ast.Constant) and isinstance(head.value, str) else None
+        return (
+            head.value if isinstance(head, ast.Constant) and isinstance(head.value, str) else None
+        )
 
     # `p_query = sub.add_parser("query", ...)` binds a verb to a variable.
     for node in ast.walk(tree):

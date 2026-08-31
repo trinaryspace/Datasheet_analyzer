@@ -60,9 +60,7 @@ def _route_pymupdf_messages(env: MutableMapping[str, str] | None = None) -> None
     `setdefault`, so an operator who routed messages somewhere deliberately
     keeps their routing.
     """
-    (os.environ if env is None else env).setdefault(
-        "PYMUPDF_MESSAGE", PYMUPDF_MESSAGE_DEFAULT
-    )
+    (os.environ if env is None else env).setdefault("PYMUPDF_MESSAGE", PYMUPDF_MESSAGE_DEFAULT)
 
 
 def _known_vendor_or_error(vendor: str) -> bool:
@@ -92,10 +90,7 @@ def _cmd_add_doc(args: argparse.Namespace) -> int:
     )
     append_to_inventory([source], part_dir)
     print(f"registered {source.doc_type.value}: {Path(source.path).name}")
-    print(
-        f"  hash {source.content_hash[:8]} — {source.page_count} pages — "
-        f"vendor {source.vendor}"
-    )
+    print(f"  hash {source.content_hash[:8]} — {source.page_count} pages — vendor {source.vendor}")
     return 0
 
 
@@ -509,7 +504,7 @@ def _cmd_compare(args: argparse.Namespace) -> int:
 MCP_INSTALL_HINT = (
     "serve error: the MCP server needs the optional `mcp` SDK, which is not "
     'installed. Install the extra: `pip install -e ".[mcp]"` (or '
-    "`uv pip install --python .venv/Scripts/python.exe -e \".[mcp]\"`). "
+    '`uv pip install --python .venv/Scripts/python.exe -e ".[mcp]"`). '
     "Everything else in `dsa` works without it."
 )
 
@@ -522,7 +517,7 @@ WEB_INSTALL_HINT = (
     "serve error: the local workbench needs the optional `web` extra "
     "(fastapi, uvicorn, sse-starlette), which is not installed. Install the "
     'extra: `pip install -e ".[web]"` (or '
-    "`uv pip install --python .venv/Scripts/python.exe -e \".[web]\"`). "
+    '`uv pip install --python .venv/Scripts/python.exe -e ".[web]"`). '
     "Everything else in `dsa` works without it."
 )
 
@@ -760,9 +755,11 @@ def _part_vendor_info(part: Path) -> tuple[str, str, list[str], list[str]]:
             st = m.extraction_stats.get(doc.content_hash)
             if st is None:
                 continue
-            line = (f"    {doc.doc_type.value}-{doc.content_hash[:8]}: backend "
-                    f"{st.backend} · tables: {st.tables_detected} detected / "
-                    f"{st.tables_accepted} accepted / {st.tables_rejected} rejected")
+            line = (
+                f"    {doc.doc_type.value}-{doc.content_hash[:8]}: backend "
+                f"{st.backend} · tables: {st.tables_detected} detected / "
+                f"{st.tables_accepted} accepted / {st.tables_rejected} rejected"
+            )
             if st.mean_fidelity > 0.0:
                 line += f" · fidelity {st.mean_fidelity:.2f}"
             if st.rejection_reasons:
@@ -782,7 +779,9 @@ def _cmd_status(_args: argparse.Namespace) -> int:
     print(f"parts_dir: {settings.parts_dir}")
     print(f"projects_dir: {settings.projects_dir}")
     print(f"cache_dir: {settings.cache_dir}")
-    print(f"llm: {'available (' + settings.model + ')' if settings.llm_available else 'NO KEY (deterministic mode)'}")
+    print(
+        f"llm: {'available (' + settings.model + ')' if settings.llm_available else 'NO KEY (deterministic mode)'}"
+    )
     if settings.parts_dir.exists():
         for part in sorted(p for p in settings.parts_dir.iterdir() if p.is_dir()):
             has_index = (part / "INDEX.md").exists()
@@ -854,18 +853,23 @@ def main(argv: list[str] | None = None) -> int:
     )
     p_batch.add_argument("dir", help="directory of datasheet PDFs (flat scan)")
     p_batch.add_argument(
-        "--force", action="store_true",
+        "--force",
+        action="store_true",
         help="rebuild every part even when up to date",
     )
     p_batch.add_argument("--no-cache", action="store_true")
     p_batch.add_argument("--no-llm", action="store_true")
     p_batch.add_argument(
-        "--workers", type=int, default=None,
+        "--workers",
+        type=int,
+        default=None,
         help="parallel jobs (default: DSA_BATCH_WORKERS env, then 4)",
     )
     p_batch.set_defaults(func=_cmd_batch)
 
-    p_add = sub.add_parser("add-doc", help="register a companion document (register map, errata, app note)")
+    p_add = sub.add_parser(
+        "add-doc", help="register a companion document (register map, errata, app note)"
+    )
     p_add.add_argument("pdf", help="PDF file to register")
     p_add.add_argument("--part", required=True, help="part number")
     p_add.add_argument(
@@ -907,7 +911,7 @@ def main(argv: list[str] | None = None) -> int:
 
     p_search = sub.add_parser("search", help="full-text search with page citations")
     _add_scope(p_search)
-    p_search.add_argument("query", help="free text, e.g. \"sysref setup\"")
+    p_search.add_argument("query", help='free text, e.g. "sysref setup"')
     p_search.add_argument("--limit", type=int, default=5, help="max hits (default 5)")
     p_search.add_argument(
         "--json", action="store_true", help="emit hits (score, citation, snippet) as JSON"
@@ -934,26 +938,18 @@ def main(argv: list[str] | None = None) -> int:
     _add_scope(p_plots)
     p_plots.add_argument("--q", default="", help="caption/conditions substring")
     p_plots.add_argument("--section", default="", help="exact section number")
-    p_plots.add_argument(
-        "--tag", default="", help="comma-separated tags (all must match)"
-    )
+    p_plots.add_argument("--tag", default="", help="comma-separated tags (all must match)")
     # Axis filters match what the figure *prints on its axes*, not what its
     # caption says. A figure whose axes could not be read is ruled out by
     # them — `query.find_plots` documents why that is the honest direction.
-    p_plots.add_argument(
-        "--x-label", default="", help="substring of the printed x-axis title"
-    )
-    p_plots.add_argument(
-        "--y-label", default="", help="substring of the printed y-axis title"
-    )
+    p_plots.add_argument("--x-label", default="", help="substring of the printed x-axis title")
+    p_plots.add_argument("--y-label", default="", help="substring of the printed y-axis title")
     p_plots.add_argument(
         "--near-x",
         default="",
         help="keep figures whose printed x range covers this quantity, e.g. 3.5GHz",
     )
-    p_plots.add_argument(
-        "--near-y", default="", help="the same for the y axis, e.g. -40dBc"
-    )
+    p_plots.add_argument("--near-y", default="", help="the same for the y axis, e.g. -40dBc")
     p_plots.add_argument(
         "--json",
         action="store_true",
@@ -971,9 +967,7 @@ def main(argv: list[str] | None = None) -> int:
         choices=("", *PIN_TYPES),
         help="filter by pin type from the checked-in lexicon",
     )
-    p_pins.add_argument(
-        "--json", action="store_true", help="emit hits (with confidence) as JSON"
-    )
+    p_pins.add_argument("--json", action="store_true", help="emit hits (with confidence) as JSON")
     p_pins.set_defaults(func=_cmd_pins)
 
     p_regs = sub.add_parser("regs", help="deterministic register map lookup")
@@ -981,18 +975,12 @@ def main(argv: list[str] | None = None) -> int:
     p_regs.add_argument("--name", default="", help="register name substring")
     p_regs.add_argument("--addr", default="", help="address as printed, e.g. 0x1A04")
     p_regs.add_argument("--field", default="", help="bit-field name substring")
-    p_regs.add_argument(
-        "--json", action="store_true", help="emit registers (with fields) as JSON"
-    )
+    p_regs.add_argument("--json", action="store_true", help="emit registers (with fields) as JSON")
     p_regs.set_defaults(func=_cmd_regs)
 
-    p_card = sub.add_parser(
-        "card", help="a task-shaped view over records that already exist"
-    )
+    p_card = sub.add_parser("card", help="a task-shaped view over records that already exist")
     _add_scope(p_card)
-    p_card.add_argument(
-        "--card", required=True, choices=CARD_KINDS, help="which card to render"
-    )
+    p_card.add_argument("--card", required=True, choices=CARD_KINDS, help="which card to render")
     p_card.add_argument(
         "--json", action="store_true", help="emit the card (with provenance) as JSON"
     )
@@ -1006,21 +994,15 @@ def main(argv: list[str] | None = None) -> int:
     p_compare.add_argument(
         "--card", default="", choices=("", *CARD_KINDS), help="compare a whole card"
     )
-    p_compare.add_argument(
-        "--json", action="store_true", help="emit the comparison as JSON"
-    )
+    p_compare.add_argument("--json", action="store_true", help="emit the comparison as JSON")
     p_compare.set_defaults(func=_cmd_compare)
 
-    p_project = sub.add_parser(
-        "project", help="group parts into a design (the noun above `part`)"
-    )
+    p_project = sub.add_parser("project", help="group parts into a design (the noun above `part`)")
     psub = p_project.add_subparsers(dest="action", required=True)
 
     pp_new = psub.add_parser("new", help="create an empty project")
     pp_new.add_argument("name", help="project name, e.g. rf-frontend")
-    pp_new.add_argument(
-        "--interfaces", default="", help="free-text note on how the parts connect"
-    )
+    pp_new.add_argument("--interfaces", default="", help="free-text note on how the parts connect")
     pp_new.add_argument("--notes", default="", help="free-text project notes")
 
     pp_add = psub.add_parser("add", help="add built parts to a project")

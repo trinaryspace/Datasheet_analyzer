@@ -157,7 +157,9 @@ def select_backend(vendor_name: str, doc_type: DocType) -> str:
             return preferred
         log.warning(
             "backend %r is not registered — reading %s documents as paragraphs (%s)",
-            preferred, doc_type.value, profile.companion_backend,
+            preferred,
+            doc_type.value,
+            profile.companion_backend,
         )
         return profile.companion_backend
     registered = set(available_backends())
@@ -187,5 +189,9 @@ def warn_vendor_drift(sources: list[SourceDocument]) -> None:
             log.warning(
                 "vendor drift: %s is pinned as %r%s but content matches %r%s — "
                 "re-run with --vendor to override",
-                Path(src.path).name, src.vendor, pinned, detected, found,
+                Path(src.path).name,
+                src.vendor,
+                pinned,
+                detected,
+                found,
             )

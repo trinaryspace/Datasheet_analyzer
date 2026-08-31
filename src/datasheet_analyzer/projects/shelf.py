@@ -109,8 +109,7 @@ def copy_onto_shelf(source: Path, directory: Path) -> CopyResult:
         copied=True,
         renamed=renamed,
         reason=(
-            f"a different file was already called {source.name}; "
-            f"copied as {target.name}"
+            f"a different file was already called {source.name}; copied as {target.name}"
             if renamed
             else ""
         ),

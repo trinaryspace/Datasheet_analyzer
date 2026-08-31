@@ -119,9 +119,7 @@ def verify_questions(
         )
 
         # 2. page-truth check: the cited PDF pages themselves contain it
-        page_blob = "\n".join(
-            page_texts[p - 1] for p in q.pages if 0 < p <= len(page_texts)
-        )
+        page_blob = "\n".join(page_texts[p - 1] for p in q.pages if 0 < p <= len(page_texts))
         res.page_truth = bool(page_blob) and all(
             contains(page_blob, sub) for sub in q.expected_substrings
         )
@@ -171,9 +169,7 @@ def _spec_fields(rec: SpecRecord) -> str:
     )
 
 
-def verify_spec_queries(
-    questions: list[GoldenQuestion], part_dir: Path
-) -> list[QueryResult]:
+def verify_spec_queries(questions: list[GoldenQuestion], part_dir: Path) -> list[QueryResult]:
     """Deterministic spec-lookup verification for every `spec_query` golden.
 
     Multi-row answers (e.g. DSA range + step, VCO coverage) are verified across
@@ -191,15 +187,11 @@ def verify_spec_queries(
             any(contains(_spec_fields(h.record), sub) for h in paged)
             for sub in q.expected_substrings
         )
-        results.append(
-            QueryResult(question=q, ok=ok, n_records=len(hits), n_verified=len(paged))
-        )
+        results.append(QueryResult(question=q, ok=ok, n_records=len(hits), n_verified=len(paged)))
     return results
 
 
-def verify_plot_queries(
-    questions: list[GoldenQuestion], part_dir: Path
-) -> list[QueryResult]:
+def verify_plot_queries(questions: list[GoldenQuestion], part_dir: Path) -> list[QueryResult]:
     """Deterministic plot-lookup verification for every `plot_query` golden.
 
     A plot question passes only when a matching record is on a cited page AND
@@ -219,8 +211,7 @@ def verify_plot_queries(
             section=query.get("section", ""),
         )
         paged = [
-            h for h in hits
-            if h.record.page_start is not None and h.record.page_start in q.pages
+            h for h in hits if h.record.page_start is not None and h.record.page_start in q.pages
         ]
         with_files = [h for h in paged if _plot_file_present(part_dir, h.file)]
         ok = bool(with_files)
@@ -228,9 +219,7 @@ def verify_plot_queries(
             text = " ".join(h.record.caption + " " + h.record.conditions for h in with_files)
             ok = all(contains(text, sub) for sub in q.expected_substrings)
         results.append(
-            QueryResult(
-                question=q, ok=ok, n_records=len(hits), n_verified=len(with_files)
-            )
+            QueryResult(question=q, ok=ok, n_records=len(hits), n_verified=len(with_files))
         )
     return results
 
@@ -246,12 +235,12 @@ def pack_answers_question(question: GoldenQuestion, pack: AnswerPack) -> bool:
     reaches the same verbatim answer on the same printed page.
     """
     paged = [
-        line for line in pack.answers
+        line
+        for line in pack.answers
         if line.page_start is not None and line.page_start in question.pages
     ]
     return bool(paged) and all(
-        any(contains(line.text, sub) for line in paged)
-        for sub in question.expected_substrings
+        any(contains(line.text, sub) for line in paged) for sub in question.expected_substrings
     )
 
 
@@ -276,7 +265,8 @@ def verify_ask_queries(
         pack = retriever.ask(q.question, budget=budget)
         expected_route = (q.ask_query.get("route") or "").strip()
         paged = [
-            line for line in pack.answers
+            line
+            for line in pack.answers
             if line.page_start is not None and line.page_start in q.pages
         ]
         route_ok = not expected_route or pack.route == expected_route
@@ -305,9 +295,7 @@ def verify_ask_queries(
     return results
 
 
-def verify_search_queries(
-    questions: list[GoldenQuestion], part_dir: Path
-) -> list[QueryResult]:
+def verify_search_queries(questions: list[GoldenQuestion], part_dir: Path) -> list[QueryResult]:
     """Search-path verification for every `search_query` golden (ticket 09).
 
     The rule is the ticket's: the **top-1** hit must be the section that holds
@@ -328,11 +316,7 @@ def verify_search_queries(
         query = q.search_query.get("query") or q.question
         rank = max(1, int(q.search_query.get("rank") or 1))
         hits = retriever.search(query, limit=max(rank, 5))
-        covering = {
-            hit.section.file
-            for page in q.pages
-            for hit in retriever.sections(page=page)
-        }
+        covering = {hit.section.file for page in q.pages for hit in retriever.sections(page=page)}
         matched = 0
         detail = ""
         for position, hit in enumerate(hits[:rank], 1):
@@ -490,9 +474,7 @@ def verify_card_queries(
         cited = [
             r
             for r in rows
-            if any(
-                v.page in q.pages for v in r.values.values() if v.filled and v.page is not None
-            )
+            if any(v.page in q.pages for v in r.values.values() if v.filled and v.page is not None)
         ]
         ok = bool(cited) and all(
             any(contains(_card_row_text(r), sub) for r in cited) for sub in q.expected_substrings

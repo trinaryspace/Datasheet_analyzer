@@ -30,12 +30,30 @@ def _write_part(tmp_path):
     manifest = {
         "part_number": "TEST",
         "sections": [
-            {"number": "4.5", "title": "TX", "file": "docs/datasheet-aaaabbbb/sections/4-5-tx.md",
-             "page_start": 7, "page_end": 13, "token_count": 100},
-            {"number": "4.10", "title": "Timing", "file": "docs/datasheet-aaaabbbb/sections/4-10-timing.md",
-             "page_start": 27, "page_end": 27, "token_count": 80},
-            {"number": "5", "title": "Unpaged", "file": "docs/x.md",
-             "page_start": None, "page_end": None, "token_count": 10},
+            {
+                "number": "4.5",
+                "title": "TX",
+                "file": "docs/datasheet-aaaabbbb/sections/4-5-tx.md",
+                "page_start": 7,
+                "page_end": 13,
+                "token_count": 100,
+            },
+            {
+                "number": "4.10",
+                "title": "Timing",
+                "file": "docs/datasheet-aaaabbbb/sections/4-10-timing.md",
+                "page_start": 27,
+                "page_end": 27,
+                "token_count": 80,
+            },
+            {
+                "number": "5",
+                "title": "Unpaged",
+                "file": "docs/x.md",
+                "page_start": None,
+                "page_end": None,
+                "token_count": 10,
+            },
         ],
     }
     (part / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
@@ -65,7 +83,9 @@ class TestVerifyQuestions:
     def test_pass_when_corpus_and_page_both_contain_answer(self, tmp_path):
         part = _write_part(tmp_path)
         q = GoldenQuestion(
-            id="q1", question="DAC resolution?", expected_substrings=["14", "bits"],
+            id="q1",
+            question="DAC resolution?",
+            expected_substrings=["14", "bits"],
             pages=[7],
         )
         pages = [""] * 6 + ["DAC resolution 14 bits table"]  # page 7 text
@@ -82,7 +102,9 @@ class TestVerifyQuestions:
 
     def test_fail_when_corpus_lacks_answer_even_if_page_has_it(self, tmp_path):
         part = _write_part(tmp_path)
-        q = GoldenQuestion(id="q3", question="?", expected_substrings=["imaginary-value"], pages=[7])
+        q = GoldenQuestion(
+            id="q3", question="?", expected_substrings=["imaginary-value"], pages=[7]
+        )
         pages = [""] * 6 + ["imaginary-value on the real page"]
         (res,) = verify_questions([q], part, pages)
         assert not res.passed

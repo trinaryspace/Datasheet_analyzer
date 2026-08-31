@@ -136,9 +136,7 @@ def open_project(body: ProjectOpenIn, settings: SettingsDep) -> ProjectOut:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="no directory given")
     directory = Path(raw).expanduser()
     if not directory.is_dir():
-        raise HTTPException(
-            status.HTTP_400_BAD_REQUEST, detail=f"directory not found: {raw}"
-        )
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=f"directory not found: {raw}")
     resolved = str(directory)
 
     for existing in list_projects(settings.projects_dir):

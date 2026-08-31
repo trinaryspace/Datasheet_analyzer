@@ -284,9 +284,7 @@ HEADER_BAND = 0.07
 FOOTER_BAND = 0.88
 
 
-def locate(
-    pdf_path: Path, page: int, needle: str, *, content_only: bool = False
-) -> LocateOut:
+def locate(pdf_path: Path, page: int, needle: str, *, content_only: bool = False) -> LocateOut:
     """Rectangles for `needle` on 1-based `page` of `pdf_path`.
 
     Returns `LocateOut.miss(reason)` — never raises — for a missing or
@@ -361,9 +359,7 @@ def locate(
     if content_only:
         height = float(page_rect.height) or 1.0
         body = [
-            hit
-            for hit in hits
-            if HEADER_BAND * height <= float(hit.y0) <= FOOTER_BAND * height
+            hit for hit in hits if HEADER_BAND * height <= float(hit.y0) <= FOOTER_BAND * height
         ]
         if not body:
             return LocateOut.miss(

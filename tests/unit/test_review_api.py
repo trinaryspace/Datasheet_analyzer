@@ -225,9 +225,7 @@ def test_scan_writes_nothing(client, tmp_path, settings, monkeypatch):
     assert before == after
 
 
-def test_a_scan_may_only_write_its_own_proposal_cache(
-    client, tmp_path, settings, monkeypatch
-):
+def test_a_scan_may_only_write_its_own_proposal_cache(client, tmp_path, settings, monkeypatch):
     """The narrowing, pinned explicitly rather than left as an absence.
 
     Recursion made a model call per PDF per scan unaffordable, so a proposal
@@ -250,9 +248,7 @@ def test_a_scan_may_only_write_its_own_proposal_cache(
     assert written <= {"proposals"}, f"a scan wrote outside its proposal cache: {written}"
 
 
-def test_a_second_scan_reuses_the_proposal_and_does_not_infer_again(
-    client, tmp_path, monkeypatch
-):
+def test_a_second_scan_reuses_the_proposal_and_does_not_infer_again(client, tmp_path, monkeypatch):
     """The point of the cache: reopening a folder is a walk, not N model calls."""
     calls = stub_infer(monkeypatch)
 

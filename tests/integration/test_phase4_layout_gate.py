@@ -50,22 +50,33 @@ GATE_PDFS = FIXTURES / "pdf"
 # once.
 GATE: dict[str, dict] = {
     "AD9081": {
-        "pdf": GATE_PDFS / "ad9081.pdf", "part": "AD9081", "override": "", "vendor": "adi",
+        "pdf": GATE_PDFS / "ad9081.pdf",
+        "part": "AD9081",
+        "override": "",
+        "vendor": "adi",
         "golden": FIXTURES / "golden_qa_AD9081.yaml",
         "noise": ["of 45", "analog.com", "Rev. 0 |", "Data Sheet"],
-        "content": ["12 GSPS", "Full-scale output current range",
-                    "Test Conditions/Comments"],
+        "content": ["12 GSPS", "Full-scale output current range", "Test Conditions/Comments"],
     },
     "LM741": {
-        "pdf": GATE_PDFS / "lm741.pdf", "part": "LM741", "override": "unknown",
+        "pdf": GATE_PDFS / "lm741.pdf",
+        "part": "LM741",
+        "override": "unknown",
         "vendor": "unknown",
         "golden": FIXTURES / "golden_qa_LM741.yaml",
-        "noise": ["www.ti.com", "Submit Documentation Feedback", "Copyright (c)",
-                  "Product Folder Links"],
+        "noise": [
+            "www.ti.com",
+            "Submit Documentation Feedback",
+            "Copyright (c)",
+            "Product Folder Links",
+        ],
         "content": ["overload protection", "Absolute Maximum Ratings"],
     },
     "QPA1003P": {
-        "pdf": GATE_PDFS / "QPA1003P.pdf", "part": "QPA1003P", "override": "", "vendor": "qorvo",
+        "pdf": GATE_PDFS / "QPA1003P.pdf",
+        "part": "QPA1003P",
+        "override": "",
+        "vendor": "qorvo",
         # ticket 09 superseded the honest zeros: the golden mixes text +
         # spec_query + plot_query questions (5 tables / 41 specs / 4
         # title-anchored figures measured), asserted by the corpus tests
@@ -77,7 +88,10 @@ GATE: dict[str, dict] = {
         "content": ["wideband high power MMIC", "matched to 50"],
     },
     "HMC520A": {
-        "pdf": GATE_PDFS / "hmc520a.pdf", "part": "HMC520A", "override": "", "vendor": "adi",
+        "pdf": GATE_PDFS / "hmc520a.pdf",
+        "part": "HMC520A",
+        "override": "",
+        "vendor": "adi",
         "golden": FIXTURES / "golden_qa_HMC520A.yaml",
         "noise": ["of 32", "Rev. A | Page", "| Page"],
         "content": ["Rev. 0 to Rev. A", "Conversion loss"],
@@ -94,8 +108,11 @@ def gate(tmp_path_factory):
         tmp = tmp_path_factory.mktemp(f"gate-{name}")
         settings = Settings(parts_dir=tmp / "parts", cache_dir=tmp / ".cache").resolve()
         results[name] = build_part(
-            spec["pdf"], part_number=spec["part"], settings=settings,
-            vendor=spec["override"], use_llm=False,
+            spec["pdf"],
+            part_number=spec["part"],
+            settings=settings,
+            vendor=spec["override"],
+            use_llm=False,
         )
     return results
 
@@ -139,8 +156,7 @@ def _corpus_files(result) -> list[Path]:
 
 def _blob(result) -> str:
     return "\n".join(
-        _artifact(result, sec.file).read_text(encoding="utf-8")
-        for sec in result.manifest.sections
+        _artifact(result, sec.file).read_text(encoding="utf-8") for sec in result.manifest.sections
     )
 
 
@@ -207,12 +223,15 @@ class TestGateCorpora:
         # branches. Measured on the real PDFs: AD9081 "Rev. 0" title line,
         # HMC520A "Rev. A | Page 2 of 32" footer, QPA1003P "Data Sheet
         # Rev. I, January 2026", lm741 keeps its document id "SNOSC25D".
-        expected = {"AD9081": "Rev. 0", "HMC520A": "Rev. A",
-                    "QPA1003P": "Rev. I", "LM741": "SNOSC25D"}
+        expected = {
+            "AD9081": "Rev. 0",
+            "HMC520A": "Rev. A",
+            "QPA1003P": "Rev. I",
+            "LM741": "SNOSC25D",
+        }
         for name, rev in expected.items():
             result = gate[name]
-            sources = json.loads(
-                (result.part_dir / "sources.json").read_text(encoding="utf-8"))
+            sources = json.loads((result.part_dir / "sources.json").read_text(encoding="utf-8"))
             assert sources["sources"][0]["revision"] == rev, name
 
 
@@ -280,12 +299,8 @@ class TestGateTables:
 
         result = gate["AD9081"]
         pdf = GATE["AD9081"]["pdf"]
-        page_texts = {
-            p.number + 1: _squash_text(p.get_text())
-            for p in fitz.open(str(pdf))
-        }
-        specs = json.loads(
-            _doc_glob(result, "specs.json")[0].read_text(encoding="utf-8"))
+        page_texts = {p.number + 1: _squash_text(p.get_text()) for p in fitz.open(str(pdf))}
+        specs = json.loads(_doc_glob(result, "specs.json")[0].read_text(encoding="utf-8"))
         checked = verified = 0
         misses = []
         for rec in specs["records"]:
@@ -319,8 +334,7 @@ class TestGateTables:
 
     def test_hmc520a_captioned_tables_build(self, gate):
         result = gate["HMC520A"]
-        stats = result.manifest.extraction_stats[
-            result.manifest.documents[0].content_hash]
+        stats = result.manifest.extraction_stats[result.manifest.documents[0].content_hash]
         assert stats.tables_accepted == 6
         assert result.manifest.stats.n_specs >= 20
         assert "Table 1." in _blob(result) or "Table 1" in _blob(result)
@@ -334,8 +348,7 @@ class TestGateTables:
         # superseded; recorded in the ledger + issue 09)
         for name in ("LM741", "QPA1003P"):
             result = gate[name]
-            stats = result.manifest.extraction_stats[
-                result.manifest.documents[0].content_hash]
+            stats = result.manifest.extraction_stats[result.manifest.documents[0].content_hash]
             assert stats.tables_accepted >= 4, name
             assert result.manifest.stats.n_tables >= 4, name
             assert result.manifest.stats.n_specs >= 20, name
@@ -357,13 +370,11 @@ class TestGateTables:
         assert result.manifest.stats.n_plot_files >= 4
         spec_files = _doc_glob(result, "specs.json")
         assert spec_files and all(
-            json.loads(p.read_text(encoding="utf-8"))["records"]
-            for p in spec_files
+            json.loads(p.read_text(encoding="utf-8"))["records"] for p in spec_files
         )
         plot_files = _doc_glob(result, "plots.json")
         assert plot_files and all(
-            json.loads(p.read_text(encoding="utf-8"))["plots"]
-            for p in plot_files
+            json.loads(p.read_text(encoding="utf-8"))["plots"] for p in plot_files
         )
         plots = json.loads(plot_files[0].read_text(encoding="utf-8"))["plots"]
         assert any("Functional Block Diagram" in p["caption"] for p in plots)
@@ -379,11 +390,21 @@ class TestGateFootnotesAndFigures:
         assert "**Footnotes:**" in blob
         # footnote 1 of Table 3 (p5) — the continuation is merged into the
         # body and the block appears exactly once, never as paragraphs
-        assert blob.count("For dc-coupled applications, the maximum full-scale output "
-                          "current is limited by the maximum VCMOUT specification.") == 1
-        assert blob.count("The actual measured full-scale power is frequency dependent "
-                          "due to DAC sinc response, impedance mismatch loss, and "
-                          "balun insertion loss.") == 1
+        assert (
+            blob.count(
+                "For dc-coupled applications, the maximum full-scale output "
+                "current is limited by the maximum VCMOUT specification."
+            )
+            == 1
+        )
+        assert (
+            blob.count(
+                "The actual measured full-scale power is frequency dependent "
+                "due to DAC sinc response, impedance mismatch loss, and "
+                "balun insertion loss."
+            )
+            == 1
+        )
 
     def test_ad9081_spec_citation_resolves_marker_to_footnote(self, gate):
         import json
@@ -393,20 +414,25 @@ class TestGateFootnotesAndFigures:
         result = gate["AD9081"]
         doc_dir = next(d for d in _doc_dirs(result) if d.name.startswith("datasheet-"))
         specs = json.loads((doc_dir / "specs.json").read_text(encoding="utf-8"))
-        row = next(r for r in specs["records"]
-                   if "Full-Scale Sine Wave Output Power with AC Coupling2" in r["symbol"])
+        row = next(
+            r
+            for r in specs["records"]
+            if "Full-Scale Sine Wave Output Power with AC Coupling2" in r["symbol"]
+        )
         # table 3 cites footnote 2 on this row and footnote 1 on the DC
         # coupling row ("201" = value 20 + citation 1) — both real, both
         # detected from the superscript geometry
         assert sorted(row["cited_markers"]) == ["1", "2"], row["cited_markers"]
-        dc = next(r for r in specs["records"]
-                  if "50" in r["conditions"] and "shunt to GND" in r["conditions"])
+        dc = next(
+            r
+            for r in specs["records"]
+            if "50" in r["conditions"] and "shunt to GND" in r["conditions"]
+        )
         # the printed "201" is value 20 + citation 1: the marker survives in
         # the max cell and the record cites footnote 1
         assert dc["max"] == "201" and "1" in dc["cited_markers"]
         # the glued superscript text stays in the symbol (project convention)
-        rec = SpecQuery(result.part_dir).find(
-            symbol="Full-Scale Sine Wave Output Power")[0]
+        rec = SpecQuery(result.part_dir).find(symbol="Full-Scale Sine Wave Output Power")[0]
         answer = format_answer([rec])
         assert "frequency dependent due to DAC sinc response" in answer
 
@@ -419,8 +445,7 @@ class TestGateFootnotesAndFigures:
         assert len(files) >= 100
         assert all(f.stat().st_size > 1024 for f in files)
 
-        found = find_plots(result.part_dir,
-                           q="HD2 vs. fOUT over Digital Scale, 6 GSPS")
+        found = find_plots(result.part_dir, q="HD2 vs. fOUT over Digital Scale, 6 GSPS")
         assert found, "dsa plots query must resolve the vector figure"
         assert found[0].file and _artifact(result, found[0].file).stat().st_size > 1024
 
@@ -429,8 +454,7 @@ class TestGateFootnotesAndFigures:
         assert result.manifest.stats.n_figures >= 100
         files = _doc_glob(result, "figures/*/*.png")
         assert len(files) >= 100
-        plots = json.loads(
-            _doc_glob(result, "plots.json")[0].read_text(encoding="utf-8"))
+        plots = json.loads(_doc_glob(result, "plots.json")[0].read_text(encoding="utf-8"))
         caption = "Conversion Gain vs. RF Frequency at Various Temperatures"
         hits = [p for p in plots["plots"] if caption in p["caption"]]
         assert hits and _artifact(result, hits[0]["file"]).exists()
@@ -439,8 +463,7 @@ class TestGateFootnotesAndFigures:
         # old-TI section pages carry captioned vector figures too — they get
         # image files even though lm741 has no "Table N." captions at all
         result = gate["LM741"]
-        plots = json.loads(
-            _doc_glob(result, "plots.json")[0].read_text(encoding="utf-8"))["plots"]
+        plots = json.loads(_doc_glob(result, "plots.json")[0].read_text(encoding="utf-8"))["plots"]
         files = _doc_glob(result, "figures/*/*.png")
         assert len(plots) >= 3 and len(files) == len(plots)
         for rec in plots:
@@ -457,9 +480,9 @@ class TestAliasSeedInventory:
     def test_recorded_seed_matches_a_fresh_build(self, gate):
         from datasheet_analyzer.retrieve import CorpusIndex
 
-        recorded = json.loads(
-            (FIXTURES / "alias_seed_symbols.json").read_text(encoding="utf-8")
-        )["parts"]
+        recorded = json.loads((FIXTURES / "alias_seed_symbols.json").read_text(encoding="utf-8"))[
+            "parts"
+        ]
         for name in GATE:
             fresh = {
                 (rec.symbol, rec.name, rec.unit.canonical)
@@ -467,10 +490,7 @@ class TestAliasSeedInventory:
                 for rec in doc.specs
             }
             assert name in recorded, f"{name} missing from the alias seed inventory"
-            seeded = {
-                (row["symbol"], row["name"], row["unit_canonical"])
-                for row in recorded[name]
-            }
+            seeded = {(row["symbol"], row["name"], row["unit_canonical"]) for row in recorded[name]}
             assert seeded == fresh, (
                 f"{name}: alias seed inventory is stale — regenerate with "
                 "scripts/seed_aliases.py (procedure in its docstring)"
@@ -615,9 +635,9 @@ class TestConfidenceMix:
         before this ticket; every one of them must still read identically."""
         from datasheet_analyzer.retrieve import CorpusIndex
 
-        recorded = json.loads(
-            (FIXTURES / "alias_seed_symbols.json").read_text(encoding="utf-8")
-        )["parts"]
+        recorded = json.loads((FIXTURES / "alias_seed_symbols.json").read_text(encoding="utf-8"))[
+            "parts"
+        ]
         fields = ("min", "typ", "max", "value", "section", "page")
         for name in GATE:
             fresh: dict[tuple, dict] = {}
@@ -911,9 +931,7 @@ class TestProjectIndexEconomics:
         from datasheet_analyzer.retrieve import ROUTE_NONE, ProjectRetriever
 
         settings, project = board
-        scope = ProjectRetriever.for_parts(
-            project.name, part_dirs(project, settings.parts_dir)
-        )
+        scope = ProjectRetriever.for_parts(project.name, part_dirs(project, settings.parts_dir))
         rows: list[str] = []
         for name, probe in self.PROBES.items():
             pack = scope.ask(probe, budget=3000)
@@ -939,19 +957,16 @@ class TestProjectIndexEconomics:
         from datasheet_analyzer.retrieve import ProjectRetriever
 
         settings, project = board
-        scope = ProjectRetriever.for_parts(
-            project.name, part_dirs(project, settings.parts_dir)
-        )
+        scope = ProjectRetriever.for_parts(project.name, part_dirs(project, settings.parts_dir))
         rows: list[str] = []
         for name in self.MEMBERS:
-            golden = next(
-                q for q in load_golden(GATE[name]["golden"]) if q.ask_query is not None
-            )
+            golden = next(q for q in load_golden(GATE[name]["golden"]) if q.ask_query is not None)
             pack = scope.ask(golden.question, budget=3000)
             assert pack.tokens <= 3000, name
             assert all(line.part for line in pack.answers), name
             cited = [
-                line for line in pack.answers
+                line
+                for line in pack.answers
                 if line.part == name and line.page_start in golden.pages
             ]
             assert cited, f"{name}: {golden.question!r} -> {[l.part for l in pack.answers]}"
@@ -964,28 +979,21 @@ class TestProjectIndexEconomics:
                 f"{', '.join(dict.fromkeys(line.part for line in pack.answers))}"
             )
         with capsys.disabled():
-            print(
-                "\nproject-scoped ask over each member's own golden\n"
-                + "\n".join(rows) + "\n"
-            )
+            print("\nproject-scoped ask over each member's own golden\n" + "\n".join(rows) + "\n")
 
     def test_every_hit_of_a_project_search_names_its_part(self, board):
         from datasheet_analyzer.projects import part_dirs
         from datasheet_analyzer.retrieve import ProjectRetriever
 
         settings, project = board
-        scope = ProjectRetriever.for_parts(
-            project.name, part_dirs(project, settings.parts_dir)
-        )
+        scope = ProjectRetriever.for_parts(project.name, part_dirs(project, settings.parts_dir))
         assert scope.search_unavailable() == "" and scope.search_gap() == ""
         hits = scope.search("output current", limit=8)
         assert hits
         assert all(hit.citation.part in self.MEMBERS for hit in hits)
         assert all(hit.citation.page_start is not None for hit in hits)
 
-    def test_dsa_status_lists_the_project_alongside_the_parts(
-        self, board, monkeypatch, capsys
-    ):
+    def test_dsa_status_lists_the_project_alongside_the_parts(self, board, monkeypatch, capsys):
         from datasheet_analyzer import cli
 
         settings, _project = board
@@ -1089,9 +1097,7 @@ class TestGoldenPathsOnTheGateCorpora:
         rows: list[str] = []
         for name in GATE:
             questions = load_golden(GATE[name]["golden"])
-            results = verify_ask_queries(
-                questions, gate[name].part_dir, budget=self.BUDGET
-            )
+            results = verify_ask_queries(questions, gate[name].part_dir, budget=self.BUDGET)
             assert results, f"{name}: no ask-path question"
             failed = [r.question.id for r in results if not r.ok]
             assert failed == [], f"{name}: ask path missed {failed}"
@@ -1120,9 +1126,7 @@ class TestGoldenPathsOnTheGateCorpora:
         with capsys.disabled():
             print("\nsearch-path goldens, four gate corpora\n" + "\n".join(rows) + "\n")
 
-    def test_budget_compliance_is_numeric_over_the_whole_golden_set(
-        self, gate, capsys
-    ):
+    def test_budget_compliance_is_numeric_over_the_whole_golden_set(self, gate, capsys):
         """Every question of every gate part — not only the ask-path ones —
         asked at a generous budget and again at a tight one, with the cost
         measured rather than sampled. The tight budget is the interesting
@@ -1152,7 +1156,8 @@ class TestGoldenPathsOnTheGateCorpora:
         with capsys.disabled():
             print(
                 f"\nbudget compliance, four gate corpora (budget {self.BUDGET}, "
-                f"tight {tight})\n" + "\n".join(rows)
+                f"tight {tight})\n"
+                + "\n".join(rows)
                 + f"\n  {'TOTAL':<9} {total:>2} questions   largest {worst} tok\n"
             )
         assert total >= 45
@@ -1193,14 +1198,9 @@ class TestMcpOverTheGateCorpora:
     def _golden(self, name, attr):
         from datasheet_analyzer.evalh.golden import load_golden
 
-        return next(
-            q for q in load_golden(GATE[name]["golden"])
-            if getattr(q, attr) is not None
-        )
+        return next(q for q in load_golden(GATE[name]["golden"]) if getattr(q, attr) is not None)
 
-    def test_every_tool_answers_every_gate_corpus_over_a_real_session(
-        self, servers, gate, capsys
-    ):
+    def test_every_tool_answers_every_gate_corpus_over_a_real_session(self, servers, gate, capsys):
         from mcp_session import call, payload_of
 
         from datasheet_analyzer.mcp_server import responses as R
@@ -1234,17 +1234,15 @@ class TestMcpOverTheGateCorpora:
             section = payload_of(call(server, "read_section", part=name, ref=top["file"]))
             assert R.validate_response(section, "read_section") == [], name
             assert section["text"], name
-            assert section["text"] == _artifact(
-                gate[name], top["file"]
-            ).read_text(encoding="utf-8")
+            assert section["text"] == _artifact(gate[name], top["file"]).read_text(encoding="utf-8")
 
             # the ask tool lands the golden's cited page, inside its budget
             pack = payloads["ask"]["pack"]
             assert pack["route"] == ask_q.ask_query["route"], name
             assert pack["tokens"] <= pack["budget"], name
-            assert any(
-                line["page_start"] in ask_q.pages for line in pack["answers"]
-            ), f"{name}: the MCP pack missed the cited page"
+            assert any(line["page_start"] in ask_q.pages for line in pack["answers"]), (
+                f"{name}: the MCP pack missed the cited page"
+            )
 
             # narrow the catalog, then receive the one figure as an image
             figure = self._first_figure(gate[name], payloads["find_plots"])
@@ -1262,16 +1260,15 @@ class TestMcpOverTheGateCorpora:
         with capsys.disabled():
             print(
                 "\nMCP tools over four gate corpora (in-process memory transport)\n"
-                + "\n".join(rows) + "\n"
+                + "\n".join(rows)
+                + "\n"
             )
 
     def _first_figure(self, result, find_plots_payload) -> str:
         for hit in find_plots_payload["hits"]:
             if hit["file"] and _artifact(result, hit["file"]).exists():
                 return hit["file"]
-        raise AssertionError(
-            f"{result.part_dir.name}: no cataloged figure has pixels on disk"
-        )
+        raise AssertionError(f"{result.part_dir.name}: no cataloged figure has pixels on disk")
 
     def test_a_traversal_attempt_is_refused_for_that_reason(self, servers):
         """The one refusal that must hold on a real corpus too: a caller's
@@ -1280,8 +1277,7 @@ class TestMcpOverTheGateCorpora:
         from mcp_session import call, payload_of
 
         payload = payload_of(
-            call(servers["AD9081"], "get_figure", part="AD9081",
-                 file="../../../etc/passwd")
+            call(servers["AD9081"], "get_figure", part="AD9081", file="../../../etc/passwd")
         )
         assert "refused" in payload["error"]
         assert "inside the part directory" in payload["error"]
@@ -1300,9 +1296,7 @@ class TestMcpOverTheGateCorpora:
             cache_dir=part_dir.parent / ".cache",
             mcp_max_tokens=120,
         ).resolve()
-        payload = payload_of(
-            call(S.build_server(settings), "get_index", part="AD9081")
-        )
+        payload = payload_of(call(S.build_server(settings), "get_index", part="AD9081"))
         assert R.validate_response(payload, "get_index") == []
         assert payload["truncated"]
         assert R.CAP_SETTING in payload["notice"]

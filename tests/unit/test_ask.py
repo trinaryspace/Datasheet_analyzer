@@ -330,19 +330,15 @@ class TestRoutingIsDeterministic:
         assert "SYSREF capture window" in (pack.excerpt.text if pack.excerpt else "")
 
     def test_a_figure_question_beats_an_alias_hit_on_the_same_words(self, retriever):
-        """"gain error" is an alias phrase; a question naming a figure is
+        """ "gain error" is an alias phrase; a question naming a figure is
         still a figure question. The override only applies when a figure was
         actually found, so it can never cost an answer that exists."""
         pack = retriever.ask("which figure shows the gain error vs DSA setting?", budget=3000)
         assert pack.route == ROUTE_PLOT
         assert "Gain Error" in pack.answers[0].text
 
-    def test_plot_vocabulary_without_a_matching_figure_keeps_the_spec_answer(
-        self, retriever
-    ):
-        pack = retriever.ask(
-            "plot the maximum junction temperature for me", budget=3000
-        )
+    def test_plot_vocabulary_without_a_matching_figure_keeps_the_spec_answer(self, retriever):
+        pack = retriever.ask("plot the maximum junction temperature for me", budget=3000)
         assert pack.route == ROUTE_SPEC
         assert pack.answers[0].text.startswith("TJ")
 
@@ -406,9 +402,7 @@ class TestBudgetIsHard:
         # what went is the discretionary prose, not the evidence
         assert tiny.excerpt is None or len(tiny.excerpt.text) < len(full.excerpt.text)
 
-    def test_truncation_notice_names_the_flag_that_would_raise_the_budget(
-        self, retriever
-    ):
+    def test_truncation_notice_names_the_flag_that_would_raise_the_budget(self, retriever):
         pack = retriever.ask("max junction temperature", budget=90)
         assert pack.truncated
         assert "--budget" in pack.notice and "DSA_ASK_BUDGET" in pack.notice
@@ -419,9 +413,7 @@ class TestBudgetIsHard:
         assert not pack.truncated and pack.notice == ""
         assert "Truncated" not in pack.markdown
 
-    def test_a_budget_below_the_citation_floor_keeps_the_citation_and_says_so(
-        self, retriever
-    ):
+    def test_a_budget_below_the_citation_floor_keeps_the_citation_and_says_so(self, retriever):
         pack = retriever.ask("max junction temperature", budget=20)
         assert pack.over_budget
         assert "§4.3, p.6" in pack.markdown, "the citation survives any budget"
@@ -491,14 +483,12 @@ class TestAnUnsearchableCorpusIsNotAnEmptyOne:
             index.unlink()
         return part
 
-    def test_the_pack_says_the_path_could_not_run_instead_of_no_match(
-        self, unsearchable
-    ):
+    def test_the_pack_says_the_path_could_not_run_instead_of_no_match(self, unsearchable):
         pack = Retriever.for_part(unsearchable).ask("sysref capture window", budget=3000)
         assert pack.route == ROUTE_UNAVAILABLE
-        assert "No spec record, figure or section in this corpus answers" not in (
-            pack.markdown
-        ), "an unsearchable corpus must never assert absence"
+        assert "No spec record, figure or section in this corpus answers" not in (pack.markdown), (
+            "an unsearchable corpus must never assert absence"
+        )
         assert "the full-text path could not run" in pack.markdown
         assert "Rebuild to enable search" in pack.markdown
         assert "### Search unavailable" in pack.markdown
@@ -586,9 +576,7 @@ class TestDeclaredJsonShape:
 class TestAskCli:
     @pytest.fixture
     def wired(self, part, monkeypatch) -> Path:
-        settings = Settings(
-            parts_dir=part.parent, cache_dir=part.parent / ".cache"
-        ).resolve()
+        settings = Settings(parts_dir=part.parent, cache_dir=part.parent / ".cache").resolve()
         monkeypatch.setattr("datasheet_analyzer.cli.get_settings", lambda: settings)
         return part
 
@@ -601,18 +589,16 @@ class TestAskCli:
         assert "### Verify" in out
 
     def test_budget_flag_is_honoured(self, wired, capsys):
-        assert cli.main(
-            ["ask", "--part", "TEST", "max junction temperature", "--budget", "90"]
-        ) == 0
+        assert (
+            cli.main(["ask", "--part", "TEST", "max junction temperature", "--budget", "90"]) == 0
+        )
         out = capsys.readouterr().out
         assert count_tokens(out.strip()) <= 90
         assert "§4.3, p.6" in out
         assert "--budget" in out
 
     def test_json_emits_the_declared_shape(self, wired, capsys):
-        assert cli.main(
-            ["ask", "--part", "TEST", "max junction temperature", "--json"]
-        ) == 0
+        assert cli.main(["ask", "--part", "TEST", "max junction temperature", "--json"]) == 0
         payload = json.loads(capsys.readouterr().out)
         assert validate_pack(payload) == []
         assert payload["route"] == "spec"

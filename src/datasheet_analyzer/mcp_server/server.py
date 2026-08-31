@@ -172,8 +172,13 @@ def build_server(settings: Settings | None = None) -> MCPServer:
         scope, error = _part_scope(part)
         if scope is None:
             return error_response(
-                "get_index", error, max_tokens=cap, part=part,
-                revision="", file="", text="",
+                "get_index",
+                error,
+                max_tokens=cap,
+                part=part,
+                revision="",
+                file="",
+                text="",
             )
         payload = envelope("get_index", max_tokens=cap, part=scope.part)
         payload["revision"] = _revision(scope)
@@ -195,14 +200,26 @@ def build_server(settings: Settings | None = None) -> MCPServer:
         scope, error = _scope(part, project)
         if scope is None:
             return error_response(
-                "search", error, max_tokens=cap, part=part, project=project,
-                hits=[], count=0, total=0,
+                "search",
+                error,
+                max_tokens=cap,
+                part=part,
+                project=project,
+                hits=[],
+                count=0,
+                total=0,
             )
         unavailable = scope.search_unavailable()
         if unavailable:
             return error_response(
-                "search", unavailable, max_tokens=cap, part=part, project=project,
-                hits=[], count=0, total=0,
+                "search",
+                unavailable,
+                max_tokens=cap,
+                part=part,
+                project=project,
+                hits=[],
+                count=0,
+                total=0,
             )
         payload = envelope("search", max_tokens=cap, part=part, project=project)
         # A design where only *some* members are searchable can still answer;
@@ -226,8 +243,15 @@ def build_server(settings: Settings | None = None) -> MCPServer:
         scope, error = _scope(part, project)
         if scope is None:
             return error_response(
-                "find_spec", error, max_tokens=cap, part=part, project=project,
-                hits=[], suggestions=[], count=0, total=0,
+                "find_spec",
+                error,
+                max_tokens=cap,
+                part=part,
+                project=project,
+                hits=[],
+                suggestions=[],
+                count=0,
+                total=0,
             )
         hits = scope.specs(symbol=symbol, name=name, section=section)
         payload = envelope("find_spec", max_tokens=cap, part=part, project=project)
@@ -265,8 +289,14 @@ def build_server(settings: Settings | None = None) -> MCPServer:
         scope, error = _scope(part, project)
         if scope is None:
             return error_response(
-                "find_plots", error, max_tokens=cap, part=part, project=project,
-                hits=[], count=0, total=0,
+                "find_plots",
+                error,
+                max_tokens=cap,
+                part=part,
+                project=project,
+                hits=[],
+                count=0,
+                total=0,
             )
         payload = envelope("find_plots", max_tokens=cap, part=part, project=project)
         payload["hits"] = [
@@ -305,8 +335,16 @@ def build_server(settings: Settings | None = None) -> MCPServer:
         scope, error = _scope(part, project)
         if scope is None:
             return error_response(
-                "find_pin", error, max_tokens=cap, part=part, project=project,
-                hits=[], counts={}, parts_without_pins=[], count=0, total=0,
+                "find_pin",
+                error,
+                max_tokens=cap,
+                part=part,
+                project=project,
+                hits=[],
+                counts={},
+                parts_without_pins=[],
+                count=0,
+                total=0,
             )
         hits, without, warnings = _pins_for(scope, q=q, pin_type=pin_type)
         payload = envelope("find_pin", max_tokens=cap, part=part, project=project)
@@ -335,8 +373,16 @@ def build_server(settings: Settings | None = None) -> MCPServer:
         scope, error = _scope(part, project)
         if scope is None:
             return error_response(
-                "find_register", error, max_tokens=cap, part=part, project=project,
-                hits=[], parts_without_registers=[], bit_fields=False, count=0, total=0,
+                "find_register",
+                error,
+                max_tokens=cap,
+                part=part,
+                project=project,
+                hits=[],
+                parts_without_registers=[],
+                bit_fields=False,
+                count=0,
+                total=0,
             )
         hits, without, warnings, has_fields = _registers_for(
             scope, name=name, addr=addr, field=field
@@ -367,9 +413,7 @@ def build_server(settings: Settings | None = None) -> MCPServer:
         """
         scope, error = _part_scope(part)
         if scope is None:
-            return error_response(
-                "get_card", error, max_tokens=cap, part=part, **_EMPTY_CARD
-            )
+            return error_response("get_card", error, max_tokens=cap, part=part, **_EMPTY_CARD)
         if card not in CARD_KINDS:
             return error_response(
                 "get_card",
@@ -394,9 +438,7 @@ def build_server(settings: Settings | None = None) -> MCPServer:
         return fit_list(payload, "rows", cap)
 
     @server.tool(name="compare_parts", meta=declared("compare_parts"))
-    def compare_parts_tool(
-        parts: list[str], symbol: str = "", card: str = ""
-    ) -> dict[str, Any]:
+    def compare_parts_tool(parts: list[str], symbol: str = "", card: str = "") -> dict[str, Any]:
         """Put two or more parts side by side on one parameter or one card.
 
         Rows are aligned by alias-resolved symbol; each row carries both
@@ -456,8 +498,7 @@ def build_server(settings: Settings | None = None) -> MCPServer:
         if hit is None:
             return error_response(
                 "read_section",
-                f"no section matching {ref!r} in part {scope.part} — list them "
-                "with `get_index`",
+                f"no section matching {ref!r} in part {scope.part} — list them with `get_index`",
                 max_tokens=cap,
                 part=scope.part,
                 **_EMPTY_SECTION,
@@ -673,9 +714,18 @@ def build_server(settings: Settings | None = None) -> MCPServer:
         manifest = scope.index.manifest
         if manifest is None:
             return {
-                "part": part_dir.name, "built": False, "revision": "", "vendor": "",
-                "backends": [], "sections": 0, "specs": 0, "plots": 0, "tokens": 0,
-                "searchable": False, "spec_confidence": {}, "plot_confidence": {},
+                "part": part_dir.name,
+                "built": False,
+                "revision": "",
+                "vendor": "",
+                "backends": [],
+                "sections": 0,
+                "specs": 0,
+                "plots": 0,
+                "tokens": 0,
+                "searchable": False,
+                "spec_confidence": {},
+                "plot_confidence": {},
             }
         stats = manifest.stats
         return {
@@ -699,8 +749,7 @@ def build_server(settings: Settings | None = None) -> MCPServer:
         try:
             project = load_project(name, settings.projects_dir)
         except ProjectError as exc:
-            return {"name": name, "parts": [], "interfaces": "", "built": False,
-                    "error": str(exc)}
+            return {"name": name, "parts": [], "interfaces": "", "built": False, "error": str(exc)}
         return {
             "name": project.name,
             "parts": [
@@ -725,17 +774,30 @@ def build_server(settings: Settings | None = None) -> MCPServer:
 
 #: The body keys `read_section` still owes a caller when it cannot answer.
 _EMPTY_SECTION: dict[str, Any] = {
-    "section": "", "title": "", "file": "", "page_start": None,
-    "page_end": None, "citation": "", "confidence": "unknown", "matched_via": "",
+    "section": "",
+    "title": "",
+    "file": "",
+    "page_start": None,
+    "page_end": None,
+    "citation": "",
+    "confidence": "unknown",
+    "matched_via": "",
     "text": "",
 }
 
 #: The same debt for `get_card`: a refusal is a payload in the declared shape,
 #: so every body key is present and empty rather than absent.
 _EMPTY_CARD: dict[str, Any] = {
-    "card": "", "card_version": "", "schema_version": "", "generated_at": "",
-    "rows": [], "unresolved": [], "warnings": [], "sources": [],
-    "count": 0, "total": 0,
+    "card": "",
+    "card_version": "",
+    "schema_version": "",
+    "generated_at": "",
+    "rows": [],
+    "unresolved": [],
+    "warnings": [],
+    "sources": [],
+    "count": 0,
+    "total": 0,
 }
 
 
@@ -743,11 +805,20 @@ def _empty_comparison(parts: list[str], card: str, symbol: str) -> dict[str, Any
     """A refused `compare_parts`, still carrying what the caller asked for."""
     return {
         "parts": [p for p in list(parts or []) if p],
-        "baseline": "", "mode": "", "card": card, "symbol": symbol,
-        "resolved_symbol": "", "schema_version": "", "generated_at": "",
-        "rows": [], "coverage": {"considered": 0, "compared": 0, "reasons": []},
-        "parse_coverage": [], "unresolved": [], "warnings": [],
-        "count": 0, "total": 0,
+        "baseline": "",
+        "mode": "",
+        "card": card,
+        "symbol": symbol,
+        "resolved_symbol": "",
+        "schema_version": "",
+        "generated_at": "",
+        "rows": [],
+        "coverage": {"considered": 0, "compared": 0, "reasons": []},
+        "parse_coverage": [],
+        "unresolved": [],
+        "warnings": [],
+        "count": 0,
+        "total": 0,
     }
 
 

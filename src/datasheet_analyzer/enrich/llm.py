@@ -41,14 +41,16 @@ class AnthropicClient:
         if image_bytes:
             import base64
 
-            content.append({
-                "type": "image",
-                "source": {
-                    "type": "base64",
-                    "media_type": image_media_type,
-                    "data": base64.b64encode(image_bytes).decode("ascii"),
-                },
-            })
+            content.append(
+                {
+                    "type": "image",
+                    "source": {
+                        "type": "base64",
+                        "media_type": image_media_type,
+                        "data": base64.b64encode(image_bytes).decode("ascii"),
+                    },
+                }
+            )
         content.append({"type": "text", "text": prompt})
         resp = self._client.messages.create(
             model=self.model,

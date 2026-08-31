@@ -173,19 +173,18 @@ class TestBothAccessPathsAreDocumented:
         assert "Access path 1 — the `dsa` CLI" in text
         assert "Access path 2 — MCP tools (`dsa serve --mcp`)" in text
 
-    def test_the_cli_example_is_scoped_and_shows_what_comes_back(
-        self, part_doc, project_doc
-    ):
+    def test_the_cli_example_is_scoped_and_shows_what_comes_back(self, part_doc, project_doc):
         assert 'dsa ask --part AFE7950 "what is the maximum junction temperature?"' in part_doc
         assert 'dsa ask --project rf-frontend "what is the maximum junction' in project_doc
         for text in (part_doc, project_doc):
             assert "### Answer" in text and "### Verify" in text
             assert "§<n>, p.<page>" in text, "the example shows the citation coming back"
 
-    def test_the_mcp_example_names_the_tools_and_the_image_block(
-        self, part_doc, project_doc
-    ):
-        for text, scope in ((part_doc, '"part": "AFE7950"'), (project_doc, '"project": "rf-frontend"')):
+    def test_the_mcp_example_names_the_tools_and_the_image_block(self, part_doc, project_doc):
+        for text, scope in (
+            (part_doc, '"part": "AFE7950"'),
+            (project_doc, '"project": "rf-frontend"'),
+        ):
             assert scope in text, "the worked call is scoped to this corpus"
             assert "get_figure" in text and "image content block" in text
             assert "find_spec" in text and "read_section" in text
@@ -241,9 +240,7 @@ class TestTheSkillIsDiscoverableAndDoesNotDrift:
         shared = [*RULES, *CONFIDENCE_ROWS, FALLBACK_RULE]
         assert len(shared) == len(RULES) + len(CONFIDENCE_ROWS) + 1
         for line in shared:
-            for name, text in (
-                ("part", part_doc), ("project", project_doc), ("skill", skill_doc)
-            ):
+            for name, text in (("part", part_doc), ("project", project_doc), ("skill", skill_doc)):
                 assert line in text, f"{name} AGENT.md/skill lost: {line[:60]}…"
 
     def test_the_skill_forbids_the_habits_the_corpus_exists_to_replace(self, skill_doc):
@@ -256,13 +253,20 @@ class TestTheIndexPointsInsteadOfRepeating:
 
     def _index(self) -> str:
         return build_index_markdown(
-            "AFE7950", "4T6R RF sampling AFE.", ["Quad RF sampling DACs"],
+            "AFE7950",
+            "4T6R RF sampling AFE.",
+            ["Quad RF sampling DACs"],
             [("datasheet", "SBASA41E", 146, "deadbeef")],
             [
                 SectionMeta(
-                    number="4.3", title="Recommended Operating Conditions",
+                    number="4.3",
+                    title="Recommended Operating Conditions",
                     file="docs/datasheet-deadbeef/sections/4-3.md",
-                    page_start=6, page_end=6, token_count=400, n_tables=1, n_figures=0,
+                    page_start=6,
+                    page_end=6,
+                    token_count=400,
+                    n_tables=1,
+                    n_figures=0,
                     description="Supply rails, junction temperature.",
                 )
             ],

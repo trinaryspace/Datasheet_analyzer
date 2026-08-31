@@ -207,9 +207,7 @@ def infer(
     # they do, that is the strongest evidence available and it settles the part
     # number outright — which is what makes `PMA1-14LN+.pdf` and `sbas123e.pdf`
     # both come out right instead of trading one for the other.
-    agreed = corroborate(
-        filename_candidate(path), text, [hit.token for hit in sweep.parts]
-    )
+    agreed = corroborate(filename_candidate(path), text, [hit.token for hit in sweep.parts])
     if agreed is not None and not sweep.families:
         token, why = agreed
         proposal.part_number = token

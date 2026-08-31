@@ -242,7 +242,6 @@ CATEGORIES = [Category(id=i, name=n) for i, n in SEED_CATEGORIES]
 
 
 class TestGuessing:
-
     def test_keywords_find_the_obvious_ones(self) -> None:
         allowed = {c.id for c in CATEGORIES}
         assert keyword_guess("a low noise amplifier for L-band", allowed)[0] == "amplifiers"
@@ -317,13 +316,13 @@ class TestSupportingDocumentsReachTheirCategory:
             applicability=applicability,
         )
 
-    def test_an_app_note_joins_every_part_filed_in_its_category(
-        self, settings: Settings
-    ) -> None:
+    def test_an_app_note_joins_every_part_filed_in_its_category(self, settings: Settings) -> None:
         library, categories, shelf = self._shelf(settings)
         datasheet = self._file(shelf, "PMA1-14LN+.pdf")
         appnote = self._file(shelf, "AN-1285.pdf")
-        library.put(self._document(datasheet, "PMA1-14LN+", Applicability.for_parts(["PMA1-14LN+"])))
+        library.put(
+            self._document(datasheet, "PMA1-14LN+", Applicability.for_parts(["PMA1-14LN+"]))
+        )
         library.put(self._document(appnote, "", Applicability.for_category("amplifiers")))
         categories.set_category("PMA1-14LN+", "amplifiers")
 
@@ -336,7 +335,9 @@ class TestSupportingDocumentsReachTheirCategory:
         library, categories, shelf = self._shelf(settings)
         datasheet = self._file(shelf, "PMA1-14LN+.pdf")
         appnote = self._file(shelf, "AN-1285.pdf")
-        library.put(self._document(datasheet, "PMA1-14LN+", Applicability.for_parts(["PMA1-14LN+"])))
+        library.put(
+            self._document(datasheet, "PMA1-14LN+", Applicability.for_parts(["PMA1-14LN+"]))
+        )
         library.put(self._document(appnote, "", Applicability.for_category("amplifiers")))
         categories.set_category("PMA1-14LN+", "amplifiers")
         categories.set_category("PMA1-14LN+", "mixers")

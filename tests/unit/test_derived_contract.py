@@ -687,9 +687,7 @@ class TestFrozenCommands:
         assert callable(entry)
         assert list(inspect.signature(entry).parameters) == ["args"]
 
-    def test_a_command_whose_module_is_missing_still_fails_cleanly(
-        self, monkeypatch, capsys
-    ):
+    def test_a_command_whose_module_is_missing_still_fails_cleanly(self, monkeypatch, capsys):
         """The refusal path, kept alive after its last real user landed.
 
         Exit 3 exists to be told apart from 1 (no match) and 2 (bad scope):

@@ -112,17 +112,13 @@ def render_ask_query_report(results: list[QueryResult]) -> str:
     carries `ask_query` questions). The detail column is the verifier's own
     sentence — route, cited rows, and the measured tokens against the budget —
     because the reason a rule passed or failed belongs with the rule."""
-    return _query_report(
-        "Ask-path verification", results, "ask_query", lambda r: r.detail
-    )
+    return _query_report("Ask-path verification", results, "ask_query", lambda r: r.detail)
 
 
 def render_search_query_report(results: list[QueryResult]) -> str:
     """Search-path verification table (ticket 09): top-1 must be the section
     that holds the hand-verified answer."""
-    return _query_report(
-        "Search-path verification", results, "search_query", lambda r: r.detail
-    )
+    return _query_report("Search-path verification", results, "search_query", lambda r: r.detail)
 
 
 def render_token_economics(tokens: dict) -> str:
@@ -132,10 +128,7 @@ def render_token_economics(tokens: dict) -> str:
             "## Token cost per question (measured on the built corpus)",
             "",
             f"- INDEX.md (always loaded): {tokens['index_tokens']} tokens",
-            (
-                "- avg question total (index + section): "
-                f"{tokens['avg_per_question']:.0f} tokens"
-            ),
+            (f"- avg question total (index + section): {tokens['avg_per_question']:.0f} tokens"),
             f"- worst question total: {tokens['max_per_question']} tokens",
             f"- naive full-corpus dump: {tokens['full_dump_tokens']} tokens",
         ]
@@ -173,9 +166,7 @@ def estimate_lookup_tokens(part_dir: Path, results: list[QuestionResult]) -> dic
     return {
         "index_tokens": index_tokens,
         "per_question": per_question,
-        "avg_per_question": (
-            sum(per_question) / len(per_question) if per_question else 0
-        ),
+        "avg_per_question": (sum(per_question) / len(per_question) if per_question else 0),
         "max_per_question": max(per_question, default=0),
         "full_dump_tokens": total_section_tokens,
     }

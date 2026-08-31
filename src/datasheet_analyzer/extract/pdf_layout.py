@@ -166,8 +166,7 @@ class _Span:
 
     __slots__ = ("size", "text", "x0", "x1", "y0", "y1")
 
-    def __init__(self, x0: float, x1: float, y0: float, y1: float,
-                 size: float, text: str):
+    def __init__(self, x0: float, x1: float, y0: float, y1: float, size: float, text: str):
         self.x0 = x0
         self.x1 = x1
         self.y0 = y0
@@ -179,24 +178,22 @@ class _Span:
 class _Line:
     __slots__ = ("block", "spans", "text", "x", "y")
 
-    def __init__(self, block: int, y: float, x: float, text: str,
-                 spans: list[_Span] | None = None):
+    def __init__(self, block: int, y: float, x: float, text: str, spans: list[_Span] | None = None):
         self.block = block
         self.y = y
         self.x = x
         self.text = text
-        self.spans = spans or []    # in reading order
+        self.spans = spans or []  # in reading order
 
 
 class _Page:
-    __slots__ = ("_boxes", "_path", "_rulings", "index", "is_toc_page",
-                 "lines", "text")
+    __slots__ = ("_boxes", "_path", "_rulings", "index", "is_toc_page", "lines", "text")
 
     def __init__(self, index: int, lines: list[_Line], text: str, path: Path):
-        self.index = index          # 1-based PDF page number
-        self.lines = lines          # sorted by (y, x)
+        self.index = index  # 1-based PDF page number
+        self.lines = lines  # sorted by (y, x)
         self.text = text
-        self.is_toc_page = False    # set by the printed-TOC scan
+        self.is_toc_page = False  # set by the printed-TOC scan
         self._path = path
         self._rulings: list[tuple[float, float, float]] | None = None
         self._boxes: list[tuple[float, float, float, float]] | None = None
@@ -251,8 +248,14 @@ def _load_pages(path: Path) -> list[_Page]:
                     continue
                 for raw in block["lines"]:
                     spans = [
-                        _Span(s["bbox"][0], s["bbox"][2], s["bbox"][1], s["bbox"][3],
-                              s["size"], s["text"])
+                        _Span(
+                            s["bbox"][0],
+                            s["bbox"][2],
+                            s["bbox"][1],
+                            s["bbox"][3],
+                            s["size"],
+                            s["text"],
+                        )
                         for s in raw["spans"]
                         if s["text"].strip()
                     ]
@@ -261,8 +264,7 @@ def _load_pages(path: Path) -> list[_Page]:
                     text = _span_line_text(raw["spans"])
                     if not text.strip():
                         continue
-                    lines.append(_Line(bi, raw["bbox"][1], raw["bbox"][0],
-                                       text, spans))
+                    lines.append(_Line(bi, raw["bbox"][1], raw["bbox"][0], text, spans))
             lines.sort(key=lambda ln: (ln.y, ln.x))
             pages.append(_Page(pi + 1, lines, page.get_text(), path))
     return pages
@@ -276,8 +278,7 @@ def _threshold(n_pages: int) -> int:
     return max(_MIN_PAGES, math.ceil(_MIN_PAGES_FRAC * n_pages))
 
 
-def _matches_pattern(text: str, page_index: int, x: float = 0.0,
-                     y: float = 0.0) -> bool:
+def _matches_pattern(text: str, page_index: int, x: float = 0.0, y: float = 0.0) -> bool:
     """Universal page-machinery patterns, plus the bare page number when it
     prints in the page's own number gutters (x < 80 pt or the footer band)
     — the LM741 prints values that equal the page index in its tables
@@ -287,8 +288,7 @@ def _matches_pattern(text: str, page_index: int, x: float = 0.0,
         _N_OF_M.match(text)
         or _PAGE_OF.match(text)
         or _REV_BARE.match(text)
-        or (text.isdigit() and int(text) == page_index
-            and (x < 80.0 or y > 700.0))
+        or (text.isdigit() and int(text) == page_index and (x < 80.0 or y > 700.0))
     )
 
 
@@ -375,8 +375,10 @@ def _release_body_cells(pages: list[_Page], furniture: list[set[int]]) -> None:
         if not marked:
             continue
         index_of = {id(line): i for i, line in enumerate(page.lines)}
-        rows = [[index_of[id(line)] for line in row.lines]
-                for row in _group_rows(page.lines, wrap=False)]
+        rows = [
+            [index_of[id(line)] for line in row.lines]
+            for row in _group_rows(page.lines, wrap=False)
+        ]
         below_caption = _first_caption_row(page, rows)
         if below_caption is None:
             continue
@@ -427,7 +429,9 @@ def _title_keys(entries: list[TOCEntry]) -> frozenset[str]:
 
 
 def _page_paragraphs(
-    page: _Page, furniture: set[int], title_keys: frozenset[str],
+    page: _Page,
+    furniture: set[int],
+    title_keys: frozenset[str],
     consumed: set[int] | None = None,
 ) -> list[str]:
     """Block paragraphs of one page minus furniture, minus the printed
@@ -464,24 +468,24 @@ def _section_ranges(entries: list[TOCEntry], n_pages: int) -> list[tuple[int, in
 
 
 def _page_owned_by_deeper(
-    page_idx: int, entry: TOCEntry, ranges: list[tuple[int, int] | None],
+    page_idx: int,
+    entry: TOCEntry,
+    ranges: list[tuple[int, int] | None],
     entries: list[TOCEntry],
 ) -> bool:
     """True when a strictly deeper section also covers this page — then the
     deeper section owns the page's words (parents never duplicate children;
     equally-nested siblings sharing a page keep it, as printed)."""
     for later, rng in zip(entries, ranges):
-        if (
-            rng is not None
-            and later.level > entry.level
-            and rng[0] <= page_idx <= rng[1]
-        ):
+        if rng is not None and later.level > entry.level and rng[0] <= page_idx <= rng[1]:
             return True
     return False
 
 
 def _sections_from_entries(
-    pages: list[_Page], entries: list[TOCEntry], furniture: list[set[int]],
+    pages: list[_Page],
+    entries: list[TOCEntry],
+    furniture: list[set[int]],
     tables: _TableExtraction | None = None,
     figures: _FigureExtraction | None = None,
 ) -> list[SectionNode]:
@@ -501,10 +505,10 @@ def _sections_from_entries(
             if _page_owned_by_deeper(page.index, entry, ranges, entries):
                 continue
             fi = page.index - 1
-            consumed = (tables.consumed[fi] if tables else set()) \
-                | (figures.consumed[fi] if figures else set())
-            paragraphs.extend(_page_paragraphs(
-                page, furniture[fi], title_keys, consumed))
+            consumed = (tables.consumed[fi] if tables else set()) | (
+                figures.consumed[fi] if figures else set()
+            )
+            paragraphs.extend(_page_paragraphs(page, furniture[fi], title_keys, consumed))
             if tables:
                 for block in tables.by_page.get(page.index, []):
                     if id(block) in attached:
@@ -544,16 +548,19 @@ def _cross_validate_outline(pages: list[_Page], entries: list[TOCEntry]) -> None
         log.warning(
             "outline/printed-TOC discrepancy: %d printed title(s) absent from "
             "the outline (e.g. %r) — outline wins",
-            len(missing), missing[:3],
+            len(missing),
+            missing[:3],
         )
     else:
         log.info("outline and printed TOC agree (%d titles)", len(printed))
 
 
-def _sections_per_page(pages: list[_Page], furniture: list[set[int]],
-                       tables: _TableExtraction | None = None,
-                       figures: _FigureExtraction | None = None
-                       ) -> list[SectionNode]:
+def _sections_per_page(
+    pages: list[_Page],
+    furniture: list[set[int]],
+    tables: _TableExtraction | None = None,
+    figures: _FigureExtraction | None = None,
+) -> list[SectionNode]:
     return [
         SectionNode(
             number=str(page.index),
@@ -562,9 +569,12 @@ def _sections_per_page(pages: list[_Page], furniture: list[set[int]],
             page_start=page.index,
             page_end=page.index,
             paragraphs=_page_paragraphs(
-                page, furniture[page.index - 1], frozenset(),
+                page,
+                furniture[page.index - 1],
+                frozenset(),
                 (tables.consumed[page.index - 1] if tables else set())
-                | (figures.consumed[page.index - 1] if figures else set())),
+                | (figures.consumed[page.index - 1] if figures else set()),
+            ),
             tables=tables.by_page.get(page.index, []) if tables else [],
             figures=figures.by_page.get(page.index, []) if figures else [],
         )
@@ -644,14 +654,14 @@ def _best_delta(rows: list[tuple[float, str, str, int]], pages: list[_Page]) -> 
 # Tables: caption-anchored hypotheses + reconstruction gate.
 
 # "Table 3. DAC DC Specifications", "Table 2-1 - Power Consumption", "Table 1."
-_CAPTION_RE = re.compile(r"^\s*table\s+(\d+(?:[.-]\d+)*)\s*[-.:]\s*(.*)$",
-                         re.IGNORECASE)
+_CAPTION_RE = re.compile(r"^\s*table\s+(\d+(?:[.-]\d+)*)\s*[-.:]\s*(.*)$", re.IGNORECASE)
 
 # "Figure 5. Pin Configuration" / "Figure 1." — the dot/colon right after
 # the number is REQUIRED, so prose references ("the waveforms in Figure 2
 # show ...", "Figure 83 shows the typical ...") never become figures.
 _FIGURE_CAPTION_RE = re.compile(
-    r"^\s*figure\s+(\d+(?:[.-]\d+)*[a-z]?)\s*[.:]\s*(.*)$", re.IGNORECASE)
+    r"^\s*figure\s+(\d+(?:[.-]\d+)*[a-z]?)\s*[.:]\s*(.*)$", re.IGNORECASE
+)
 # Region-above geometry: the next figure's clip starts below the previous
 # caption's text box (caption line box + descender room).
 _FIGURE_MARGIN = 12.0
@@ -681,14 +691,10 @@ _PREAMBLE_GAP = 24.0
 # like "1  For dc-coupled ...") followed by a long sentence — detached from
 # the grid so footnote lines never become rows. "6 GHz TO 10 GHz ..." is NOT
 # one (unit-guard on the second word), "2.7 GHz to 3.8 GHz" is not either.
-_FOOTNOTE_RE = re.compile(
-    r"^\s*(?:\(\d{1,2}\)|[†*‡§#]|\d{1,2}[.)]?)\s*[A-Za-z]"
-)
+_FOOTNOTE_RE = re.compile(r"^\s*(?:\(\d{1,2}\)|[†*‡§#]|\d{1,2}[.)]?)\s*[A-Za-z]")
 # The bare-canonical marker of a matched footnote row: "(1)" and "1." both
 # become "1", matching the superscript citation form printed in cells.
-_FOOTNOTE_MARKER_RE = re.compile(
-    r"^\s*(\(?\d{1,2}\)?|[†*‡§#])[.)]?\s*(.*)$"
-)
+_FOOTNOTE_MARKER_RE = re.compile(r"^\s*(\(?\d{1,2}\)?|[†*‡§#])[.)]?\s*(.*)$")
 # A superscript citation marker span: bare digits or a symbol — real markers
 # measured on AD9081/HMC520A are 0.61-0.75x the line's size on a raised
 # baseline ("AC Coupling2"). Chemical subscripts ("f0") sit below the row's
@@ -720,13 +726,29 @@ _HEADING_SIZE = 11.0
 # labels that would otherwise reconstruct as ragged grids have none, so a
 # heading-anchored region whose first row carries no parameter-header token
 # stays honestly a paragraph (SPEC story 10's rejection gate).
-_HEADER_TOKENS = frozenset({
-    "min", "max", "typ", "tpy", "nom",
-    "unit", "units", "value", "values", "valuerange", "parameter",
-    "rating", "ratings",
-    "testconditions", "testcondition", "thermal", "thermalmetric",
-    "partno", "partnumber",
-})
+_HEADER_TOKENS = frozenset(
+    {
+        "min",
+        "max",
+        "typ",
+        "tpy",
+        "nom",
+        "unit",
+        "units",
+        "value",
+        "values",
+        "valuerange",
+        "parameter",
+        "rating",
+        "ratings",
+        "testconditions",
+        "testcondition",
+        "thermal",
+        "thermalmetric",
+        "partno",
+        "partnumber",
+    }
+)
 # The side-by-side fallback: when a heading-anchored region fails the gate,
 # and its header row's word clusters show one inter-group gap this wide
 # (measured 106 pt between QPA1003P's side-by-side Absolute Maximum Ratings
@@ -751,11 +773,43 @@ _TITLE_RECT_MIN = 25.0
 # drawn content (measured 6.5 pt on QPA1003P p1); the region scan counts
 # rects that start within this window of the band's bottom.
 _TITLE_CONTENT_GAP = 20.0
-_UNIT_WORDS = frozenset({
-    "ghz", "mhz", "khz", "hz", "dbm", "dbc", "db", "v", "mv", "kv", "uv",
-    "a", "ma", "ua", "ohm", "ω", "kω", "mω", "w", "mw", "lsb", "bits",
-    "s", "ms", "ns", "f", "pf", "uf", "rms", "dbfs", "sps", "msps", "gsps",
-})
+_UNIT_WORDS = frozenset(
+    {
+        "ghz",
+        "mhz",
+        "khz",
+        "hz",
+        "dbm",
+        "dbc",
+        "db",
+        "v",
+        "mv",
+        "kv",
+        "uv",
+        "a",
+        "ma",
+        "ua",
+        "ohm",
+        "ω",
+        "kω",
+        "mω",
+        "w",
+        "mw",
+        "lsb",
+        "bits",
+        "s",
+        "ms",
+        "ns",
+        "f",
+        "pf",
+        "uf",
+        "rms",
+        "dbfs",
+        "sps",
+        "msps",
+        "gsps",
+    }
+)
 
 
 class _Row:
@@ -770,8 +824,11 @@ class _Row:
 def _row_pitch(rows: list[_Row]) -> float | None:
     """The row pitch of a baseline-clustered set: median gap of consecutive
     fine rows (skew-merged pairs excluded), None when there is no spread."""
-    gaps = [rows[i + 1].y - rows[i].y for i in range(len(rows) - 1)
-            if rows[i + 1].y - rows[i].y > _BASELINE_SKEW]
+    gaps = [
+        rows[i + 1].y - rows[i].y
+        for i in range(len(rows) - 1)
+        if rows[i + 1].y - rows[i].y > _BASELINE_SKEW
+    ]
     if not gaps:
         return None
     return sorted(gaps)[len(gaps) // 2]
@@ -856,7 +913,7 @@ def _row_markers(row: _Row) -> list[str]:
         if (s.y0 + s.y1) / 2.0 >= mid:  # subscript, not a citation
             continue
         prev = row.spans[i - 1]
-        if s.x0 - prev.x1 > 2.5:       # a spaced word, not a glued marker
+        if s.x0 - prev.x1 > 2.5:  # a spaced word, not a glued marker
             continue
         out.append(s.text)
     return out
@@ -907,8 +964,9 @@ def _row_band_count(row: _Row) -> int:
     return _cluster_count(row)
 
 
-def _scan_table_footnotes(rows: list[_Row], grid_end_y: float,
-                          pitch: float | None) -> tuple[list[Footnote], list[_Row]]:
+def _scan_table_footnotes(
+    rows: list[_Row], grid_end_y: float, pitch: float | None
+) -> tuple[list[Footnote], list[_Row]]:
     """Trailing lines below the accepted grid -> enumerated Footnote bodies.
 
     ``grid_end_y`` is the last row that *spans* column bands — wrapped
@@ -1006,8 +1064,7 @@ def _in_band(x0: float, left: float, right: float) -> bool:
     return left - _COLUMN_EDGE_EPS <= x0 < right - _COLUMN_EDGE_EPS
 
 
-def _cell(span_texts: list[_Span], left: float,
-          right: float) -> str:
+def _cell(span_texts: list[_Span], left: float, right: float) -> str:
     """Join the spans whose x0 falls in [left, right), with the project's
     glue rule: sub/superscripts (next span starts right at the previous
     one's end) stay glued; a true overlap (> 0.5pt) is a separate word and
@@ -1057,14 +1114,14 @@ def _wrapped_identifier(head: str, tail: str) -> bool:
     return bool(_IDENT_HEAD.search(head) and _IDENT_TAIL.match(tail))
 
 
-
 def _row_cells(row: _Row, lefts: list[float]) -> list[str]:
     bounds = list(zip(lefts, lefts[1:] + [math.inf]))
     return [_cell(row.spans, lo, hi) for lo, hi in bounds]
 
 
-def _gate(rows: list[_Row], lefts: list[float], page: _Page,
-          region_y0: float, region_y1: float) -> str | None:
+def _gate(
+    rows: list[_Row], lefts: list[float], page: _Page, region_y0: float, region_y1: float
+) -> str | None:
     """Reconstruction gate. Returns None when the grid may be accepted, else
     the rejection reason. Deterministic order; every rule is vendor-neutral.
 
@@ -1104,12 +1161,11 @@ def _gate(rows: list[_Row], lefts: list[float], page: _Page,
     for lo, hi in zip(lefts, lefts[1:] + [math.inf]):
         for row in rows:
             max_size = max((s.size for s in row.spans), default=0.0)
-            raw = sorted((s for s in row.spans if _in_band(s.x0, lo, hi)),
-                         key=lambda s: s.x0)
+            raw = sorted((s for s in row.spans if _in_band(s.x0, lo, hi)), key=lambda s: s.x0)
             starts = [
-                s.x0 for s in raw
-                if not (s.size <= _MARKER_SIZE_RATIO * max_size
-                        and max_size - s.size >= 1.0)
+                s.x0
+                for s in raw
+                if not (s.size <= _MARKER_SIZE_RATIO * max_size and max_size - s.size >= 1.0)
             ]
             clusters = _cluster_lefts(starts, _HDR_ANCHOR_TAU)
             for a, z in itertools.pairwise(clusters):
@@ -1130,8 +1186,7 @@ def _gate(rows: list[_Row], lefts: list[float], page: _Page,
                     return "side-by-side columns fused into one band"
 
     ruled = any(
-        (lefts[0] - 4.0 <= x <= lefts[-1] + 60.0)
-        and y1 > region_y0 and y0 < region_y1
+        (lefts[0] - 4.0 <= x <= lefts[-1] + 60.0) and y1 > region_y0 and y0 < region_y1
         for x, y0, y1 in page.v_rulings()
     )
     cells = [_row_cells(r, lefts) for r in rows]
@@ -1154,8 +1209,7 @@ def _gate(rows: list[_Row], lefts: list[float], page: _Page,
     # its starts are tight; ruling evidence relaxes the share (dense ruled
     # tables like HMC "Table 2.").
     strong_needed = 2 if ruled else max(3, math.ceil(0.5 * n))
-    if sum(1 for s, t in zip(strength, tight)
-           if s >= strong_needed and t) < 2:
+    if sum(1 for s, t in zip(strength, tight) if s >= strong_needed and t) < 2:
         return "columns not stable across rows"
     if sum(1 for o in occ if o >= 2) * 2 < n:
         return "rows do not span columns"
@@ -1175,8 +1229,9 @@ def _row_y(row: _Row) -> float:
     return row.lines[0].y if row.lines else row.y
 
 
-def _materialize_band0(grid: list[list[str]], row_ys: list[float],
-                       starts: list[float | None], lefts: list[float]) -> list[int]:
+def _materialize_band0(
+    grid: list[list[str]], row_ys: list[float], starts: list[float | None], lefts: list[float]
+) -> list[int]:
     """Ticket 09: rowspan materialization of the parameter column.
 
     Returns the grid row indices whose first cell this function *lent* from a
@@ -1293,15 +1348,21 @@ def _unfold_header(rows: list[_Row], lefts: list[float]) -> list[_Row]:
     return unfolded + rows[1:] if len(unfolded) > 1 else rows
 
 
-def _block_from(rows: list[_Row], lefts: list[float], caption: str,
-                conditions: str, page_number: int,
-                footnotes: list[Footnote] | None = None,
-                cited_markers: list[str] | None = None,
-                reconstruction: str = "") -> TableBlock:
+def _block_from(
+    rows: list[_Row],
+    lefts: list[float],
+    caption: str,
+    conditions: str,
+    page_number: int,
+    footnotes: list[Footnote] | None = None,
+    cited_markers: list[str] | None = None,
+    reconstruction: str = "",
+) -> TableBlock:
     rows = _unfold_header(rows, lefts)
     headers = _row_cells(rows[0], lefts)
-    kept = [(r, _row_cells(r, lefts)) for r in rows[1:]
-            if any(c.strip() for c in _row_cells(r, lefts))]
+    kept = [
+        (r, _row_cells(r, lefts)) for r in rows[1:] if any(c.strip() for c in _row_cells(r, lefts))
+    ]
     grid = [cells for _r, cells in kept]
     row_ys = [_row_y(r) for r, _c in kept]
     band1 = lefts[1] if len(lefts) > 1 else math.inf
@@ -1377,9 +1438,9 @@ def _advice_share(lefts: list[float], advice: list[float]) -> float:
     return hits / len(advice)
 
 
-def _hypothesis(region: list[_Line], page: _Page
-                ) -> tuple[list[float] | None, str | None, float,
-                            list[_Row], str]:
+def _hypothesis(
+    region: list[_Line], page: _Page
+) -> tuple[list[float] | None, str | None, float, list[_Row], str]:
     """Score one region against the retry ladder.
 
     Every band set (header-anchored first, then the all-word retry ladder)
@@ -1423,9 +1484,7 @@ def _hypothesis(region: list[_Line], page: _Page
     if not kept:
         return None, "no rows", 0.0, [], ""
 
-    band_sets = [_header_bands(kept)] + [
-        _word_bands(kept, tau) for tau in _COLUMN_TAUS
-    ]
+    band_sets = [_header_bands(kept)] + [_word_bands(kept, tau) for tau in _COLUMN_TAUS]
     y0 = min(r.y for r in kept) - 2.0
     y1 = max(r.y for r in kept) + 2.0
     keep_reason = "no viable column split"
@@ -1458,23 +1517,26 @@ def _hypothesis(region: list[_Line], page: _Page
         if reason is not None:
             keep_reason = reason
             continue
-        grid_words = sum(len(s.text.split())
-                         for ln in lines for s in ln.spans)
+        grid_words = sum(len(s.text.split()) for ln in lines for s in ln.spans)
         fidelity = (grid_words / region_words) if region_words else 1.0
         score = _advice_share(lefts, band_sets[0])
         # strictly greater scores replace; ties keep the coarsest candidate
         # (fewest bands — the header-anchored split is the table's own
         # declaration and equals the fineness of the declaration; a finer
         # tie can only be carving interior words of declared columns)
-        if best is None or score > best[0] or (
-                score == best[0] and len(lefts) < len(best[1])):
+        if best is None or score > best[0] or (score == best[0] and len(lefts) < len(best[1])):
             best = (score, lefts, lines, candidate)
             best_fidelity = fidelity
             best_rescued = rung > 0
     if best is None:
         return None, keep_reason, 0.0, [], ""
-    return (best[1], None, best_fidelity, best[3],
-            RECONSTRUCTION_RESCUED if best_rescued else RECONSTRUCTION_HEADER)
+    return (
+        best[1],
+        None,
+        best_fidelity,
+        best[3],
+        RECONSTRUCTION_RESCUED if best_rescued else RECONSTRUCTION_HEADER,
+    )
 
 
 def _is_heading_anchor(line: _Line, title_keys: frozenset[str]) -> bool:
@@ -1498,8 +1560,7 @@ def _is_heading_anchor(line: _Line, title_keys: frozenset[str]) -> bool:
     return any(s.size >= _HEADING_SIZE for s in line.spans)
 
 
-def _strip_leading_preamble(region: list[tuple[int, _Line]]
-                            ) -> list[tuple[int, _Line]]:
+def _strip_leading_preamble(region: list[tuple[int, _Line]]) -> list[tuple[int, _Line]]:
     """Heading-anchored regions start below the printed heading; a leading
     single-band sentence line directly under it is the test-conditions
     preamble (measured: LM741 'over operating free-air temperature range
@@ -1516,7 +1577,8 @@ def _strip_leading_preamble(region: list[tuple[int, _Line]]
         # column starts sit tens of points apart ('MIN' vs 'MAX' vs 'UNIT')
         spans = sorted(line.spans, key=lambda s: s.x0)
         glued = len(spans) <= 1 or all(
-            b.x0 - a.x1 <= 0.5 * a.size for a, b in itertools.pairwise(spans))
+            b.x0 - a.x1 <= 0.5 * a.size for a, b in itertools.pairwise(spans)
+        )
         if not glued:
             break
         # the whole sentence stays a preamble at the prose-word boundary
@@ -1609,9 +1671,14 @@ class _TableExtraction:
         self.fidelities: list[float] = []
         self._last_reason = ""
 
-    def _preamble(self, page: _Page, cap_idx: int, furniture: set[int],
-                  title_keys: frozenset[str], consumed: set[int]
-                  ) -> tuple[list[int], str]:
+    def _preamble(
+        self,
+        page: _Page,
+        cap_idx: int,
+        furniture: set[int],
+        title_keys: frozenset[str],
+        consumed: set[int],
+    ) -> tuple[list[int], str]:
         """Consecutive unconsumed lines directly above the caption: the
         test-conditions preamble that must travel with its table."""
         idxs: list[int] = []
@@ -1619,9 +1686,12 @@ class _TableExtraction:
         prev_y = page.lines[cap_idx].y
         for i in range(cap_idx - 1, -1, -1):
             line = page.lines[i]
-            if (i in furniture or i in consumed
-                    or (title_keys and _squash(line.text) in title_keys)
-                    or _CAPTION_RE.match(line.text)):
+            if (
+                i in furniture
+                or i in consumed
+                or (title_keys and _squash(line.text) in title_keys)
+                or _CAPTION_RE.match(line.text)
+            ):
                 break
             if prev_y - line.y > _PREAMBLE_GAP:
                 break
@@ -1633,8 +1703,7 @@ class _TableExtraction:
     def _consume(self, page: _Page, indices: list[int]) -> None:
         self.consumed[page.index - 1].update(indices)
 
-    def run(self, page: _Page, furniture: set[int],
-            title_keys: frozenset[str]) -> None:
+    def run(self, page: _Page, furniture: set[int], title_keys: frozenset[str]) -> None:
         i = 0
         lines = page.lines
         while i < len(lines):
@@ -1647,9 +1716,12 @@ class _TableExtraction:
             j = i + 1
             while j < len(lines):
                 line = lines[j]
-                if (j in furniture or _CAPTION_RE.match(line.text.strip())
-                        or _FIGURE_CAPTION_RE.match(line.text.strip())
-                        or (title_keys and _squash(line.text) in title_keys)):
+                if (
+                    j in furniture
+                    or _CAPTION_RE.match(line.text.strip())
+                    or _FIGURE_CAPTION_RE.match(line.text.strip())
+                    or (title_keys and _squash(line.text) in title_keys)
+                ):
                     break
                 region.append((j, line))
                 j += 1
@@ -1689,29 +1761,31 @@ class _TableExtraction:
                 acc.block.markdown = grid_markdown(acc.block.headers, acc.block.grid)
                 # same grid-end rule as the first page: the last row that
                 # spans bands (single-band sub-headers are not the grid end)
-                grid_end = max((r.y for r in grid_rows
-                                if _row_band_count(r) > 1), default=0.0)
-                footnotes, fn_rows = _scan_table_footnotes(
-                    rows, grid_end, _row_pitch(rows))
-                acc.block.footnotes = _merge_footnotes(
-                    acc.block.footnotes, footnotes)
+                grid_end = max((r.y for r in grid_rows if _row_band_count(r) > 1), default=0.0)
+                footnotes, fn_rows = _scan_table_footnotes(rows, grid_end, _row_pitch(rows))
+                acc.block.footnotes = _merge_footnotes(acc.block.footnotes, footnotes)
                 for row in grid_rows:
-                    acc.block.cited_markers = list(dict.fromkeys(
-                        acc.block.cited_markers + _row_markers(row)))
+                    acc.block.cited_markers = list(
+                        dict.fromkeys(acc.block.cited_markers + _row_markers(row))
+                    )
                 by_id = {id(ln): idx for idx, ln in region}
-                self._consume(page, [idx for idx, ln in region
-                                     if id(ln) in kept_ids] + [i]
-                              + [by_id[id(ln)] for row in fn_rows
-                                 for ln in row.lines])
+                self._consume(
+                    page,
+                    [idx for idx, ln in region if id(ln) in kept_ids]
+                    + [i]
+                    + [by_id[id(ln)] for row in fn_rows for ln in row.lines],
+                )
                 self.accepted += 1
                 self.fidelities.append(1.0)
                 i = j
                 continue
 
             pre_idx, conditions = self._preamble(
-                page, i, furniture, title_keys, self.consumed[page.index - 1])
+                page, i, furniture, title_keys, self.consumed[page.index - 1]
+            )
             block, lefts, _fidelity, reason = self._accept_hypothesis(
-                page, region, lines[i].text.strip(), conditions)
+                page, region, lines[i].text.strip(), conditions
+            )
             if block is not None and lefts is not None:
                 self.accs[key] = _AcceptedTable(block, lefts)
                 self._consume(page, pre_idx + [i])
@@ -1722,8 +1796,9 @@ class _TableExtraction:
 
         self._run_heading_anchored(page, furniture, title_keys)
 
-    def _run_heading_anchored(self, page: _Page, furniture: set[int],
-                              title_keys: frozenset[str]) -> None:
+    def _run_heading_anchored(
+        self, page: _Page, furniture: set[int], title_keys: frozenset[str]
+    ) -> None:
         """Ticket 09, SPEC story 10: captionless-era tables are anchored by
         their printed section heading and hypothesized with the exact same
         ladder + gate as captioned tables — a captionless double either
@@ -1736,19 +1811,25 @@ class _TableExtraction:
         lines = page.lines
         i = 0
         while i < len(lines):
-            if (i in furniture or i in consumed
-                    or _CAPTION_RE.match(lines[i].text.strip())
-                    or not _is_heading_anchor(lines[i], title_keys)):
+            if (
+                i in furniture
+                or i in consumed
+                or _CAPTION_RE.match(lines[i].text.strip())
+                or not _is_heading_anchor(lines[i], title_keys)
+            ):
                 i += 1
                 continue
             region: list[tuple[int, _Line]] = []
             j = i + 1
             while j < len(lines):
                 line = lines[j]
-                if (j in furniture or j in consumed
-                        or _CAPTION_RE.match(line.text.strip())
-                        or _FIGURE_CAPTION_RE.match(line.text.strip())
-                        or _is_heading_anchor(line, title_keys)):
+                if (
+                    j in furniture
+                    or j in consumed
+                    or _CAPTION_RE.match(line.text.strip())
+                    or _FIGURE_CAPTION_RE.match(line.text.strip())
+                    or _is_heading_anchor(line, title_keys)
+                ):
                     break
                 region.append((j, line))
                 j += 1
@@ -1763,8 +1844,7 @@ class _TableExtraction:
             zones = _mirror_split(region)
             split_blocks: list[TableBlock] = []
             for zone in zones:
-                part, _l2, _f2, zone_reason = self._accept_hypothesis(
-                    page, zone)
+                part, _l2, _f2, zone_reason = self._accept_hypothesis(page, zone)
                 if part is not None:
                     split_blocks.append(part)
                 else:
@@ -1783,44 +1863,43 @@ class _TableExtraction:
             i = j
 
     def _accept_hypothesis(
-        self, page: _Page, region: list[tuple[int, _Line]],
-        caption: str = "", conditions: str = "",
+        self,
+        page: _Page,
+        region: list[tuple[int, _Line]],
+        caption: str = "",
+        conditions: str = "",
     ) -> tuple[TableBlock | None, list[float] | None, float, str]:
         """Run the ladder + gate over a region and, when accepted, build the
         block, consume its rows + footnotes and return (block, lefts,
         fidelity, ""). The shared implementation of the captioned and
         heading-anchored paths (ticket 09)."""
         region_lines = [ln for _i, ln in region]
-        lefts, reason, fidelity, kept_rows, reconstruction = _hypothesis(
-            region_lines, page)
+        lefts, reason, fidelity, kept_rows, reconstruction = _hypothesis(region_lines, page)
         if lefts is None:
             self._last_reason = reason
             return None, None, 0.0, reason
         fine = _group_rows(region_lines, wrap=False)
         # the grid's last row is the last one that spans bands; single-band
         # rows below it are footnote continuations
-        grid_end = max((r.y for r in kept_rows
-                        if _row_band_count(r) > 1), default=0.0)
-        footnotes, fn_rows = _scan_table_footnotes(
-            fine, grid_end, _row_pitch(fine))
+        grid_end = max((r.y for r in kept_rows if _row_band_count(r) > 1), default=0.0)
+        footnotes, fn_rows = _scan_table_footnotes(fine, grid_end, _row_pitch(fine))
         attached_ids = {id(ln) for row in fn_rows for ln in row.lines}
-        grid_rows = [r for r in kept_rows
-                     if not any(id(ln) in attached_ids for ln in r.lines)]
-        markers = list(dict.fromkeys(
-            m for row in grid_rows for m in _row_markers(row)))
-        block = _block_from(_group_rows(
-            [ln for r in grid_rows for ln in r.lines]), lefts,
-            caption, conditions,
+        grid_rows = [r for r in kept_rows if not any(id(ln) in attached_ids for ln in r.lines)]
+        markers = list(dict.fromkeys(m for row in grid_rows for m in _row_markers(row)))
+        block = _block_from(
+            _group_rows([ln for r in grid_rows for ln in r.lines]),
+            lefts,
+            caption,
+            conditions,
             page.index,
             footnotes=footnotes,
             cited_markers=markers,
-            reconstruction=reconstruction)
+            reconstruction=reconstruction,
+        )
         self.by_page.setdefault(page.index, []).append(block)
         by_id = {id(ln): idx for idx, ln in region}
-        consumed = [by_id[id(ln)] for row in grid_rows
-                    for ln in row.lines]
-        consumed += [by_id[id(ln)] for row in fn_rows
-                     for ln in row.lines]
+        consumed = [by_id[id(ln)] for row in grid_rows for ln in row.lines]
+        consumed += [by_id[id(ln)] for row in fn_rows for ln in row.lines]
         self._consume(page, consumed)
         self.accepted += 1
         self.fidelities.append(fidelity)
@@ -1833,8 +1912,7 @@ class _TableExtraction:
             tables_accepted=self.accepted,
             tables_rejected=self.rejected,
             rejection_reasons=self.reasons[:8],
-            mean_fidelity=(sum(self.fidelities) / len(self.fidelities)
-                           if self.fidelities else 0.0),
+            mean_fidelity=(sum(self.fidelities) / len(self.fidelities) if self.fidelities else 0.0),
         )
 
 
@@ -1859,9 +1937,13 @@ class _FigureExtraction:
         self.by_page: dict[int, list[FigureRef]] = {}
         self.consumed: list[set[int]] = [set() for _ in pages]
 
-    def run(self, page: _Page, furniture: set[int],
-            title_keys: frozenset[str],
-            consumed_tables: set[int] | None = None) -> None:
+    def run(
+        self,
+        page: _Page,
+        furniture: set[int],
+        title_keys: frozenset[str],
+        consumed_tables: set[int] | None = None,
+    ) -> None:
         consumed = consumed_tables or set()
         for i, line in enumerate(page.lines):
             m = _FIGURE_CAPTION_RE.match(line.text.strip())
@@ -1869,29 +1951,38 @@ class _FigureExtraction:
                 continue
             caption = line.text.strip()
             self.by_page.setdefault(page.index, []).append(
-                FigureRef(caption=caption, conditions="",
-                          image_url="", page=page.index)
+                FigureRef(caption=caption, conditions="", image_url="", page=page.index)
             )
             self.consumed[page.index - 1].add(i)
         self._run_title_anchored(page, furniture, title_keys, consumed)
 
-    def _run_title_anchored(self, page: _Page, furniture: set[int],
-                            title_keys: frozenset[str],
-                            consumed_tables: set[int]) -> None:
+    def _run_title_anchored(
+        self,
+        page: _Page,
+        furniture: set[int],
+        title_keys: frozenset[str],
+        consumed_tables: set[int],
+    ) -> None:
         lines = page.lines
         boxes = page.boxes()
         anchors: list[tuple[int, float, tuple[float, float, float, float]]] = []
         for i, line in enumerate(lines):
-            if (i in furniture or i in consumed_tables
-                    or (title_keys and _squash(line.text) in title_keys)
-                    or _FIGURE_CAPTION_RE.match(line.text.strip())
-                    or _CAPTION_RE.match(line.text.strip())
-                    or max((s.size for s in line.spans), default=0.0) < _TITLE_SIZE):
+            if (
+                i in furniture
+                or i in consumed_tables
+                or (title_keys and _squash(line.text) in title_keys)
+                or _FIGURE_CAPTION_RE.match(line.text.strip())
+                or _CAPTION_RE.match(line.text.strip())
+                or max((s.size for s in line.spans), default=0.0) < _TITLE_SIZE
+            ):
                 continue
             band = None
             for b in boxes:
-                if (b[0] <= line.x <= b[2] and b[1] - 2.0 <= line.y <= b[3]
-                        and b[3] - b[1] >= _TITLE_BAND_H_MIN):
+                if (
+                    b[0] <= line.x <= b[2]
+                    and b[1] - 2.0 <= line.y <= b[3]
+                    and b[3] - b[1] >= _TITLE_BAND_H_MIN
+                ):
                     band = b
                     break
             if band is None:
@@ -1904,17 +1995,22 @@ class _FigureExtraction:
         for k, (i, _y, band) in enumerate(anchors):
             bottom = anchors[k + 1][2][1] if k + 1 < len(anchors) else page_bottom
             content_ok = any(
-                bx[2] - bx[0] >= _TITLE_RECT_MIN and bx[3] - bx[1] >= _TITLE_RECT_MIN
+                bx[2] - bx[0] >= _TITLE_RECT_MIN
+                and bx[3] - bx[1] >= _TITLE_RECT_MIN
                 and bx[0] <= line.x <= bx[2]  # the rect sits under the title's
                 and bx[1] <= band[3] + _TITLE_CONTENT_GAP  # own column — a side
-                and bx[3] >= band[3] + _TITLE_CONTENT_GAP   # box never counts
+                and bx[3] >= band[3] + _TITLE_CONTENT_GAP  # box never counts
                 for bx in boxes
             )
             prose_ok = all(
-                not (len(ln.text.split()) >= 6 and
-                     max((s.size for s in ln.spans), default=0.0) >= 8.5)
-                and not (len(ln.text.split()) >= 4 and
-                         max((s.size for s in ln.spans), default=0.0) >= 11.0)
+                not (
+                    len(ln.text.split()) >= 6
+                    and max((s.size for s in ln.spans), default=0.0) >= 8.5
+                )
+                and not (
+                    len(ln.text.split()) >= 4
+                    and max((s.size for s in ln.spans), default=0.0) >= 11.0
+                )
                 for ln in page.lines
                 if band[3] < ln.y <= bottom
                 # prose in the *title's own x-column* only: QPA1003P's block
@@ -1929,12 +2025,16 @@ class _FigureExtraction:
             if not (content_ok and prose_ok):
                 continue
             self.by_page.setdefault(page.index, []).append(
-                FigureRef(caption=lines[i].text.strip(), conditions="",
-                          image_url="", page=page.index)
+                FigureRef(
+                    caption=lines[i].text.strip(), conditions="", image_url="", page=page.index
+                )
             )
             self.consumed[page.index - 1].add(i)
-            log.info("pdf_layout: title-anchored figure on page %d: %r",
-                     page.index, lines[i].text.strip()[:60])
+            log.info(
+                "pdf_layout: title-anchored figure on page %d: %r",
+                page.index,
+                lines[i].text.strip()[:60],
+            )
 
 
 def figure_anchor_map(path: Path) -> dict[tuple[int, str], tuple[float, float]]:
@@ -1978,8 +2078,7 @@ def figure_caption_key(caption: str) -> str:
     return _squash(caption)
 
 
-def figure_title_anchor_map(path: Path
-                            ) -> dict[tuple[int, str], tuple[float, float]]:
+def figure_title_anchor_map(path: Path) -> dict[tuple[int, str], tuple[float, float]]:
     """(page, squashed title) -> (clip_top, clip_bottom) for every
     title-anchored figure in a PDF (ticket 09).
 
@@ -1998,8 +2097,11 @@ def figure_title_anchor_map(path: Path
                 continue
             band = None
             for b in boxes:
-                if (b[0] <= ln.x <= b[2] and b[1] - 2.0 <= ln.y <= b[3]
-                        and b[3] - b[1] >= _TITLE_BAND_H_MIN):
+                if (
+                    b[0] <= ln.x <= b[2]
+                    and b[1] - 2.0 <= ln.y <= b[3]
+                    and b[3] - b[1] >= _TITLE_BAND_H_MIN
+                ):
                     band = b
                     break
             if band is not None:
@@ -2007,9 +2109,12 @@ def figure_title_anchor_map(path: Path
         page_bottom = max((ln.y for ln in page.lines), default=700.0) + 40.0
         for k, (y, band) in enumerate(anchors):
             bottom = anchors[k + 1][1][1] if k + 1 < len(anchors) else page_bottom
-            out[(page.index, figure_caption_key(next(
-                ln.text.strip() for ln in page.lines if ln.y == y)))] = (
-                band[1], bottom)
+            out[
+                (
+                    page.index,
+                    figure_caption_key(next(ln.text.strip() for ln in page.lines if ln.y == y)),
+                )
+            ] = (band[1], bottom)
     return out
 
 
@@ -2026,6 +2131,7 @@ class PdfLayoutBackend:
     def is_available(self) -> tuple[bool, str]:
         try:
             import fitz  # noqa: F401
+
             return True, ""
         except ImportError as exc:
             return False, str(exc)
@@ -2050,23 +2156,35 @@ class PdfLayoutBackend:
         title_keys = _title_keys(entries)
         for page in pages:
             tables.run(page, furniture[page.index - 1], title_keys)
-            figures.run(page, furniture[page.index - 1], title_keys,
-                        consumed_tables=tables.consumed[page.index - 1])
+            figures.run(
+                page,
+                furniture[page.index - 1],
+                title_keys,
+                consumed_tables=tables.consumed[page.index - 1],
+            )
         if entries:
-            sections = _sections_from_entries(
-                pages, entries, furniture, tables, figures)
+            sections = _sections_from_entries(pages, entries, furniture, tables, figures)
         else:
             sections = _sections_per_page(pages, furniture, tables, figures)
         log.info(
             "pdf_layout: %d pages, %d sections, %d tables "
             "(%d detected, %d accepted, %d rejected), %d figures, "
             "%d furniture lines (ladder=%s)",
-            len(pages), len(sections), tables.accepted, tables.detected,
-            tables.accepted, tables.rejected, sum(len(v) for v in figures.by_page.values()),
-            sum(len(s) for s in furniture), ladder,
+            len(pages),
+            len(sections),
+            tables.accepted,
+            tables.detected,
+            tables.accepted,
+            tables.rejected,
+            sum(len(v) for v in figures.by_page.values()),
+            sum(len(s) for s in furniture),
+            ladder,
         )
         return RawDocument(
-            source=source, toc=entries, sections=sections,
-            extractor=self.name, extractor_version=self.output_version,
+            source=source,
+            toc=entries,
+            sections=sections,
+            extractor=self.name,
+            extractor_version=self.output_version,
             extraction_stats=tables.stats(),
         )

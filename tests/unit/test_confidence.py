@@ -114,9 +114,7 @@ class TestEachGradeHasAFixture:
     def test_unit_missing_where_the_lexicon_expects_one_is_low(self):
         """`TJ` is an alias family with `expect_unit: °C`; a TJ row that
         printed no unit at all is a reconstruction to check on the page."""
-        table = _table(
-            grid=[["TJ Operating junction temperature", "-40", "", "105", ""]]
-        )
+        table = _table(grid=[["TJ Operating junction temperature", "-40", "", "105", ""]])
         record = _only(table, _section())
         assert record.unit.canonical == ""
         assert record.confidence is Confidence.LOW
@@ -151,11 +149,21 @@ class TestLoweringAGradeIsNotFiltering:
         part = _write_part(
             tmp_path / "AFE7950",
             [
-                SpecRecord(symbol="TJ", name="Junction temperature", max="150",
-                           page=4, confidence=Confidence.LOW),
-                SpecRecord(symbol="TJ", name="Operating junction temperature",
-                           max="105", page=6, confidence=Confidence.HIGH,
-                           unit=SpecUnit(verbatim="°C", canonical="°C")),
+                SpecRecord(
+                    symbol="TJ",
+                    name="Junction temperature",
+                    max="150",
+                    page=4,
+                    confidence=Confidence.LOW,
+                ),
+                SpecRecord(
+                    symbol="TJ",
+                    name="Operating junction temperature",
+                    max="105",
+                    page=6,
+                    confidence=Confidence.HIGH,
+                    unit=SpecUnit(verbatim="°C", canonical="°C"),
+                ),
             ],
         )
         hits = Retriever.for_part(part).specs(name="junction temperature")
@@ -186,10 +194,20 @@ class TestPlotGrades:
         raw = RawDocument(
             source=SourceDocument(content_hash="f" * 64, path="x.pdf"),
             sections=[
-                SectionNode(number="4.12", title="TX", page_start=29, page_end=29,
-                            figures=[FigureRef(caption="Figure 4-1 TX Output")]),
-                SectionNode(number="4.13", title="RX", page_start=30, page_end=37,
-                            figures=[FigureRef(caption="Figure 4-2 RX Output")]),
+                SectionNode(
+                    number="4.12",
+                    title="TX",
+                    page_start=29,
+                    page_end=29,
+                    figures=[FigureRef(caption="Figure 4-1 TX Output")],
+                ),
+                SectionNode(
+                    number="4.13",
+                    title="RX",
+                    page_start=30,
+                    page_end=37,
+                    figures=[FigureRef(caption="Figure 4-2 RX Output")],
+                ),
             ],
         )
         grades = [p.confidence for p in build_plotset(raw, "TEST").plots]
@@ -291,14 +309,11 @@ class TestSchemaIsAdditive:
             "schema_version": "1",
             "part_number": "P1",
             "doc_hash": DOC_HASH,
-            "records": [{"symbol": "DACRES", "name": "DAC resolution",
-                         "typ": "14", "page": 7}],
+            "records": [{"symbol": "DACRES", "name": "DAC resolution", "typ": "14", "page": 7}],
             "tables": [],
         }
         (doc_dir / "specs.json").write_text(json.dumps(legacy), encoding="utf-8")
-        loaded = SpecSet.model_validate_json(
-            (doc_dir / "specs.json").read_text(encoding="utf-8")
-        )
+        loaded = SpecSet.model_validate_json((doc_dir / "specs.json").read_text(encoding="utf-8"))
         assert loaded.records[0].confidence is Confidence.UNKNOWN
         hits = Retriever.for_part(tmp_path / "P1").specs(symbol="DACRES")
         assert [h.confidence for h in hits] == ["unknown"]
@@ -336,9 +351,7 @@ class TestTheMix:
         assert mix(records) == {"high": 1, "medium": 0, "low": 2}
 
     def test_an_ungraded_record_shows_up_as_unknown(self):
-        assert mix([SpecRecord()]) == {
-            "high": 0, "medium": 0, "low": 0, "unknown": 1
-        }
+        assert mix([SpecRecord()]) == {"high": 0, "medium": 0, "low": 0, "unknown": 1}
 
 
 def _build_part(tmp_path: Path, settings: Settings) -> object:
@@ -346,15 +359,13 @@ def _build_part(tmp_path: Path, settings: Settings) -> object:
     _make_pdf(pdf, [_header_declared_page()], toc=[[1, "1 Spec", 1]])
     source = register_source(pdf, part_number="P1", doc_type="datasheet")
     append_to_inventory([source], settings.parts_dir / "P1")
-    return build_part(pdf, part_number="P1", settings=settings, vendor="unknown",
-                      use_llm=False)
+    return build_part(pdf, part_number="P1", settings=settings, vendor="unknown", use_llm=False)
 
 
 class TestManifestAndStatus:
     @pytest.fixture
     def settings(self, tmp_path) -> Settings:
-        return Settings(parts_dir=tmp_path / "parts",
-                        cache_dir=tmp_path / ".cache").resolve()
+        return Settings(parts_dir=tmp_path / "parts", cache_dir=tmp_path / ".cache").resolve()
 
     def test_the_manifest_records_the_part_mix(self, tmp_path, settings):
         result = _build_part(tmp_path, settings)
@@ -387,22 +398,25 @@ class TestManifestAndStatus:
         assert "confidence:" not in capsys.readouterr().out
 
 
-def _write_part(part_dir: Path, records: list[SpecRecord],
-                plots: list[PlotRecord] | None = None) -> Path:
+def _write_part(
+    part_dir: Path, records: list[SpecRecord], plots: list[PlotRecord] | None = None
+) -> Path:
     """A structurally real corpus whose specs/plots are exactly `records`."""
     doc_dir = part_dir / "docs" / DOC
     doc_dir.mkdir(parents=True, exist_ok=True)
     for i, rec in enumerate(records):
         rec.row_index = i
     (doc_dir / "specs.json").write_text(
-        SpecSet(schema_version="1", part_number=part_dir.name, doc_hash=DOC_HASH,
-                records=records).model_dump_json(),
+        SpecSet(
+            schema_version="1", part_number=part_dir.name, doc_hash=DOC_HASH, records=records
+        ).model_dump_json(),
         encoding="utf-8",
     )
     if plots is not None:
         (doc_dir / "plots.json").write_text(
-            PlotSet(schema_version="1", part_number=part_dir.name,
-                    doc_hash=DOC_HASH, plots=plots).model_dump_json(),
+            PlotSet(
+                schema_version="1", part_number=part_dir.name, doc_hash=DOC_HASH, plots=plots
+            ).model_dump_json(),
             encoding="utf-8",
         )
     (part_dir / "manifest.json").write_text(
@@ -410,9 +424,14 @@ def _write_part(part_dir: Path, records: list[SpecRecord],
             part_number=part_dir.name,
             pipeline_version="0.4.0",
             sections=[
-                SectionFile(number="4.3", title="Recommended Operating Conditions",
-                            file=f"docs/{DOC}/sections/4-3.md", doc_hash=DOC_HASH,
-                            page_start=4, page_end=6)
+                SectionFile(
+                    number="4.3",
+                    title="Recommended Operating Conditions",
+                    file=f"docs/{DOC}/sections/4-3.md",
+                    doc_hash=DOC_HASH,
+                    page_start=4,
+                    page_end=6,
+                )
             ],
         ).model_dump_json(),
         encoding="utf-8",
@@ -426,19 +445,29 @@ class TestEveryAnswerPathRendersTheGrade:
         _write_part(
             tmp_path / "parts" / "P1",
             [
-                SpecRecord(symbol="DACRES", name="DAC resolution", typ="14",
-                           page=7, section="4.5", confidence=Confidence.HIGH,
-                           unit=SpecUnit(verbatim="bits", canonical="bits")),
+                SpecRecord(
+                    symbol="DACRES",
+                    name="DAC resolution",
+                    typ="14",
+                    page=7,
+                    section="4.5",
+                    confidence=Confidence.HIGH,
+                    unit=SpecUnit(verbatim="bits", canonical="bits"),
+                ),
             ],
             plots=[
-                PlotRecord(id="4.12-f001", section="4.12",
-                           caption="Figure 4-1 TX Output Fullscale",
-                           page_start=29, page_end=37, tags=["tx"],
-                           confidence=Confidence.MEDIUM),
+                PlotRecord(
+                    id="4.12-f001",
+                    section="4.12",
+                    caption="Figure 4-1 TX Output Fullscale",
+                    page_start=29,
+                    page_end=37,
+                    tags=["tx"],
+                    confidence=Confidence.MEDIUM,
+                ),
             ],
         )
-        resolved = Settings(parts_dir=tmp_path / "parts",
-                            cache_dir=tmp_path / ".cache").resolve()
+        resolved = Settings(parts_dir=tmp_path / "parts", cache_dir=tmp_path / ".cache").resolve()
         monkeypatch.setattr("datasheet_analyzer.cli.get_settings", lambda: resolved)
         return resolved
 

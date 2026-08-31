@@ -28,7 +28,7 @@ def compute_content_hash(path: Path) -> str:
 
 
 def split_number(title: str) -> tuple[str, str]:
-    """"4.5 Transmitter Electrical Characteristics" -> ("4.5", "Transmitter ...").
+    """ "4.5 Transmitter Electrical Characteristics" -> ("4.5", "Transmitter ...").
     Unnumbered titles -> ("", title)."""
     m = _NUM_PREFIX.match(title.strip())
     if not m:
@@ -42,9 +42,7 @@ def read_toc(path: Path) -> list[TOCEntry]:
     with fitz.open(path) as doc:
         for level, title, page in doc.get_toc():
             number, clean = split_number(title)
-            out.append(
-                TOCEntry(number=number, title=clean, level=level, page=page or None)
-            )
+            out.append(TOCEntry(number=number, title=clean, level=level, page=page or None))
     return out
 
 

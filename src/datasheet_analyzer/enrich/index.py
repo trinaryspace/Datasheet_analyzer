@@ -106,8 +106,9 @@ class LLMWriter:
         "faithful to the supplied excerpts."
     )
 
-    def __init__(self, client: LLMClient, fallback: DescriptionWriter | None = None,
-                 max_tokens: int = 4096):
+    def __init__(
+        self, client: LLMClient, fallback: DescriptionWriter | None = None, max_tokens: int = 4096
+    ):
         self.client = client
         self.fallback = fallback or DeterministicWriter()
         self.max_tokens = max_tokens
@@ -228,8 +229,13 @@ def build_index_markdown(
     # then drop the conventions block, then key facts. The section map and
     # document pointers are the product — they are never dropped.
     for desc_budget, with_conv, with_facts in [
-        (30, True, True), (20, True, True), (12, True, True), (6, True, True),
-        (0, True, True), (0, False, True), (0, False, False),
+        (30, True, True),
+        (20, True, True),
+        (12, True, True),
+        (6, True, True),
+        (0, True, True),
+        (0, False, True),
+        (0, False, False),
     ]:
         body = list(header)  # copy: += below must not mutate `header`
         if with_facts:

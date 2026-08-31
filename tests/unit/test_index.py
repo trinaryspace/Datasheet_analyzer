@@ -23,21 +23,38 @@ def _raw() -> RawDocument:
         source=SourceDocument(content_hash="h" * 64, path="x.pdf", revision="TEST1A"),
         sections=[
             SectionNode(
-                number="1", title="Features", level=1, page_start=1, page_end=1,
-                paragraphs=["Quad RF sampling 12GSPS transmit DACs.",
-                            "Package: 17mm FCBGA."],
+                number="1",
+                title="Features",
+                level=1,
+                page_start=1,
+                page_end=1,
+                paragraphs=["Quad RF sampling 12GSPS transmit DACs.", "Package: 17mm FCBGA."],
             ),
             SectionNode(
-                number="4.5", title="Transmitter Electrical Characteristics", level=2,
-                page_start=7, page_end=13,
+                number="4.5",
+                title="Transmitter Electrical Characteristics",
+                level=2,
+                page_start=7,
+                page_end=13,
                 paragraphs=["Typical values at TA = +25°C unless otherwise noted."],
-                tables=[TableBlock(headers=["PARAMETER", "TYP"],
-                                   grid=[["DACRES", "14"], ["Pmax_FS", "4.2"]])],
+                tables=[
+                    TableBlock(
+                        headers=["PARAMETER", "TYP"], grid=[["DACRES", "14"], ["Pmax_FS", "4.2"]]
+                    )
+                ],
             ),
             SectionNode(
-                number="4.12.1", title="TX Typical Characteristics 800 MHz", level=3,
-                page_start=29, page_end=37,
-                figures=[__import__("datasheet_analyzer.models", fromlist=["FigureRef"]).FigureRef(caption=f"Fig {i}") for i in range(43)],
+                number="4.12.1",
+                title="TX Typical Characteristics 800 MHz",
+                level=3,
+                page_start=29,
+                page_end=37,
+                figures=[
+                    __import__("datasheet_analyzer.models", fromlist=["FigureRef"]).FigureRef(
+                        caption=f"Fig {i}"
+                    )
+                    for i in range(43)
+                ],
             ),
         ],
         extractor="test",
@@ -89,22 +106,40 @@ class TestLLMWriter:
 
 def _metas() -> list[SectionMeta]:
     return [
-        SectionMeta(number="1", title="Features", file="docs/datasheet-deadbeef/sections/1-features.md",
-                    page_start=1, page_end=1, token_count=120, n_tables=0, n_figures=0,
-                    description="Headline capabilities and package."),
-        SectionMeta(number="4.5", title="TX Electrical", file="docs/datasheet-deadbeef/sections/4-5-tx.md",
-                    page_start=7, page_end=13, token_count=4200, n_tables=1, n_figures=0,
-                    description="DAC resolution, output power, DSA range/step/accuracy, gain flatness."),
+        SectionMeta(
+            number="1",
+            title="Features",
+            file="docs/datasheet-deadbeef/sections/1-features.md",
+            page_start=1,
+            page_end=1,
+            token_count=120,
+            n_tables=0,
+            n_figures=0,
+            description="Headline capabilities and package.",
+        ),
+        SectionMeta(
+            number="4.5",
+            title="TX Electrical",
+            file="docs/datasheet-deadbeef/sections/4-5-tx.md",
+            page_start=7,
+            page_end=13,
+            token_count=4200,
+            n_tables=1,
+            n_figures=0,
+            description="DAC resolution, output power, DSA range/step/accuracy, gain flatness.",
+        ),
     ]
 
 
 class TestBuildIndexMarkdown:
     def test_contains_all_navigation_essentials(self):
         md = build_index_markdown(
-            "AFE7950", "4T6R RF sampling AFE with 12GSPS DACs and 3GSPS ADCs.",
+            "AFE7950",
+            "4T6R RF sampling AFE with 12GSPS DACs and 3GSPS ADCs.",
             ["Quad RF sampling 12GSPS transmit DACs"],
             [("datasheet", "SBASA41E", 146, "deadbeef")],
-            _metas(), token_budget=3000,
+            _metas(),
+            token_budget=3000,
         )
         assert "# AFE7950" in md
         assert "12GSPS DACs" in md  # brief
@@ -121,10 +156,17 @@ class TestBuildIndexMarkdown:
         assert "Tables are atomic" not in md, "pointer, not duplicated prose"
 
     def test_budget_enforcement_shrinks_descriptions(self):
-        big = build_index_markdown("P", "brief", ["fact"], [("datasheet", "R", 10, "deadbeef")],
-                                   _metas(), token_budget=3000)
-        tiny = build_index_markdown("P", "brief", ["fact"], [("datasheet", "R", 10, "deadbeef")],
-                                    _metas(), token_budget=140)
+        big = build_index_markdown(
+            "P",
+            "brief",
+            ["fact"],
+            [("datasheet", "R", 10, "deadbeef")],
+            _metas(),
+            token_budget=3000,
+        )
+        tiny = build_index_markdown(
+            "P", "brief", ["fact"], [("datasheet", "R", 10, "deadbeef")], _metas(), token_budget=140
+        )
         assert count_tokens(tiny) <= 140
         assert count_tokens(tiny) < count_tokens(big)
         # even at the tightest budget the map itself survives

@@ -233,9 +233,7 @@ def project(settings: Settings) -> Project:
 def _scope(project: Project, settings: Settings) -> ProjectRetriever:
     from datasheet_analyzer.projects import part_dirs
 
-    return ProjectRetriever.for_parts(
-        project.name, part_dirs(project, settings.parts_dir)
-    )
+    return ProjectRetriever.for_parts(project.name, part_dirs(project, settings.parts_dir))
 
 
 class TestTheProjectIndexIsBuiltAndBounded:
@@ -265,9 +263,7 @@ class TestTheProjectIndexIsBuiltAndBounded:
             projects_dir=settings.projects_dir,
             token_budget=4000,
         )
-        members = summarize_project(
-            project, settings.parts_dir, relative_to=path.parent
-        )
+        members = summarize_project(project, settings.parts_dir, relative_to=path.parent)
         for member in members:
             target = (path.parent / member.index_path).resolve()
             assert target.exists(), f"{member.part_number}: {member.index_path}"
@@ -295,10 +291,7 @@ class TestTheProjectIndexIsBuiltAndBounded:
             seen.append(text)
             # Under the last stage the part list itself is the floor; that case
             # goes over budget and says so rather than dropping a part.
-            assert (
-                count_tokens(text) <= budget
-                or "below this project's part list" in text
-            ), budget
+            assert count_tokens(text) <= budget or "below this project's part list" in text, budget
         # each step is a subset of the one before it in the blocks it carries
         blocks = [
             "How to use this project",
@@ -309,9 +302,7 @@ class TestTheProjectIndexIsBuiltAndBounded:
         for earlier, later in pairwise(kept):
             assert set(later) <= set(earlier), (earlier, later)
 
-    def test_a_budget_below_the_part_list_keeps_the_parts_and_says_so(
-        self, project, settings
-    ):
+    def test_a_budget_below_the_part_list_keeps_the_parts_and_says_so(self, project, settings):
         members = summarize_project(project, settings.parts_dir)
         text = build_project_index_markdown(project, members, token_budget=10)
         assert count_tokens(text) > 10, "the floor is real, not a silent trim"
@@ -331,9 +322,7 @@ class TestTheProjectIndexIsBuiltAndBounded:
 class TestMembershipIsExplicitAndSafe:
     """Criteria 4 and 5: no half-index, and no stale entry after a removal."""
 
-    def test_adding_an_unbuilt_part_fails_naming_the_build_command(
-        self, project, settings
-    ):
+    def test_adding_an_unbuilt_part_fails_naming_the_build_command(self, project, settings):
         with pytest.raises(ProjectError) as exc:
             add_parts(project, ["NOSUCH1"], parts_dir=settings.parts_dir)
         assert "dsa build <pdf> --part NOSUCH1" in str(exc.value)
@@ -370,12 +359,10 @@ class TestMembershipIsExplicitAndSafe:
         # still names the part it always named. Membership changed; prose did not.
         assert "AMP4400 in;" in after
 
-    def test_re_adding_a_member_updates_its_role_instead_of_duplicating_it(
-        self, project, settings
-    ):
-        assert add_parts(
-            project, ["TRX9000"], parts_dir=settings.parts_dir, role="main radio"
-        ) == []
+    def test_re_adding_a_member_updates_its_role_instead_of_duplicating_it(self, project, settings):
+        assert (
+            add_parts(project, ["TRX9000"], parts_dir=settings.parts_dir, role="main radio") == []
+        )
         assert project.part_numbers.count("TRX9000") == 1
         assert project.parts[0].role == "main radio"
 
@@ -416,9 +403,7 @@ class TestProjectScopedAsk:
         assert f"[{pack.answers[0].part}]" in pack.markdown
         assert pack.answers[0].citation.startswith("§")
 
-    def test_a_project_wide_question_returns_every_part_that_answers(
-        self, project, settings
-    ):
+    def test_a_project_wide_question_returns_every_part_that_answers(self, project, settings):
         pack = _scope(project, settings).ask("supply voltage", budget=3000)
         assert pack.route == ROUTE_SPEC
         answered = {line.part for line in pack.answers}
@@ -460,9 +445,7 @@ class TestProjectScopedAsk:
         assert "Nothing was guessed." in pack.markdown
         assert pack.suggestions
 
-    def test_an_unsearchable_member_makes_absence_a_gap_not_a_no_match(
-        self, project, settings
-    ):
+    def test_an_unsearchable_member_makes_absence_a_gap_not_a_no_match(self, project, settings):
         """A part whose full-text path never ran cannot license "not in this
         design" — the project-level form of the `unavailable` rule."""
         for index in (settings.parts_dir / "AMP4400").glob("docs/*/search_index.json"):
@@ -495,9 +478,7 @@ class TestProjectScopedAsk:
         as it did, with no `[PART]` prefix and no project header."""
         from datasheet_analyzer.retrieve import Retriever
 
-        pack = Retriever.for_part(settings.parts_dir / "TRX9000").ask(
-            "supply voltage", budget=3000
-        )
+        pack = Retriever.for_part(settings.parts_dir / "TRX9000").ask("supply voltage", budget=3000)
         assert pack.project == "" and pack.parts == ()
         assert pack.header.startswith("## TRX9000 — SBASA41E")
         assert "[TRX9000]" not in pack.markdown
@@ -583,9 +564,7 @@ class TestProjectCli:
         assert cli.main(["project", "new", "board6"]) == 0
         assert cli.main(["project", "add", "board6", "TRX9000", "CLK2200"]) == 0
         capsys.readouterr()
-        assert cli.main(
-            ["query", "--project", "board6", "--name", "supply", "--json"]
-        ) == 0
+        assert cli.main(["query", "--project", "board6", "--name", "supply", "--json"]) == 0
         payload = json.loads(capsys.readouterr().out)
         assert payload["project"] == "board6"
         assert {h["part"] for h in payload["hits"]} == {"TRX9000", "CLK2200"}
@@ -639,9 +618,7 @@ class TestProjectCli:
         out = capsys.readouterr().out
         assert "[TRX9000]" in out and "[CLK2200]" in out
 
-    def test_search_project_warns_about_a_member_it_could_not_search(
-        self, wired, capsys
-    ):
+    def test_search_project_warns_about_a_member_it_could_not_search(self, wired, capsys):
         """A gap is announced; the parts that *can* answer still do."""
         assert cli.main(["project", "new", "board11"]) == 0
         assert cli.main(["project", "add", "board11", "TRX9000", "AMP4400"]) == 0

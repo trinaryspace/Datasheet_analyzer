@@ -168,12 +168,7 @@ class TestTheFixtureReallyReproducesTheDefect:
 
     def test_the_colliding_value_recurs_past_the_threshold(self, tmp_path):
         pages, _furniture = _pages_and_furniture(tmp_path)
-        bands = {
-            _band_key(line.y)
-            for page in pages
-            for line in page.lines
-            if line.text == "0x0"
-        }
+        bands = {_band_key(line.y) for page in pages for line in page.lines if line.text == "0x0"}
         printing_it = [
             page.index
             for page in pages

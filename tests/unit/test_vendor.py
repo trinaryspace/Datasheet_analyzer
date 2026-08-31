@@ -52,9 +52,9 @@ def vendor_env(tmp_path, monkeypatch, make_synthetic_pdf):
     settings = Settings(parts_dir=tmp_path / "parts", cache_dir=tmp_path / ".cache").resolve()
 
     mapping = {
-        "https://www.ti.com/document-viewer/TEST9000/datasheet": (
-            SYN / "ti_main.html"
-        ).read_text(encoding="utf-8"),
+        "https://www.ti.com/document-viewer/TEST9000/datasheet": (SYN / "ti_main.html").read_text(
+            encoding="utf-8"
+        ),
         "https://www.ti.com/document-viewer/TEST9000/datasheet/GUID-AAAA1111-0000-0000-0000-000000000001#TITLE-X1": (
             SYN / "ti_sec_features.html"
         ).read_text(encoding="utf-8"),
@@ -175,8 +175,9 @@ class TestAcquirePinning:
 class TestPinningPersistence:
     def test_override_pins_into_inventory_and_builds_via_layout(self, vendor_env):
         pdf, settings = vendor_env
-        result = build_part(pdf, part_number="TEST9000", settings=settings, vendor="adi",
-                            use_llm=False)
+        result = build_part(
+            pdf, part_number="TEST9000", settings=settings, vendor="adi", use_llm=False
+        )
         (src,) = load_inventory(settings.parts_dir / "TEST9000")
         assert src.vendor == "adi"
         assert src.vendor_evidence == "cli-override: --vendor adi"
@@ -185,11 +186,9 @@ class TestPinningPersistence:
 
     def test_rerun_without_override_keeps_pinned_vendor(self, vendor_env, caplog):
         pdf, settings = vendor_env
-        build_part(pdf, part_number="TEST9000", settings=settings, vendor="adi",
-                   use_llm=False)
+        build_part(pdf, part_number="TEST9000", settings=settings, vendor="adi", use_llm=False)
         with caplog.at_level(logging.WARNING):
-            result = build_part(pdf, part_number="TEST9000", settings=settings,
-                                use_llm=False)
+            result = build_part(pdf, part_number="TEST9000", settings=settings, use_llm=False)
         (src,) = load_inventory(settings.parts_dir / "TEST9000")
         assert src.vendor == "adi"
         # a deliberate override is not treated as drift

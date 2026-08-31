@@ -123,9 +123,7 @@ class ProjectRetriever:
     def search(self, query: str, *, limit: int = 10) -> list[SearchHit]:
         """Merge every member's BM25 hits, best score first (see module docs)."""
         hits = [hit for member in self.members for hit in member.search(query, limit=limit)]
-        hits.sort(
-            key=lambda h: (-h.score, h.citation.part, h.citation.doc, h.section.file)
-        )
+        hits.sort(key=lambda h: (-h.score, h.citation.part, h.citation.doc, h.section.file))
         return hits[:limit] if limit > 0 else hits
 
     def suggest_specs(self, term: str, limit: int = 5) -> list[str]:

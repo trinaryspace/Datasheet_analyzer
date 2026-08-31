@@ -53,9 +53,7 @@ def test_failed_rebuild_is_not_skipped_on_rerun(batch_env, monkeypatch, make_syn
     assert by_part["TEST9000"].status == STATUS_FAILED
 
     # restore the fetcher and rerun: TEST9000 must rebuild, not skip
-    pipeline_mod.get_backend("ti_html").fetcher = MappingFetcher(
-        _mapping_for("TEST9000")
-    )
+    pipeline_mod.get_backend("ti_html").fetcher = MappingFetcher(_mapping_for("TEST9000"))
     report = run_batch(pdfs, settings=settings, use_llm=False)
     by_part = {j.part: j for j in report.jobs}
     assert by_part["TEST9000"].status == STATUS_DONE
@@ -314,9 +312,7 @@ def test_new_pdf_builds_while_existing_parts_skip(batch_env, make_synthetic_pdf)
     from datasheet_analyzer.extract.http import MappingFetcher
 
     make_synthetic_pdf(pdfs / "test9002.pdf")
-    pipeline_mod.get_backend("ti_html").fetcher = MappingFetcher(
-        _mapping_for("TEST9002")
-    )
+    pipeline_mod.get_backend("ti_html").fetcher = MappingFetcher(_mapping_for("TEST9002"))
     report = run_batch(pdfs, settings=settings, use_llm=False)
     by_part = {j.part: j for j in report.jobs}
     assert by_part["TEST9002"].status == STATUS_DONE
@@ -466,9 +462,9 @@ def test_corrupt_manifest_rebuilds_part(batch_env):
     assert by_part["PLAIN"].status == STATUS_DONE
     assert by_part["TEST9000"].status == STATUS_SKIPPED
     # the failed publish left no valid manifest; the rebuild restored one
-    assert (settings.parts_dir / "PLAIN" / "manifest.json").read_text(
-        encoding="utf-8"
-    ).startswith("{")
+    assert (
+        (settings.parts_dir / "PLAIN" / "manifest.json").read_text(encoding="utf-8").startswith("{")
+    )
 
 
 def test_pipeline_version_bump_forces_rebuild(batch_env, monkeypatch):
@@ -513,9 +509,7 @@ def test_extractor_version_bump_forces_rebuild(batch_env, monkeypatch):
         def __getattr__(self, name):
             return getattr(self._inner, name)
 
-    monkeypatch.setattr(
-        batch_mod, "get_backend", lambda name: _Bumped(real_get_backend(name))
-    )
+    monkeypatch.setattr(batch_mod, "get_backend", lambda name: _Bumped(real_get_backend(name)))
     report = run_batch(pdfs, settings=settings, use_llm=False)
     assert report.counts == {STATUS_DONE: 3, STATUS_FAILED: 0, STATUS_SKIPPED: 0}
 
@@ -601,8 +595,7 @@ def test_run_writes_jsonl_log_with_header_and_full_event_stream(batch_env):
     # each job: queued -> extracting -> structuring -> enriching -> publishing -> done
     for part in ("PLAIN", "TEST9000", "TEST9001"):
         stages = [ev["stage"] for ev in transitions if ev["part"] == part]
-        assert stages == ["queued", "extracting", "structuring", "enriching",
-                          "publishing", "done"]
+        assert stages == ["queued", "extracting", "structuring", "enriching", "publishing", "done"]
     # done events carry their detail (artifact stats)
     done = next(ev for ev in transitions if ev["stage"] == "done")
     assert done["detail"] == "2 sections, 1 table"
@@ -614,9 +607,7 @@ def test_failed_and_skipped_jobs_appear_in_jsonl_with_detail(batch_env, make_syn
     report = run_batch(pdfs, settings=settings, use_llm=False)
     events = _read_events(_batch_log_dirs(settings)[0])
 
-    broken_failed = next(
-        ev for ev in events if ev["part"] == "BROKEN" and ev["stage"] == "failed"
-    )
+    broken_failed = next(ev for ev in events if ev["part"] == "BROKEN" and ev["stage"] == "failed")
     by_part = {j.part: j for j in report.jobs}
     assert broken_failed["detail"] == by_part["BROKEN"].error  # error text, one line
     assert "\n" not in broken_failed["detail"]
@@ -655,8 +646,10 @@ def test_terminal_emits_one_prefixed_line_per_transition(batch_env, capsys):
     assert run_batch(pdfs, settings=settings, use_llm=False).ok
     out = capsys.readouterr().out
 
-    for line in (f"[1/3] PLAIN: {stage}" for stage in
-                 ("queued", "extracting", "structuring", "enriching", "publishing", "done")):
+    for line in (
+        f"[1/3] PLAIN: {stage}"
+        for stage in ("queued", "extracting", "structuring", "enriching", "publishing", "done")
+    ):
         assert line in out
     assert "[2/3] TEST9000: queued" in out
     assert "[3/3] TEST9001: done" in out
@@ -766,9 +759,7 @@ def test_cli_batch_missing_dir_exits_2(tmp_path, monkeypatch, capsys):
     assert "batch error" in err
 
 
-def test_parallel_dispatch_completes_more_jobs_than_workers(
-    batch_env, make_synthetic_pdf
-):
+def test_parallel_dispatch_completes_more_jobs_than_workers(batch_env, make_synthetic_pdf):
     """6 jobs across 2 workers: every job completes; the report stays in
     sorted filename order regardless of completion order."""
     pdfs, settings = batch_env
@@ -785,7 +776,12 @@ def test_parallel_dispatch_completes_more_jobs_than_workers(
     assert report.ok
     assert report.counts == {STATUS_DONE: 6, STATUS_FAILED: 0, STATUS_SKIPPED: 0}
     assert [j.part for j in report.jobs] == [
-        "PLAIN", "TEST9000", "TEST9001", "TEST9002", "TEST9003", "TEST9004",
+        "PLAIN",
+        "TEST9000",
+        "TEST9001",
+        "TEST9002",
+        "TEST9003",
+        "TEST9004",
     ]
     assert all((settings.parts_dir / j.part / "INDEX.md").exists() for j in report.jobs)
 
@@ -836,9 +832,7 @@ def test_workers_1_reproduces_serial_path_exactly(batch_env):
     assert _stream(logs[0]) == _stream(logs[1])
 
 
-def test_parallel_run_with_identical_pdf_bytes_keeps_cache_valid(
-    batch_env, make_synthetic_pdf
-):
+def test_parallel_run_with_identical_pdf_bytes_keeps_cache_valid(batch_env, make_synthetic_pdf):
     """Two jobs whose PDF bytes are identical share one extraction-cache
     identity; an overlapping parallel write must leave that file valid
     (atomic write-temp + rename), with no temp litter."""

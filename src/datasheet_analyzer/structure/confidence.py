@@ -126,9 +126,7 @@ def has_value(record: SpecRecord) -> bool:
     return any(getattr(record, role).strip() for role in VALUE_ROLES)
 
 
-def unit_expected_but_missing(
-    record: SpecRecord, lexicon: AliasLexicon | None = None
-) -> bool:
+def unit_expected_but_missing(record: SpecRecord, lexicon: AliasLexicon | None = None) -> bool:
     """True when the record prints no unit but its alias family expects one.
 
     A row with no value has no unit to lose — a band header like `ANALOG

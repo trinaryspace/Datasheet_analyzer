@@ -99,9 +99,7 @@ def test_verify_summary_counts_only_passing(tmp_path, monkeypatch, capsys):
     golden_path.write_text(yaml.safe_dump(GOLDEN), encoding="utf-8")
 
     monkeypatch.setattr("datasheet_analyzer.cli.get_settings", lambda: settings)
-    exit_code = cli.main(
-        ["verify", "--part", "T", "--specs", "--golden", str(golden_path)]
-    )
+    exit_code = cli.main(["verify", "--part", "T", "--specs", "--golden", str(golden_path)])
 
     out = capsys.readouterr().out
     assert exit_code == 1
@@ -247,9 +245,7 @@ class TestVerifyRunsTheNewPaths:
     cites, and both paths read only the corpus."""
 
     def _settings(self, tmp_path):
-        settings = Settings(
-            parts_dir=tmp_path / "parts", cache_dir=tmp_path / ".cache"
-        ).resolve()
+        settings = Settings(parts_dir=tmp_path / "parts", cache_dir=tmp_path / ".cache").resolve()
         build_mcp_part(settings.parts_dir / "T")
         return settings
 
@@ -260,9 +256,7 @@ class TestVerifyRunsTheNewPaths:
         monkeypatch.setattr("datasheet_analyzer.cli.get_settings", lambda: settings)
         return cli.main(["verify", "--part", "T", "--golden", str(path)])
 
-    def test_both_tables_render_and_count_only_passing(
-        self, tmp_path, monkeypatch, capsys
-    ):
+    def test_both_tables_render_and_count_only_passing(self, tmp_path, monkeypatch, capsys):
         exit_code = self._run(tmp_path, monkeypatch, PATH_GOLDEN)
         out = capsys.readouterr().out
         assert "## Ask-path verification (deterministic)" in out
@@ -271,13 +265,14 @@ class TestVerifyRunsTheNewPaths:
         assert out.count("**1/2 passed**") == 2
         assert exit_code == 1
 
-    def test_a_set_without_the_markers_prints_neither_table(
-        self, tmp_path, monkeypatch, capsys
-    ):
+    def test_a_set_without_the_markers_prints_neither_table(self, tmp_path, monkeypatch, capsys):
         """Additive, like the plot table before it: a benchmark written before
         these paths existed still verifies, and says nothing about them."""
-        golden = {"questions": [dict(PATH_GOLDEN["questions"][0], ask_query=None,
-                                     search_query=None, kind="direct")]}
+        golden = {
+            "questions": [
+                dict(PATH_GOLDEN["questions"][0], ask_query=None, search_query=None, kind="direct")
+            ]
+        }
         self._run(tmp_path, monkeypatch, golden)
         out = capsys.readouterr().out
         assert "Ask-path verification" not in out
@@ -288,9 +283,7 @@ class TestVerifyRunsTheNewPaths:
         page-truth table as unproven here, because it was run without `--pdf`
         — which is exactly the honest degradation the text check already had,
         and the reason the new tables do not depend on it."""
-        golden = {"questions": [
-            q for q in PATH_GOLDEN["questions"] if q["id"].endswith("pass")
-        ]}
+        golden = {"questions": [q for q in PATH_GOLDEN["questions"] if q["id"].endswith("pass")]}
         self._run(tmp_path, monkeypatch, golden)
         out = capsys.readouterr().out
         assert out.count("**1/1 passed**") == 2

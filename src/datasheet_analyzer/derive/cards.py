@@ -443,9 +443,7 @@ def part_corpus_key(part_dir: Path | str) -> str:
     return corpus_key(
         (
             doc.name,
-            _ref_base(
-                doc.directory or (part_dir / "docs" / doc.name), part_dir, index.library_dir
-            ),
+            _ref_base(doc.directory or (part_dir / "docs" / doc.name), part_dir, index.library_dir),
         )
         for doc in index.docs
     )

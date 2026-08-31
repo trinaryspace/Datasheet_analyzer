@@ -298,22 +298,15 @@ class AnswerPack:
         blocks = [self.header]
         if self.route in (ROUTE_NONE, ROUTE_UNAVAILABLE):
             title = "No match" if self.route == ROUTE_NONE else "Search unavailable"
-            blocks.append(
-                f"### {title}\n" + (self.answers[0].text if self.answers else "")
-            )
+            blocks.append(f"### {title}\n" + (self.answers[0].text if self.answers else ""))
         else:
-            blocks.append(
-                "### Answer\n" + "\n".join(line.rendered for line in self.answers)
-            )
+            blocks.append("### Answer\n" + "\n".join(line.rendered for line in self.answers))
         if self.suggestions:
             blocks.append(
-                "### Nearest candidates\n"
-                + "\n".join(f"- {s}" for s in self.suggestions)
+                "### Nearest candidates\n" + "\n".join(f"- {s}" for s in self.suggestions)
             )
         if self.excerpt is not None:
-            blocks.append(
-                f"### Supporting excerpt  ({self.excerpt.label})\n{self.excerpt.text}"
-            )
+            blocks.append(f"### Supporting excerpt  ({self.excerpt.label})\n{self.excerpt.text}")
         blocks.append(f"### Verify\n{self.verify}")
         if self.notice:
             blocks.append(self.notice)
@@ -376,9 +369,7 @@ def build_pack(retriever: Retriever, question: str, *, budget: int = 0) -> Answe
     return _assemble(frame, lines, excerpt, verify, suggestions, more)
 
 
-def build_project_pack(
-    scope: ProjectRetriever, question: str, *, budget: int = 0
-) -> AnswerPack:
+def build_project_pack(scope: ProjectRetriever, question: str, *, budget: int = 0) -> AnswerPack:
     """One pack for a whole design: every answering part, each labelled.
 
     Every member is routed **independently** — a part answers from its own
@@ -408,9 +399,7 @@ def build_project_pack(
                     order=order,
                     route=route,
                     lines=[replace(line, part=member.part) for line in lines],
-                    excerpt=(
-                        None if excerpt is None else replace(excerpt, part=member.part)
-                    ),
+                    excerpt=(None if excerpt is None else replace(excerpt, part=member.part)),
                     verify=verify,
                     more=more,
                 )
@@ -455,9 +444,7 @@ def _assemble(
         # One re-fit, not a loop: the notice text depends only on the budget,
         # so adding it can shrink the fill but can never change its own text.
         notice = _TRUNCATION_NOTICE.format(budget=budget)
-        kept, kept_excerpt, _again = _fit(
-            frame, lines, excerpt, verify, suggestions, notice
-        )
+        kept, kept_excerpt, _again = _fit(frame, lines, excerpt, verify, suggestions, notice)
     pack = replace(
         frame,
         answers=tuple(kept),
@@ -536,9 +523,7 @@ def _draft(retriever: Retriever, question: str, route: str, budget: int) -> Answ
     )
 
 
-def _project_draft(
-    scope: ProjectRetriever, question: str, route: str, budget: int
-) -> AnswerPack:
+def _project_draft(scope: ProjectRetriever, question: str, route: str, budget: int) -> AnswerPack:
     """The render frame for a project pack: the design and its members."""
     return AnswerPack(
         part="",
@@ -935,8 +920,7 @@ def _no_match_line(question: str) -> PackLine:
     asked = f" {question!r}" if question else ""
     return PackLine(
         text=(
-            f"No spec record, figure or section in this corpus answers{asked}. "
-            "Nothing was guessed."
+            f"No spec record, figure or section in this corpus answers{asked}. Nothing was guessed."
         ),
         citation="",
         confidence=CONFIDENCE_UNKNOWN,
@@ -946,9 +930,7 @@ def _no_match_line(question: str) -> PackLine:
 # --- excerpt and verify footer ----------------------------------------------
 
 
-def _excerpt_for(
-    retriever: Retriever, question: str, citation: Citation
-) -> PackExcerpt | None:
+def _excerpt_for(retriever: Retriever, question: str, citation: Citation) -> PackExcerpt | None:
     """The section covering the answer's page, quoted around the question."""
     section = _section_for(retriever, citation)
     if section is None:
@@ -1070,9 +1052,7 @@ def _source_name(retriever: Retriever, citation: Citation) -> str:
     manifest = retriever.index.manifest
     doc = None
     if manifest:
-        doc = next(
-            (d for d in manifest.documents if d.content_hash == citation.doc_hash), None
-        )
+        doc = next((d for d in manifest.documents if d.content_hash == citation.doc_hash), None)
         if doc is None and manifest.documents:
             doc = manifest.documents[0]
     if doc is not None and doc.path:
@@ -1139,8 +1119,16 @@ _LINE_SCHEMA = {
     "type": "object",
     "additionalProperties": False,
     "required": [
-        "text", "citation", "confidence", "matched_via", "part", "doc", "section",
-        "page_start", "page_end", "file",
+        "text",
+        "citation",
+        "confidence",
+        "matched_via",
+        "part",
+        "doc",
+        "section",
+        "page_start",
+        "page_end",
+        "file",
     ],
     "properties": {
         "text": {"type": "string"},
@@ -1176,9 +1164,24 @@ ANSWER_PACK_SCHEMA: dict = {
     "type": "object",
     "additionalProperties": False,
     "required": [
-        "part", "question", "route", "budget", "tokens", "over_budget",
-        "truncated", "notice", "revision", "doc", "project", "parts",
-        "answers", "excerpt", "verify", "suggestions", "citations", "markdown",
+        "part",
+        "question",
+        "route",
+        "budget",
+        "tokens",
+        "over_budget",
+        "truncated",
+        "notice",
+        "revision",
+        "doc",
+        "project",
+        "parts",
+        "answers",
+        "excerpt",
+        "verify",
+        "suggestions",
+        "citations",
+        "markdown",
     ],
     "properties": {
         "part": {"type": "string"},

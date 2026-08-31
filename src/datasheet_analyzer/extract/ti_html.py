@@ -258,8 +258,12 @@ def parse_section(html: str, url: str, *, number: str = "", title: str = "") -> 
 
     level = number.count(".") + 1 if number else 1
     return SectionNode(
-        number=number, title=title, level=level,
-        paragraphs=paragraphs, tables=tables, figures=figures,
+        number=number,
+        title=title,
+        level=level,
+        paragraphs=paragraphs,
+        tables=tables,
+        figures=figures,
     )
 
 
@@ -313,7 +317,10 @@ class TiHtmlBackend:
             sections, report = assign_pages(sections, pdf_toc)
             log.info(
                 "page assignment: %d exact, %d fuzzy, %d inherited, %d unmatched",
-                report.n_exact, report.n_fuzzy, report.n_inherited, report.n_unmatched,
+                report.n_exact,
+                report.n_fuzzy,
+                report.n_inherited,
+                report.n_unmatched,
             )
 
         return RawDocument(source=source, toc=toc, sections=sections, extractor=self.name)

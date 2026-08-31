@@ -98,8 +98,13 @@ def register_source(
         src.vendor, src.vendor_evidence = detect_vendor(Path(path))
     log.info(
         "registered %s: type=%s rev=%s pages=%d hash=%s… vendor=%s (%s)",
-        Path(path).name, src.doc_type.value, src.revision or "?",
-        src.page_count, src.content_hash[:10], src.vendor, src.vendor_evidence,
+        Path(path).name,
+        src.doc_type.value,
+        src.revision or "?",
+        src.page_count,
+        src.content_hash[:10],
+        src.vendor,
+        src.vendor_evidence,
     )
     return src
 
@@ -132,7 +137,9 @@ def register_into_library(
     if _put(store, doc):
         log.info(
             "library: registered %s (%s…) applying to %s",
-            Path(src.path).name, src.content_hash[:10], applicability.label,
+            Path(src.path).name,
+            src.content_hash[:10],
+            applicability.label,
         )
     return doc
 
@@ -227,9 +234,10 @@ def ensure_covers(
     app = doc.applicability
     if app.kind != "parts":
         log.warning(
-            "%s applies to %s but was named for %s — building it without "
-            "changing that record",
-            Path(doc.source.path).name, app.label, part_number,
+            "%s applies to %s but was named for %s — building it without changing that record",
+            Path(doc.source.path).name,
+            app.label,
+            part_number,
         )
         return doc.source
     note = f"named for {part_number} at build"
@@ -400,9 +408,7 @@ def resolve_documents(
                 continue
             doc = LibraryDocument(
                 source=src,
-                applicability=Applicability.for_parts(
-                    [part_number], evidence=MIGRATION_EVIDENCE
-                ),
+                applicability=Applicability.for_parts([part_number], evidence=MIGRATION_EVIDENCE),
             )
             if _put(store, doc):
                 migrated += 1
@@ -442,9 +448,7 @@ def relocate(
     """
     if same_path(source.path, pdf_path):
         return source
-    log.info(
-        "library: %s… moved %s -> %s", source.content_hash[:10], source.path, pdf_path
-    )
+    log.info("library: %s… moved %s -> %s", source.content_hash[:10], source.path, pdf_path)
     moved = source.model_copy(update={"path": str(pdf_path)})
     existing = _get(store, source.content_hash)
     if existing is not None:
@@ -452,9 +456,7 @@ def relocate(
     return moved
 
 
-def single_datasheet(
-    sources: list[SourceDocument], *, keep: str = ""
-) -> list[SourceDocument]:
+def single_datasheet(sources: list[SourceDocument], *, keep: str = "") -> list[SourceDocument]:
     """One datasheet per part: the named one, else the newest registration.
 
     A part is one device, and its datasheet is one document. Several
@@ -477,7 +479,10 @@ def single_datasheet(
     log.warning(
         "%d datasheet records apply to this part — building %s (%s…) and "
         "skipping %d superseded record(s)",
-        len(datasheets), Path(winner.path).name, winner.content_hash[:10], len(superseded),
+        len(datasheets),
+        Path(winner.path).name,
+        winner.content_hash[:10],
+        len(superseded),
     )
     return [s for s in sources if s.content_hash not in superseded]
 
@@ -514,15 +519,15 @@ def _dedupe_by_path(sources: list[SourceDocument]) -> list[SourceDocument]:
         winner = match or max(group, key=lambda s: s.registered_at)
         log.warning(
             "%d records name %s — building the one matching its bytes (%s…)",
-            len(group), Path(path).name, winner.content_hash[:10],
+            len(group),
+            Path(path).name,
+            winner.content_hash[:10],
         )
         kept.append(winner)
     return kept
 
 
-def append_to_inventory(
-    new_sources: list[SourceDocument], part_dir: Path
-) -> list[SourceDocument]:
+def append_to_inventory(new_sources: list[SourceDocument], part_dir: Path) -> list[SourceDocument]:
     """Append new sources to an existing inventory, deduping by content_hash.
 
     Returns the merged inventory. Re-adding an existing source is a no-op
@@ -536,7 +541,8 @@ def append_to_inventory(
         if src.content_hash in by_hash:
             log.info(
                 "source already registered: %s (hash %s…)",
-                Path(src.path).name, src.content_hash[:10],
+                Path(src.path).name,
+                src.content_hash[:10],
             )
             continue
         by_hash[src.content_hash] = src

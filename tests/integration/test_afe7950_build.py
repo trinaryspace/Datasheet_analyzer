@@ -83,8 +83,9 @@ def built(tmp_path_factory, afe7950_pdf, monkeymodule):
         lambda *args, **kwargs: bin_fetcher,
     )
 
-    result = build_part(afe7950_pdf, part_number="AFE7950", settings=settings,
-                        use_llm=False, use_cache=False)
+    result = build_part(
+        afe7950_pdf, part_number="AFE7950", settings=settings, use_llm=False, use_cache=False
+    )
     return result, settings
 
 
@@ -160,12 +161,16 @@ class TestRealBuild:
         doc_dir = document_dirs(result.manifest, part_dir=result.part_dir)[
             result.manifest.documents[0].content_hash
         ]
-        tx45 = next(
-            f for f in doc_dir.rglob("4-5-transmitter-electrical-characteristics.md")
-        )
+        tx45 = next(f for f in doc_dir.rglob("4-5-transmitter-electrical-characteristics.md"))
         text = tx45.read_text(encoding="utf-8")
-        for needle in ["DAC resolution", "14", "DSA Attenuation range", "±0.1",
-                       "After DSA calibration procedure", "Typical values at"]:
+        for needle in [
+            "DAC resolution",
+            "14",
+            "DSA Attenuation range",
+            "±0.1",
+            "After DSA calibration procedure",
+            "Typical values at",
+        ]:
             assert needle in text, f"{needle!r} missing from 4.5 section file"
 
     def test_confidence_mix_is_recorded_and_complete(self, built, capsys):
@@ -181,8 +186,10 @@ class TestRealBuild:
         assert stats.spec_confidence["high"] > 0
         assert sum(stats.plot_confidence.values()) == stats.n_figures
         with capsys.disabled():
-            print(f"\nconfidence mix, AFE7950: specs {stats.spec_confidence} "
-                  f"plots {stats.plot_confidence}\n")
+            print(
+                f"\nconfidence mix, AFE7950: specs {stats.spec_confidence} "
+                f"plots {stats.plot_confidence}\n"
+            )
 
     def test_golden_qa_all_pass(self, built, afe7950_pdf):
         result, _ = built
@@ -207,7 +214,9 @@ class TestRealBuild:
         monkeymodule.setattr("datasheet_analyzer.pipeline.get_backend", lambda name: backend)
         second = build_part(
             Path(result.manifest.documents[0].path),
-            part_number="AFE7950", settings=settings, use_llm=False,
+            part_number="AFE7950",
+            settings=settings,
+            use_llm=False,
         )
         assert second.cached_extraction
 
@@ -254,9 +263,7 @@ def _committed_nodes(part_dir: Path, manifest: CorpusManifest) -> list[SectionNo
                 if not path.exists():
                     break
                 rows = list(csv.reader(io.StringIO(path.read_text(encoding="utf-8"))))
-                tables.append(
-                    TableBlock(headers=rows[0] if rows else [], grid=rows[1:])
-                )
+                tables.append(TableBlock(headers=rows[0] if rows else [], grid=rows[1:]))
             nodes.append(
                 SectionNode(
                     number=sec.number,
@@ -288,9 +295,7 @@ def regrade_committed_corpus(part_dir: Path, pdf: Path) -> dict:
     dirs = document_dirs(manifest, part_dir=part_dir)
     for doc in manifest.documents:
         doc_dir = dirs[doc.content_hash]
-        specset = SpecSet.model_validate_json(
-            (doc_dir / "specs.json").read_text(encoding="utf-8")
-        )
+        specset = SpecSet.model_validate_json((doc_dir / "specs.json").read_text(encoding="utf-8"))
         for rec in specset.records:
             node = by_number.get(rec.section)
             if node is None or len(node.tables) <= rec.table_index:
@@ -298,9 +303,7 @@ def regrade_committed_corpus(part_dir: Path, pdf: Path) -> dict:
                 continue
             rec.confidence = grade_spec_record(rec, node.tables[rec.table_index], node)
             specs.append(rec)
-        plotset = PlotSet.model_validate_json(
-            (doc_dir / "plots.json").read_text(encoding="utf-8")
-        )
+        plotset = PlotSet.model_validate_json((doc_dir / "plots.json").read_text(encoding="utf-8"))
         for plot in plotset.plots:
             plot.confidence = grade_plot_record(plot)
             plots.append(plot)
@@ -363,9 +366,7 @@ class TestAnswerPacksOnTheRealCorpus:
         from datasheet_analyzer.retrieve import ROUTE_SPEC, Retriever
 
         result, _ = built
-        pack = Retriever.for_part(result.part_dir).ask(
-            "max junction temperature", budget=3000
-        )
+        pack = Retriever.for_part(result.part_dir).ask("max junction temperature", budget=3000)
         assert pack.route == ROUTE_SPEC
         top = pack.answers[0]
         assert top.text.startswith("TJ")
@@ -518,10 +519,7 @@ class TestAnswerPacksOnAfe7953:
             if not pack_answers_question(q, pack):
                 misses.add(q.id)
         with capsys.disabled():
-            print(
-                f"\nask-path twin agreement, AFE7953: "
-                f"{len(twins) - len(misses)}/{len(twins)}\n"
-            )
+            print(f"\nask-path twin agreement, AFE7953: {len(twins) - len(misses)}/{len(twins)}\n")
         assert len(twins) >= 8
         assert misses == set(), f"AFE7953 twins regressed: {sorted(misses)}"
 
@@ -558,9 +556,7 @@ class TestAnswerPacksOnAfe7953:
         )
         pack = retriever.ask("What package does the AFE7953 come in?", budget=self.BUDGET)
         assert pack.route == ROUTE_UNAVAILABLE
-        assert "No spec record, figure or section in this corpus answers" not in (
-            pack.markdown
-        )
+        assert "No spec record, figure or section in this corpus answers" not in (pack.markdown)
         assert "Rebuild to enable search" in pack.markdown
 
     def test_the_json_pack_validates_against_its_declared_schema(self, part_dir):
@@ -625,9 +621,7 @@ def search_index_committed_corpus(src: Path, dst: Path) -> Path:
         library = library_root_of(manifest, src)
         assert library is not None, f"{src} names @library/… but records no root"
         for doc_dir in shared:
-            shutil.copytree(
-                library / doc_dir, dst / COPIED_LIBRARY / doc_dir, ignore=no_figures
-            )
+            shutil.copytree(library / doc_dir, dst / COPIED_LIBRARY / doc_dir, ignore=no_figures)
         raw = json.loads((dst / "manifest.json").read_text(encoding="utf-8"))
         raw["library_root"] = COPIED_LIBRARY
         (dst / "manifest.json").write_text(json.dumps(raw, indent=2), encoding="utf-8")
@@ -689,15 +683,12 @@ class TestGoldenPathsOnTheReferenceCorpora:
         from datasheet_analyzer.evalh.citations import verify_ask_queries
 
         result, _ = built
-        results = verify_ask_queries(
-            load_golden_yaml(GOLDEN), result.part_dir, budget=self.BUDGET
-        )
+        results = verify_ask_queries(load_golden_yaml(GOLDEN), result.part_dir, budget=self.BUDGET)
         assert results, "AFE7950 carries no ask-path question"
         assert [r.question.id for r in results if not r.ok] == []
         with capsys.disabled():
             for r in results:
-                print(f"\nask-path golden, AFE7950: {r.question.id} -> "
-                      f"{r.route}, {r.detail}\n")
+                print(f"\nask-path golden, AFE7950: {r.question.id} -> {r.route}, {r.detail}\n")
 
     def test_afe7950_ranks_the_answering_section_first(self, built, capsys):
         from datasheet_analyzer.evalh.citations import verify_search_queries
@@ -708,8 +699,7 @@ class TestGoldenPathsOnTheReferenceCorpora:
         assert [(r.question.id, r.detail) for r in results if not r.ok] == []
         with capsys.disabled():
             for r in results:
-                print(f"\nsearch-path golden, AFE7950: {r.question.id} -> "
-                      f"{r.detail}\n")
+                print(f"\nsearch-path golden, AFE7950: {r.question.id} -> {r.detail}\n")
 
     def test_afe7953_answers_its_ask_path_golden(self, capsys):
         """The ask path needs no search index when a record answers, so this
@@ -726,12 +716,9 @@ class TestGoldenPathsOnTheReferenceCorpora:
         assert [r.question.id for r in results if not r.ok] == []
         with capsys.disabled():
             for r in results:
-                print(f"\nask-path golden, AFE7953: {r.question.id} -> "
-                      f"{r.route}, {r.detail}\n")
+                print(f"\nask-path golden, AFE7953: {r.question.id} -> {r.route}, {r.detail}\n")
 
-    def test_afe7953_search_path_needs_the_index_the_corpus_predates(
-        self, tmp_path, capsys
-    ):
+    def test_afe7953_search_path_needs_the_index_the_corpus_predates(self, tmp_path, capsys):
         """Two facts, in one test, because they are the same fact.
 
         Against the committed corpus the search-path golden **fails, loudly**:
@@ -751,15 +738,15 @@ class TestGoldenPathsOnTheReferenceCorpora:
         assert not stale.ok
         assert "search unavailable" in stale.detail
 
-        indexed = search_index_committed_corpus(
-            PARTS / "AFE7953", tmp_path / "AFE7953"
-        )
+        indexed = search_index_committed_corpus(PARTS / "AFE7953", tmp_path / "AFE7953")
         clear_index_cache()
         (fresh,) = verify_search_queries(questions, indexed)
         assert fresh.ok, fresh.detail
         with capsys.disabled():
-            print(f"\nsearch-path golden, AFE7953 (index rebuilt from the "
-                  f"published markdown): {fresh.detail}\n")
+            print(
+                f"\nsearch-path golden, AFE7953 (index rebuilt from the "
+                f"published markdown): {fresh.detail}\n"
+            )
 
 
 @pytest.mark.integration
@@ -800,5 +787,6 @@ class TestCommittedReferenceCorpora:
         # mix is dominated by `high` exactly as AFE7950's is
         assert measured["specs"]["high"] > measured["specs"]["medium"]
         with capsys.disabled():
-            print(f"\nconfidence mix, AFE7953: specs {measured['specs']} "
-                  f"plots {measured['plots']}\n")
+            print(
+                f"\nconfidence mix, AFE7953: specs {measured['specs']} plots {measured['plots']}\n"
+            )

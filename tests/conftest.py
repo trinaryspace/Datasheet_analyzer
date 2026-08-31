@@ -127,8 +127,7 @@ def make_synthetic_pdf():
         p1 = doc.new_page()
         p1.insert_text(
             (72, 72),
-            "TEST9000 Features page. Quad RF sampling 12GSPS transmit DACs."
-            + marker,
+            "TEST9000 Features page. Quad RF sampling 12GSPS transmit DACs." + marker,
         )
         p2 = doc.new_page()
         p2.insert_text(

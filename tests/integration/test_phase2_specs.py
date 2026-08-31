@@ -82,9 +82,7 @@ class TestPhase2Specs:
         doc = result.manifest.documents[0]
         specs_path = _doc_dir(result, doc) / "specs.json"
         assert specs_path.exists()
-        specset = SpecSet.model_validate_json(
-            specs_path.read_text(encoding="utf-8")
-        )
+        specset = SpecSet.model_validate_json(specs_path.read_text(encoding="utf-8"))
         assert specset.schema_version
         # A document published once into the shared store is part-*neutral*
         # (ticket 04): which part published it first is an accident of
@@ -176,10 +174,7 @@ class TestPhase2Specs:
             paged = [r for r in recs if r.page is not None and r.page in question.pages]
             if not paged:
                 continue
-            ok = all(
-                any(sub in _fields(r) for r in paged)
-                for sub in question.expected_substrings
-            )
+            ok = all(any(sub in _fields(r) for r in paged) for sub in question.expected_substrings)
             if ok:
                 passed += 1
         assert passed >= 8, f"only {passed}/{len(spec_questions)} spec queries passed"

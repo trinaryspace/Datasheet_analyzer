@@ -22,14 +22,29 @@ def _raw(hash_char: str, dtype: str = "datasheet") -> RawDocument:
 
     return RawDocument(
         source=SourceDocument(
-            content_hash=hash_char * 64, path="x.pdf", revision="TEST1A",
-            doc_type=DocType(dtype), page_count=50,
+            content_hash=hash_char * 64,
+            path="x.pdf",
+            revision="TEST1A",
+            doc_type=DocType(dtype),
+            page_count=50,
         ),
         sections=[
-            SectionNode(number="1", title="Features", level=1, page_start=1, page_end=1,
-                        paragraphs=["Feature one."]),
-            SectionNode(number="4.5", title="TX", level=2, page_start=7, page_end=13,
-                        tables=[TableBlock(headers=["P", "V"], grid=[["A", "1"]])]),
+            SectionNode(
+                number="1",
+                title="Features",
+                level=1,
+                page_start=1,
+                page_end=1,
+                paragraphs=["Feature one."],
+            ),
+            SectionNode(
+                number="4.5",
+                title="TX",
+                level=2,
+                page_start=7,
+                page_end=13,
+                tables=[TableBlock(headers=["P", "V"], grid=[["A", "1"]])],
+            ),
         ],
         extractor="test",
     )

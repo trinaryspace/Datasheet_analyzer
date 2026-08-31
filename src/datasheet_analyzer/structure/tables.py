@@ -165,8 +165,10 @@ def html_table_to_block(
     headers: list[str] = []
     thead = table_el.find("thead")
     if thead:
-        header_rows = [[c for c in tr.find_all(["th", "td"], recursive=False)]
-                       for tr in thead.find_all("tr", recursive=False)]
+        header_rows = [
+            [c for c in tr.find_all(["th", "td"], recursive=False)]
+            for tr in thead.find_all("tr", recursive=False)
+        ]
         expanded = _expand_rows(header_rows)
         if expanded:
             n_cols = max(len(r) for r in expanded)

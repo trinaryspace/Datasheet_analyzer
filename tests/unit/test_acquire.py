@@ -79,8 +79,14 @@ class TestRevisionSniffing:
         # "Revision N" (full word), "REVISED", "REVISION HISTORY" and
         # "Changes from Revision C ... to Revision D" carry no Rev-token
         pdf = tmp_path / "part.pdf"
-        _make_pdf(pdf, ["REVISION HISTORY", "4/2021 Revision 0: Initial Version",
-                        "Changes from Revision C to Revision D"])
+        _make_pdf(
+            pdf,
+            [
+                "REVISION HISTORY",
+                "4/2021 Revision 0: Initial Version",
+                "Changes from Revision C to Revision D",
+            ],
+        )
         assert register_source(pdf).revision == ""
 
     def test_ti_doc_id_still_sniffed_for_ti_parts(self, tmp_path):

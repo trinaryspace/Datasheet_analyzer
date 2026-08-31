@@ -205,8 +205,9 @@ def resolve_plot_file(
     return candidate if candidate.is_file() else None
 
 
-def fetch_plot_images(plotset: PlotSet, doc_dir: Path, *, fetcher: BinaryFetcher,
-                      base_url: str = "https://www.ti.com") -> int:
+def fetch_plot_images(
+    plotset: PlotSet, doc_dir: Path, *, fetcher: BinaryFetcher, base_url: str = "https://www.ti.com"
+) -> int:
     """Download plot images for every PlotRecord with an image_url.
 
     The largest successful variant is kept (see probe findings in the Phase 3
@@ -240,9 +241,7 @@ def fetch_plot_images(plotset: PlotSet, doc_dir: Path, *, fetcher: BinaryFetcher
     return written
 
 
-def render_figure_regions(
-    plotset: PlotSet, doc_dir: Path, pdf_path: Path, *, dpi: int
-) -> int:
+def render_figure_regions(plotset: PlotSet, doc_dir: Path, pdf_path: Path, *, dpi: int) -> int:
     """Clip-render each cataloged figure's vector region (pdf_layout path).
 
     The clip is the region above the figure's own "Figure N." caption
@@ -287,8 +286,7 @@ def render_figure_regions(
                     hit = (pgnum, top, y)
                     break
             if hit is None or hit[2] - hit[1] < 6.0:
-                log.warning("no clip anchor for plot %s (%s)",
-                            record.id, record.caption[:60])
+                log.warning("no clip anchor for plot %s (%s)", record.id, record.caption[:60])
                 continue
             pgnum, top, y = hit
             if pgnum - 1 >= len(pdf):
@@ -308,9 +306,7 @@ def render_figure_regions(
     return written
 
 
-def render_plot_pages_fallback(
-    plotset: PlotSet, doc_dir: Path, pdf_path: Path, *, dpi: int
-) -> int:
+def render_plot_pages_fallback(plotset: PlotSet, doc_dir: Path, pdf_path: Path, *, dpi: int) -> int:
     """Render full PDF pages for plots that still have no image file.
 
     Used when a download 404s and for ``--offline`` builds. No bbox cropping

@@ -39,8 +39,7 @@ from datasheet_analyzer.query import SpecQuery, format_answer
 
 PAGE_W, PAGE_H = 612.0, 792.0
 
-X = {"param": 56.0, "conditions": 222.0, "min": 435.0, "typ": 460.0,
-     "max": 515.0, "unit": 548.0}
+X = {"param": 56.0, "conditions": 222.0, "min": 435.0, "typ": 460.0, "max": 515.0, "unit": 548.0}
 PITCH = 13.0
 CAP_Y = 140.0
 HDR_Y = 153.0
@@ -48,9 +47,12 @@ BASE_SIZE = 10.0
 SUP_SIZE = 6.5
 
 
-def _make_pdf(path: Path, pages, toc: list[list] | None = None,
-              drawings: list[tuple[float, float, float, float]] | None = None
-              ) -> None:
+def _make_pdf(
+    path: Path,
+    pages,
+    toc: list[list] | None = None,
+    drawings: list[tuple[float, float, float, float]] | None = None,
+) -> None:
     """pages: list of pages; each page = list of lines.
 
     A line is either (x, y, text) — one regular-size span — or
@@ -117,21 +119,22 @@ def _table_with_marker_and_footnotes() -> list:
     return [
         (56.0, CAP_Y, "Table 3. DAC DC Specifications"),
         *_spec_header(),
-        (56.0, HDR_Y + PITCH, [
-            (ac_cell, BASE_SIZE, 0.0),
-            _sup("2"),
-        ]),
+        (
+            56.0,
+            HDR_Y + PITCH,
+            [
+                (ac_cell, BASE_SIZE, 0.0),
+                _sup("2"),
+            ],
+        ),
         (X["typ"], HDR_Y + PITCH, "3.3"),
         (X["unit"], HDR_Y + PITCH, "dBm"),
         (62.4, HDR_Y + 2 * PITCH, "Gain Error"),
         (X["typ"], HDR_Y + 2 * PITCH, "1.5"),
         (X["unit"], HDR_Y + 2 * PITCH, "% FSR"),
-        (56.0, HDR_Y + 4 * PITCH,
-         "1 For dc-coupled applications, the maximum full-scale output"),
-        (56.0, HDR_Y + 5 * PITCH - 4.0,
-         "current is limited by the maximum VCMOUT specification."),
-        (56.0, HDR_Y + 6 * PITCH,
-         "2 The actual measured full-scale power is frequency dependent."),
+        (56.0, HDR_Y + 4 * PITCH, "1 For dc-coupled applications, the maximum full-scale output"),
+        (56.0, HDR_Y + 5 * PITCH - 4.0, "current is limited by the maximum VCMOUT specification."),
+        (56.0, HDR_Y + 6 * PITCH, "2 The actual measured full-scale power is frequency dependent."),
     ]
 
 
@@ -139,8 +142,7 @@ def _build(tmp_path, name: str, pages, toc=None) -> object:
     pdf = Path(tmp_path) / name
     _make_pdf(pdf, pages, toc, drawings=_ruling())
     settings = Settings(parts_dir=tmp_path / "parts", cache_dir=tmp_path / ".cache").resolve()
-    return build_part(pdf, part_number="P1", settings=settings,
-                      vendor="unknown", use_llm=False)
+    return build_part(pdf, part_number="P1", settings=settings, vendor="unknown", use_llm=False)
 
 
 def _doc_dir(result) -> Path:
@@ -154,6 +156,7 @@ def _doc_dir(result) -> Path:
     return document_dirs(result.manifest, part_dir=result.part_dir)[
         result.manifest.documents[0].content_hash
     ]
+
 
 def _artifact(result, ref: str) -> Path:
     """Absolute path of one artifact reference, per the root it hangs off.
@@ -182,17 +185,22 @@ def _footnotes_blob(md: str) -> str:
 
 class TestSuperscriptMarkers:
     def test_glued_marker_cites_footnote_and_body_attaches(self, tmp_path):
-        result = _build(tmp_path, "fn1.pdf", [_table_with_marker_and_footnotes()],
-                        toc=[[1, "1 Specifications", 1]])
+        result = _build(
+            tmp_path,
+            "fn1.pdf",
+            [_table_with_marker_and_footnotes()],
+            toc=[[1, "1 Specifications", 1]],
+        )
         md = _section_md(result, "1-specifications")
         # the cell keeps the glued marker text
-        assert ("| DAC Output Power AC Coupling2"
-                " |  |  | 3.3 |  | dBm |") in md
+        assert ("| DAC Output Power AC Coupling2 |  |  | 3.3 |  | dBm |") in md
         # footnotes attach as an enumerated block under the table, in order,
         # with the wrapped continuation merged into footnote 1
         foot = _footnotes_blob(md)
-        assert ("- 1 For dc-coupled applications, the maximum full-scale output"
-                " current is limited by the maximum VCMOUT specification.") in foot
+        assert (
+            "- 1 For dc-coupled applications, the maximum full-scale output"
+            " current is limited by the maximum VCMOUT specification."
+        ) in foot
         assert "- 2 The actual measured full-scale power is frequency dependent." in foot
         # never duplicated into the paragraph stream
         assert md.count("For dc-coupled applications, the maximum full-scale output") == 1
@@ -200,10 +208,8 @@ class TestSuperscriptMarkers:
 
     def test_spec_record_cites_the_marker_and_answer_prints_footnote(self, tmp_path):
         result = _build(tmp_path, "fn2.pdf", [_table_with_marker_and_footnotes()])
-        specs = json.loads(
-            (_doc_dir(result) / "specs.json").read_text(encoding="utf-8"))
-        row = next(r for r in specs["records"]
-                   if "AC Coupling2" in r["symbol"])
+        specs = json.loads((_doc_dir(result) / "specs.json").read_text(encoding="utf-8"))
+        row = next(r for r in specs["records"] if "AC Coupling2" in r["symbol"])
         assert row["cited_markers"] == ["2"]
         assert [f["marker"] for f in row["footnotes"]] == ["1", "2"]
         assert any("frequency dependent" in f["text"] for f in row["footnotes"])
@@ -225,8 +231,11 @@ class TestPositionalAttach:
             (56.0, HDR_Y + PITCH, "DAC RESOLUTION"),
             (X["min"], HDR_Y + PITCH, "16"),
             (X["unit"], HDR_Y + PITCH, "Bit"),
-            (56.0, HDR_Y + 2 * PITCH,
-             "For dc-coupled applications, the maximum output current applies at all times."),
+            (
+                56.0,
+                HDR_Y + 2 * PITCH,
+                "For dc-coupled applications, the maximum output current applies at all times.",
+            ),
         ]
         result = _build(tmp_path, "fn3.pdf", [page])
         md = _section_md(result, "1-page-1")
@@ -243,18 +252,25 @@ class TestPositionalAttach:
             (56.0, HDR_Y + PITCH, "DAC RESOLUTION"),
             (X["min"], HDR_Y + PITCH, "16"),
             (X["unit"], HDR_Y + PITCH, "Bit"),
-            (56.0, HDR_Y + 2 * PITCH,
-             "1 For dc-coupled applications, the maximum output current applies."),
-            (56.0, HDR_Y + 3 * PITCH,
-             "Stresses at or above those listed under the rating table may cause damage."),
+            (
+                56.0,
+                HDR_Y + 2 * PITCH,
+                "1 For dc-coupled applications, the maximum output current applies.",
+            ),
+            (
+                56.0,
+                HDR_Y + 3 * PITCH,
+                "Stresses at or above those listed under the rating table may cause damage.",
+            ),
         ]
         result = _build(tmp_path, "fn4.pdf", [page])
         md = _section_md(result, "1-page-1")
         foot = _footnotes_blob(md)
         assert "- 1 For dc-coupled applications, the maximum output current applies." in foot
         assert "Stresses at or above" not in foot
-        assert ("Stresses at or above those listed under the rating table may cause"
-                " damage.") in md  # stays a paragraph, verbatim
+        assert (
+            "Stresses at or above those listed under the rating table may cause damage."
+        ) in md  # stays a paragraph, verbatim
 
     def test_gapped_markerless_line_stays_paragraph(self, tmp_path):
         page = [
@@ -263,8 +279,11 @@ class TestPositionalAttach:
             (56.0, HDR_Y + PITCH, "DAC RESOLUTION"),
             (X["min"], HDR_Y + PITCH, "16"),
             (X["unit"], HDR_Y + PITCH, "Bit"),
-            (56.0, HDR_Y + 4 * PITCH,
-             "A distant note has no business becoming a footnote of this table."),
+            (
+                56.0,
+                HDR_Y + 4 * PITCH,
+                "A distant note has no business becoming a footnote of this table.",
+            ),
         ]
         result = _build(tmp_path, "fn5.pdf", [page])
         md = _section_md(result, "1-page-1")
@@ -284,8 +303,11 @@ class TestPositionalAttach:
             (56.0, HDR_Y + 3 * PITCH, "Conversion Loss"),
             (X["max"], HDR_Y + 3 * PITCH, "9.5"),
             (X["unit"], HDR_Y + 3 * PITCH, "dB"),
-            (56.0, HDR_Y + 5 * PITCH,
-             "1 For RF performance from 10 GHz to 13 GHz, see the Performance to 13 GHz section."),
+            (
+                56.0,
+                HDR_Y + 5 * PITCH,
+                "1 For RF performance from 10 GHz to 13 GHz, see the Performance to 13 GHz section.",
+            ),
         ]
         result = _build(tmp_path, "fn6.pdf", [page])
         md = _section_md(result, "1-page-1")
@@ -304,23 +326,32 @@ class TestMarkerGeometryTraps:
         page = [
             (56.0, CAP_Y, "Table 7. Output Power"),
             *_spec_header(),
-            (56.0, HDR_Y + PITCH, [
-                ("Output Power @ f", BASE_SIZE, 0.0),
-                _sup("0", rise=-3.0),
-                (" (dBm)", BASE_SIZE, 0.0),
-            ]),
+            (
+                56.0,
+                HDR_Y + PITCH,
+                [
+                    ("Output Power @ f", BASE_SIZE, 0.0),
+                    _sup("0", rise=-3.0),
+                    (" (dBm)", BASE_SIZE, 0.0),
+                ],
+            ),
             (X["typ"], HDR_Y + PITCH, "9"),
             (X["unit"], HDR_Y + PITCH, "dBm"),
-            (62.4, HDR_Y + 2 * PITCH, [
-                ("Reliability >1 x 10", BASE_SIZE, 0.0),
-                _sup("6", rise=2.5),
-            ]),
+            (
+                62.4,
+                HDR_Y + 2 * PITCH,
+                [
+                    ("Reliability >1 x 10", BASE_SIZE, 0.0),
+                    _sup("6", rise=2.5),
+                ],
+            ),
             (X["typ"], HDR_Y + 2 * PITCH, "ok"),
             (X["unit"], HDR_Y + 2 * PITCH, "Hrs"),
         ]
         result = _build(tmp_path, "fn7.pdf", [page])
-        records = json.loads(
-            (_doc_dir(result) / "specs.json").read_text(encoding="utf-8"))["records"]
+        records = json.loads((_doc_dir(result) / "specs.json").read_text(encoding="utf-8"))[
+            "records"
+        ]
         power = next(r for r in records if "Output Power @ f" in r["symbol"])
         assert power["cited_markers"] == [], "subscript must not cite"
         # glued cell text is preserved either way
@@ -335,7 +366,9 @@ class TestMarkerGeometryTraps:
 class TestFootnoteBlockNotDuplicated:
     def test_footnote_lines_appear_exactly_once_corpus_wide(self, tmp_path):
         result = _build(tmp_path, "fn8.pdf", [_table_with_marker_and_footnotes()])
-        blob = "\n".join(_artifact(result, sec.file).read_text(encoding="utf-8")
-                         for sec in result.manifest.sections)
+        blob = "\n".join(
+            _artifact(result, sec.file).read_text(encoding="utf-8")
+            for sec in result.manifest.sections
+        )
         assert blob.count("actual measured full-scale power is frequency dependent") == 1
         assert blob.count("limited by the maximum VCMOUT specification") == 1

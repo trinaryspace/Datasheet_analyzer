@@ -209,7 +209,6 @@ def _write_text_if_changed(path: Path, text: str) -> bool:
     return True
 
 
-
 def _artifact_schema_current(doc_dir: Path, filename: str, version: str) -> bool:
     """Whether a published JSON artifact carries the current schema version.
 
@@ -360,9 +359,7 @@ def write_corpus(
         # only this part directory has to be able to follow an `@library/`
         # reference, and nothing else on disk says which library wrote it.
         # Recorded relative to the part, so the pair moves together.
-        library_root=(
-            library_root_ref(part_dir, shared_docs_dir.parent) if shared else ""
-        ),
+        library_root=(library_root_ref(part_dir, shared_docs_dir.parent) if shared else ""),
     )
     specsets_by_hash = {s.doc_hash: s for s in (specsets or [])}
     plotsets_by_hash = {p.doc_hash: p for p in (plotsets or [])}
@@ -502,16 +499,23 @@ def write_corpus(
     log.info(
         "corpus written: %s (%d sections, %d tables, %d spec records, %d tokens, "
         "index %d tokens, agent protocol %d tokens)",
-        part_dir, stats.n_sections, stats.n_tables, stats.n_specs,
-        stats.total_tokens, stats.index_tokens, stats.agent_doc_tokens,
+        part_dir,
+        stats.n_sections,
+        stats.n_tables,
+        stats.n_specs,
+        stats.total_tokens,
+        stats.index_tokens,
+        stats.agent_doc_tokens,
     )
     log.info(
         "confidence mix: specs %s; plots %s",
-        stats.spec_confidence or "(none)", stats.plot_confidence or "(none)",
+        stats.spec_confidence or "(none)",
+        stats.plot_confidence or "(none)",
     )
     log.info(
         "search index: %d bytes over %d bytes of section markdown (%.0f%%)",
-        stats.search_index_bytes, stats.section_bytes,
+        stats.search_index_bytes,
+        stats.section_bytes,
         100.0 * stats.search_index_bytes / stats.section_bytes if stats.section_bytes else 0.0,
     )
     return manifest
@@ -615,17 +619,17 @@ def manifest_artifacts(
     for section in manifest.sections:
         doc = section.file.split("/sections/", 1)[0].rsplit("/", 1)[-1]
         try:
-            path = resolve_artifact_ref(
-                section.file, part_dir=part_dir, library_dir=library_dir
-            )
+            path = resolve_artifact_ref(section.file, part_dir=part_dir, library_dir=library_dir)
         except ValueError as exc:
-            out.append(
-                ArtifactRef(section.file, part_dir, "section", doc, True, False, str(exc))
-            )
+            out.append(ArtifactRef(section.file, part_dir, "section", doc, True, False, str(exc)))
             continue
         out.append(
             ArtifactRef(
-                section.file, path, "section", doc, is_library_ref(section.file),
+                section.file,
+                path,
+                "section",
+                doc,
+                is_library_ref(section.file),
                 path.is_file(),
             )
         )
@@ -644,17 +648,20 @@ def manifest_artifacts(
             path = doc_dir / filename
             if path.exists() or kind == "search_index":
                 out.append(
-                    ArtifactRef(
-                        f"{name}/{filename}", path, kind, name, is_shared, path.is_file()
-                    )
+                    ArtifactRef(f"{name}/{filename}", path, kind, name, is_shared, path.is_file())
                 )
         try:
             plotset = load_plotset(doc_dir)
         except (StalePlotsSchemaError, OSError, ValueError) as exc:
             out.append(
                 ArtifactRef(
-                    f"{name}/plots.json", doc_dir / "plots.json", "plots", name,
-                    is_shared, False, str(exc),
+                    f"{name}/plots.json",
+                    doc_dir / "plots.json",
+                    "plots",
+                    name,
+                    is_shared,
+                    False,
+                    str(exc),
                 )
             )
             continue
