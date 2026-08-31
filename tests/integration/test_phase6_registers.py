@@ -15,10 +15,12 @@ as the other two:
    interesting half: LMX1204's summary table prints neither column, so the
    correct answer is "the map does not print it", said out loud, and any
    value at all would be a fabrication.
-3. **The reference register map's own summary table is not recovered**, for a
-   reason that lives in the layout engine rather than in this module, and the
-   loss is recorded in `KNOWN_SHORTCOMINGS.md` rather than papered over. When
-   that entry is closed, this class is what has to change with it.
+3. **The reference register map's own summary table is recovered** (phase
+   6.5, ticket 05). `Table 1-1` on page 2 of `LMX1204_registermap.pdf` was
+   eaten by the furniture detector and published nothing; it now publishes its
+   own 35 registers. The part therefore answers a register question twice —
+   once from each document that prints the map — and each answer cites its own
+   document and printed page.
 
 Invariant 4 is relaxed exactly as far as the phase plan allows: this reads
 built parts under `parts/`, their extraction cache and their source PDFs, and
@@ -59,15 +61,18 @@ GOLDEN: tuple[tuple[str, str, int], ...] = (
     ("0x11", "R17", 32),
     ("0x19", "R25", 32),
     ("0x41", "R65", 32),
-    ("0x5A", "R90", 32),
+    #: Table 7-1 spills its last row onto page 33, and phase 6.5 ticket 07
+    #: gave HTML-derived tables per-row page pinning, so `R90` now cites the
+    #: page it is printed on. Before that it was cited on 32 — the one
+    #: off-by-one row this gate used to name.
+    ("0x5A", "R90", 33),
 )
 
-#: Table 7-1 spills its last row onto the next printed page, and an
-#: HTML-derived table carries one page for every row (`TableBlock.row_pages`
-#: is a `pdf_layout` field). So `R90` is cited a page early — 1 row of 35,
-#: measured, recorded in `KNOWN_SHORTCOMINGS.md`, and asserted below rather
-#: than quietly dropped from the golden set.
-OFF_BY_ONE: tuple[tuple[str, str, int, int], ...] = (("0x5A", "R90", 32, 33),)
+#: The same table as the register map's own `Table 1-1` prints it: one page,
+#: section `1`, all 35 rows. Hand-checked against page 2 of
+#: `LMX1204_registermap.pdf`.
+REGMAP_PAGE = 2
+REGMAP_SECTION = "1"
 
 #: The same six addresses written the other two ways a firmware engineer
 #: writes them: lower case, and as the decimal value.
@@ -113,6 +118,27 @@ def registers(built):
     if not part_registers.sets:
         pytest.skip(f"{PART} published no {REGISTERS_ARTIFACT}")
     return part_registers
+
+
+def _set_from(part_registers, prefix: str):
+    """One published register set, by the document directory it came from."""
+    for name, registerset in part_registers.sets:
+        if name.startswith(prefix):
+            return registerset
+    pytest.skip(f"no published register set from a {prefix} document")
+    return None
+
+
+@pytest.fixture(scope="module")
+def datasheet_registers(registers):
+    """`Table 7-1` of the datasheet — the map phase 6 already read."""
+    return _set_from(registers, "datasheet-")
+
+
+@pytest.fixture(scope="module")
+def regmap_registers(registers):
+    """`Table 1-1` of the register map — recovered by phase 6.5, ticket 05."""
+    return _set_from(registers, "register_map-")
 
 
 @pytest.fixture(scope="module")
@@ -169,26 +195,45 @@ class TestTheReRoute:
 class TestGoldenRegisterQuestions:
     """The questions a firmware engineer asks, verified against the page."""
 
-    def test_the_published_map_is_the_whole_printed_table(self, registers):
-        records = registers.registers
-        assert len(records) == 35
-        assert all(r.page == 32 and r.section == "7.1" for r in records)
+    def test_the_published_map_is_the_whole_printed_table(
+        self, registers, datasheet_registers, regmap_registers
+    ):
+        """Both documents that print the map publish all 35 of its rows."""
+        assert len(registers.sets) == 2
+        assert len(registers.registers) == 70
+        assert len(datasheet_registers.registers) == 35
+        assert len(regmap_registers.registers) == 35
+        assert all(r.section == "7.1" for r in datasheet_registers.registers)
+        assert {r.page for r in datasheet_registers.registers} == {32, 33}
+        assert all(
+            r.section == REGMAP_SECTION and r.page == REGMAP_PAGE
+            for r in regmap_registers.registers
+        )
+        # The two readings agree on what the table says, which is the check
+        # that matters: one page prints it, another page reprints it.
+        assert [r.name for r in datasheet_registers.registers] == [
+            r.name for r in regmap_registers.registers
+        ]
         # Every printed address parsed: no register is findable only by its
-        # printed form in this map.
-        assert all(r.address.value is not None for r in records)
-        addresses = [r.address.value for r in records]
-        assert addresses == sorted(addresses)
+        # printed form in either map.
+        for registerset in (datasheet_registers, regmap_registers):
+            records = registerset.registers
+            assert all(r.address.value is not None for r in records)
+            addresses = [r.address.value for r in records]
+            assert addresses == sorted(addresses)
 
     def test_address_to_name_verifies_at_100_percent_with_page_cites(self, registers):
+        """Two documents print this map, so one address is two cited answers."""
         for printed, name, page in GOLDEN:
             hits = find_registers(registers, addr=printed)
-            assert len(hits) == 1, printed
-            hit = hits[0]
-            assert hit.record.name == name
-            assert hit.record.address.verbatim == printed
-            assert hit.record.page == page
-            assert hit.citation.label == f"§7.1, p.{page}"
-            assert hit.matched_via == "address"
+            assert len(hits) == 2, printed
+            assert all(h.record.name == name for h in hits)
+            assert all(h.record.address.verbatim == printed for h in hits)
+            assert all(h.matched_via == "address" for h in hits)
+            labels = sorted(h.citation.label for h in hits)
+            assert labels == sorted([f"§7.1, p.{page}", f"§{REGMAP_SECTION}, p.{REGMAP_PAGE}"]), (
+                labels
+            )
 
     def test_every_written_form_of_an_address_is_one_question(self, registers):
         for lowered, decimal in GOLDEN_FORMS:
@@ -197,18 +242,22 @@ class TestGoldenRegisterQuestions:
                 for form in (lowered, lowered.upper(), decimal)
             ]
             assert answers[0] == answers[1] == answers[2], lowered
-            assert len(answers[0]) == 1
+            assert len(answers[0]) == 2
 
     def test_name_to_reset_and_name_to_access_say_the_map_prints_neither(self, registers):
         """The honest answer, because a blank read as `0x00` breaks a bring-up."""
         for _printed, name, _page in GOLDEN:
-            (hit,) = [h for h in find_registers(registers, name=name) if h.record.name == name]
-            assert hit.record.reset.verbatim == ""
-            assert hit.record.reset.value is None
-            assert hit.record.access == ""
+            hits = [h for h in find_registers(registers, name=name) if h.record.name == name]
+            assert len(hits) == 2, name
+            for hit in hits:
+                assert hit.record.reset.verbatim == ""
+                assert hit.record.reset.value is None
+                assert hit.record.access == ""
         warning = " ".join(registers.warnings)
         assert "prints no reset or access column" in warning
         assert "35 registers" in warning
+        # Both documents say it, and each says it about its own table.
+        assert sum("prints no reset or access column" in w for w in registers.warnings) == 2
 
     def test_every_cited_page_really_prints_the_pair(self, built, registers):
         """The cite is checked against the PDF, not against the extractor."""
@@ -217,24 +266,20 @@ class TestGoldenRegisterQuestions:
         pdf = Path(source.path)
         if not pdf.is_file():
             pytest.skip(f"source PDF is not on this machine: {pdf}")
-        early = {name for _a, name, _c, _p in OFF_BY_ONE}
         with fitz.open(pdf) as doc:
             for printed, name, page in GOLDEN:
-                if name in early:
-                    continue
                 text = doc[page - 1].get_text()
                 assert printed in text, (printed, page)
                 assert name in text, (name, page)
         assert part_dir.is_dir()
 
-    def test_the_one_row_whose_cite_is_a_page_early_is_named(self, built, registers):
-        """Honesty about the exception: which row, cited where, printed where.
+    def test_no_row_cites_a_page_it_is_not_printed_on(self, built, datasheet_registers):
+        """Phase 6.5, ticket 07 — the off-by-one row this gate used to name.
 
-        `ti_html` tables carry a single page for every row, so the row Table
-        7-1 spills onto the next printed page is cited on the page the table
-        starts on. One row of 35, recorded in `KNOWN_SHORTCOMINGS.md`; the fix
-        is per-row page attribution for HTML-derived tables, which is not this
-        module's to make.
+        `ti_html` tables carried a single page for every row, so the row Table
+        7-1 spills onto page 33 was cited on 32. Per-row page pinning fixed it;
+        this counts the whole table against the printed pages, so the number
+        cannot creep back up unnoticed.
         """
         _part_dir, manifest = built
         source = next(d for d in manifest.documents if d.doc_type is DocType.DATASHEET)
@@ -242,33 +287,57 @@ class TestGoldenRegisterQuestions:
         if not pdf.is_file():
             pytest.skip(f"source PDF is not on this machine: {pdf}")
         with fitz.open(pdf) as doc:
-            for printed, name, cited, actually in OFF_BY_ONE:
-                (hit,) = [
-                    h for h in find_registers(registers, addr=printed) if h.record.name == name
-                ]
-                assert hit.record.page == cited
-                assert printed not in doc[cited - 1].get_text()
-                assert printed in doc[actually - 1].get_text()
-        # and it really is only that one row.
-        printed_early = 0
-        with fitz.open(pdf) as doc:
-            pages = {n: doc[n - 1].get_text() for n in (32, 33)}
-        for record in registers.registers:
-            if record.address.verbatim not in pages.get(record.page or 0, ""):
-                printed_early += 1
-        assert printed_early == len(OFF_BY_ONE)
+            pages = {n: doc[n - 1].get_text() for n in range(1, doc.page_count + 1)}
+        # The spilled row is cited where it prints, not where its table began.
+        (spilled,) = [r for r in datasheet_registers.registers if r.name == "R90"]
+        assert spilled.page == 33
+        assert "0x5A" not in pages[32] and "0x5A" in pages[33]
+        early = [
+            r.name
+            for r in datasheet_registers.registers
+            if r.address.verbatim not in pages.get(r.page or 0, "")
+        ]
+        assert early == [], early
 
     def test_every_published_register_resolves_to_a_record_and_a_page(self, built, registers):
-        """Invariant 8 over real data: no number without a printed page."""
+        """Invariant 8 over real data: no number without a printed page.
+
+        Resolved against **its own document's** root, which is what invariant 8
+        says a citation is: a record id is unique inside one document, and a
+        derived value cites a record inside one document. LMX1204 is the first
+        part in this corpus whose two documents both publish a register map,
+        so it is also the first where the same id exists twice across the part
+        — measured and recorded in `KNOWN_SHORTCOMINGS.md`.
+        """
         part_dir, manifest = built
         dirs = document_dirs(manifest, part_dir=part_dir)
-        roots = [d for d in dirs.values() if (d / REGISTERS_ARTIFACT).is_file()]
-        assert roots
-        for record in registers.registers:
-            resolved = resolve_source(f"{REGISTERS_ARTIFACT}#{record.id}", roots=roots)
-            assert resolved is not None, record.id
-            assert resolved.page == record.page
-            assert resolved.record["name"] == record.name
+        checked = 0
+        for _name, registerset in registers.sets:
+            root = dirs.get(registerset.doc_hash)
+            assert root is not None and (root / REGISTERS_ARTIFACT).is_file()
+            for record in registerset.registers:
+                resolved = resolve_source(f"{REGISTERS_ARTIFACT}#{record.id}", roots=[root])
+                assert resolved is not None, record.id
+                assert resolved.page == record.page
+                checked += 1
+        assert checked == 70
+
+    def test_one_id_is_carried_by_a_record_in_each_document(self, built, registers):
+        """The measured limitation, asserted rather than left to be discovered.
+
+        A register record's id is a pure function of its coordinates *inside a
+        document*, so the two documents that print this map compute the same
+        ids. Resolving `registers.json#reg_t0-r15` against the part's roots as
+        a list returns whichever document comes first. Recorded in
+        `KNOWN_SHORTCOMINGS.md`; the fix belongs with `models.py`, not here.
+        """
+        by_id: dict[str, set[str]] = {}
+        for _name, registerset in registers.sets:
+            for record in registerset.registers:
+                by_id.setdefault(record.id, set()).add(registerset.doc_hash)
+        shared = {rid: docs for rid, docs in by_id.items() if len(docs) > 1}
+        assert len(by_id) == 35
+        assert len(shared) == 35, "every id is carried by a record in both documents"
 
     def test_dsa_regs_answers_the_same_way_the_library_does(self, monkeypatch, capsys):
         if not (PARTS_DIR / PART).is_dir():
@@ -295,24 +364,29 @@ class TestGoldenRegisterQuestions:
         finally:
             reset_settings_cache()
         assert payload["query"]["addr_value"] == 17
-        assert [h["name"] for h in payload["hits"]] == ["R17"]
-        assert payload["hits"][0]["citation"] == "§7.1, p.32"
-        assert payload["hits"][0]["reset"] == {"verbatim": "", "value": None}
+        # Both documents that print the map answer, each citing its own page.
+        assert [h["name"] for h in payload["hits"]] == ["R17", "R17"]
+        assert sorted(h["citation"] for h in payload["hits"]) == sorted(
+            ["§7.1, p.32", f"§{REGMAP_SECTION}, p.{REGMAP_PAGE}"]
+        )
+        assert all(h["reset"] == {"verbatim": "", "value": None} for h in payload["hits"])
 
 
 @pytest.mark.integration
 class TestTheReferenceMapsOwnSummaryTable:
-    """The parked half, asserted rather than hidden.
+    """The half phase 6 parked, closed by phase 6.5, ticket 05.
 
-    `LMX1204_registermap.pdf` prints the same 35-register summary as Table
-    1-1 on its page 2, and this tool does not read it: the layout engine
-    classifies the first row's `0x0` cell as page furniture, which truncates
-    the table's region to its header and rejects the reconstruction. The map
-    still publishes nothing partial, the reason is recorded where
-    `dsa status` prints it, and the loss is written down in
-    `KNOWN_SHORTCOMINGS.md`. Fixing it is a change to `extract/pdf_layout.py`
-    and to nothing in `derive/registers.py` — when it lands, this class and
-    that entry are removed together.
+    `LMX1204_registermap.pdf` prints the same 35-register summary as `Table
+    1-1` on its page 2, and phase 6 read none of it: the furniture detector
+    classified the first body row's `0x0` address cell as page machinery — the
+    string prints in that y-band on 11 of the document's 25 pages — which
+    truncated the table's region to its header row and rejected the
+    reconstruction with `no viable column split`. The document published no
+    `registers.json` at all.
+
+    The detector now releases everything below a `Table N.` caption, because
+    page machinery never prints directly under one. This class asserts the
+    recovery on the printed page rather than on the extractor's word for it.
     """
 
     def test_the_reference_pdf_is_present_and_prints_a_summary_table(self):
@@ -324,27 +398,34 @@ class TestTheReferenceMapsOwnSummaryTable:
         assert "Address" in text and "Acronym" in text
         assert "0x11" in text and "R17" in text
 
-    def test_no_summary_table_is_recovered_from_it_today(self, regmap_doc):
+    def test_the_summary_table_is_recovered_whole(self, regmap_doc):
         _source, _stats, raw = regmap_doc
         build = build_registers(raw, PART)
-        assert build.registerset is None
-        assert build.n_registers == 0
+        assert build.registerset is not None
+        assert build.n_registers == 35
+        assert build.accepted_tables == 1
 
-    def test_the_layout_engine_records_why_it_could_not_read_it(self, regmap_doc):
+    def test_the_first_row_the_furniture_filter_used_to_eat_is_there(self, regmap_doc):
+        """`0x0` / `R0` — the cell whose loss cost the whole table."""
+        _source, _stats, raw = regmap_doc
+        build = build_registers(raw, PART)
+        first = build.registerset.registers[0]
+        assert (first.address.verbatim, first.name) == ("0x0", "R0")
+        assert first.page == REGMAP_PAGE
+
+    def test_the_layout_engine_no_longer_rejects_it_for_a_column_split(self, regmap_doc):
         _source, stats, _raw = regmap_doc
-        assert stats.tables_rejected > 0
-        assert "no viable column split" in stats.rejection_reasons
+        assert "no viable column split" not in stats.rejection_reasons
 
-    def test_nothing_partial_is_published_for_the_register_map(self, built, regmap_doc):
+    def test_the_recovered_map_is_published_for_the_register_map(self, built, regmap_doc):
         part_dir, manifest = built
         source, _stats, _raw = regmap_doc
         doc_dir = document_dirs(manifest, part_dir=part_dir).get(source.content_hash)
         assert doc_dir is not None
-        assert not (doc_dir / REGISTERS_ARTIFACT).exists()
+        assert (doc_dir / REGISTERS_ARTIFACT).is_file()
 
-    def test_the_loss_is_written_down_where_a_reader_will_find_it(self):
+    def test_the_closed_shortcoming_is_no_longer_recorded_as_open(self):
         if not SHORTCOMINGS.is_file():
             pytest.skip("KNOWN_SHORTCOMINGS.md is not in this tree")
         text = SHORTCOMINGS.read_text(encoding="utf-8")
-        assert "LMX1204_registermap.pdf" in text
-        assert "Table 1-1" in text
+        assert "the LMX1204 register map's own summary table is not read" not in text.lower()

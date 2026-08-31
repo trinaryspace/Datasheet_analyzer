@@ -2126,7 +2126,7 @@ class PdfLayoutBackend:
     # (`TableBlock.reconstruction`), which the per-record confidence grade
     # reads. A cached raw from tables-07 has no such field, so it is stale by
     # the embedded-version rule and re-extracts once.
-    output_version = "tables-08"
+    output_version = "tables-09"
 
     def is_available(self) -> tuple[bool, str]:
         try:

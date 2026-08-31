@@ -8,25 +8,34 @@ in `KNOWN_SHORTCOMINGS.md` under *"Register bit fields: not extracted"*, and
 the last class here asserts that no bit-field data reaches any published
 artifact — which is what "ships nothing" means in bytes.
 
-Three separate things fail, and they fail for different reasons:
+**Phase 6.5 re-measured it and it stays parked, on a much better number.**
+Wave 1 fixed the layout engine underneath: the document now hands over **30**
+field tables of 35 instead of 12, **15** survive validation instead of 4, and
+**71** fields are emitted instead of 13 — every one of them right. The gate
+that decides is unchanged and is still not met, so nothing ships.
+
+Where it stands now, each claim measured by this module:
 
 1. **Recall.** Of the 35 registers the document prints, the layout engine
-   hands over 12 field tables at all, and only 4 of those survive the
-   fail-closed validators. A gate over a sample chosen by *document order* —
-   the first six registers, R0 through R6 — is met for two of them.
-2. **Fidelity, where a table does arrive.** The engine re-joins wrapped name
-   cells as `SYSREFREQ_DELAY_ST EPSIZE`, truncates R19 and R21 to their first
-   field, and folds two body lines into the header of R12's table. Each is
-   caught and refuses the register, so nothing wrong is emitted — but nothing
-   is emitted either.
-3. **Nowhere to put them.** The reference map's own summary table
-   (`Table 1-1`) is not recovered — ticket 05's recorded shortcoming — so the
-   document publishes no `registers.json` at all. Even a perfect field reader
-   would have no summary record in this document to hang fields off.
+   hands over 30 field tables and 15 survive the fail-closed validators
+   (43%, from 11%). The gate is a sample chosen by *document order* — the
+   first six registers, R0 through R6, at 100% with no partial credit — and
+   **four of the six** are now read exactly right. Four is not six.
+2. **What refuses now, and why.** The wrapped-name and truncation misreads
+   ticket 06 named are gone: R13, R17, R19, R21 and R25 all read correctly.
+   Twelve of the fifteen refusals are now **one** new cause — the table region
+   runs on into the two cross-reference lines the document prints after every
+   field table (`R2 is shown in … Summary Table`, `Return to the Summary
+   Table`), which arrive as two more rows and are refused for a bit range that
+   does not parse. R4 and R9 refuse for genuinely incomplete bit coverage and
+   R90 for two fields claiming one bit.
+3. **There is somewhere to put them now.** Ticket 05's structural blocker is
+   closed: the reference map's own `Table 1-1` is recovered, so the document
+   publishes a `registers.json` with 35 summary records to hang fields off.
 
 What *does* hold, and is asserted rather than claimed: **every field the
-reader emits is exactly right.** Precision is 100% over 13 fields; it is
-recall that is 11%. That is the shape a fail-closed reader is supposed to
+reader emits is exactly right.** Precision is 100% over 71 fields; it is
+recall that decides. That is the shape a fail-closed reader is supposed to
 have, and it is why the module is kept rather than deleted.
 
 Invariant 4 is relaxed exactly as far as the phase plan allows: this reads a
@@ -39,6 +48,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import ClassVar
 
 import fitz
 import pytest
@@ -221,71 +231,150 @@ class TestTheTruthSetIsTheDocument:
 
 @pytest.mark.integration
 class TestTheAccuracyGateIsNotMet:
-    """Checkbox 2 — 100%, no partial credit. Measured: it is not met."""
+    """Checkbox 2 - 100%, no partial credit. Measured: it is still not met."""
 
-    def test_most_of_the_sample_yields_no_fields_at_all(self, read):
+    #: Every register the reader accepts, after phase 6.5 wave 1. Fixed by
+    #: measurement, not by expectation: five of these (R13, R17, R19, R21,
+    #: R25) are registers ticket 06 named as damaged and refused.
+    ACCEPTED: ClassVar[list[str]] = [
+        "R13",
+        "R14",
+        "R15",
+        "R17",
+        "R19",
+        "R2",
+        "R21",
+        "R22",
+        "R23",
+        "R25",
+        "R3",
+        "R33",
+        "R5",
+        "R6",
+        "R67",
+    ]
+
+    def test_four_of_the_six_sampled_registers_are_read_exactly_right(self, read):
         covered = sorted(r for r in SAMPLE if r in read and read[r].accepted)
-        assert covered == ["R2", "R5"], covered
-        assert len(covered) < len(SAMPLE)
+        assert covered == ["R2", "R3", "R5", "R6"], covered
+        assert len(covered) < len(SAMPLE), "the gate is 100% with no partial credit"
 
-    def test_four_of_the_sampled_registers_never_reach_the_reader(self, read):
-        """R0, R3, R4 and R6 print a field table the layout engine drops whole."""
-        missing = sorted(r for r in SAMPLE if r not in read)
-        assert missing == ["R0", "R3", "R4", "R6"], missing
+    def test_the_two_the_sample_still_loses_are_named_with_their_reason(self, read):
+        """R0 and R4 arrive and are refused - neither is dropped silently."""
+        refused = {r: read[r].reasons for r in SAMPLE if r in read and not read[r].accepted}
+        assert sorted(refused) == ["R0", "R4"], sorted(refused)
+        assert any("did not parse" in r for r in refused["R0"])
+        assert any("covered by no field" in r for r in refused["R4"])
+        # Every sampled register now reaches the reader at all, which is the
+        # half that moved: ticket 06 measured four of six dropped whole.
+        assert [r for r in SAMPLE if r not in read] == []
 
-    def test_recall_over_the_whole_document_is_measured_and_low(self, raw, read):
+    def test_recall_over_the_whole_document_is_measured_and_better(self, raw, read):
         tables = list(iter_bit_field_tables(raw))
         accepted = [ex for ex in tables if ex.accepted]
-        assert len(tables) == 12, [ex.caption for ex in tables]
-        assert len(accepted) == 4, [ex.register_name for ex in accepted]
-        assert sorted(ex.register_name for ex in accepted) == ["R2", "R33", "R5", "R67"]
-        assert len(accepted) / REGISTERS_PRINTED < 0.15
+        assert len(tables) == 30, [ex.caption for ex in tables]
+        assert len(accepted) == 15, [ex.register_name for ex in accepted]
+        assert sorted(ex.register_name for ex in accepted) == self.ACCEPTED
+        # 15/35 = 43%, up from 4/35 = 11%, and still nowhere near the gate.
+        assert 0.40 < len(accepted) / REGISTERS_PRINTED < 0.45
 
     def test_every_refusal_names_a_reason(self, raw):
         for extraction in iter_bit_field_tables(raw):
             if not extraction.accepted:
                 assert extraction.reasons, extraction.caption
 
-    def test_the_named_failure_modes_are_the_ones_measured(self, read):
-        """The three that decided the park, each asserted on the register it broke."""
-        assert any("not identifiers" in r for r in read["R13"].reasons)
-        assert any("not identifiers" in r for r in read["R17"].reasons)
-        assert any("covered by no field" in r for r in read["R19"].reasons)
-        assert any("covered by no field" in r for r in read["R21"].reasons)
-        assert any("print no reset" in r for r in read["R79"].reasons)
+    def test_the_dominant_failure_mode_is_now_one_named_cause(self, read):
+        """Twelve of fifteen refusals are the trailing cross-reference lines.
+
+        Every field table in this document is followed by two printed
+        sentences - `R<n> is shown in <table>` and `Return to the Summary
+        Table` - and the region now runs on into them, so they arrive as two
+        more rows whose bit cell is prose. Naming it here is what makes it the
+        next thing to fix rather than a number nobody can act on.
+        """
+        refused = {name: ex.reasons for name, ex in read.items() if not ex.accepted}
+        assert len(refused) == 15
+        run_on = {
+            name for name, reasons in refused.items() if any("Return to the" in r for r in reasons)
+        }
+        assert len(run_on) == 12, sorted(run_on)
+        assert sorted(set(refused) - run_on) == ["R4", "R9", "R90"]
+        assert any("covered by no field" in r for r in refused["R4"])
+        assert any("covered by no field" in r for r in refused["R9"])
+        assert any("claimed by more than one field" in r for r in refused["R90"])
+
+    def test_the_misreads_ticket_06_named_are_gone(self, read):
+        """Each register ticket 06 recorded as damaged now reads correctly."""
+        for name in ("R13", "R17", "R19", "R21", "R25"):
+            assert read[name].accepted, (name, read[name].reasons)
+        # The wrapped identifier that used to read `SYSREFREQ_DELAY_ST EPSIZE`.
+        assert "SYSREFREQ_DELAY_STEPSIZE" in [f.name for f in read["R13"].fields]
 
 
 @pytest.mark.integration
 class TestNothingWrongIsEmitted:
     """The half that holds: precision is 100% over everything the reader emits."""
 
-    def test_every_accepted_register_matches_the_printed_page_exactly(self, read):
+    def test_every_transcribed_register_matches_the_printed_page_exactly(self, read):
+        """The six registers whose fields were transcribed by hand, cell for cell."""
         truth = {**GOLDEN, **ACCEPTED_ELSEWHERE}
         accepted = {name: ex for name, ex in read.items() if ex.accepted}
-        assert set(accepted) == set(truth) & set(accepted)
-        for name, extraction in sorted(accepted.items()):
-            assert _emitted(extraction) == truth[name][1], name
+        overlap = sorted(set(truth) & set(accepted))
+        assert overlap == ["R2", "R3", "R33", "R5", "R6", "R67"], overlap
+        for name in overlap:
+            assert _emitted(accepted[name]) == truth[name][1], name
+
+    def test_every_emitted_cell_is_printed_on_the_page_it_cites(self, raw, read):
+        """The other nine, checked against the PDF rather than a transcription.
+
+        Whitespace-insensitive on purpose: this document breaks long
+        identifiers across two printed lines (`SYSREFOUT0_DELAY_PHASE`), and
+        the reader rejoins them, so the contiguous string never appears in the
+        page's text even though the page prints it.
+        """
+        pdf = _require_pdf()
+        with fitz.open(pdf) as doc:
+            pages = ["".join(page.get_text().split()) for page in doc]
+        checked = 0
+        for name, extraction in sorted(read.items()):
+            if not extraction.accepted:
+                continue
+            page = pages[(extraction.page or 1) - 1]
+            for field in extraction.fields:
+                for cell in (field.bits.verbatim, field.name, field.access, field.reset):
+                    if cell:
+                        assert "".join(cell.split()) in page, (name, field.name, cell)
+                        checked += 1
+        assert checked
 
     def test_a_refused_register_emits_no_field_at_all(self, read):
-        """No partial field list ever leaves the reader — the fail-closed rule."""
+        """No partial field list ever leaves the reader - the fail-closed rule."""
         for name, extraction in read.items():
             if extraction.reasons:
                 assert _emitted(extraction) == (), name
 
-    def test_thirteen_fields_are_emitted_in_total(self, read):
+    def test_seventy_one_fields_are_emitted_in_total(self, read):
         emitted = [f for ex in read.values() for f in ex.fields]
-        assert len(emitted) == 13
+        assert len(emitted) == 71
         assert all(f.page is not None for f in emitted)
 
 
 @pytest.mark.integration
-class TestWhyThereIsNowhereToPutThem:
-    """The structural blocker underneath the accuracy one (ticket 05's park)."""
+class TestWhereTheyWouldGoNow:
+    """Ticket 05's structural blocker is closed; the accuracy one is not."""
 
-    def test_the_reference_map_publishes_no_register_set_to_attach_fields_to(self, raw):
+    def test_the_reference_map_now_publishes_a_register_set_to_attach_fields_to(self, raw):
+        """Phase 6.5, ticket 05: `Table 1-1` is recovered, so there is a home.
+
+        Ticket 06 recorded this as the third, structural reason to park: even
+        a perfect field reader had no summary record *in this document* to
+        hang fields off, and a derived value cites a record inside one
+        document. That reason is gone. The accuracy gate is what still parks
+        it.
+        """
         build = build_registers(raw, "LMX1204")
-        assert build.registerset is None
-        assert build.n_registers == 0
+        assert build.registerset is not None
+        assert build.n_registers == 35
 
     def test_the_document_prints_no_bit_position_diagram(self, raw):
         """Said out loud: checkbox 1's shape does not occur in this document.
@@ -293,7 +382,7 @@ class TestWhyThereIsNowhereToPutThem:
         The geometric column-span reader is exercised only by the synthetic
         fixtures in `tests/unit/test_bitfields.py`. This map prints every
         register as a field-description table, so no real document in this
-        repository gates the diagram path — a gap a reader deserves to know
+        repository gates the diagram path - a gap a reader deserves to know
         about rather than infer.
         """
         headers = [

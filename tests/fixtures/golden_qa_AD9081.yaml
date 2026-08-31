@@ -113,5 +113,7 @@ cards:
     card: interface
     expected_substrings: ["JESD204B", "JESD204C"]
     pages: [11]
-    notes: the one interface row this part's records can address (see
-      KNOWN_SHORTCOMINGS.md - spec ids are not unique in this document).
+    notes: the interface card's JESD204B/JESD204C rate rows, printed on p.11.
+      Phase 6 could address only one of the 21 rows its selectors matched
+      (spec ids were not unique in this document); phase 6.5 ticket 08 made
+      them unique and the rebuild publishes all 21.
