@@ -1180,10 +1180,12 @@ class BitField(BaseModel):
 class RegisterRecord(BaseModel):
     """One register from a register-summary table (phase 6, ticket 05).
 
-    `fields` is filled by ticket 06 and is legitimately empty: a register
-    summary that lists address, name, reset and access is already the answer
-    to most bring-up questions, and an empty `fields` list says "the bit
+    `fields` is filled by ticket 06 from the register's own field-description
+    table when that table reads whole, and is legitimately empty otherwise: a
+    register summary that lists address, name, reset and access is already the
+    answer to most bring-up questions, and an empty `fields` list says "the bit
     breakdown was not extracted" rather than implying the register has none.
+    Which it is, for a given register, is in the register set's warnings.
     """
 
     block: str = ""  # register block / peripheral, "" when the map has none

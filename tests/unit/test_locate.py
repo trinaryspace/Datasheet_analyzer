@@ -565,9 +565,10 @@ def test_extraction_cache_stays_valid():
     from datasheet_analyzer.app import locate as locate_module
     from datasheet_analyzer.extract.pdf_layout import PdfLayoutBackend
 
-    # `tables-09` since phase 6.5 wave 2, which re-extracted the corpus. What
-    # this test protects is that *locate* never causes such a bump.
-    assert PdfLayoutBackend.output_version == "tables-09"
+    # `tables-10` since the bit-field region fix re-extracted the corpus
+    # (`tables-09` was phase 6.5 wave 2). What this test protects is that
+    # *locate* never causes such a bump.
+    assert PdfLayoutBackend.output_version == "tables-10"
     source = Path(locate_module.__file__).read_text(encoding="utf-8")
     imports = [line for line in source.splitlines() if line.startswith(("import ", "from "))]
     assert not [line for line in imports if "extract" in line or "pdf_layout" in line]

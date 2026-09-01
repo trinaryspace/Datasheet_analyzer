@@ -10,8 +10,11 @@ verbatim prints, and answers questions about the result.
 
 Scope here is shape **(a)**, the register *summary* table — address, name,
 reset, access. Per-register bit fields are the harder shape and are ticket
-06's; `RegisterRecord.fields` is legitimately empty until then, and
-`dsa regs --field` says so rather than answering nothing.
+06's; `derive/bitfields.py` reads them and `_bit_fields` attaches an accepted
+field set to the summary record whose name the field table's caption printed.
+A register whose field table was refused keeps `fields: []` and is named in
+the set's warnings, and a part that publishes no bit field at all gets
+`dsa regs --field` saying so rather than answering nothing.
 
 **The routing change lives here too.** `DocType.REGISTER_MAP` used to prefer
 the degraded `pdf_text` backend for every vendor, which meant a register map
@@ -69,9 +72,11 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from datasheet_analyzer.config import REGISTERS_SCHEMA_VERSION, get_settings
+from datasheet_analyzer.derive.bitfields import iter_bit_field_tables
 from datasheet_analyzer.derive.provenance import REGISTERS_ARTIFACT
 from datasheet_analyzer.models import (
     DOC_KEY_LEN,
+    BitField,
     Confidence,
     ExtractionStats,
     RawDocument,
@@ -238,6 +243,58 @@ def _unparsed_warning(registers: Sequence[RegisterRecord]) -> list[str]:
     ]
 
 
+def _bit_fields(raw: RawDocument) -> tuple[dict[str, tuple[BitField, ...]], list[str]]:
+    """Every register in this document whose field table read whole.
+
+    `derive/bitfields.py` accepts a field table whole or refuses it whole, so
+    the only thing left to decide here is **which register a field set belongs
+    to**, and the answer is the one the caption printed: `Table 1-6. R4
+    Register Field Descriptions` attaches to the summary row named `R4`. A
+    caption that names no register attaches to nothing.
+
+    Two registers' worth of caution, both fail-closed:
+
+    - a name carried by **two** field tables in one document is dropped, not
+      merged — two printed breakdowns of one register are a question this
+      module cannot answer, and answering it with the first would be a guess;
+    - a register whose table was **refused** publishes no fields *and* is
+      named in a warning, so an empty `fields` list is never mistaken for "the
+      document printed no breakdown".
+    """
+    accepted: dict[str, tuple[BitField, ...]] = {}
+    refused: dict[str, tuple[str, ...]] = {}
+    duplicated: set[str] = set()
+    for extraction in iter_bit_field_tables(raw):
+        name = extraction.register_name
+        if not name:
+            continue
+        if name in accepted or name in refused:
+            duplicated.add(name)
+            continue
+        if extraction.accepted:
+            accepted[name] = extraction.fields
+        else:
+            refused[name] = extraction.reasons
+    for name in duplicated:
+        accepted.pop(name, None)
+        refused.pop(name, None)
+
+    warnings: list[str] = []
+    if refused:
+        shown = "; ".join(f"{name}: {reasons[0]}" for name, reasons in sorted(refused.items())[:3])
+        more = f", and {len(refused) - 3} more" if len(refused) > 3 else ""
+        warnings.append(
+            f"{len(refused)} register(s) print a bit-field table this tool could not read "
+            f"whole, and publish no fields ({shown}{more})"
+        )
+    if duplicated:
+        warnings.append(
+            f"{len(duplicated)} register(s) are named by more than one bit-field table in "
+            f"this document and publish no fields ({', '.join(sorted(duplicated))})"
+        )
+    return accepted, warnings
+
+
 @dataclass(frozen=True)
 class RegisterBuild:
     """What one document yielded: a register set, or nothing and why not.
@@ -291,6 +348,16 @@ def build_registers(raw: RawDocument, part_number: str = "") -> RegisterBuild:
         warnings.extend(_missing_column_warnings(result))
         warnings.extend(_dropped_row_warning(result))
     warnings.extend(_unparsed_warning(registers))
+
+    field_sets, field_warnings = _bit_fields(raw)
+    if field_sets:
+        registers = [
+            record.model_copy(update={"fields": list(field_sets[record.name])})
+            if record.name in field_sets
+            else record
+            for record in registers
+        ]
+    warnings.extend(field_warnings)
 
     registerset = RegisterSet(
         schema_version=REGISTERS_SCHEMA_VERSION,

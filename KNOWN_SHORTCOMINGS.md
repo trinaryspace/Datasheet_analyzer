@@ -14,7 +14,7 @@ re-extract and rebuild of all eleven parts at pipeline 0.5.0, extractor
 current, not carried forward. Closing numbers are in
 `Reports/PHASE_6_5_REPORT.md`.
 
-**Two entries closed after wave 2 and deleted here.**
+**Three entries closed after wave 2 and deleted here.**
 
 *"Extraction cache: a fix in the structure layer is invisible to a cached
 extraction"* — the structure stage now has a version of its own
@@ -36,6 +36,18 @@ the old ids until the next rebuild — a record with no `doc_key` computes the
 old shape on purpose, so citations already written keep resolving — and
 `test_the_published_ids_are_distinct_once_the_part_is_rebuilt` says so when
 it skips.
+
+*"Register bit fields: not extracted (ticket 06 parked)"* — two region defects
+in `extract/pdf_layout.py`, fixed at extractor `tables-10`: a table region that
+ran on past its table into the section heading and cross-reference sentences
+below it, and a `Bit` column cell refused release because the digit it printed
+equalled the page number. The accuracy gate went from four of six sampled
+registers to **six of six**, recall over `LMX1204_registermap.pdf` from 15 of
+35 registers to **28**, and precision held at **100%** over 116 fields, so
+`RegisterRecord.fields` now ships. The recorded claim that R4 prints an
+incomplete field list was itself a symptom: page 6 prints all eleven rows
+covering all 16 bits, and it was this tool truncating the table that made the
+document look at fault.
 
 ---
 
@@ -92,64 +104,3 @@ here: it was not a built part when phase 6 recorded this entry.
 property that actually matters over real data: *every* equal-limit pair found
 in a reference part carries the flag. Today that set is empty, and the test
 will start asserting the moment a part that prints one is added.
-
----
-
-## Register bit fields: not extracted (ticket 06 stays parked)
-
-**Phase 6, ticket 06; re-attempted and re-measured in phase 6.5, wave 2.** The
-phase plan asks for per-register bit fields — `{"name": "NCO_EN", "bits":
-{"verbatim": "[3]", "hi": 3, "lo": 3}, ...}` — and gives the ticket leave to
-park rather than ship approximate ones, because a wrong bit range is acted on:
-a driver written against it misconfigures silicon and fails silently. **The
-gate is 100% over a sample fixed by document order, with no partial credit. It
-was met for two of six registers in phase 6; it is now met for four of six.
-Four is not six, so `RegisterRecord.fields` stays `[]` for every published
-register.**
-
-**The numbers moved a long way, and are recorded because the direction matters
-even when the verdict does not change.** Measured against
-`LMX1204_registermap.pdf` at extractor `tables-09` by
-`tests/integration/test_phase6_bitfields.py`:
-
-| | Phase 6 | Phase 6.5 |
-|---|---|---|
-| field tables the layout engine hands over (of 35 printed) | 12 | **30** |
-| registers that survive validation | 4 | **15** (43%, from 11%) |
-| fields emitted | 13 | **71** |
-| the six-register sample (R0, R2, R3, R4, R5, R6) | 2 | **4** |
-| precision over everything emitted | 100% | **100%** |
-
-**What refuses now, and why.** The three misreads ticket 06 named are gone:
-R13 and R17 no longer read `SYSREFREQ_DELAY_ST EPSIZE`, R19/R21/R25 are no
-longer truncated to their first field, and R12's header no longer swallows two
-body lines. **Twelve of the fifteen remaining refusals are one new cause**: the
-document prints two cross-reference sentences after every field table (`R<n>
-is shown in … Summary Table`, `Return to the Summary Table`), the table region
-now runs on into them, and they arrive as two more rows whose bit cell is
-prose. The other three are genuine: R4 and R9 print field lists that cover only
-part of the register, and R90's two fields claim the same eight bits.
-
-**What the tool does instead.** Nothing. No bit-field record is published, no
-CLI or MCP surface answers a bit-field question with data, and `dsa regs
---field` says out loud that no bit breakdown exists for the part
-(`derive/registers.no_bit_fields_message`) rather than returning an empty
-result that reads as "this register has no fields". `derive/bitfields.py` is
-imported by no shipping module; the gate asserts that too.
-
-**One of ticket 06's three reasons to park is now closed.** The reference map's
-own summary table is recovered (35 records on its page 2), so there *is* a
-summary record in that document to hang fields off. Recall is what parks it
-now, alone.
-
-**Also honest:** the reference document prints **no bit-position diagram at
-all**, so the geometric column-span reader — the shape the ticket names — is
-exercised only by the synthetic fixtures in `tests/unit/test_bitfields.py`. No
-real document in this repository gates it.
-
-**What would close it.** Ending the table region at the last row rather than at
-the trailing cross-reference prose (`extract/pdf_layout.py`), which would put
-twelve more registers in front of the validators, plus whatever the three
-genuine refusals then need. That is another cache-invalidating change to the
-layout floor, so it belongs to a deliberate re-extraction pass.
-

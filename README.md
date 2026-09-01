@@ -290,9 +290,13 @@ dsa regs --part LMX1204 --json
 Address / name / reset / access, each cited to the page that printed it.
 A column the map never printed stays empty and says so — a blank reset read
 as `0x00` is what breaks a bring-up sequence. Per-register **bit fields** are
-not published (see `KNOWN_SHORTCOMINGS.md`); `--field` says that out loud
-rather than returning an empty result that reads as "this register has no
-fields".
+published for every register whose field-description table reads whole:
+`--field NCO` finds them by name, and each field carries its printed bit
+range, access and reset. A field set is accepted whole or refused whole, so a
+register whose table could not be read keeps an empty `fields` list and is
+named in the set's warnings — and a part that publishes no bit field at all
+has `--field` say so out loud rather than returning an empty result that
+reads as "this register has no fields".
 
 ### Get a design card (`dsa card`)
 

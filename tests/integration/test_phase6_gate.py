@@ -281,18 +281,26 @@ class TestGateThreeRegisters:
                 print(f"  {name:<16} {n:>4} registers   bit fields: {fields}")
         assert rows, "no part published a register map"
 
-    def test_bit_fields_are_parked_and_the_parking_is_written_down(self):
-        """Ticket 06's gate failed; the honest outcome is a recorded absence."""
+    def test_bit_fields_are_no_longer_parked(self):
+        """Ticket 06's gate is met, so the recorded absence is gone.
+
+        The measurement that decides it is
+        `tests/integration/test_phase6_bitfields.py`: all six of the sampled
+        registers in `LMX1204_registermap.pdf` read exactly right, 28 of its
+        35 registers publish a field set, and precision is 100%. What this
+        gate asserts is the consequence — the shortcoming entry is deleted,
+        and a part that publishes a bit field publishes a *whole* one.
+        """
         shortcomings = (REPO / "KNOWN_SHORTCOMINGS.md").read_text(encoding="utf-8")
-        assert "Register bit fields: not extracted" in shortcomings
+        assert "Register bit fields: not extracted" not in shortcomings
         for part_dir in sorted(p for p in PARTS.iterdir() if p.is_dir()):
             if read_manifest(part_dir) is None:
                 continue
             registers = load_part_registers(part_dir, part_dir.name)
-            assert not registers.has_bit_fields, (
-                f"{part_dir.name} publishes bit fields — ticket 06 is unparked, so "
-                "the KNOWN_SHORTCOMINGS entry and this assertion must go"
-            )
+            for record in registers.registers:
+                for field in record.fields:
+                    assert field.bits.verbatim, (part_dir.name, record.name)
+                    assert field.page is not None, (part_dir.name, record.name)
 
 
 # --- 4. cards -----------------------------------------------------------------

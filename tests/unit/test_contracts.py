@@ -288,14 +288,15 @@ def test_pdf_layout_output_version_moves_only_on_a_deliberate_re_extraction():
     """It gates the whole extraction cache, so it changes on purpose or not at all.
 
     Highlighting derives geometry on demand precisely so this stays put.
-    `tables-09` is phase 6.5's one permitted bump (wave 2, ticket 09): wave 1
-    changed what the layout engine reads, and the corpus was re-extracted and
-    rebuilt in the same change. Anything that moves it again owns the same
-    rebuild.
+    `tables-09` was phase 6.5's one permitted bump (wave 2, ticket 09).
+    `tables-10` is the bit-field region fix: `_trim_outdented_tail` and the
+    released bare-page-number cell both change what a table region contains,
+    so every cached extraction of a PDF is stale and owns a re-extraction.
+    Anything that moves it again owns the same rebuild.
     """
     from datasheet_analyzer.extract.pdf_layout import PdfLayoutBackend
 
-    assert PdfLayoutBackend.output_version == "tables-09"
+    assert PdfLayoutBackend.output_version == "tables-10"
 
 
 # --- applicability ------------------------------------------------------------

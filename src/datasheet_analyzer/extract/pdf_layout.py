@@ -278,18 +278,25 @@ def _threshold(n_pages: int) -> int:
     return max(_MIN_PAGES, math.ceil(_MIN_PAGES_FRAC * n_pages))
 
 
+def _by_shape(text: str) -> bool:
+    """Page machinery recognizable from its text alone, wherever it prints."""
+    return bool(_N_OF_M.match(text) or _PAGE_OF.match(text) or _REV_BARE.match(text))
+
+
+def _bare_page_number(text: str, page_index: int, x: float, y: float) -> bool:
+    """A bare digit equal to the page's own number, in a page-number gutter.
+
+    Unlike `_by_shape` this is a *coincidence* rule: the digit is machinery
+    only because of where it prints (x < 80 pt or the footer band). The
+    LM741 prints values that equal the page index in its tables (measured:
+    p5's '5' max column), and a mid-body digit is data, never furniture.
+    """
+    return text.isdigit() and int(text) == page_index and (x < 80.0 or y > 700.0)
+
+
 def _matches_pattern(text: str, page_index: int, x: float = 0.0, y: float = 0.0) -> bool:
-    """Universal page-machinery patterns, plus the bare page number when it
-    prints in the page's own number gutters (x < 80 pt or the footer band)
-    — the LM741 prints values that equal the page index in its tables
-    (measured: p5's '5' max column), and a mid-body digit is data, never
-    furniture."""
-    return bool(
-        _N_OF_M.match(text)
-        or _PAGE_OF.match(text)
-        or _REV_BARE.match(text)
-        or (text.isdigit() and int(text) == page_index and (x < 80.0 or y > 700.0))
-    )
+    """Universal page-machinery patterns, plus the bare page number."""
+    return _by_shape(text) or _bare_page_number(text, page_index, x, y)
 
 
 def _furniture_sets(pages: list[_Page]) -> list[set[int]]:
@@ -367,9 +374,25 @@ def _release_body_cells(pages: list[_Page], furniture: list[set[int]]) -> None:
     content. The header leaked into the corpus. Being under a caption is the
     only evidence this function now accepts.
 
-    A line matching a universal page-machinery pattern is never released: a
-    bare page number, `N of M` and a revision bar are machinery by their
-    shape, wherever they print.
+    `N of M`, `Page N of M` and a revision bar are machinery **by their
+    shape**, wherever they print, and are never released.
+
+    A bare digit equal to the page's own number is different: it is
+    machinery only by *coincidence of position*, and the coincidence is
+    common in a register map. Measured on `LMX1204_registermap.pdf`: the
+    `Bit` column of a field table prints its cells at x = 71.6-79.4 pt,
+    inside the < 80 pt page-number gutter, so bit 6 on page 6 and bit 10 on
+    page 10 were flagged as page numbers, refused release, and cut their
+    regions off mid-table — R4 lost bits 6:0 and R9 lost bits 10:0, and both
+    were then refused for incomplete bit coverage.
+
+    A page number is printed **alone on its baseline**; a bit cell shares
+    one with the rest of its row. So inside the body span and below the
+    first caption, a bare page number that shares a baseline with a line
+    this function has not flagged is released as the cell it is. That is
+    narrower than the band-share rule that leaked: it applies only to a bare
+    digit equal to the page number, and `www.ti.com` beside a generated date
+    is not one.
     """
     for page, marked in zip(pages, furniture):
         if not marked:
@@ -384,11 +407,20 @@ def _release_body_cells(pages: list[_Page], furniture: list[set[int]]) -> None:
             continue
         first, last = _body_span(rows, marked)
         for position in range(max(below_caption + 1, first), last + 1):
-            for i in rows[position]:
+            row = rows[position]
+            # measured before anything in this row is released, so the
+            # answer does not depend on the order the row is walked in
+            shares_a_baseline_with_content = any(i not in marked for i in row)
+            for i in row:
                 if i not in marked:
                     continue
                 line = page.lines[i]
-                if _matches_pattern(line.text, page.index, line.x, line.y):
+                if _by_shape(line.text):
+                    continue
+                if (
+                    _bare_page_number(line.text, page.index, line.x, line.y)
+                    and not shares_a_baseline_with_content
+                ):
                     continue
                 marked.discard(i)
 
@@ -1438,6 +1470,44 @@ def _advice_share(lefts: list[float], advice: list[float]) -> float:
     return hits / len(advice)
 
 
+def _trim_outdented_tail(rows: list[_Row]) -> list[_Row]:
+    """Drop a table's trailing rows that out-dent left of its own body.
+
+    A table's columns start where its body rows start. A row printed
+    *below the last row that spans columns* and starting **left of every
+    column the body uses** is not a row of that table: it is the text the
+    page resumes with, out-dented back to the body margin the table was
+    indented from.
+
+    Measured on `LMX1204_registermap.pdf`, which is why this exists: every
+    one of its 35 field tables is followed by a section heading and two
+    cross-reference sentences (`R2 is shown in Table 1-4.`, `Return to the
+    Summary Table.`) before the next `Table N.` caption ends the region.
+    The table's own cells start at x >= 71.6 pt; all three of those lines
+    start at 56.7 pt. They arrived as two more grid rows whose bit cell was
+    prose, *and* — worse — their starts opened a leftmost column band no
+    body row uses, which is what pushed the reconstruction onto the rescue
+    ladder and gave the block two phantom columns.
+
+    The rule is deliberately a **tail** rule and can never shorten a grid:
+    it looks only after the last multi-cluster row, so a left-margin
+    sub-header printed *inside* a table (rows follow it) is untouched. The
+    out-dent is measured against `_HDR_ANCHOR_TAU`, the same tolerance that
+    decides whether two starts are one column anywhere else in this module,
+    so "left of every column" means a column the table does not have rather
+    than a tuned number of points.
+    """
+    grid = [i for i, row in enumerate(rows) if row.spans and _cluster_count(row) > 1]
+    if not grid:
+        return rows
+    body_left = min(min(s.x0 for s in rows[i].spans) for i in grid)
+    for position in range(grid[-1] + 1, len(rows)):
+        row = rows[position]
+        if row.spans and min(s.x0 for s in row.spans) < body_left - _HDR_ANCHOR_TAU:
+            return rows[:position]
+    return rows
+
+
 def _hypothesis(
     region: list[_Line], page: _Page
 ) -> tuple[list[float] | None, str | None, float, list[_Row], str]:
@@ -1481,6 +1551,7 @@ def _hypothesis(
     for row in fine:
         if not _is_footnote_row(row):
             kept.append(row)
+    kept = _trim_outdented_tail(kept)
     if not kept:
         return None, "no rows", 0.0, [], ""
 
@@ -2126,7 +2197,7 @@ class PdfLayoutBackend:
     # (`TableBlock.reconstruction`), which the per-record confidence grade
     # reads. A cached raw from tables-07 has no such field, so it is stale by
     # the embedded-version rule and re-extracts once.
-    output_version = "tables-09"
+    output_version = "tables-10"
 
     def is_available(self) -> tuple[bool, str]:
         try:
