@@ -500,7 +500,9 @@ DERIVED_VALUE_SCHEMA = {
         "unit_si",
         "value_kind",
         "source",
+        "sources",
         "page",
+        "section",
         "derivation",
         "confidence",
         "null_reason",
@@ -512,7 +514,15 @@ DERIVED_VALUE_SCHEMA = {
         "unit_si": _STR,
         "value_kind": _STR,
         "source": _STR,
+        # The other records a value computed from more than one rests on.
+        # `source` stays the primary; an invariant-8 walk resolves all of
+        # them, so a consumer that only read `source` would trace half a
+        # margin. Empty on every single-source value, which is most of them.
+        "sources": {"type": "array", "items": _STR},
         "page": _INT_OR_NULL,
+        # The printed section number the source record sits in, so a value
+        # cites as `§4.1, p.4` without the reader re-opening the record.
+        "section": _STR,
         "derivation": _STR,
         "confidence": _CONFIDENCE,
         # Why a field is empty, which invariant 8 requires of every unfilled

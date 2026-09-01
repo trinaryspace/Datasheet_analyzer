@@ -299,40 +299,6 @@ class SourceDocument(BaseModel):
     vendor: str = "ti"
     vendor_evidence: str = ""
     registered_at: datetime = Field(default_factory=_utcnow)
-    # --- side-by-side revisions -------------------------------------------
-    #: The label a human gave *this* copy of the document, so two revisions of
-    #: one part can live under one part directory. It is a name, not a
-    #: reading: `revision` above is what the document itself printed, and this
-    #: is what the person who filed it called it. Empty for every document
-    #: filed without one, which is why it is additive — a published directory
-    #: name only gains its `-rev<label>` suffix when a label exists, so no
-    #: existing corpus moves.
-    revision_label: str = ""
-    # --- revision awareness ------------------------------------------------
-    # Additive, and written only by an explicit, opt-in *network* command. A
-    # build never fills these in — that is what keeps a build offline by
-    # construction — so a freshly built corpus reads `UNKNOWN` until somebody
-    # checks, and says so everywhere it is surfaced.
-    #: Three-state freshness of *this* document. See `Staleness`.
-    staleness: Staleness = Staleness.UNKNOWN
-    #: When the last check actually completed. `None` until one does — never
-    #: back-filled with the build date or a plausible one.
-    revision_checked_at: datetime | None = None
-    #: The revision identifier the upstream document reported at that check.
-    #: `""` when no check has run, or when upstream printed none we could read.
-    upstream_revision: str = ""
-    #: sha256 of the upstream bytes at that check. Recorded because it is a
-    #: fact, *not* because it decides staleness: see `content_drift`.
-    upstream_sha256: str = ""
-    #: Upstream's bytes differ while the revision identifier does **not**. A
-    #: regenerated document, not a revised one — reported distinctly so the
-    #: wording never implies a new revision exists.
-    content_drift: bool = False
-    #: Why the state is what it is when that needs saying: the reason a check
-    #: could not run (no registry URL, network unavailable), or the drift
-    #: note. Read back verbatim by every surface rather than re-derived per
-    #: front end.
-    revision_check_note: str = ""
 
 
 # `Applicability.family` wildcards: a trailing (or embedded) run of `x`/`X`
