@@ -82,6 +82,34 @@ class ParseConfidence(str, Enum):
     NONE = "none"
 
 
+class Staleness(str, Enum):
+    """Whether a corpus's document is still the current upstream revision.
+
+    Three states, and the default is the one that protects the designer:
+
+    - `CURRENT` — a check ran and the upstream revision identifier matched;
+    - `STALE` — a check ran and upstream reports a **different** revision;
+    - `UNKNOWN` — nobody has checked, or the check could not complete.
+
+    `UNKNOWN` is the honest default for every corpus that has never run a
+    revision check, and it is deliberately *not* `CURRENT`: reading "no news"
+    as "still current" would let a superseded datasheet answer a design
+    question with full confidence and a valid page cite.
+
+    A **hash** difference alone never moves this field. A TI datasheet's bytes
+    change on every download because the package-materials addendum is
+    regenerated with the current date, while the revision identifier stays
+    put; a design that read that as staleness would raise a false alarm on
+    every TI part every day and train the user to ignore the one warning here
+    that protects silicon. Bytes that moved under an unchanged revision are
+    recorded as `SourceDocument.content_drift` instead.
+    """
+
+    CURRENT = "current"
+    STALE = "stale"
+    UNKNOWN = "unknown"
+
+
 # Shape of a parsed quantity (`SpecRecord.value_kind`, `DerivedValue.value_kind`).
 # `structure/quantities.py` (phase 6, ticket 02) owns the parse; these names are
 # the frozen vocabulary it emits, so a consumer never string-matches a literal.
@@ -226,6 +254,24 @@ def bit_field_id(register_record_id_: str, field_index: int) -> str:
     return f"{register_record_id_}.f{field_index}"
 
 
+#: Prefix of an errata item's id. Not an *artifact* record id like the four
+#: above: an errata item is a verbatim item of an errata document, numbered
+#: within its part, and nothing cites one as a derived value's `source`.
+ERRATA_ID_PREFIX = "err"
+
+
+def errata_item_id(ordinal: int) -> str:
+    """Id of the `ordinal`-th (0-based) errata item of a *part*: `err_1`.
+
+    An ordinal rather than a coordinate, because an errata item has none: it
+    is a run of printed lines a segmentation rule drew a line around, not a
+    row of a table with an index. The sequence runs over the part, not over
+    one document, so a part holding two errata documents numbers straight
+    through them and no two items share an id.
+    """
+    return record_id(ERRATA_ID_PREFIX, ordinal + 1)
+
+
 def source_ref(artifact: str, record_id_: str) -> str:
     """The `source` string a derived value carries: `specs.json#rec_s4.5-t2-r13`.
 
@@ -253,6 +299,40 @@ class SourceDocument(BaseModel):
     vendor: str = "ti"
     vendor_evidence: str = ""
     registered_at: datetime = Field(default_factory=_utcnow)
+    # --- side-by-side revisions -------------------------------------------
+    #: The label a human gave *this* copy of the document, so two revisions of
+    #: one part can live under one part directory. It is a name, not a
+    #: reading: `revision` above is what the document itself printed, and this
+    #: is what the person who filed it called it. Empty for every document
+    #: filed without one, which is why it is additive — a published directory
+    #: name only gains its `-rev<label>` suffix when a label exists, so no
+    #: existing corpus moves.
+    revision_label: str = ""
+    # --- revision awareness ------------------------------------------------
+    # Additive, and written only by an explicit, opt-in *network* command. A
+    # build never fills these in — that is what keeps a build offline by
+    # construction — so a freshly built corpus reads `UNKNOWN` until somebody
+    # checks, and says so everywhere it is surfaced.
+    #: Three-state freshness of *this* document. See `Staleness`.
+    staleness: Staleness = Staleness.UNKNOWN
+    #: When the last check actually completed. `None` until one does — never
+    #: back-filled with the build date or a plausible one.
+    revision_checked_at: datetime | None = None
+    #: The revision identifier the upstream document reported at that check.
+    #: `""` when no check has run, or when upstream printed none we could read.
+    upstream_revision: str = ""
+    #: sha256 of the upstream bytes at that check. Recorded because it is a
+    #: fact, *not* because it decides staleness: see `content_drift`.
+    upstream_sha256: str = ""
+    #: Upstream's bytes differ while the revision identifier does **not**. A
+    #: regenerated document, not a revised one — reported distinctly so the
+    #: wording never implies a new revision exists.
+    content_drift: bool = False
+    #: Why the state is what it is when that needs saying: the reason a check
+    #: could not run (no registry URL, network unavailable), or the drift
+    #: note. Read back verbatim by every surface rather than re-derived per
+    #: front end.
+    revision_check_note: str = ""
 
 
 # `Applicability.family` wildcards: a trailing (or embedded) run of `x`/`X`
@@ -1003,6 +1083,28 @@ class DerivedValue(BaseModel):
     derivation: str = ""  # the named rule: `verbatim_copy`, `abs_max_margin`, …
     confidence: Confidence = Confidence.UNKNOWN
     null_reason: str = ""  # why an unfilled field is unfilled; never blank when null
+    #: The *other* records that entered a value computed from more than one.
+    #: A margin is one number over two rows on two pages, and citing one of
+    #: them and dropping the other would make the value untraceable by
+    #: exactly half. `source` stays the primary record; every entry here is a
+    #: reference of the same form. Additive: `[]` on every single-source
+    #: value, which is almost all of them.
+    sources: list[str] = Field(default_factory=list)
+    #: The printed section number the source record sits in, so a derived
+    #: artifact can cite it as `§4.1, p.4` without re-reading the record. Two
+    #: values of one row can come from sections pages apart, which is why the
+    #: citation belongs to the value and not to the row that gathered it.
+    section: str = ""
+
+    @property
+    def refs(self) -> list[str]:
+        """Every record reference this value rests on, primary first.
+
+        What an invariant-8 check must walk: a value is traceable only if
+        *all* of its references resolve, not just the one that happened to be
+        first.
+        """
+        return [ref for ref in [self.source, *self.sources] if ref]
 
     @property
     def filled(self) -> bool:
@@ -1407,3 +1509,706 @@ class GoldenQuestion(BaseModel):
     ask_query: dict[str, str] | None = None  # Phase 5 answer pack ({route})
     search_query: dict[str, str] | None = None  # Phase 5 full text ({query, rank})
     notes: str = ""
+
+
+# ---------------------------------------------------------------------------
+# Phase 7 — reach and trust
+#
+# Everything below is additive: new derived artifacts (a revision diff, a
+# family index, an errata link set, an audit scorecard) and the generated-
+# golden proposal types. None of them is written by a stage that already
+# exists, so a corpus published before them loads unchanged and no schema
+# version above moves.
+# ---------------------------------------------------------------------------
+
+
+class AuditGrade(str, Enum):
+    """The letter one metric — or one whole corpus — earns.
+
+    Five grades, because a scorecard exists to be *acted on*: `A` needs no
+    action, `F` means do not answer from this corpus without opening the PDF,
+    and the three in between are the gradations a designer actually uses when
+    deciding how much to double-check. What each letter *means* for each
+    metric is not here — it is `registry/audit_rubric.yaml`, checked-in data,
+    so a threshold argument is a YAML edit rather than a code change.
+
+    **There is no grade for "could not measure".** A metric the corpus cannot
+    answer carries `None`, is reported as `n/a`, and is excluded from the
+    overall average — never scored `F` (which would defame a corpus for a
+    statistic nobody recorded) and never scored `A` (which would flatter one).
+    """
+
+    A = "A"
+    B = "B"
+    C = "C"
+    D = "D"
+    F = "F"
+
+
+class MetricKind(str, Enum):
+    """What shape of reading one audit metric produces.
+
+    The kind decides how the rubric grades it, which is why it travels on the
+    metric rather than being inferred from the value: a `RATIO` is graded
+    against ordered thresholds, a `BOOLEAN` and a `STATE` against a
+    named-value map. Nothing here interpolates between them.
+    """
+
+    RATIO = "ratio"
+    BOOLEAN = "boolean"
+    STATE = "state"
+
+
+class AuditMetric(BaseModel):
+    """One graded reading about one corpus.
+
+    It is a derived value in the sense of invariant 8 and carries the same two
+    fields every derived value does: `source` (the artifact it was read from)
+    and `derivation` (the named rule that produced it). No model call appears
+    anywhere in that path — every number here is a count of records the corpus
+    already published, divided by another.
+
+    **`available: false` is a first-class outcome**, and the one thing this
+    model exists to keep honest. `value` is then `None`, `grade` is `None`,
+    and `unavailable_reason` says which fact the corpus does not carry. A
+    metric in that state is excluded from the overall grade; it is never read
+    as `0` (which would defame a good corpus for a statistic nobody recorded)
+    and never as full marks (which would flatter a bad one).
+    """
+
+    key: str
+    label: str
+    kind: MetricKind = MetricKind.RATIO
+    #: The reading, `0.0`–`1.0` for a ratio, `1.0`/`0.0` for a boolean, `None`
+    #: for a state metric and for anything unavailable.
+    value: float | None = None
+    #: The reading of a `STATE` metric (`current` / `stale` / `unknown`), and
+    #: the word a boolean reads as. `""` for a ratio.
+    state: str = ""
+    #: The counts a ratio was computed from, so a reader can see 61% as 38/62
+    #: and tell a small denominator from a large one. `None` when the metric
+    #: is not a quotient.
+    numerator: int | None = None
+    denominator: int | None = None
+    grade: AuditGrade | None = None
+    weight: float = 1.0
+    available: bool = True
+    unavailable_reason: str = ""
+    #: Anything a reader needs beside the number — the full confidence mix,
+    #: the rejection reasons, the golden set that produced a pass rate.
+    detail: str = ""
+    source: str = ""
+    derivation: str = ""
+
+
+class AuditScorecard(BaseModel):
+    """Every metric of one corpus, graded, plus the overall letter.
+
+    `grade` is `None` when too few metrics could be computed for an average to
+    mean anything (`min_graded_metrics` in the rubric) — an ungraded corpus
+    says so rather than reporting a letter earned by three readings out of
+    thirteen.
+
+    `headline` is the sentence this artifact exists to produce: the one line
+    an agent can put in front of an answer to downgrade its own confidence
+    language before it speaks.
+    """
+
+    schema_version: str = ""
+    rubric_version: str = ""
+    part: str = ""
+    grade: AuditGrade | None = None
+    #: The weighted mean of the graded metrics' grade points, on the rubric's
+    #: own scale. `None` whenever `grade` is.
+    score: float | None = None
+    metrics: list[AuditMetric] = Field(default_factory=list)
+    n_graded: int = 0
+    n_unavailable: int = 0
+    #: The convention this scorecard applied to metrics it could not compute,
+    #: stated in the output rather than assumed by the reader.
+    unavailable_policy: str = ""
+    #: The staleness banner, so the scorecard is one of the surfaces that
+    #: cannot disagree about a corpus's freshness.
+    staleness: str = ""
+    banner: str = ""
+    headline: str = ""
+    #: What this corpus needs doing to it — a rebuild, a revision check, a
+    #: golden set. Each one names the command.
+    notes: list[str] = Field(default_factory=list)
+
+
+class ComparisonCell(BaseModel):
+    """What one part printed for one aligned parameter.
+
+    One column of a comparison row. It quotes that part's row and nothing
+    else: `values` are the printed cells in their provenance envelopes (`min`,
+    `typ`, `max`, `value` for a spec comparison; whatever a design card
+    publishes for a card comparison), each carrying its own `source`, `page`
+    and rule.
+
+    - `label` / `detail` are the row's identity **as that part printed it**,
+      which is the whole point of a cross-part row: two parts name one
+      parameter differently and the comparison must show both names rather
+      than pick one.
+    - `matched_via` is the rung this part's record answered the query on
+      (`symbol`, `alias:junction temperature`, …). A comparison that aligned
+      two rows must be able to say how each of them was found, or a
+      mis-alignment is invisible.
+    - `citation` is the rendered citation of the record this cell quotes.
+    - `delta` is this cell's value **minus the reference part's**, in the SI
+      base both parsed to, and exists only where both sides parsed the same
+      printed column. It is a computed value, so it carries no `verbatim`: no
+      page printed a difference between two datasheets.
+    """
+
+    part_number: str = ""
+    label: str = ""
+    detail: str = ""
+    section: str = ""
+    section_title: str = ""
+    matched_via: str = ""
+    citation: str = ""
+    values: dict[str, DerivedValue] = Field(default_factory=dict)
+    delta: DerivedValue | None = None
+
+
+class ComparisonRow(BaseModel):
+    """One parameter, across the parts being compared.
+
+    - `key` is what the row aligned **on** — the alias-resolved symbol where
+      the lexicon claims the parameter, otherwise the printed identity the
+      parts share — and `aligned_on` says which of those it was, so an
+      alignment can never be silently wrong: a reader can check the rule that
+      produced it.
+    - `role` is the printed column the deltas were computed on (`max`), `""`
+      when no two cells stated a comparable number in the same column.
+    - `reference` is the part every delta on this row is measured against —
+      the first part named that printed the parameter.
+    - `missing_from` lists the compared parts that publish **no** record for
+      this parameter. It is a finding, not a gap to hide: during part
+      selection an absent parameter is information.
+    - `ambiguous_in` lists the parts that publish **several** rows here which
+      no shared printed name could pair, so they hold no column of this row.
+      It is deliberately not the same list as `missing_from`: one part said
+      nothing, the other said several things at once, and only the first is a
+      fact about the device.
+    """
+
+    key: str = ""
+    aligned_on: str = ""
+    group: str = ""
+    role: str = ""
+    reference: str = ""
+    cells: list[ComparisonCell] = Field(default_factory=list)
+    missing_from: list[str] = Field(default_factory=list)
+    ambiguous_in: list[str] = Field(default_factory=list)
+    flags: list[str] = Field(default_factory=list)
+    note: str = ""
+    citation: str = ""
+
+    @property
+    def n_deltas(self) -> int:
+        return sum(1 for cell in self.cells if cell.delta is not None)
+
+
+class PartComparison(BaseModel):
+    """The part-selection question, answered once.
+
+    A derived artifact under ADR 0005 like a design card, and derived from the
+    very same records: every value is a quoted cell in its envelope or a
+    number computed from two of them by a named rule, and nothing here is
+    written that the parts' own corpora do not already hold.
+
+    Unlike a card it is **never written to disk** — it exists for the length
+    of one question — so it carries `card_version` as the derivation-rule
+    version it was produced under rather than as a cache key.
+
+    - `rows` may be empty, and an empty comparison is a valid one:
+      `empty_reason` then states what was looked for in which parts.
+    - `notes` carries the population sentences invariant 8 requires of any
+      consumer that compares, and `unparsed` one line per pair it could not
+      compare — including every value of an ambiguous alignment it refused,
+      quoted verbatim, so nothing is ever dropped from a decision in silence.
+    """
+
+    schema_version: str = ""
+    card_version: str = ""
+    kind: str = ""  # "symbol" | "name" | "card"
+    query: str = ""
+    parts: list[str] = Field(default_factory=list)
+    reference: str = ""
+    rows: list[ComparisonRow] = Field(default_factory=list)
+    notes: list[str] = Field(default_factory=list)
+    unparsed: list[str] = Field(default_factory=list)
+    empty_reason: str = ""
+
+    @property
+    def n_rows(self) -> int:
+        return len(self.rows)
+
+    @property
+    def n_deltas(self) -> int:
+        return sum(row.n_deltas for row in self.rows)
+
+
+class RevisionChange(BaseModel):
+    """One difference between two revisions of one part.
+
+    A derived artifact row under ADR 0005: `before` and `after` are cells
+    copied verbatim out of the two revisions' own published records, each
+    carrying the record it came from and the page it was printed on, and
+    `delta` is the one number this artifact adds — a documented pure function
+    of those two cells, present **only** where both parsed into the same SI
+    base.
+
+    A change that carries no `delta` is not a weaker change; it is one this
+    tool refuses to score. It is flagged `review-by-hand` and quoted verbatim,
+    because a direction guessed at between two printed strings ("Rev. B is
+    better") is the one thing a revision review must never be handed.
+
+    `kind` says which artifact moved (`spec` | `section` | `pin` | `register`
+    | `field`), `change` says how (`added` | `removed` | `changed` |
+    `retitled` | `page-shifted` | `renamed` | `reset-changed`), and `field`
+    names the printed column that moved, so `changed` is never a claim a
+    reader has to open two documents to interpret.
+    """
+
+    kind: str = ""
+    change: str = ""
+    key: str = ""
+    label: str = ""
+    field: str = ""
+    aligned_on: str = ""
+    before: DerivedValue | None = None
+    after: DerivedValue | None = None
+    delta: DerivedValue | None = None
+    #: The one-line reading, composed only from the two verbatim cells and the
+    #: delta where one exists ("TJ max 105 °C -> 125 °C (+20 °C)").
+    summary: str = ""
+    flags: list[str] = Field(default_factory=list)
+    note: str = ""
+
+
+class RevisionDiff(BaseModel):
+    """What changed between two revisions of one part — `REVISION_DIFF.md`.
+
+    Derived like a comparison and governed by the same ADR: it owns no printed
+    value, quotes both revisions' records with their pages, and adds exactly
+    one number per row where the numeric layer read both sides.
+
+    - `changes` may be empty, and an empty diff is the **correct** answer for
+      two identical revisions — `identical` says so explicitly rather than
+      leaving a reader to infer it from a missing table.
+    - `review_by_hand` is every change this tool refused to score, quoted
+      verbatim, one line each. It is the artifact's honesty half: a revision
+      review that silently dropped what it could not measure would be worse
+      than no review at all.
+    - `notes` carries the population sentences invariant 8 requires of a
+      consumer that compares, and `unparsed` the alignments it refused (a
+      parameter whose rows could not be paired without a guess), with their
+      printed values.
+    """
+
+    schema_version: str = ""
+    card_version: str = ""
+    part_number: str = ""
+    #: How the caller named each side, and what each one actually is on disk.
+    before_label: str = ""
+    before_doc: str = ""
+    before_revision: str = ""
+    after_label: str = ""
+    after_doc: str = ""
+    after_revision: str = ""
+    changes: list[RevisionChange] = Field(default_factory=list)
+    notes: list[str] = Field(default_factory=list)
+    review_by_hand: list[str] = Field(default_factory=list)
+    unparsed: list[str] = Field(default_factory=list)
+    identical: bool = False
+    empty_reason: str = ""
+
+    @property
+    def n_changes(self) -> int:
+        return len(self.changes)
+
+    @property
+    def n_deltas(self) -> int:
+        return sum(1 for change in self.changes if change.delta is not None)
+
+    def of_kind(self, kind: str) -> list[RevisionChange]:
+        """Every change of one artifact kind, in the order they were derived."""
+        return [change for change in self.changes if change.kind == kind]
+
+
+class FamilySection(BaseModel):
+    """One section of a family: shared once, or divergent per member.
+
+    The token win a family index exists for is exactly this distinction, so it
+    is a recorded fact per section rather than a rendering decision:
+
+    - `state` is `shared` only when **every** member prints this section under
+      the same printed title and its body text is byte-identical across all of
+      them (the provenance line excepted, which names each member's own
+      revision and pages and therefore always differs). One differing value
+      makes the section `divergent`.
+    - `divergent` means every member prints it and something in it moved;
+      `partial` means some member does not print it at all, which is a finding
+      about the series and never folded into `divergent`.
+    - `aligned_on` says how the members' sections were matched — the printed
+      section number, else the printed title — because a family whose members
+      renumber their back matter must be readable as such rather than as ten
+      sections appearing and ten disappearing.
+    - `files` / `pages` / `titles` are per member and are what a reader
+      follows **only where the members diverge**: a shared section is read
+      once, from the reference member, and the family index says so instead of
+      linking N copies.
+    - `tokens` is the size of the body the comparison was made on, measured
+      with the project's one token counter — the number that makes "listed
+      once" a measurement rather than a claim.
+    """
+
+    number: str = ""
+    title: str = ""
+    state: str = ""  # "shared" | "divergent" | "partial"
+    aligned_on: str = ""
+    members: list[str] = Field(default_factory=list)
+    missing_from: list[str] = Field(default_factory=list)
+    files: dict[str, str] = Field(default_factory=dict)
+    pages: dict[str, str] = Field(default_factory=dict)
+    titles: dict[str, str] = Field(default_factory=dict)
+    #: Why this section is not shared, in words. Empty for a shared section.
+    reason: str = ""
+    tokens: int = 0
+
+
+class FamilyIndex(BaseModel):
+    """A series answered once — `families/<NAME>/FAMILY_INDEX.md`.
+
+    A derived artifact under ADR 0005 in exactly the sense a design card, a
+    cross-part comparison and a revision diff are: it owns no printed value,
+    it quotes records its member corpora already publish, and the only numbers
+    it adds are the per-member deltas — each a documented pure function of two
+    quoted cells, each citing both operands.
+
+    - `members` is the **declared** membership, in the order
+      `registry/families.yaml` lists it; `reference` is the first of them,
+      which every delta is signed against. Nothing here is inferred from a
+      part number: a family is confirmed by a human or it does not exist.
+    - `sections` carries every section of the series once, each saying whether
+      it is shared or divergent (`FamilySection`).
+    - `deltas` / `pin_deltas` / `register_deltas` are the rows that **differ**,
+      as `ComparisonRow`s — the same row type a cross-part comparison
+      publishes, because a family delta is a cross-part comparison restricted
+      to what moved. Rows that align and agree are counted
+      (`n_specs_identical`) and not listed: listing them is the cost the
+      family index exists to avoid.
+    - `notes` carries the population sentences invariant 8 requires of a
+      consumer that compares, and `unparsed` one line per alignment it
+      refused, with the printed values, so nothing leaves a decision in
+      silence.
+    - `empty_reason` states what was looked for when there is nothing to show;
+      an empty family index is a valid one.
+    """
+
+    schema_version: str = ""
+    card_version: str = ""
+    name: str = ""
+    title: str = ""
+    members: list[str] = Field(default_factory=list)
+    reference: str = ""
+    sections: list[FamilySection] = Field(default_factory=list)
+    deltas: list[ComparisonRow] = Field(default_factory=list)
+    pin_deltas: list[ComparisonRow] = Field(default_factory=list)
+    register_deltas: list[ComparisonRow] = Field(default_factory=list)
+    #: Spec rows that aligned across at least two members, and how many of
+    #: those printed the same values everywhere. The second number is the
+    #: measured half of "list the shared once".
+    n_specs_aligned: int = 0
+    n_specs_identical: int = 0
+    notes: list[str] = Field(default_factory=list)
+    unparsed: list[str] = Field(default_factory=list)
+    empty_reason: str = ""
+
+    @property
+    def shared_sections(self) -> list[FamilySection]:
+        return [s for s in self.sections if s.state == "shared"]
+
+    @property
+    def divergent_sections(self) -> list[FamilySection]:
+        return [s for s in self.sections if s.state != "shared"]
+
+    @property
+    def n_deltas(self) -> int:
+        return len(self.deltas) + len(self.pin_deltas) + len(self.register_deltas)
+
+
+class ErrataTargetKind(str, Enum):
+    """What one errata link points at.
+
+    Exactly the four things a corpus publishes that an erratum can invalidate:
+    a section of prose, a parametric row, a pin, or a register. A figure is
+    deliberately absent — an erratum that corrects a curve corrects the
+    section it was printed in, and pointing at an image nobody can re-read
+    would be a link with nothing behind it.
+    """
+
+    SECTION = "section"
+    SPEC = "spec"
+    PIN = "pin"
+    REGISTER = "register"
+
+
+class ErrataTarget(BaseModel):
+    """One thing an errata item was matched to, and what matched it.
+
+    A derived artifact row under ADR 0005, and the strictest kind: it owns no
+    printed value at all. `id` is the reference that walks back to the thing
+    itself — a `models.source_ref` for a record
+    (`docs/<doc>/specs.json#rec_s4.5-t2-r13`), the corpus-relative section
+    file for a section — and `matched_on` is invariant 8's `derivation`
+    spelled for a reader: the identifier the errata item printed, and where it
+    was found.
+
+    `rule` is the named rule that produced the link (`section-number`,
+    `alias-phrase`, …) and `confidence` is that rule's grade from
+    `registry/errata.yaml`. Both are structural labels from a checked-in
+    lexicon (ADR 0005 (c)) — no model call is anywhere in this path, and no
+    similarity score exists to be tuned.
+    """
+
+    kind: ErrataTargetKind = ErrataTargetKind.SECTION
+    #: The reference that resolves back to the target.
+    id: str = ""
+    #: The document directory the target lives in (`datasheet-e0d1e5a2`).
+    doc: str = ""
+    #: A human-readable name for the target — the section's full title, the
+    #: record's symbol/name. Never what a caller resolves by; `id` is.
+    label: str = ""
+    #: The printed section number the target sits under, when it has one. It
+    #: is what the publisher banners on, so a spec-record target banners the
+    #: section that printed it.
+    section: str = ""
+    #: The printed page of the target itself, so a link can be cited without
+    #: re-opening the record it names.
+    page: int | None = None
+    confidence: Confidence = Confidence.UNKNOWN
+    #: The named rule (`registry/errata.yaml`'s `rules` keys).
+    rule: str = ""
+    #: What the match was made on, verbatim: `section number "6.1" (cued by
+    #: "Section")`, `alias phrase "junction temperature" -> TJ`.
+    matched_on: str = ""
+
+
+class ErrataItem(BaseModel):
+    """One item of an errata document, verbatim.
+
+    `text` is the printed lines of the item joined with newlines and is never
+    rewritten — an erratum is a legal statement about silicon, and a
+    summarized one is a different statement. `marker` is the printed line that
+    started it (`Advisory 3`), `derivation` the named rule that segmented it,
+    so a reader who disagrees with where an item starts can see which rule
+    drew the line.
+
+    `page` / `page_end` are the printed page range of the errata document
+    section the item was read from, so the item cites as `p.3` or `p.3-4`. A
+    paragraph-only extraction carries no per-line page, so a range is the
+    honest reading and a narrower one would be invented.
+    """
+
+    #: Stable id within the part's `errata_links.json` (`err_1`), minted by
+    #: `models.errata_item_id` in document-then-reading order.
+    id: str = ""
+    doc: str = ""  # the errata document's corpus directory name
+    doc_hash: str = ""
+    marker: str = ""
+    text: str = ""
+    section: str = ""  # the errata document's own section number
+    section_title: str = ""
+    page: int | None = None
+    page_end: int | None = None
+    derivation: str = ""
+
+    @property
+    def pages(self) -> str:
+        """`p.3`, `p.3-4`, or `p.?` when the errata document pinned no page."""
+        if self.page is None:
+            return "p.?"
+        if self.page_end is not None and self.page_end != self.page:
+            return f"p.{self.page}-{self.page_end}"
+        return f"p.{self.page}"
+
+
+class ErrataLink(BaseModel):
+    """One errata item and everything the linker could place it against.
+
+    `targets` may be **empty**, and an empty one is not a lesser link: it is
+    an item the matcher could not place, which is published under its own
+    heading rather than dropped. Losing an erratum is the worst failure this
+    artifact can produce, so the set holds linked and unlinked items in two
+    named lists and `ErrataLinkSet.n_items` is asserted against their sum.
+
+    `notes` carries anything the matcher had to say about its own limits — a
+    rule that matched more records than the lexicon's cap states how many it
+    found, because a truncated list that does not say it was truncated reads
+    as a complete one.
+    """
+
+    errata_item_id: str = ""
+    item: ErrataItem = Field(default_factory=ErrataItem)
+    targets: list[ErrataTarget] = Field(default_factory=list)
+    notes: list[str] = Field(default_factory=list)
+
+    @property
+    def text(self) -> str:
+        """The item's verbatim text."""
+        return self.item.text
+
+    @property
+    def page(self) -> int | None:
+        return self.item.page
+
+    def targets_of_kind(self, kind: ErrataTargetKind) -> list[ErrataTarget]:
+        return [t for t in self.targets if t.kind == kind]
+
+
+class ErrataLinkSet(BaseModel):
+    """A part's `errata_links.json` — every errata item, placed or not.
+
+    Written only for a part that actually holds an errata document. A part
+    with no errata document gets **no file**, because an empty one would read
+    as "no known issues", which is a claim this corpus has no evidence for.
+
+    A part that holds an errata document the segmenter could read nothing out
+    of still gets a file, with `empty_reason` saying so: "there is an errata
+    document and it yielded no items" and "there is no errata document" are
+    different findings and a designer must be able to tell them apart.
+    """
+
+    schema_version: str = ""
+    part_number: str = ""
+    #: The errata documents this set was built from, by corpus directory name.
+    errata_docs: list[str] = Field(default_factory=list)
+    #: Items with at least one target.
+    links: list[ErrataLink] = Field(default_factory=list)
+    #: Items with none — published, never dropped.
+    unlinked: list[ErrataLink] = Field(default_factory=list)
+    notes: list[str] = Field(default_factory=list)
+    empty_reason: str = ""
+
+    @property
+    def n_items(self) -> int:
+        return len(self.links) + len(self.unlinked)
+
+    @property
+    def n_targets(self) -> int:
+        return sum(len(link.targets) for link in self.links)
+
+    def all_items(self) -> list[ErrataLink]:
+        """Every item, linked first then unlinked — nothing filtered out."""
+        return list(self.links) + list(self.unlinked)
+
+
+class GoldenCandidate(BaseModel):
+    """One *generated* golden question — a proposal, inert until confirmed.
+
+    `GoldenQuestion` above is the objective function (invariant 5); this is
+    the thing that is **not** it yet. A candidate is templated from a record
+    that already carries a verbatim answer and a printed page, so it is a
+    derived artifact under invariant 8 and carries the whole envelope:
+    `source` (the record it was read from, a `models.source_ref`), `page` (the
+    page that record was printed on), `verbatim` (the cells the answer was
+    taken from) and `template` (the named rule that produced it). No model
+    call is in that path — the question text is a format string over printed
+    cells.
+
+    `confirmed` is the field the invariant turns on, and it is written
+    `false`. Nothing reads a candidate file into the verification run: the
+    file is named `golden_qa_<PART>.candidate.yaml`, its top-level key is
+    `candidates` rather than `questions`, and the golden loader refuses it by
+    name. A candidate becomes part of the benchmark only by a human decision
+    that copies its `question` into `golden_qa_<PART>.yaml`.
+
+    The strata fields (`doc`, `backend`, `section`, `section_title`,
+    `confidence`, `artifact`) are what the generator spreads the set across.
+    They are recorded per candidate rather than only in aggregate so a
+    reviewer can see *why* a candidate is in the set — "this is the corpus's
+    only `low` register row" is the reason to look hardest at it.
+    """
+
+    question: GoldenQuestion
+    confirmed: bool = False
+    #: Stable identity of this candidate across runs: `<source>|<template>`.
+    #: It is what the rejection ledger records, so the same bad candidate is
+    #: not re-suggested next run; record ids are reproduced exactly by a
+    #: rebuild of identical input, which is what makes the key stable.
+    key: str = ""
+    #: The named rule that produced the question (invariant 8's `derivation`).
+    template: str = ""
+    #: The record this was templated from
+    #: (`docs/<doc>/specs.json#rec_s4.5-t2-r13`).
+    source: str = ""
+    #: The page that record was printed on. Never `None` on a published
+    #: candidate — a record with no page is not templatable at all, because a
+    #: golden question with no citable page cannot be verified.
+    page: int | None = None
+    #: The printed cells the answer was taken from, joined for a reviewer's
+    #: glance. Verbatim: never rewritten, never shortened to fit.
+    verbatim: str = ""
+    #: Which published artifact the record lives in (`specs.json`,
+    #: `pins.json`, `registers.json`, `plots.json`).
+    artifact: str = ""
+    doc: str = ""  # the document directory name
+    backend: str = ""  # the extraction backend that produced that document
+    section: str = ""  # printed section number ("" on the captionless era)
+    section_title: str = ""
+    confidence: Confidence = Confidence.UNKNOWN
+
+
+class GoldenCandidateSet(BaseModel):
+    """A part's generated candidates, plus what the generator refused and why.
+
+    `strata` is the stratification, measured on the **selected** set: one
+    mapping per dimension (`artifact`, `backend`, `confidence`, `section`)
+    from value to count. It is published rather than left for the reader to
+    compute because it is the criterion — a set that is twenty variations of
+    the easiest lookup is a defect, and the file has to make that visible
+    without re-deriving it.
+
+    `pool` is how many templatable records existed per artifact before
+    selection, so "only three candidates" is legible as a fact about the
+    corpus rather than as a broken generator. `skipped_rejected` /
+    `skipped_existing` are the two exclusions, counted rather than silently
+    applied.
+    """
+
+    schema_version: str = ""
+    part: str = ""
+    candidates: list[GoldenCandidate] = Field(default_factory=list)
+    strata: dict[str, dict[str, int]] = Field(default_factory=dict)
+    pool: dict[str, int] = Field(default_factory=dict)
+    skipped_rejected: int = 0
+    skipped_existing: int = 0
+    notes: list[str] = Field(default_factory=list)
+
+
+class GoldenRejection(BaseModel):
+    """One candidate a human rejected, recorded so it is not re-suggested.
+
+    Keyed by the candidate's `key` (record reference + template), which the
+    next generation run over the same corpus reproduces exactly. The question
+    text and the reason travel with it because a ledger nobody can read is a
+    ledger nobody will correct: "the value cell is a footnote marker" is the
+    note that stops a maintainer re-deriving the same wrong candidate by hand.
+    """
+
+    key: str
+    id: str = ""
+    question: str = ""
+    reason: str = ""
+
+
+class GoldenRejectionLedger(BaseModel):
+    """`tests/fixtures/golden_qa_<PART>.rejected.yaml` — the rejected set."""
+
+    schema_version: str = ""
+    part: str = ""
+    rejected: list[GoldenRejection] = Field(default_factory=list)

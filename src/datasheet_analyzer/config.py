@@ -91,6 +91,40 @@ REGISTERS_SCHEMA_VERSION = "2"
 # 2: cards carry `corpus_key`, so a document that moved between the part
 # and the shared store invalidates the card that cited it (phase 6.5, 03).
 CARDS_SCHEMA_VERSION = "2"
+# --- phase 7 ---------------------------------------------------------------
+# The five versions below name payload shapes this phase introduces. Four of
+# them (`REVDIFF`, `AUDIT`, `FAMILY`, `GOLDEN_CANDIDATE`) are *not* part of any
+# publish cache key: a revision diff, a scorecard and a family index are all
+# derived live from records the corpora already publish, and a golden candidate
+# is a proposal about the benchmark — none of them is a corpus artifact a build
+# has to keep current, so there is no stale file for a version to invalidate.
+# `ERRATA_SCHEMA_VERSION` is the exception and carries its version the way
+# `specs.json` does, because `errata_links.json` *is* written into a part.
+#
+# The derivation-rule half of a derived artifact's identity is not here: this
+# branch spells it `Settings.card_version` (`DSA_CARD_VERSION`), read via
+# `get_settings().card_version`, and there is deliberately no module-level
+# `CARD_VERSION` constant to read it around.
+# "1": the shape `diff-rev` returns and writes as `REVISION_DIFF.md`.
+REVDIFF_SCHEMA_VERSION = "1"
+# "1": `errata_links.json`, the errata cross-link set a build writes for a
+# part that holds an errata document.
+ERRATA_SCHEMA_VERSION = "1"
+# "1": the shape the audit scorecard returns. The *rubric*'s own version
+# travels beside it on the scorecard (`registry/audit_rubric.yaml`), because a
+# grade produced under different thresholds is a different reading even when
+# the payload shape is identical.
+AUDIT_SCHEMA_VERSION = "1"
+# "1": `tests/fixtures/golden_qa_<PART>.candidate.yaml` and its rejection
+# ledger. They are *not* corpus artifacts and are no part of any publish cache
+# key: a candidate is a proposal about the benchmark, not a claim about the
+# document, and it is inert until a human confirms it (invariant 5). The
+# version exists so a candidate file written under an older template set is
+# legible as such rather than silently merged into the objective function.
+GOLDEN_CANDIDATE_SCHEMA_VERSION = "1"
+# "1": the shape a family build returns and writes as
+# `families/<NAME>/FAMILY_INDEX.md` (+ `family.json`).
+FAMILY_SCHEMA_VERSION = "1"
 
 
 class Settings(BaseSettings):
@@ -115,6 +149,17 @@ class Settings(BaseSettings):
     # Saved conversations: one `<session_id>.json` each, so a week-old
     # question and the pages it cited survive a restart.
     sessions_dir: Path = Path("sessions")
+    # Part families: one directory per family, holding `FAMILY_INDEX.md` and
+    # its machine-readable twin. A family is a *view* over parts, so it lives
+    # beside `parts/` rather than inside any member.
+    families_dir: Path = Path("families")
+    # Checked-in data (`aliases.yaml`, `cards.yaml`, `pin_types.yaml`,
+    # `device_tables.yaml`, and the phase-7 additions). `None` means the
+    # packaged directory beside the code, which is what every lexicon has
+    # always read; `DSA_REGISTRY_DIR` points the *document* registry somewhere
+    # else, which is how a test grows a registry without writing into the
+    # repo's own checked-in copy.
+    registry_dir: Path | None = None
 
     # LLM enrichment (INDEX.md descriptions). Without a key the pipeline
     # falls back to deterministic extractive descriptions and says so.
@@ -130,6 +175,13 @@ class Settings(BaseSettings):
     # always-loadable file for a whole design. Bigger than a part's index
     # because it summarizes several, still hard-bounded.
     project_index_token_budget: int = Field(default=4000, ge=1)
+
+    # FAMILY_INDEX.md is the same promise `PROJECT_INDEX.md` makes, one noun
+    # across: the single always-loadable file for a whole series. It is
+    # bounded for the reason the family exists at all — an index that grew
+    # with the member count would cost more than reading both members' own
+    # indexes, which is the comparison it has to win.
+    family_index_token_budget: int = Field(default=4000, ge=1)
 
     # `dsa ask` answer packs: the default token budget one pack may spend.
     # `--budget N` overrides per call; the pack announces any truncation and
@@ -190,6 +242,9 @@ class Settings(BaseSettings):
         self.projects_dir = self.projects_dir.resolve()
         self.library_dir = self.library_dir.resolve()
         self.sessions_dir = self.sessions_dir.resolve()
+        self.families_dir = self.families_dir.resolve()
+        if self.registry_dir is not None:
+            self.registry_dir = self.registry_dir.resolve()
         return self
 
     @property
