@@ -4,9 +4,10 @@ Layout families: ADI new (AD9081, outline, unnumbered), old TI (lm741,
 numbered outline), Qorvo (QPA1003P, no outline at all -> per-page), and
 Hittite-era ADI (HMC520A, unnumbered outline). The seam is exactly what
 users run — `build_part` with temp-dir settings — with one documented
-override: lm741's page 1 carries no brand mark, so detection cannot pin a
-pdf_layout-routable profile; the spec's `--vendor` escape hatch is used
-there and recorded honestly as cli-override evidence.
+override: lm741's page 1 carries no brand mark and its PDF metadata carries
+TI's, so detection pins `ti` and routes it to `ti_html` — which is not the
+backend this gate is about. The spec's `--vendor` escape hatch pins it to the
+layout floor and is recorded honestly as cli-override evidence.
 
 Assertions are corpus products only: section files with page citations,
 furniture golden strings absent from paragraphs, content preserved,

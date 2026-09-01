@@ -14,7 +14,7 @@
       "mean_fidelity": 0.0
     }
   },
-  "generated_at": "2026-08-31T22:10:59.099268Z",
+  "generated_at": "2026-09-01T19:10:59.317913Z",
   "documents": [
     {
       "content_hash": "52d435c0095ec0b002e36dcbc56711ecc7c909945cc756768ed168907be3b131",
@@ -25,7 +25,7 @@
       "page_count": 134,
       "nda": false,
       "vendor": "ti",
-      "vendor_evidence": "",
+      "vendor_evidence": "brand:\"texas instruments\" (metadata)",
       "registered_at": "2026-08-02T05:36:59.614615Z"
     }
   ],

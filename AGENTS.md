@@ -52,7 +52,7 @@ dsa build afe7950.pdf --part AFE7950                    # corpus + specs.json + 
 dsa build afe7953.pdf --part AFE7953                    # second reference part
 dsa build ad9081.pdf --part AD9081 --vendor adi         # explicit vendor override (default: detected + pinned)
 dsa build afe7950.pdf --part AFE7950 --self-contained    # publish under parts/<PART>/docs/ instead of the shared library (ADR 0008: what a *tracked* corpus must be)
-dsa build lm741.pdf --part LM741                         # brand-less: pin --vendor unknown for the layout floor
+dsa build lm741.pdf --part LM741 --vendor unknown        # detection reads the TI brand from its PDF metadata; pin unknown for the layout floor
 dsa verify --part AD9081 --pdf tests/fixtures/pdf/ad9081.pdf --specs  # non-TI golden (per-part yaml)
 dsa batch datasheets/                                   # one part corpus per PDF in a dir (unchanged parts skipped; --workers N parallel, default 4)
 dsa verify --part AFE7950 --pdf afe7950.pdf             # golden Q&A + token economics
