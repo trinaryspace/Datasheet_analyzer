@@ -1,0 +1,89 @@
+# Errata lexicon — how an errata document's items are found, and what counts as
+# a structured identifier inside one.
+#
+# Data, not code (the same philosophy as `aliases.yaml`, `pin_types.yaml`,
+# `device_tables.yaml` and `cards.yaml`): teaching the linker that a vendor
+# heads its items "Anomaly 7" rather than "Advisory 7" is an edit here, never a
+# Python change. Nothing in `errata/` hard-codes a marker word, a cue word or a
+# rule's grade.
+#
+# The one thing that must never move into this file is a *similarity*
+# threshold. Every rule below matches an identifier the document printed — a
+# section number, a table caption, a symbol, a pin name, a register name or a
+# register address — by exact comparison, and there is deliberately nothing to
+# tune: a link produced by two strings that merely resemble each other points a
+# hardware designer at a paragraph the erratum was never about.
+
+# --- item segmentation -------------------------------------------------------
+
+# A line that starts with one of these words followed by an identifier token
+# ("Advisory 3", "Erratum 12b", "Issue A") starts a new errata item. Matched
+# case-insensitively against the start of a printed line.
+item_markers:
+  - advisory
+  - anomaly
+  - bug
+  - errata item
+  - erratum
+  - issue
+  - item
+
+# Also treat a line that opens with an ordinal ("3.", "3)") as an item start.
+# Errata documents that number their items and nothing else are common enough
+# that refusing them would publish nothing; the marker words above are tried
+# first, and this fires only when a document declares no marker word at all.
+numbered_items: true
+
+# --- cues --------------------------------------------------------------------
+
+# A printed section number is only read as one when the item cues it. A bare
+# "6.1" in errata prose is far more often a voltage or a date than a section,
+# and a warning banner on the wrong page is worse than no banner.
+section_cues:
+  - section
+  - sections
+  - clause
+  - subsection
+  - "§"
+
+# Same rule for a pin designator: "A1" alone is not an identifier, "ball A1" is.
+pin_cues:
+  - pin
+  - pins
+  - ball
+  - terminal
+
+# --- thresholds --------------------------------------------------------------
+
+# Shortest identifier a symbol / pin name / register name rule will match on. A
+# one-character token collides with everything.
+min_identifier_chars: 2
+
+# Shortest printed table caption the caption rule will match on. A short caption
+# ("Notes") turns up in errata prose by accident.
+min_caption_chars: 8
+
+# Most targets one rule may contribute to one item. A symbol printed on sixty
+# rows genuinely affects sixty records, but a link list that long stops being
+# readable; the overflow is *counted and stated* on the link (never dropped
+# silently), which is the honest half of this cap.
+max_targets_per_rule: 25
+
+# --- rule grades -------------------------------------------------------------
+#
+# How far one link can be trusted without opening the printed page — the same
+# three-state grade every record in this corpus carries, and metadata rather
+# than a filter: a `medium` link is still published, still cited, still says
+# what it matched on. `high` is for an identifier that names exactly one thing
+# in the document (a cued section number, a parsed register address); `medium`
+# is for one that reached the record through a second artifact (the alias
+# lexicon) or that names a table rather than a row.
+rules:
+  section-number: high
+  table-caption: medium
+  spec-symbol: high
+  alias-phrase: medium
+  pin-name: high
+  pin-designator: high
+  register-name: high
+  register-address: high

@@ -29,6 +29,7 @@ from datasheet_analyzer.publish.writer import (
     doc_dir_name,
     doc_dir_name_for_source,
     document_dirs,
+    errata_current,
     is_library_ref,
     library_root_of,
     manifest_artifacts,
@@ -41,6 +42,7 @@ from datasheet_analyzer.publish.writer import (
     retire_cards,
     specs_current,
     write_corpus,
+    write_errata,
     write_revision_diff,
 )
 
@@ -56,6 +58,7 @@ __all__ = [
     "doc_dir_name",
     "doc_dir_name_for_source",
     "document_dirs",
+    "errata_current",
     "is_library_ref",
     "library_root_of",
     "load_plotset",
@@ -71,5 +74,6 @@ __all__ = [
     "search_index_current",
     "specs_current",
     "write_corpus",
+    "write_errata",
     "write_revision_diff",
 ]

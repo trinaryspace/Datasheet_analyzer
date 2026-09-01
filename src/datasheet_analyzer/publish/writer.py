@@ -10,6 +10,8 @@ Layout per part:
         sections/*.md
         tables/*.csv
         search_index.json
+      errata_links.json + ERRATA.md   (only for a part that registers an errata
+                              document - phase 7, ticket 04)
 
 ## Publish once, reference many (ticket 04)
 
@@ -60,10 +62,12 @@ import os
 import tempfile
 import time
 from dataclasses import dataclass
+from dataclasses import replace as dc_replace
 from pathlib import Path
 
 from datasheet_analyzer.config import (
     CARDS_SCHEMA_VERSION,
+    ERRATA_SCHEMA_VERSION,
     PINS_SCHEMA_VERSION,
     PLOTS_SCHEMA_VERSION,
     REGISTERS_SCHEMA_VERSION,
@@ -82,13 +86,30 @@ from datasheet_analyzer.derive.provenance import (
     PINS_ARTIFACT,
     REGISTERS_ARTIFACT,
 )
+from datasheet_analyzer.errata import (
+    ERRATA_LINKS_FILENAME,
+    ERRATA_MARKDOWN_FILENAME,
+    SectionBanner,
+    TargetDoc,
+    build_errata_links,
+    build_items,
+    insert_banner,
+    is_errata,
+    render_errata,
+    section_banner,
+    sections_to_banner,
+)
 from datasheet_analyzer.models import (
     CorpusManifest,
     CorpusStats,
+    DocType,
+    ErrataLinkSet,
     ExtractionStats,
+    PinSet,
     PlotRecord,
     PlotSet,
     RawDocument,
+    RegisterSet,
     SectionFile,
     SourceDocument,
     SpecRecord,
@@ -124,6 +145,7 @@ __all__ = [
     "doc_dir_name",
     "doc_dir_name_for_source",
     "document_dirs",
+    "errata_current",
     "is_library_ref",
     "library_ref",
     "library_root_of",
@@ -137,6 +159,7 @@ __all__ = [
     "resolve_artifact_ref",
     "specs_current",
     "write_corpus",
+    "write_errata",
     "write_revision_diff",
 ]
 
@@ -256,6 +279,56 @@ def pins_current(doc_dir: Path) -> bool:
     return _artifact_schema_current(doc_dir, PINS_ARTIFACT, PINS_SCHEMA_VERSION)
 
 
+def errata_current(part_dir: Path, manifest: CorpusManifest) -> bool:
+    """Whether the part's errata links are present and of the current schema.
+
+    Asymmetric like `cards_current` and for the same reason, but keyed on the
+    *inventory* rather than on the file: a part that registers an errata
+    document must publish `errata_links.json`, so a missing one is staleness (a
+    corpus published before this ticket existed), while a part with no errata
+    document must publish none at all, so a missing one is correct. Anything
+    unreadable reads as stale, which is the safe direction: rebuild.
+    """
+    has_errata = any(doc.doc_type == DocType.ERRATA for doc in manifest.documents)
+    path = Path(part_dir) / ERRATA_LINKS_FILENAME
+    if not has_errata:
+        return not path.exists()
+    if not path.exists():
+        return False
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return False
+    return isinstance(data, dict) and data.get("schema_version") == ERRATA_SCHEMA_VERSION
+
+
+def write_errata(part_dir: Path, link_set: ErrataLinkSet | None) -> list[Path]:
+    """Write (or remove) the part's errata artifacts; return what was written.
+
+    Both forms, as for a design card: `errata_links.json` is what a machine
+    walks - every target in its reference form, every item verbatim - and
+    `ERRATA.md` is what a person reads, rendered by the same function nothing
+    else may re-implement.
+
+    `None` means the part registers no errata document, and then the *absence*
+    of both files is the artifact: an empty errata file reads as "no known
+    issues", which is a claim this corpus has no evidence for. A republish of a
+    part whose errata document was removed therefore takes the old files with
+    it, exactly as a pin table that no longer parses takes `pins.json` with it.
+    """
+    part_dir = Path(part_dir)
+    json_path = part_dir / ERRATA_LINKS_FILENAME
+    md_path = part_dir / ERRATA_MARKDOWN_FILENAME
+    if link_set is None:
+        json_path.unlink(missing_ok=True)
+        md_path.unlink(missing_ok=True)
+        return []
+    part_dir.mkdir(parents=True, exist_ok=True)
+    _write_text_if_changed(json_path, link_set.model_dump_json(indent=2))
+    _write_text_if_changed(md_path, render_errata(link_set))
+    return [json_path, md_path]
+
+
 def write_revision_diff(part_dir: Path, markdown: str) -> Path:
     """Write `REVISION_DIFF.md` beside the part's `INDEX.md`; return the path.
 
@@ -369,6 +442,116 @@ def _shared_neutral(artifact: SpecSet | PlotSet, shared: bool):
     return artifact.model_copy(update={"part_number": ""}) if shared else artifact
 
 
+def _doc_reference_base(name: str, shared_docs_dir: Path | None) -> str:
+    """The prefix one document's record references hang off.
+
+    `docs/<name>` under the part; `@library/docs/<name>` when the document is
+    published once into the shared store, which is the same string
+    `manifest.sections[*].file` carries and the only one
+    `corpus_ref.resolve_artifact_ref` can follow back to the file.
+    """
+    if shared_docs_dir is None:
+        return f"docs/{name}"
+    return library_ref(shared_docs_dir, name)
+
+
+def _errata_links(
+    part_number: str,
+    docs: list[tuple[RawDocument, list[SectionPlan], dict[str, str]]],
+    specsets_by_hash: dict[str, SpecSet],
+    pinsets_by_hash: dict[str, PinSet],
+    registersets_by_hash: dict[str, RegisterSet],
+    *,
+    shared_docs_dir: Path | None,
+) -> tuple[ErrataLinkSet | None, dict[str, SectionBanner]]:
+    """Derive the part's errata links and the banners they imply.
+
+    `(None, {})` for a part that registers no errata document - the case that
+    must stay completely inert, so a part with no errata gets no file and no
+    banner and reads exactly as it did before this ticket.
+
+    The target surface is deliberately narrow. An errata document is never its
+    own target (an erratum does not invalidate itself), and only records the
+    build is about to *write* are targetable: `pins.json` and `registers.json`
+    exist only when they hold rows, so a link into a rejected pin table would
+    resolve to nothing while reading as a placed erratum. That is also why the
+    caller hands the pin and register sets in - on this branch they are written
+    by the pipeline a moment after this function returns, and the set passed
+    here is exactly the set that lands on disk.
+    """
+    errata_docs = [(doc_dir_name(raw), raw) for raw, _plans, _d in docs if is_errata(raw)]
+    if not errata_docs:
+        return None, {}
+
+    targets: list[TargetDoc] = []
+    for raw, plans, _descriptions in docs:
+        if is_errata(raw):
+            continue
+        name = doc_dir_name(raw)
+        base = _doc_reference_base(name, shared_docs_dir)
+        specset = specsets_by_hash.get(raw.source.content_hash)
+        pinset = pinsets_by_hash.get(raw.source.content_hash)
+        registerset = registersets_by_hash.get(raw.source.content_hash)
+        targets.append(
+            TargetDoc(
+                name=name,
+                doc_hash=raw.source.content_hash,
+                ref_base=base,
+                sections=tuple((plan.section, f"{base}/{plan.file}") for plan in plans),
+                specs=tuple(specset.records) if specset else (),
+                pins=tuple(pinset.pins) if pinset and pinset.pins else (),
+                registers=(
+                    tuple(registerset.registers) if registerset and registerset.registers else ()
+                ),
+            )
+        )
+
+    items = build_items(errata_docs)
+    link_set = build_errata_links(
+        part_number, items, targets, errata_docs=[name for name, _raw in errata_docs]
+    )
+    return link_set, sections_to_banner(link_set, targets)
+
+
+def _bannered_docs(
+    docs: list[tuple[RawDocument, list[SectionPlan], dict[str, str]]],
+    banners: dict[str, SectionBanner],
+    *,
+    shared_docs_dir: Path | None,
+) -> list[tuple[RawDocument, list[SectionPlan], dict[str, str]]]:
+    """The same plans, with a warning banner inserted where an erratum lands.
+
+    Applied before the search index is built and before a byte is written, so
+    the file on disk, the token count in the manifest and the text the BM25
+    index was built from are the same string. A corpus where "what is
+    searchable is exactly what is readable" held only until an erratum arrived
+    would be a quiet lie about the index.
+
+    Nothing is mutated: each affected plan is replaced by a copy, so a caller
+    that kept its own reference to the plans (the enrich stage does) still sees
+    exactly what it produced.
+    """
+    if not banners:
+        return docs
+    out: list[tuple[RawDocument, list[SectionPlan], dict[str, str]]] = []
+    for raw, plans, descriptions in docs:
+        base = _doc_reference_base(doc_dir_name(raw), shared_docs_dir)
+        new_plans: list[SectionPlan] = []
+        for plan in plans:
+            banner = banners.get(f"{base}/{plan.file}")
+            if banner is None:
+                new_plans.append(plan)
+                continue
+            markdown = insert_banner(
+                plan.markdown, section_banner(list(banner.links), banner.targets)
+            )
+            new_plans.append(
+                dc_replace(plan, markdown=markdown, token_count=count_tokens(markdown))
+            )
+        out.append((raw, new_plans, descriptions))
+    return out
+
+
 def write_corpus(
     part_dir: Path,
     docs: list[tuple[RawDocument, list[SectionPlan], dict[str, str]]],
@@ -378,6 +561,8 @@ def write_corpus(
     vendor: str = "",
     specsets: list[SpecSet] | None = None,
     plotsets: list[PlotSet] | None = None,
+    pinsets: list[PinSet] | None = None,
+    registersets: list[RegisterSet] | None = None,
     shared_docs_dir: Path | None = None,
 ) -> CorpusManifest:
     """Write all corpus artifacts; return the manifest.
@@ -390,6 +575,12 @@ def write_corpus(
     Every document also gets `docs/<doc>/search_index.json` — the BM25 index
     over the section markdown written here, so what is searchable is exactly
     what is readable.
+
+    `pinsets` / `registersets` are **not written here** - the pipeline writes
+    them a moment later, once per document, exactly as it always has. They are
+    passed in so the errata linker (phase 7, ticket 04) can target only records
+    that will actually land on disk: a link into a `pins.json` the build
+    declines to write would read as a placed erratum and resolve to nothing.
 
     `shared_docs_dir` (ticket 04, signature frozen by ticket 00): publish
     once, reference many. Extraction is already deduplicated — its cache is
@@ -420,12 +611,31 @@ def write_corpus(
     )
     specsets_by_hash = {s.doc_hash: s for s in (specsets or [])}
     plotsets_by_hash = {p.doc_hash: p for p in (plotsets or [])}
+    pinsets_by_hash = {p.doc_hash: p for p in (pinsets or [])}
+    registersets_by_hash = {r.doc_hash: r for r in (registersets or [])}
     # Per-part confidence mix, accumulated across the part's documents so the
     # manifest carries one measured number per grade (ticket 04).
     graded_specs: list[SpecRecord] = []
     graded_plots: list[PlotRecord] = []
 
     doc_dirs: list[str] = []
+
+    # Errata cross-links (phase 7, ticket 04). Derived *before* anything is
+    # written, because the section files themselves change: a section an
+    # erratum names carries a warning banner, and a banner added after the
+    # search index was built would make the corpus searchable for text it no
+    # longer matches. The link set is derived from the very records this build
+    # is about to write, which is why the target surface is assembled here
+    # rather than in the structure stage.
+    link_set, banners = _errata_links(
+        part_dir.name,
+        docs,
+        specsets_by_hash,
+        pinsets_by_hash,
+        registersets_by_hash,
+        shared_docs_dir=shared_docs_dir,
+    )
+    docs = _bannered_docs(docs, banners, shared_docs_dir=shared_docs_dir)
 
     for raw, plans, descriptions in docs:
         name = doc_dir_name(raw)
@@ -527,6 +737,24 @@ def write_corpus(
 
     _write_text_if_changed(part_dir / "INDEX.md", index_md)
     stats.index_tokens = count_tokens(index_md)
+
+    # Errata links (phase 7, ticket 04). Written - or deliberately removed -
+    # after the records they point at exist on disk. The unplaced population is
+    # the honest half and travels on the set's own `notes`, which is where this
+    # branch keeps a derived artifact's warnings (there is no manifest-level
+    # `derived_warnings` here); the counts are stamped on the manifest so the
+    # ratio is a measured number rather than a claim.
+    write_errata(part_dir, link_set)
+    if link_set is not None:
+        stats.n_errata_items = link_set.n_items
+        stats.n_errata_linked = len(link_set.links)
+        log.info(
+            "errata links: %d item(s), %d linked, %d unlinked (%d target(s))",
+            link_set.n_items,
+            len(link_set.links),
+            len(link_set.unlinked),
+            link_set.n_targets,
+        )
 
     # The retrieval protocol ships *with* the corpus (ticket 08): INDEX.md is
     # the map, AGENT.md is how to read it. Written here rather than by the

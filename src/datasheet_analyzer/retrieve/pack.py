@@ -72,7 +72,13 @@ import re
 from dataclasses import dataclass, replace
 
 from datasheet_analyzer.config import get_settings
-from datasheet_analyzer.models import PlotRecord, SectionFile, SpecRecord
+from datasheet_analyzer.derive.provenance import (
+    PINS_ARTIFACT,
+    REGISTERS_ARTIFACT,
+    SPECS_ARTIFACT,
+)
+from datasheet_analyzer.errata import pack_warning
+from datasheet_analyzer.models import PlotRecord, SectionFile, SpecRecord, source_ref
 from datasheet_analyzer.retrieve.project import ProjectRetriever
 from datasheet_analyzer.retrieve.results import (
     CONFIDENCE_UNKNOWN,
@@ -188,12 +194,26 @@ class PackLine:
     page_start: int | None = None
     page_end: int | None = None
     file: str = ""
+    # The record this row was read out of, as ADR 0005 references one
+    # (`docs/<doc>/specs.json#rec_9`). Empty for a row that quotes a section
+    # file rather than a record - that row carries `file` instead - and empty
+    # on a corpus whose records were published before ids existed. It is what
+    # `errata` below is resolved by, so a row that cannot be referenced carries
+    # no warning rather than an unattributed one.
+    source: str = ""
+    # Phase 7, ticket 04: the errata warnings naming this row's record or
+    # section. They ride on the *line* rather than on the pack because they
+    # must be dropped only if the row they qualify is dropped - exactly like
+    # the citation. A reader shown the value must be shown that an erratum
+    # names it.
+    errata: tuple[str, ...] = ()
 
     @property
     def rendered(self) -> str:
         head = f"[{self.part}] " if self.part else ""
         tail = f"  file: {self.file}" if self.file else ""
-        return f"{head}{self.text} — {self.citation}  [{self.confidence}]{tail}"
+        warnings = "".join(f"\n    {note}" for note in self.errata)
+        return f"{head}{self.text} — {self.citation}  [{self.confidence}]{tail}{warnings}"
 
     def as_dict(self) -> dict:
         return {
@@ -207,6 +227,8 @@ class PackLine:
             "page_start": self.page_start,
             "page_end": self.page_end,
             "file": self.file,
+            "source": self.source,
+            "errata": list(self.errata),
         }
 
 
@@ -381,6 +403,7 @@ def build_pack(retriever: Retriever, question: str, *, budget: int = 0) -> Answe
         budget = get_settings().ask_budget
 
     route, lines, excerpt, verify, suggestions, more = _route(retriever, question)
+    lines = _with_errata(retriever, lines)
     frame = _draft(retriever, question, route, budget)
     return _assemble(frame, lines, excerpt, verify, suggestions, more)
 
@@ -414,7 +437,7 @@ def build_project_pack(scope: ProjectRetriever, question: str, *, budget: int = 
                     part=member.part,
                     order=order,
                     route=route,
-                    lines=[replace(line, part=member.part) for line in lines],
+                    lines=[replace(line, part=member.part) for line in _with_errata(member, lines)],
                     excerpt=(None if excerpt is None else replace(excerpt, part=member.part)),
                     verify=verify,
                     more=more,
@@ -696,7 +719,7 @@ def _pin_route(retriever: Retriever, question: str):
             break
     if not hits:
         return None
-    lines = [_pin_line(h) for h in hits[:MAX_PIN_ANSWERS]]
+    lines = [_pin_line(retriever, h) for h in hits[:MAX_PIN_ANSWERS]]
     top = hits[0]
     excerpt = _excerpt_for(retriever, question, top.citation)
     verify = _verify_record(retriever, top.citation, top.confidence)
@@ -734,7 +757,7 @@ def _register_route(retriever: Retriever, question: str):
                 break
     if not hits:
         return None
-    lines = [_register_line(h) for h in hits[:MAX_REGISTER_ANSWERS]]
+    lines = [_register_line(retriever, h) for h in hits[:MAX_REGISTER_ANSWERS]]
     top = hits[0]
     excerpt = _excerpt_for(retriever, question, top.citation)
     verify = _verify_record(retriever, top.citation, top.confidence)
@@ -743,7 +766,7 @@ def _register_route(retriever: Retriever, question: str):
 
 def _spec_route(retriever: Retriever, question: str, hits: list[SpecHit]):
     hits = _by_relevance(question, hits)
-    lines = [_spec_line(h) for h in hits[:MAX_SPEC_ANSWERS]]
+    lines = [_spec_line(retriever, h) for h in hits[:MAX_SPEC_ANSWERS]]
     top = hits[0]
     excerpt = _excerpt_for(retriever, question, top.citation)
     verify = _verify_record(retriever, top.citation, top.confidence)
@@ -801,7 +824,59 @@ def _by_relevance(question: str, hits: list[SpecHit]) -> list[SpecHit]:
 # --- answer lines ------------------------------------------------------------
 
 
-def _spec_line(hit: SpecHit) -> PackLine:
+def _record_source(retriever: Retriever, hit, artifact: str) -> str:
+    """The ADR 0005 reference of the record behind one hit, or `""`.
+
+    `""` for a record published before ids existed: an empty reference is
+    honestly unaddressable, where a composed one would point at whichever row
+    happens to sit at that ordinal today. The document's root comes from
+    `CorpusIndex.reference_base`, so a shared document is referenced the way the
+    publisher referenced it (`@library/docs/…`) rather than under the part.
+    """
+    record_id = getattr(hit.record, "id", "")
+    if not record_id:
+        return ""
+    base = retriever.index.reference_base(hit.citation.doc)
+    return source_ref(f"{base}/{artifact}" if base else artifact, record_id)
+
+
+def _with_errata(retriever: Retriever, lines: list[PackLine]) -> list[PackLine]:
+    """Attach the errata warnings naming each row's record or section file.
+
+    Runs after routing and before the budget, so a warning is part of the row
+    it qualifies from the moment the row exists - the pack's fitting arithmetic
+    then measures the row *with* its warning, and cannot keep the value while
+    dropping the notice that an erratum names it.
+
+    A part with no errata document is completely untouched: `errata_for`
+    returns `[]`, the rows are returned as they were, and nothing about the
+    pack changes.
+    """
+    if retriever.index.errata is None:
+        return lines
+    out: list[PackLine] = []
+    for line in lines:
+        # Three references can reach an erratum: the record this row was read
+        # from, a file the row already names, and the section file the row was
+        # printed in - an erratum that names a whole section names every row of
+        # it. Deduplicated by the rendered warning, so a row whose record *and*
+        # whose section are both named carries the item once.
+        references = [
+            line.source,
+            line.file,
+            retriever.index.section_file(line.doc, line.section),
+        ]
+        notes: list[str] = []
+        for reference in references:
+            for link in retriever.errata_for(reference):
+                note = pack_warning(link)
+                if note not in notes:
+                    notes.append(note)
+        out.append(replace(line, errata=tuple(notes)) if notes else line)
+    return out
+
+
+def _spec_line(retriever: Retriever, hit: SpecHit) -> PackLine:
     rec = hit.record
     text = _head(rec)
     value = _spec_value(rec)
@@ -818,6 +893,7 @@ def _spec_line(hit: SpecHit) -> PackLine:
         section=hit.citation.section,
         page_start=hit.citation.page_start,
         page_end=hit.citation.page_end,
+        source=_record_source(retriever, hit, SPECS_ARTIFACT),
     )
 
 
@@ -841,7 +917,7 @@ def _spec_value(rec: SpecRecord) -> str:
     return ", ".join(parts)
 
 
-def _pin_line(hit) -> PackLine:
+def _pin_line(retriever: Retriever, hit) -> PackLine:
     """`A1  VSSA  [ground] — Analog ground`, every half optional but the key.
 
     The type is printed in brackets because it is a *derived* label and a
@@ -863,10 +939,11 @@ def _pin_line(hit) -> PackLine:
         section=hit.citation.section,
         page_start=hit.citation.page_start,
         page_end=hit.citation.page_end,
+        source=_record_source(retriever, hit, PINS_ARTIFACT),
     )
 
 
-def _register_line(hit) -> PackLine:
+def _register_line(retriever: Retriever, hit) -> PackLine:
     """`0x1A04  TXDIG_CTRL0: reset 0x00, access R/W` — printed cells only.
 
     A column the map never printed contributes nothing rather than a
@@ -892,6 +969,7 @@ def _register_line(hit) -> PackLine:
         section=hit.citation.section,
         page_start=hit.citation.page_start,
         page_end=hit.citation.page_end,
+        source=_record_source(retriever, hit, REGISTERS_ARTIFACT),
     )
 
 
@@ -1160,6 +1238,8 @@ _LINE_SCHEMA = {
         "page_start",
         "page_end",
         "file",
+        "source",
+        "errata",
     ],
     "properties": {
         "text": {"type": "string"},
@@ -1172,6 +1252,8 @@ _LINE_SCHEMA = {
         "page_start": {"type": ["integer", "null"]},
         "page_end": {"type": ["integer", "null"]},
         "file": {"type": "string"},
+        "source": {"type": "string"},
+        "errata": {"type": "array", "items": {"type": "string"}},
     },
 }
 

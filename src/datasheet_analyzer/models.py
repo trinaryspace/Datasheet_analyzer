@@ -875,6 +875,14 @@ class CorpusStats(BaseModel):
     # as a number rather than in a report as a claim. Additive: 0 on corpora
     # published before the protocol existed.
     agent_doc_tokens: int = 0
+    # Phase 7 ticket 04: how many errata items this part published, and how
+    # many of them a deterministic rule could place against a record. Recorded
+    # per part for the reason every other count here is - the ratio is the
+    # linker's own honesty, and it belongs in the manifest as a measured number
+    # rather than in a report as a claim. Both 0 for a part with no errata
+    # document, which is silence rather than "no known issues".
+    n_errata_items: int = 0
+    n_errata_linked: int = 0
 
 
 class ExtractionStats(BaseModel):

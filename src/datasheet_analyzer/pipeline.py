@@ -746,6 +746,14 @@ def build_part(
         vendor=part_vendor,
         specsets=specsets,
         plotsets=plotsets,
+        # Handed in, not written there: the publisher needs the pin and register
+        # rows to know what an erratum may point at (phase 7, ticket 04), and
+        # only the sets that actually exist are passed, so a link can never name
+        # a `pins.json` the loop below declines to write.
+        pinsets=[build.pinset for build in pinbuilds.values() if build.pinset is not None],
+        registersets=[
+            build.registerset for build in registerbuilds.values() if build.registerset is not None
+        ],
         shared_docs_dir=shared_docs_dir,
     )
     # Every design card on disk was computed from the corpus this build just

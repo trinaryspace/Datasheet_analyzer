@@ -69,6 +69,7 @@ from datasheet_analyzer.publish import (
     cards_current,
     doc_dir_name_for_source,
     document_dirs,
+    errata_current,
     pins_current,
     plots_current,
     registers_current,
@@ -312,6 +313,12 @@ def _publish_artifacts_stale(
     if not agent_doc_current(part_dir):
         return True
     if not cards_current(part_dir, card_version):
+        return True
+    # Errata links (phase 7, ticket 04) are gated on the *inventory* rather
+    # than on the file: a part that registers an errata document must publish
+    # `errata_links.json`, so a corpus published before this ticket existed
+    # republishes once instead of serving an errata document nobody linked.
+    if not errata_current(part_dir, manifest):
         return True
     # Where each document's artifacts live is a fact of the manifest, not of
     # the layout: ticket 04 publishes a document once into the shared store

@@ -242,32 +242,15 @@ def revision_documents(index: CorpusIndex) -> list[RevisionDoc]:
     from datasheet_analyzer.acquire.inventory import library_view
 
     library = library_view(Path(index.part_dir), part_number=index.part_number)
-    bases = _ref_bases(index)
     documents: list[RevisionDoc] = []
     for record in sorted(library, key=lambda d: (d.source.registered_at, d.content_hash)):
         doc = index.doc_for_hash(record.content_hash)
         if doc is None:
             continue
-        documents.append(RevisionDoc(library=record, doc=doc, ref_base=bases.get(doc.name, "")))
+        documents.append(
+            RevisionDoc(library=record, doc=doc, ref_base=index.reference_base(doc.name))
+        )
     return documents
-
-
-def _ref_bases(index: CorpusIndex) -> dict[str, str]:
-    """`<doc dir name>` -> the reference prefix its records are cited under.
-
-    Read off the manifest's own section files, which are exactly the strings
-    `corpus_ref.resolve_artifact_ref` understands — `docs/<doc>/…` under the
-    part and `@library/docs/<doc>/…` in the shared store. A document that
-    published no section is absent, and the caller falls back to the part-local
-    form.
-    """
-    bases: dict[str, str] = {}
-    for section in index.sections:
-        head, sep, _tail = section.file.partition("/sections/")
-        if not sep:
-            continue
-        bases.setdefault(head.rsplit("/", 1)[-1], head)
-    return bases
 
 
 def select_revision(
