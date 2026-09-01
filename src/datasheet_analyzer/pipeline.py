@@ -29,7 +29,7 @@ from datasheet_analyzer.acquire.inventory import (
     sort_sources,
     sync_to_library,
 )
-from datasheet_analyzer.config import PIPELINE_VERSION, Settings
+from datasheet_analyzer.config import PIPELINE_VERSION, STRUCTURE_STAGE_VERSION, Settings
 from datasheet_analyzer.derive.pins import PinBuild, build_pins, record_pin_rejections, write_pinset
 from datasheet_analyzer.derive.registers import (
     RegisterBuild,
@@ -88,6 +88,25 @@ class BuildResult:
     index_md: str
     used_llm: bool
     cached_extraction: bool
+
+
+def _stale_cache_reason(raw: RawDocument, backend_name: str, output_version: str) -> str:
+    """Why a cached extraction may not be served, or "" when it may.
+
+    Two producers write into one cached record, and both must be able to
+    invalidate it: the **backend** (its embedded `output_version`) and the
+    **structure stage** that runs inside `_extract_document` after the backend
+    returns (page and row pinning; `STRUCTURE_STAGE_VERSION`). Only the first
+    had a version until phase 6.5 measured what that costs — a per-row pinning
+    fix that every `ti_html` document was served around, because bumping the
+    *layout* backend's version says nothing about a document that layout
+    backend never read.
+    """
+    if raw.extractor_version != output_version:
+        return f"{backend_name} v{raw.extractor_version!r} != v{output_version!r}"
+    if raw.structure_version != STRUCTURE_STAGE_VERSION:
+        return f"structure stage v{raw.structure_version!r} != v{STRUCTURE_STAGE_VERSION!r}"
+    return ""
 
 
 def _extract_cache_path(settings: Settings, content_hash: str, backend: str) -> Path:
@@ -376,17 +395,14 @@ def _extract_document(
         raw = _load_cached_raw(settings, source.content_hash, backend_name)
     backend = get_backend(backend_name)
     output_version = getattr(backend, "output_version", "")
-    if raw is not None and raw.extractor_version != output_version:
-        # The cached raw was produced by an older extractor output schema;
-        # re-extract rather than serve a stale corpus (embedded version
-        # field invalidation).
-        log.info(
-            "stale extraction cache (%s v%r != v%r) — re-extracting",
-            backend_name,
-            raw.extractor_version,
-            output_version,
-        )
-        raw = None
+    if raw is not None:
+        # The cached raw was produced by an older extractor output schema, or
+        # by an older structure stage; re-extract rather than serve a stale
+        # corpus (embedded version field invalidation).
+        stale = _stale_cache_reason(raw, backend_name, output_version)
+        if stale:
+            log.info("stale extraction cache (%s) — re-extracting", stale)
+            raw = None
     cached = raw is not None
     if raw is None:
         pdf_toc = read_toc(pdf_path)
@@ -413,6 +429,9 @@ def _extract_document(
             rows_pinned, rows_total = pin_table_row_pages(raw.sections, texts)
             if rows_total:
                 log.info("table row pages pinned: %d/%d", rows_pinned, rows_total)
+        # Stamped after the structure stage ran, not before: the version
+        # describes what is *in* this record.
+        raw.structure_version = STRUCTURE_STAGE_VERSION
         _store_cached_raw(settings, raw)
     return raw, cached
 

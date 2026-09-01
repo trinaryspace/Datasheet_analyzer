@@ -669,6 +669,14 @@ class RawDocument(BaseModel):
     # backend's current `output_version` is stale and must be re-extracted
     # (embedded version field, per the cache-invalidation invariant).
     extractor_version: str = ""
+    # Version of the *structure-stage* work embedded in this record by
+    # `pipeline._extract_document` after the backend returned — table page and
+    # per-row page pinning (`structure/pagemap.py`). Two producers write into
+    # one cached extraction and both must be able to invalidate it; until this
+    # field existed only the backend could, so a fix under `structure/` was
+    # invisible behind a cached extraction (`config.STRUCTURE_STAGE_VERSION`).
+    # A record written before it reads "" and is re-extracted once.
+    structure_version: str = ""
     # Per-document extraction honesty: the layout engine records detected /
     # accepted / rejected tables with reasons and mean fidelity here; it
     # survives the extraction cache because it lives on the raw document.

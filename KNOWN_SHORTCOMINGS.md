@@ -14,6 +14,13 @@ re-extract and rebuild of all eleven parts at pipeline 0.5.0, extractor
 current, not carried forward. Closing numbers are in
 `Reports/PHASE_6_5_REPORT.md`.
 
+**Closed after wave 2 and deleted here:** *"Extraction cache: a fix in the
+structure layer is invisible to a cached extraction"* — the structure stage
+now has a version of its own (`config.STRUCTURE_STAGE_VERSION`, embedded in
+`RawDocument.structure_version`) that invalidates the cache the way an
+extractor change does, so `--no-cache` is no longer the only way to land a
+`structure/` fix.
+
 ---
 
 ## Pins: AFE7950 and AFE7953 publish no pin table
@@ -164,34 +171,3 @@ document it was written against rather than a list of roots. Both change the
 shape of every register citation already written, which is why this is recorded
 rather than done in passing.
 
----
-
-## Extraction cache: a fix in the structure layer is invisible to a cached extraction
-
-**Found by phase 6.5, wave 2, while performing the rebuild it planned.** The
-extraction cache is keyed `(content_hash, backend)` and invalidated by the
-backend's embedded `output_version` — which is exactly what invariant 6 says.
-But per-row page pinning (`structure/pagemap.pin_table_row_pages`, ticket 07)
-runs **inside** `pipeline._extract_document`, after the backend returns and
-before the result is cached. It has no version of its own, and it is not part
-of any cache key.
-
-**Measured, and the reason this is written down:** bumping
-`PdfLayoutBackend.output_version` to `tables-09` re-extracted every
-`pdf_layout` document, and left every `ti_html` document — AFE7950, AFE7953 and
-LMX1204's datasheet — served from a cache written before ticket 07. The first
-rebuild of LMX1204 therefore still showed the off-by-one row the ticket had
-fixed (1 of 35, `0x5A`/`R90` cited on p.32 and printed on p.33). Only
-`dsa build --no-cache` produced the corrected corpus (484 of 501 rows pinned,
-0 rows citing a page they are not printed on).
-
-**What the tool does instead.** Nothing detects it. The rebuild in this phase
-was done with `--no-cache` for all three `ti_html` documents once the gap was
-found, so the published corpus is correct.
-
-**What would close it.** Giving the post-extraction enrichment steps a version
-that participates in the cached record the same way `extractor_version` does —
-a `RawDocument.pipeline_stage_version`, checked in `_load_cached_raw`. Until
-then, any change to `structure/pagemap.py` must be landed with a deliberate
-`--no-cache` rebuild, and saying so here is the only thing that makes that
-knowable.

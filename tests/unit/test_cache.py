@@ -1,15 +1,23 @@
 """Pain point: stale caches. Extraction cache is keyed by
 (content_hash, backend) — changing either must miss; same inputs must hit.
 Writes are atomic (write-temp + rename) so concurrent jobs sharing bytes
-can never leave a corrupt cache entry."""
+can never leave a corrupt cache entry.
+
+Two producers write into one cached record, and both must be able to
+invalidate it: the backend (`extractor_version`) and the structure stage that
+runs inside `_extract_document` afterwards (`structure_version`). The second
+one is here because it was missing, and the miss was measured — see
+`TestTheStructureStageCanInvalidateToo`."""
 
 from __future__ import annotations
 
 import threading
 
-from datasheet_analyzer.config import Settings
-from datasheet_analyzer.models import RawDocument, SourceDocument
+from datasheet_analyzer.acquire.inventory import register_source
+from datasheet_analyzer.config import STRUCTURE_STAGE_VERSION, Settings
+from datasheet_analyzer.models import DocType, RawDocument, SourceDocument
 from datasheet_analyzer.pipeline import (
+    _extract_document,
     _load_cached_raw,
     _store_cached_raw,
 )
@@ -136,3 +144,71 @@ def test_concurrent_stores_same_identity_leave_valid_file(tmp_path):
     assert loaded is not None
     assert len(loaded.sections) == 40  # complete payload, never a torn slice
     assert not list((s.cache_dir / "extract").glob("*.tmp"))  # no temp litter
+
+
+class TestTheStructureStageCanInvalidateToo:
+    """A fix in the structure layer must not be invisible behind a cache.
+
+    `pipeline._extract_document` pins table pages and per-row pages
+    (`structure/pagemap.py`) after the backend returns and before the result
+    is cached, so that code's output is inside the cached `RawDocument` while
+    none of its identity was. Measured in phase 6.5: bumping
+    `PdfLayoutBackend.output_version` re-extracted every `pdf_layout` document
+    and left every `ti_html` one — AFE7950, AFE7953, LMX1204's datasheet —
+    served from a cache written before per-row pinning existed, so LMX1204's
+    `0x5A` row still cited a page it is not printed on. Only
+    `dsa build --no-cache` produced a correct corpus.
+    """
+
+    def _source(self, tmp_path, make_synthetic_pdf):
+        pdf = tmp_path / "structure-stage.pdf"
+        make_synthetic_pdf(pdf)
+        source = register_source(
+            pdf, part_number="P1", doc_type=DocType.DATASHEET, vendor="unknown"
+        )
+        return pdf, source
+
+    def test_a_fresh_extraction_records_the_stage_version(self, tmp_path, make_synthetic_pdf):
+        pdf, source = self._source(tmp_path, make_synthetic_pdf)
+        raw, cached = _extract_document(source, pdf, _settings(tmp_path), True)
+        assert not cached
+        assert raw.structure_version == STRUCTURE_STAGE_VERSION
+
+    def test_the_same_stage_version_is_a_cache_hit(self, tmp_path, make_synthetic_pdf):
+        pdf, source = self._source(tmp_path, make_synthetic_pdf)
+        settings = _settings(tmp_path)
+        _extract_document(source, pdf, settings, True)
+        _raw, cached = _extract_document(source, pdf, settings, True)
+        assert cached, "identical inputs and versions must be served from cache"
+
+    def test_a_changed_stage_version_is_a_cache_miss(
+        self, tmp_path, monkeypatch, make_synthetic_pdf
+    ):
+        """The whole point: bump the structure stage, get a re-extraction.
+
+        The PDF's bytes, the backend and its `output_version` are all
+        unchanged — the only thing that moved is the version of the code that
+        runs *after* the backend, which is exactly the case that used to be
+        served a stale reading.
+        """
+        pdf, source = self._source(tmp_path, make_synthetic_pdf)
+        settings = _settings(tmp_path)
+        _extract_document(source, pdf, settings, True)
+        assert _extract_document(source, pdf, settings, True)[1] is True
+
+        monkeypatch.setattr("datasheet_analyzer.pipeline.STRUCTURE_STAGE_VERSION", "pagemap-99")
+        raw, cached = _extract_document(source, pdf, settings, True)
+        assert not cached, "a structure-stage version change must miss"
+        assert raw.structure_version == "pagemap-99"
+
+    def test_a_cache_entry_written_before_the_field_is_stale(self, tmp_path, make_synthetic_pdf):
+        """Every entry on disk today carries "" and re-extracts once."""
+        pdf, source = self._source(tmp_path, make_synthetic_pdf)
+        settings = _settings(tmp_path)
+        raw, _cached = _extract_document(source, pdf, settings, True)
+        raw.structure_version = ""  # a record written before this version existed
+        _store_cached_raw(settings, raw)
+
+        again, cached = _extract_document(source, pdf, settings, True)
+        assert not cached
+        assert again.structure_version == STRUCTURE_STAGE_VERSION

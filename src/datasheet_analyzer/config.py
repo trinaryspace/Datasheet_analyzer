@@ -53,6 +53,25 @@ LIBRARY_SCHEMA_VERSION = "1"
 # are: `pins.json`, `registers.json` and `cards/<kind>.json` carry their
 # schema version on disk, and a file at an older one republishes once rather
 # than being served forever in a shape its reader no longer expects.
+# The version of the *structure-stage* work that runs inside a cached
+# extraction. `pipeline._extract_document` pins table pages and per-row pages
+# (`structure/pagemap.py`) after the backend returns and before the result is
+# written to `.cache/extract/<hash>__<backend>.json`, so that code's output
+# lives inside the cached `RawDocument` while none of its identity did.
+# Invariant 6 says a change that alters cached output must invalidate it, and
+# a backend's `output_version` cannot speak for a producer that is not the
+# backend: bumping `PdfLayoutBackend.output_version` to `tables-09` in phase
+# 6.5 re-extracted every `pdf_layout` document and left every `ti_html` one
+# served from a cache written before per-row pinning existed (measured:
+# LMX1204's `0x5A` row still cited p.32 for a row printed on p.33, and only
+# `dsa build --no-cache` produced a correct corpus).
+#
+# Bump this whenever a change under `structure/` alters what
+# `_extract_document` stores. It is embedded in `RawDocument.structure_version`
+# and checked beside `extractor_version`.
+# "1": the field's first value. Every cache entry written before it carries
+# "" and is re-extracted once.
+STRUCTURE_STAGE_VERSION = "1"
 PINS_SCHEMA_VERSION = "1"
 REGISTERS_SCHEMA_VERSION = "1"
 # 2: cards carry `corpus_key`, so a document that moved between the part
