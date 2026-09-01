@@ -247,6 +247,41 @@ def pin_table_row_pages(sections: list[SectionNode], page_texts: list[str]) -> t
     return row_pinned, row_total
 
 
+def reconcile_table_pages(sections: list[SectionNode]) -> list[tuple[str, int, int]]:
+    """A table's page is the page its **first row** prints on.
+
+    Two producers answer "what page is this table on" and they can disagree.
+    `pin_table_pages` searches a whole section for the table's distinctive
+    cells and takes the page with the most hits — a text search over a range,
+    which a neighbouring register's near-identical field table can win.
+    `TableBlock.row_pages` is stronger evidence in both of the ways it is
+    produced: on the `pdf_layout` path it is measured geometry, and on the
+    HTML path it is a walk that advances one page at a time and only on
+    strictly better evidence than staying put.
+
+    So where they disagree, the rows win, and the table's own page becomes
+    the page its first row printed on. Measured over this project's eleven
+    parts: **3 tables of 158** disagreed, and all three had the table page
+    wrong — `Table 1-25. R24 Register Field Descriptions` was pinned to p.17
+    by the section-wide search and prints on p.19, which is where its five
+    measured rows already said it was. Its bit fields cited p.17, and a bit
+    field that cites the wrong page is exactly the "nearly right" citation
+    `pin_table_row_pages` was written to stop.
+
+    Returns one `(caption, was, now)` per correction, so the caller can log
+    what moved instead of moving it silently.
+    """
+    moved: list[tuple[str, int, int]] = []
+    for sec in sections:
+        for table in sec.tables:
+            first = next((p for p in table.row_pages if p is not None), None)
+            if first is None or table.page is None or first == table.page:
+                continue
+            moved.append((table.caption or "(unnumbered)", table.page, first))
+            table.page = first
+    return moved
+
+
 def _hits(needles: list[str], page_texts: list[str], page: int) -> int:
     """How many of a row's needles print on `page` (1-based)."""
     if page < 1 or page > len(page_texts):

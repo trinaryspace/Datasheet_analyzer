@@ -65,7 +65,11 @@ from datasheet_analyzer.publish.plots import (
 )
 from datasheet_analyzer.publish.writer import doc_dir_name
 from datasheet_analyzer.structure.corpus import SectionPlan, build_section_plans
-from datasheet_analyzer.structure.pagemap import pin_table_pages, pin_table_row_pages
+from datasheet_analyzer.structure.pagemap import (
+    pin_table_pages,
+    pin_table_row_pages,
+    reconcile_table_pages,
+)
 from datasheet_analyzer.structure.plot_axes import annotate_plot_axes
 from datasheet_analyzer.structure.plots import build_plotset
 from datasheet_analyzer.structure.specs import build_specset
@@ -429,6 +433,11 @@ def _extract_document(
             rows_pinned, rows_total = pin_table_row_pages(raw.sections, texts)
             if rows_total:
                 log.info("table row pages pinned: %d/%d", rows_pinned, rows_total)
+            # Last, because it reads what both of the above wrote: where the
+            # two disagree about a table's page, the rows are the stronger
+            # evidence and the table follows them.
+            for caption, was, now in reconcile_table_pages(raw.sections):
+                log.info("table page corrected by its rows: %s p.%d -> p.%d", caption, was, now)
         # Stamped after the structure stage ran, not before: the version
         # describes what is *in* this record.
         raw.structure_version = STRUCTURE_STAGE_VERSION

@@ -17,7 +17,11 @@ honest way to ask. The classes are organized around the ways it must refuse.
 from __future__ import annotations
 
 from datasheet_analyzer.models import SectionNode, TableBlock
-from datasheet_analyzer.structure.pagemap import _row_needles, pin_table_row_pages
+from datasheet_analyzer.structure.pagemap import (
+    _row_needles,
+    pin_table_row_pages,
+    reconcile_table_pages,
+)
 
 
 def _section(table: TableBlock, *, start: int, end: int) -> SectionNode:
@@ -148,3 +152,41 @@ class TestTheNeedleRule:
 
     def test_a_bare_digit_is_not(self):
         assert _row_needles(["5", "12"]) == []
+
+
+class TestTheTableFollowsItsRows:
+    """A table's page is the page its first row prints on.
+
+    Two producers answer "what page is this table on". `pin_table_pages`
+    searches the whole section for the table's distinctive cells and takes the
+    page with the most hits; `row_pages` is either measured geometry (the
+    `pdf_layout` path) or a walk that turns the page only on strictly better
+    evidence. Where they disagree, the rows are the stronger evidence.
+
+    Measured on `LMX1204_registermap.pdf`: `Table 1-25. R24 Register Field
+    Descriptions` prints on page 19 — its caption is there and its five rows
+    were measured there — and the section-wide search pinned it to page 17,
+    where R22's near-identical field table prints. Eight published bit fields
+    cited p.17 as a result.
+    """
+
+    def test_a_table_whose_rows_all_print_later_moves_to_them(self):
+        table = _table([["0x16", "R22", "a"]], page=17, row_pages=[19])
+        moved = reconcile_table_pages([_section(table, start=2, end=23)])
+        assert table.page == 19
+        assert moved == [("Table 7-1. Registers", 17, 19)]
+
+    def test_a_table_that_already_agrees_is_left_alone(self):
+        table = _table([["0x16", "R22", "a"], ["0x17", "R23", "b"]], page=19, row_pages=[19, 20])
+        assert reconcile_table_pages([_section(table, start=2, end=23)]) == []
+        assert table.page == 19
+
+    def test_a_table_with_no_pinned_row_keeps_its_page(self):
+        table = _table([["0x16", "R22", "a"]], page=17, row_pages=[None])
+        assert reconcile_table_pages([_section(table, start=2, end=23)]) == []
+        assert table.page == 17
+
+    def test_a_table_with_no_page_of_its_own_is_not_invented(self):
+        table = _table([["0x16", "R22", "a"]], page=None, row_pages=[19])
+        assert reconcile_table_pages([_section(table, start=2, end=23)]) == []
+        assert table.page is None

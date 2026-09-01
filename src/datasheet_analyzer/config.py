@@ -71,7 +71,12 @@ LIBRARY_SCHEMA_VERSION = "1"
 # and checked beside `extractor_version`.
 # "1": the field's first value. Every cache entry written before it carries
 # "" and is re-extracted once.
-STRUCTURE_STAGE_VERSION = "1"
+# "2": `pagemap.reconcile_table_pages` — where a table's pinned page and its
+# pinned rows disagree, the rows win and the table's page follows them. Three
+# tables of 158 moved across the eleven built parts, and one of them
+# (`Table 1-25. R24 Register Field Descriptions`) was the page eight published
+# bit fields were citing.
+STRUCTURE_STAGE_VERSION = "2"
 PINS_SCHEMA_VERSION = "1"
 # "2": a register record's id folds in the document it was printed in
 # (`models.register_record_id`), because `(table_index, row_index)` is unique
