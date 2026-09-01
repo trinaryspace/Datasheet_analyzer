@@ -113,6 +113,38 @@ class TestPinTablePages:
         assert pin_table_pages([sec], pages) == 0
         assert sec.tables[0].page is None
 
+    def test_the_caption_outranks_cell_values_it_shares_with_a_neighbour(self):
+        """Measured on `lmx1204.pdf`: `Table 7-25 R24 Register Field
+        Descriptions` prints on p.49 and was pinned to p.47, where R22's
+        near-identical field table prints the same bit ranges. A caption names
+        the table; cell values name the shape.
+        """
+        pages = [""] * 52
+        pages[46] = "Table 7-23 R22 Register Field Descriptions 15:14 13:12 11:9"
+        pages[48] = "Table 7-25. R24 Register Field Descriptions 15:14 13:12 11:1 0"
+        table = TableBlock(
+            caption="Table 7-25 R24 Register Field Descriptions",
+            headers=["Bit", "Field"],
+            grid=[["15:14", "SYSREFOUT2_DELAY_SCALE"], ["13:12", "SYSREFOUT2_DELAY_DIV"]],
+        )
+        sec = SectionNode(number="7", title="Registers", page_start=40, page_end=52, tables=[table])
+        assert pin_table_pages([sec], pages) == 1
+        assert table.page == 49
+
+    def test_a_caption_printed_twice_decides_nothing_and_the_values_do(self):
+        """A continued table prints its caption on both pages. Two hits is not
+        evidence about which page the table is, so the cell-value search — the
+        rule that was there before — answers.
+        """
+        pages = [""] * 20
+        pages[8] = "Table 4-1. Supply Currents (continued)"
+        pages[9] = "Table 4-1. Supply Currents Pmax_FS 4.2 dBm RTERM 50 ATTrange 40 dB"
+        table = self._table()
+        table.caption = "Table 4-1. Supply Currents"
+        sec = SectionNode(number="4", title="Specs", page_start=7, page_end=13, tables=[table])
+        assert pin_table_pages([sec], pages) == 1
+        assert table.page == 10
+
     def test_search_confined_to_section_range(self):
         pages = ["Pmax_FS 4.2 dBm RTERM 50 Ω ATTrange 40 dB"] + [""] * 20
         # table's values live on page 1, but section starts at p7: must NOT pin

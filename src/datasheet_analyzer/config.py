@@ -76,7 +76,10 @@ LIBRARY_SCHEMA_VERSION = "1"
 # tables of 158 moved across the eleven built parts, and one of them
 # (`Table 1-25. R24 Register Field Descriptions`) was the page eight published
 # bit fields were citing.
-STRUCTURE_STAGE_VERSION = "2"
+# "3": `pagemap.pin_table_pages` anchors on a table's own caption before its
+# cell values. 117 of 118 captioned tables were already pinned to the page
+# their caption prints on; the one that was not carried eight bit fields.
+STRUCTURE_STAGE_VERSION = "3"
 PINS_SCHEMA_VERSION = "1"
 # "2": a register record's id folds in the document it was printed in
 # (`models.register_record_id`), because `(table_index, row_index)` is unique

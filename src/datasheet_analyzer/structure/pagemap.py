@@ -124,9 +124,37 @@ def _squash(text: str) -> str:
     return _NONALNUM.sub("", text.lower())
 
 
-def pin_table_pages(sections: list[SectionNode], page_texts: list[str]) -> int:
-    """Pin each table's exact page by locating its cell values in PDF text.
+def _caption_page(table, page_texts: list[str], lo: int, hi: int) -> int | None:
+    """The page a captioned table's own caption prints on, when unambiguous.
 
+    A caption is the strongest needle a table has: `Table 1-25. R24 Register
+    Field Descriptions` prints once and names the table it belongs to, where
+    cell values are shared with every neighbouring table of the same shape.
+    Only a caption that prints on **exactly one** page of the section counts —
+    two hits is not evidence about which one is the table.
+    """
+    caption = _squash(table.caption or "")
+    if len(caption) < 8:
+        return None
+    hits = [
+        p + 1 for p in range(lo, min(hi + 1, len(page_texts))) if caption in _squash(page_texts[p])
+    ]
+    return hits[0] if len(hits) == 1 else None
+
+
+def pin_table_pages(sections: list[SectionNode], page_texts: list[str]) -> int:
+    """Pin each table's exact page by locating it in the PDF's page text.
+
+    Its own **caption** first, where it has one that prints on exactly one
+    page of the section: a caption names the table, and cell values do not.
+    Measured over this project's eleven parts, **117 of 118** captioned tables
+    already agreed with the cell-value search and one did not — `Table 7-25 R24
+    Register Field Descriptions` in `lmx1204.pdf`, pinned to p.47 by the cell
+    values it shares with R22's near-identical field table and printed on p.49.
+    Eight published bit fields cited p.47 because of it.
+
+    Falls back to the cell-value search (`_distinctive_needles`) for a table
+    with no caption, or whose caption prints on no page or more than one.
     Only searches within the section's page range. Returns the number of
     tables pinned. Tables that can't be located keep page=None (honest).
     """
@@ -137,6 +165,11 @@ def pin_table_pages(sections: list[SectionNode], page_texts: list[str]) -> int:
         lo = sec.page_start - 1
         hi = (sec.page_end or sec.page_start) - 1
         for table in sec.tables:
+            by_caption = _caption_page(table, page_texts, lo, hi)
+            if by_caption is not None:
+                table.page = by_caption
+                pinned += 1
+                continue
             needles = [_squash(n) for n in _distinctive_needles(table)]
             needles = [n for n in needles if len(n) >= 2]
             best_page, best_hits = None, 0
