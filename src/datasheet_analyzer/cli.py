@@ -1,6 +1,7 @@
 """CLI entrypoint: `dsa <command>`.
 
 Commands:
+  fetch PART                resolve, download, hash-verify and register a part's documents
   build <pdf> --part NAME   full pipeline: acquire -> extract -> corpus
   batch <dir>               build every PDF in a directory as its own part (unchanged parts skipped; --force rebuilds; --workers N parallel, default 4)
   verify --part NAME        golden Q&A citation verification (deterministic)
@@ -92,6 +93,104 @@ def _cmd_add_doc(args: argparse.Namespace) -> int:
     print(f"registered {source.doc_type.value}: {Path(source.path).name}")
     print(f"  hash {source.content_hash[:8]} — {source.page_count} pages — vendor {source.vendor}")
     return 0
+
+
+def _cmd_fetch(args: argparse.Namespace) -> int:
+    """`dsa fetch` — resolve, download, hash-verify, register.
+
+    The one command here that may reach the network for a document (`build`
+    stays offline by construction). Everything it can refuse, it refuses with
+    the fix in the message: a registry miss names `--url`, an entry with no URL
+    repeats the reason it records, and a sha256 mismatch stops without writing
+    and names `--accept-new-revision`.
+
+    Exit codes: 0 all good, 1 something was refused (mismatch, miss, download
+    failure), 2 the invocation itself does not make sense.
+    """
+    import json as _json
+
+    from datasheet_analyzer.acquire.fetch import (
+        FETCHED,
+        MISMATCH,
+        SKIPPED,
+        fetch_part,
+        fetch_project,
+    )
+    from datasheet_analyzer.acquire.registry import RegistryMiss, registry_path
+    from datasheet_analyzer.extract.http import CachingBinaryFetcher
+    from datasheet_analyzer.models import DocType
+
+    part = args.part_pos or args.part
+    if bool(args.project) == bool(part):
+        print(
+            "fetch takes either a part (`dsa fetch AFE7950`, `--url … --part X`) "
+            "or a project (`dsa fetch --project rf-frontend`), not both and not "
+            "neither",
+            file=sys.stderr,
+        )
+        return 2
+    if args.url and not part:
+        print("--url needs the part it belongs to: --part <PART>", file=sys.stderr)
+        return 2
+    if not _known_vendor_or_error(args.vendor or ""):
+        return 2
+
+    settings = get_settings()
+    reg_file = registry_path(settings.registry_dir)
+    fetcher = CachingBinaryFetcher(
+        settings.cache_dir / "http-bin",
+        timeout_s=settings.http_timeout_s,
+        delay_s=settings.http_delay_s,
+        user_agent=settings.user_agent,
+    )
+    try:
+        if args.project:
+            report = fetch_project(
+                args.project,
+                fetcher=fetcher,
+                settings=settings,
+                registry_file=reg_file,
+                accept_new_revision=args.accept_new_revision,
+            )
+        else:
+            report = fetch_part(
+                part,
+                fetcher=fetcher,
+                settings=settings,
+                registry_file=reg_file,
+                url=args.url or None,
+                doc_type=DocType(args.doc_type) if args.doc_type else None,
+                vendor=args.vendor or None,
+                accept_new_revision=args.accept_new_revision,
+                skip_present=args.skip_present,
+            )
+    except RegistryMiss as exc:
+        print(f"fetch error: {exc}", file=sys.stderr)
+        return 1
+
+    if args.json:
+        print(_json.dumps(report.as_dict(), indent=2))
+    else:
+        for doc in report.documents:
+            if doc.status == FETCHED:
+                print(f"fetched {doc.part_number} ({doc.doc_type.value}) -> {doc.path}")
+                print(
+                    f"  sha256 {doc.sha256[:12]}… — revision "
+                    f"{doc.revision or 'unknown'} — registered in sources.json"
+                )
+                if doc.message:
+                    print(f"  {doc.message}")
+                print(f"  next: dsa build {doc.path} --part {doc.part_number}")
+            elif doc.status == SKIPPED:
+                print(f"skipped {doc.part_number} ({doc.doc_type.value}): {doc.message}")
+            else:
+                label = "WARNING" if doc.status == MISMATCH else "error"
+                print(f"{label}: {doc.message}", file=sys.stderr)
+        print(
+            f"{len(report.fetched)} fetched, {len(report.skipped)} skipped, "
+            f"{len(report.failed)} failed"
+        )
+    return 0 if report.ok else 1
 
 
 def _cmd_build(args: argparse.Namespace) -> int:
@@ -835,6 +934,52 @@ def main(argv: list[str] | None = None) -> int:
             pass
     parser = argparse.ArgumentParser(prog="dsa", description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
+
+    p_fetch = sub.add_parser(
+        "fetch",
+        help="download a part's documents from the curated registry and register them",
+    )
+    p_fetch.add_argument(
+        "part_pos",
+        nargs="?",
+        default="",
+        metavar="PART",
+        help="part number, e.g. AFE7950 (or use --part with --url)",
+    )
+    p_fetch.add_argument("--part", default="", help="part number (with --url)")
+    p_fetch.add_argument(
+        "--url",
+        default="",
+        help="fetch this URL and record it in the registry — the growth path "
+        "for a part the registry does not know yet",
+    )
+    p_fetch.add_argument(
+        "--doc-type",
+        default="",
+        choices=["datasheet", "register_map", "errata", "app_note", "unknown"],
+        help="document type for --url (default: datasheet)",
+    )
+    p_fetch.add_argument(
+        "--project",
+        default="",
+        help="fetch everything this project's parts are missing",
+    )
+    p_fetch.add_argument(
+        "--accept-new-revision",
+        action="store_true",
+        help="record the fetched hash and revision after a sha256 mismatch "
+        "(look at the upstream document first)",
+    )
+    p_fetch.add_argument(
+        "--skip-present",
+        action="store_true",
+        help="skip documents already registered in the part's inventory (always on for --project)",
+    )
+    p_fetch.add_argument(
+        "--vendor", default="", help="explicit vendor override for the registered document"
+    )
+    p_fetch.add_argument("--json", action="store_true")
+    p_fetch.set_defaults(func=_cmd_fetch)
 
     p_build = sub.add_parser("build", help="build a part corpus from a datasheet PDF")
     p_build.add_argument("pdf")
