@@ -588,6 +588,54 @@ tables are read as tables and answer `dsa regs`; the prose companions
 only; no trusted tables, no `specs.json`). All of them join the same
 `INDEX.md`.
 
+### Onboard a part from the registry (`dsa fetch`)
+
+```bash
+dsa fetch AFE7950                       # resolve -> download -> verify sha256 -> register
+dsa fetch --url <URL> --part AD9081     # the growth path: records the URL for next time
+dsa fetch --project rf-frontend         # everything the design is missing; skips what is present
+dsa fetch AFE7950 --accept-new-revision # after reading a hash-mismatch warning
+```
+
+`registry/datasheets.yaml` is the checked-in answer to "where does this part's
+PDF come from". **This tool never guesses a datasheet URL and never falls back
+to a search** — a plausible vendor URL that resolves to the wrong document puts
+the wrong datasheet in front of a designer with a citation that looks exactly
+as trustworthy as a correct one. A part the registry does not know is an error
+naming `--url`; an entry with no URL says *why* it has none.
+
+`dsa fetch` is the only command that may reach the network for a document.
+`dsa build` acquires nothing. A sha256 mismatch **stops** without writing or
+registering anything, and names its likely cause from the *parsed revision*
+rather than from the hash — a vendor that regenerates a package-materials
+addendum with the current date changes the bytes daily while the revision
+identifier stays put, so "the hash moved" is not evidence of a new revision.
+
+### Ask upstream whether a corpus is still current (`dsa check-revisions`)
+
+```bash
+dsa check-revisions AFE7950             # one part
+dsa check-revisions --all --json        # the fleet, machine-readable
+```
+
+Explicit, opt-in, network — and the only thing that writes a freshness state.
+Nothing on the build or answer path calls it, so a lookup never depends on a
+vendor's web server, and the download goes through an **uncached** fetcher
+because a freshness check served from a cache is not a freshness check.
+
+Three states, and the default is the one that protects you:
+
+| state | means |
+|---|---|
+| `current` | a check ran and the upstream revision identifier matched |
+| `stale` | a check ran and upstream reports a **different** revision |
+| `unknown` | nobody has checked, or the check could not complete |
+
+`unknown` is **not** `current`, and every surface says so: the `INDEX.md`
+banner, `dsa status`, the `dsa audit` metric and every answer pack's footer.
+A check that cannot complete records only *why* and leaves the state exactly
+as it was, so a failed check can never clear a warning.
+
 ### Other commands
 
 ```bash

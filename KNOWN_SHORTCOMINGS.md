@@ -80,3 +80,59 @@ here: it was not a built part when phase 6 recorded this entry.
 property that actually matters over real data: *every* equal-limit pair found
 in a reference part carries the flag. Today that set is empty, and the test
 will start asserting the moment a part that prints one is added.
+
+---
+
+## Reach: no URL in the registry has ever been fetched, and no corpus has ever been checked
+
+**Phase 7, tickets 01–02, ported to this branch 2026-09-01.** Both features are
+*about* the network and both were implemented with none. Everything below is
+built and tested against a synthetic document served through the existing
+`ReplayBinaryFetcher` seam; nothing was marked done by a fabricated fixture.
+No URL was invented, no sha256 was guessed, no HTTP response was written and no
+`retrieved_at` was back-filled.
+
+**What is unconfirmed, precisely.**
+
+- **Three derived TI URLs ship `url_verified: false`.** `AFE7950`
+  (`SBASA41E`), `AFE7953` (`SBASAN1A`) and `lm741` (`SNOSC25D`) carry
+  `https://www.ti.com/lit/ds/<lit>/<lit>.pdf` composed from a literature number
+  parsed out of a PDF that is in this repo, through the one literature-path
+  pattern this repo already carries. That is a **hypothesis**, and the flag and
+  `url_derivation` say so. Only a live `dsa fetch` may flip it.
+- **The other seven entries carry no URL at all**, each with a recorded reason:
+  no adi pattern (`AD9081`, `HMC520A`), no qorvo pattern (`QPA1003P`), and no
+  vendor pinned from the document's own pages at all for the four
+  Mini-Circuits parts. `dsa fetch --url <URL> --part X` is the growth path.
+- **`LMX1204` is not in the registry**, although its corpus is built. Its two
+  PDFs are working files in this tree rather than tracked documents, so a
+  `sha256_origin: local_file:` hash for them would name a path a fresh clone
+  does not have — the one claim that field exists to make checkable.
+- **Every seeded hash is a `local_file:` hash**, so the first `dsa fetch` of
+  each TI part will report a sha256 mismatch essentially always: TI regenerates
+  a datasheet's package-materials addendum with the current date on every
+  download, so the bytes of an unchanged revision differ. The warning is
+  written for exactly that — it decides its cause from the parsed revision and
+  says the revision did *not* move — but it still costs a human read before
+  `--accept-new-revision` records a wire hash.
+- **All eleven corpora read `staleness: unknown`.** That is the designed and
+  honest state, and it is loud on all four surfaces. But it means the `stale`
+  path has only ever been exercised against a synthetic fixture whose revision
+  moved (`tests/unit/test_revisions.py::TestCheckRevisions`), never against a
+  vendor document that was really superseded.
+
+**What would close it.** A connection, and the steps in
+`Reports/PHASE_7_LIVE_RUN.md` (L1–L6 on the source lineage): fetch the four
+derivable parts, read the mismatch warnings, re-run with
+`--accept-new-revision`, supply the URLs this repo cannot derive, then
+`dsa check-revisions --all --json` for the first real freshness reading.
+
+**Two smaller parked items from the same port.**
+
+- `content_drift` is recorded (with `upstream_sha256`) and nothing consumes it
+  yet; `dsa diff-rev` is its natural consumer.
+- `RevisionState` is not exposed on the workbench HTTP surface — the browser
+  panes show a document's applicability and labels but not its freshness. The
+  CLI, the corpus files and MCP all carry it.
+- A two-document part reports one `dsa status` line naming its least fresh
+  document. A per-document breakdown would be better and is not here.

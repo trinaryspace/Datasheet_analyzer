@@ -307,3 +307,38 @@ says why. An empty card is a real answer about the datasheet, not a failure
 of the tool. Its rules are versioned by `card_version`, which participates in
 the publish cache key — changing a rule regenerates the card.
 _Avoid_: report, summary, dashboard, view, digest
+
+**Document registry**:
+The checked-in answer to "where does this part's PDF come from" —
+`registry/datasheets.yaml`, one entry per part, read and written by
+`dsa fetch`. It is *data, not a scraper*: there is no portal scraping and no
+search-API resolution, so a part the registry does not know is an error
+naming `--url`, never a guessed URL. Every field is a recorded fact or
+explicitly absent: an unknown URL is `null` **with a reason**, a URL nobody
+has fetched is `url_verified: false` with the rule that derived it recorded,
+and `sha256_origin` says whether a hash came from a file in this repo
+(`local_file:<path>`) or off the wire (`fetch:<url>`).
+_Avoid_: catalog, index, database, source list, manifest
+
+**Staleness**:
+Whether a corpus's document is still the current upstream revision —
+`current`, `stale`, or `unknown`. `unknown` is the default and is **not**
+`current`: nobody has checked, and reading "no news" as "still current" would
+let a superseded datasheet answer with full confidence and a valid page cite.
+Decided by the printed **revision identifier**, never by a hash: a vendor that
+regenerates a package-materials addendum daily changes the bytes of an
+unchanged revision, which is `content_drift` — *regenerated*, not revised.
+One reading, rendered on four surfaces (`INDEX.md` banner, `dsa status`, the
+audit metric, the answer-pack footer) so they cannot disagree.
+_Avoid_: outdated, expired, freshness, obsolete, out of date
+
+**Revision state**:
+What the last revision check found about one document, stored on its
+`LibraryDocument` (`<library_dir>/<content_hash>.json`) beside applicability
+and labels — mutable metadata owned by the *document*, not produced by a
+build. It is not on `SourceDocument` (whose shape is frozen by the extraction
+cache) and not in `sources.json` (a derived view regenerated at publish time,
+where a rebuild would silently clear a `stale` warning). Written only by
+`dsa check-revisions`; a build never fills it in, which is what keeps builds
+offline by construction.
+_Avoid_: freshness record, check result, revision metadata
