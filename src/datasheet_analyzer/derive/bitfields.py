@@ -1,24 +1,27 @@
-"""Register bit fields — the parked half of the register map (phase 6, ticket 06).
+"""Register bit fields — the second half of the register map (phase 6, ticket 06).
 
-**Read this first: nothing in this module reaches a published artifact.**
-Ticket 06 attempted per-register bit fields, measured itself against the
-reference register map, failed its accuracy gate, and **parked**. The reasons
-are in `KNOWN_SHORTCOMINGS.md` under *"Register bit fields: not extracted"*,
-measured by `tests/integration/test_phase6_bitfields.py`. This file is kept
-for two jobs, and it does no others:
+**This ships.** Ticket 06 parked twice — once in phase 6 (two of six sampled
+registers read exactly right), once in phase 6.5 (four of six) — because its
+gate is 100% with no partial credit and a wrong bit range is acted on. The
+gate is now met: all six of `LMX1204_registermap.pdf`'s first six registers
+(R0, R2, R3, R4, R5, R6) read exactly right, cell for cell against the
+printed pages, measured by `tests/integration/test_phase6_bitfields.py`.
 
-1. it is the **measurement instrument** the gate runs, so the park verdict is
-   a number against a real document rather than an opinion;
-2. it is the implementation that becomes live when the layout engine can hand
-   over the register map's field tables intact — at which point the gate turns
-   green on its own and the shortcoming entry is deleted with it.
+What unblocked it was two defects in the layout floor, not in this module —
+a table region that ran on past its table into the section heading and the
+cross-reference sentences below it, and a `Bit` column cell refused release
+because the digit it printed equalled the page number. Both are fixed in
+`extract/pdf_layout.py` at extractor `tables-10`; recall over the reference
+map went 15 of 35 registers to 28, and precision stayed at 100%.
 
-Nothing imports it: not `derive/registers.py`, not the pipeline, not the CLI,
-not the MCP surface. `RegisterRecord.fields` stays `[]` for every published
-register, which is the ticket's fail-closed contract in one line — **wrong bit
-positions are worse than absent ones**, because a driver written against a
-wrong range misconfigures silicon silently, while an absent one sends a
-firmware engineer to the page.
+`derive/registers.py` attaches an accepted field set to the summary record
+the caption names, so `RegisterRecord.fields` is now filled for the registers
+whose field table read whole and stays `[]` for the rest — with the reason in
+the register set's warnings. **Wrong bit positions are worse than absent
+ones**, because a driver written against a wrong range misconfigures silicon
+silently while an absent one sends a firmware engineer to the page; that is
+why the validators below stay severe and why a field set is still accepted
+whole or refused whole.
 
 ## The two printed shapes
 

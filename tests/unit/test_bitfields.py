@@ -508,18 +508,25 @@ class TestRegistersKeepTheirSummaryRecord:
         assert extraction.reasons and extraction.fields == ()
 
 
-class TestNothingReachesAPublishedArtifact:
-    """Checkbox 6 — parked means the code exists and the data does not."""
+class TestWhatReachesAPublishedArtifact:
+    """Checkbox 6 — the gate is met, so the data ships, through one door."""
 
-    def test_no_shipping_module_imports_the_bit_field_reader(self):
-        """The one mechanical guarantee that `fields` stays empty on disk."""
+    def test_the_register_set_is_the_only_shipping_importer(self):
+        """One door in, so there is one place to look when a field is wrong.
+
+        The park's version of this test asserted that *nothing* imported the
+        reader. What replaces it is the property that still matters: a bit
+        field reaches an artifact only by way of `derive/registers.py`, which
+        attaches an accepted field set to the summary record its caption
+        names. Nothing else parses a bit range or invents one.
+        """
         src = Path(__file__).resolve().parents[2] / "src" / "datasheet_analyzer"
         importers = sorted(
             path.relative_to(src).as_posix()
             for path in src.rglob("*.py")
             if path.name != "bitfields.py" and "bitfields" in path.read_text(encoding="utf-8")
         )
-        assert importers == []
+        assert importers == ["derive/registers.py"]
 
     def test_a_field_read_still_carries_the_page_it_was_printed_on(self, tmp_path):
         """Whatever the gate decides, a field is citable or it is not a field."""
