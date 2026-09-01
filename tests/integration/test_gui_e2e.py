@@ -714,13 +714,12 @@ class TestTheInvariantsThisDesignPutAtRisk:
         Bumping it silently invalidates every cached extraction on every
         machine, so it moves only when the backend's *output* really changed —
         never as a side effect of a GUI ticket. The value on this tree is
-        `tables-09`, moved once by phase 6.5 wave 2, which re-extracted and
-        rebuilt every part in the same change (the ticket text quotes
-        `tables-07`, which the layout ladder had already moved past before
-        this wave began); what is pinned here is that no GUI ticket touched
-        it.
+        `tables-10`, moved by the bit-field region fix (ticket 06 un-park),
+        which changed what the table regions contain and therefore owns a
+        re-extraction; `tables-09` before it was phase 6.5 wave 2's bump.
+        What is pinned here is that no GUI ticket touched it.
         """
-        assert PdfLayoutBackend.output_version == "tables-09"
+        assert PdfLayoutBackend.output_version == "tables-10"
 
     def test_the_pipeline_version_is_unchanged(self):
         assert PIPELINE_VERSION == "0.5.0"
