@@ -37,8 +37,9 @@ Where it stands now, each claim measured by this module:
    over no field table at all (R7, R8, R9, R16, R72, R86); R9 is the newest of
    those and the honest cost of fix 2 — its region no longer stops at bit 10,
    so the whole of its table is judged, and its description column's
-   `0x0: Reserved ... 0x1FF: /1023` enumeration leaves 12 of 19 grid rows
-   spanning one column, which the reconstruction gate refuses. `tables-09`
+   `0x0: Reserved ... 0x1FF: /1023` enumeration leaves only 8 of its 19 grid
+   rows spanning more than one column, and the reconstruction gate wants at
+   least half, so it refuses with `rows do not span columns`. `tables-09`
    accepted that table only because the furniture bug had truncated it.
 3. **Precision did not move to buy recall.** Every field the reader emits is
    still exactly right: 116 fields, every printed cell of every one of them
@@ -313,8 +314,9 @@ class TestTheAccuracyGateIsMet:
         R9's region used to stop at its bit-10 row, because the `10` printed
         there sat inside the page-number gutter on page 10. With the whole
         table judged, its description column's `0x0: Reserved ... 0x1FF` value
-        enumeration leaves 12 of its 19 grid rows spanning one column, and the
-        reconstruction gate refuses it with `rows do not span columns`.
+        enumeration leaves only 8 of its 19 grid rows spanning more than one
+        column; the reconstruction gate wants at least half, so it refuses
+        with `rows do not span columns`.
         `tables-09` accepted that table only because the bug had truncated it.
         """
         assert sorted(set(self.NO_TABLE) - set(read)) == sorted(self.NO_TABLE)
