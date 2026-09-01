@@ -23,6 +23,7 @@ from datasheet_analyzer.publish.search_index import (
 )
 from datasheet_analyzer.publish.writer import (
     LIBRARY_REF_PREFIX,
+    REVISION_DIFF_FILENAME,
     ArtifactRef,
     cards_current,
     doc_dir_name,
@@ -40,11 +41,13 @@ from datasheet_analyzer.publish.writer import (
     retire_cards,
     specs_current,
     write_corpus,
+    write_revision_diff,
 )
 
 __all__ = [
     "INDEX_FILENAME",
     "LIBRARY_REF_PREFIX",
+    "REVISION_DIFF_FILENAME",
     "ArtifactRef",
     "StalePlotsSchemaError",
     "artifact_root",
@@ -68,4 +71,5 @@ __all__ = [
     "search_index_current",
     "specs_current",
     "write_corpus",
+    "write_revision_diff",
 ]

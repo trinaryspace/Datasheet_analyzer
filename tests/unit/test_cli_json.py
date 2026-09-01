@@ -41,6 +41,10 @@ JSON_INVOCATIONS: dict[str, list[str]] = {
     # is exactly the property this module is about, and open no socket.
     "fetch": ["fetch", "TEST", "--json"],
     "check-revisions": ["check-revisions", "TEST", "--json"],
+    # `TEST` holds one document, so the pair cannot be chosen - which is the
+    # branch worth exercising here: a refusal under `--json` is still JSON on
+    # stdout, exactly as the two verbs above report theirs.
+    "diff-rev": ["diff-rev", "--part", "TEST", "--json"],
 }
 
 

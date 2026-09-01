@@ -27,6 +27,12 @@ from datasheet_analyzer.retrieve.results import (
     SpecHit,
 )
 from datasheet_analyzer.retrieve.retriever import PLOT_VOCABULARY, Retriever
+from datasheet_analyzer.retrieve.revdiff import (
+    RevisionDoc,
+    RevisionPair,
+    revision_documents,
+    select_revision,
+)
 from datasheet_analyzer.retrieve.search import ScoredSection, score_sections
 
 # Imported after `retriever`: `pack` composes `Retriever`, which reaches back
@@ -71,6 +77,8 @@ __all__ = [
     "PlotHit",
     "ProjectRetriever",
     "Retriever",
+    "RevisionDoc",
+    "RevisionPair",
     "ScoredSection",
     "SearchHit",
     "SectionHit",
@@ -79,6 +87,8 @@ __all__ = [
     "build_project_pack",
     "clear_index_cache",
     "discover_parts",
+    "revision_documents",
     "score_sections",
+    "select_revision",
     "validate_pack",
 ]

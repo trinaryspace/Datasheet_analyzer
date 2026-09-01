@@ -145,8 +145,16 @@ class LibraryStore:
         stored = _read_document(path)
         labels = list(stored.labels) if stored is not None else list(doc.labels)
         revision_state = stored.revision_state if stored is not None else doc.revision_state
+        revision_label = stored.revision_label if stored is not None else doc.revision_label
         self._write(
-            path, doc.model_copy(update={"labels": labels, "revision_state": revision_state})
+            path,
+            doc.model_copy(
+                update={
+                    "labels": labels,
+                    "revision_state": revision_state,
+                    "revision_label": revision_label,
+                }
+            ),
         )
 
     def set_applicability(self, content_hash: str, applicability: Applicability) -> LibraryDocument:
@@ -167,6 +175,17 @@ class LibraryStore:
         preserves whatever state is stored, exactly as it preserves labels.
         """
         return self._update(content_hash, {"revision_state": state})
+
+    def set_revision_label(self, content_hash: str, label: str) -> LibraryDocument:
+        """Record the name a human filed this copy under (`dsa build --rev F`).
+
+        A separate entry point from `put()` for the reason `set_labels` is: the
+        label is user text about *this* document, and a build that happened to
+        carry an empty one must not wipe it. `put()` therefore preserves
+        whatever is stored, exactly as it does for labels and the revision
+        state.
+        """
+        return self._update(content_hash, {"revision_label": label.strip()})
 
     # --- internals ------------------------------------------------------------
 

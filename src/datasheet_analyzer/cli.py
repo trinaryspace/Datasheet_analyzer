@@ -260,7 +260,7 @@ def _cmd_check_revisions(args: argparse.Namespace) -> int:
 
 def _cmd_build(args: argparse.Namespace) -> int:
     from datasheet_analyzer.extract import BackendUnavailableError
-    from datasheet_analyzer.pipeline import build_part
+    from datasheet_analyzer.pipeline import BuildRefused, build_part
 
     if not _known_vendor_or_error(args.vendor or ""):
         return 2
@@ -273,9 +273,13 @@ def _cmd_build(args: argparse.Namespace) -> int:
             vendor=args.vendor,
             use_cache=not args.no_cache,
             use_llm=not args.no_llm,
+            revision_label=getattr(args, "rev", "") or "",
             self_contained=args.self_contained,
         )
     except BackendUnavailableError as exc:
+        print(f"build error: {exc}", file=sys.stderr)
+        return 2
+    except BuildRefused as exc:
         print(f"build error: {exc}", file=sys.stderr)
         return 2
     stats = result.manifest.stats
@@ -662,6 +666,72 @@ def _cmd_card(args: argparse.Namespace) -> int:
 
 def _cmd_compare(args: argparse.Namespace) -> int:
     return _run_derived("compare", args)
+
+
+def _cmd_diff_rev(args: argparse.Namespace) -> int:
+    """Print and write one revision diff — the corpus's own report, not a re-layout.
+
+    The diff renders itself (`revdiff.render_revision_diff`), for the same reason
+    a design card, an answer pack and a comparison do. This command chooses the
+    two sides, the format and the destination, and owns the exit codes.
+
+    Exit codes: 0 the diff ran (an empty diff is a valid, successful answer — it
+    is the determinism check the ticket asks for), 2 the two sides could not be
+    chosen. A refusal under `--json` is reported **as JSON on stdout**, the way
+    `dsa fetch` and `dsa check-revisions` report theirs: a machine caller asked
+    for one payload shape and must not have to parse prose to learn it failed.
+    """
+    import json
+
+    from datasheet_analyzer.config import REVDIFF_SCHEMA_VERSION
+    from datasheet_analyzer.publish import write_revision_diff
+    from datasheet_analyzer.retrieve.revdiff import RevisionPair
+    from datasheet_analyzer.revdiff import render_revision_diff
+
+    def _refuse(message: str) -> int:
+        if args.json:
+            print(
+                json.dumps(
+                    {
+                        "schema_version": REVDIFF_SCHEMA_VERSION,
+                        "part_number": args.part,
+                        "ok": False,
+                        "error": message,
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                )
+            )
+        print(f"diff-rev error: {message}", file=sys.stderr)
+        return 2
+
+    settings = get_settings()
+    part_dir = settings.parts_dir / args.part
+    if not (part_dir / "manifest.json").exists():
+        return _refuse(
+            f"no corpus for {args.part} under {settings.parts_dir} — build it "
+            f"first: `dsa build <pdf> --part {args.part}`"
+        )
+
+    pair, error = RevisionPair.for_part(
+        part_dir, before=args.from_rev or "", after=args.to_rev or ""
+    )
+    if pair is None:
+        return _refuse(error)
+
+    diff = pair.diff()
+    markdown = render_revision_diff(diff)
+    written = None
+    if not args.no_write:
+        written = write_revision_diff(part_dir, markdown)
+
+    if args.json:
+        print(json.dumps(diff.model_dump(mode="json"), ensure_ascii=False, indent=2))
+    else:
+        print(markdown)
+    if written is not None:
+        print(f"written: {written}", file=sys.stderr)
+    return 0
 
 
 #: What to print when the optional MCP extra is not installed. Named here so
@@ -1076,6 +1146,15 @@ def main(argv: list[str] | None = None) -> int:
         default="",
         help="explicit vendor override, e.g. adi (default: detected + pinned)",
     )
+    p_build.add_argument(
+        "--rev",
+        default="",
+        help=(
+            "record the revision this copy is, on its Library record, so "
+            "`dsa diff-rev --from/--to` can name it. It does not widen the "
+            "build: a part still builds one datasheet"
+        ),
+    )
     p_build.add_argument("--no-cache", action="store_true")
     p_build.add_argument("--no-llm", action="store_true")
     p_build.add_argument(
@@ -1237,6 +1316,36 @@ def main(argv: list[str] | None = None) -> int:
     )
     p_compare.add_argument("--json", action="store_true", help="emit the comparison as JSON")
     p_compare.set_defaults(func=_cmd_compare)
+
+    p_diff = sub.add_parser(
+        "diff-rev",
+        help="diff two revisions of one part: specs, sections, pins, registers",
+    )
+    p_diff.add_argument("--part", required=True, help="part number, e.g. AFE7950")
+    # `--from` is a Python keyword, so argparse stores it under an explicit dest.
+    p_diff.add_argument(
+        "--from",
+        dest="from_rev",
+        default="",
+        help="the earlier revision: its --rev label, printed revision, or doc dir",
+    )
+    p_diff.add_argument(
+        "--to",
+        dest="to_rev",
+        default="",
+        help="the later revision (omit both to diff a part holding exactly two)",
+    )
+    p_diff.add_argument(
+        "--json",
+        action="store_true",
+        help="emit the diff as JSON (every value in its provenance envelope)",
+    )
+    p_diff.add_argument(
+        "--no-write",
+        action="store_true",
+        help="print the report without writing parts/<PART>/REVISION_DIFF.md",
+    )
+    p_diff.set_defaults(func=_cmd_diff_rev)
 
     p_project = sub.add_parser("project", help="group parts into a design (the noun above `part`)")
     psub = p_project.add_subparsers(dest="action", required=True)

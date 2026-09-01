@@ -3,6 +3,7 @@
 Layout per part:
     parts/<PART>/
       INDEX.md
+      REVISION_DIFF.md        (written by `dsa diff-rev`, not by a build)
       sources.json            (written by acquire)
       manifest.json
       docs/<doc_type>-<hash8>/
@@ -101,6 +102,7 @@ from datasheet_analyzer.publish.plots import (
 )
 from datasheet_analyzer.publish.search_index import INDEX_FILENAME, build_search_index
 from datasheet_analyzer.publish.search_index import dump_json as dump_search_index
+from datasheet_analyzer.revdiff.render import REVISION_DIFF_FILENAME
 from datasheet_analyzer.structure.confidence import mix as confidence_mix
 from datasheet_analyzer.structure.corpus import SectionPlan
 from datasheet_analyzer.tokens import count_tokens
@@ -116,6 +118,7 @@ log = logging.getLogger(__name__)
 # `publish.writer` because that is where callers already reach for them.
 __all__ = [
     "LIBRARY_REF_PREFIX",
+    "REVISION_DIFF_FILENAME",
     "ArtifactRef",
     "cards_current",
     "doc_dir_name",
@@ -134,6 +137,7 @@ __all__ = [
     "resolve_artifact_ref",
     "specs_current",
     "write_corpus",
+    "write_revision_diff",
 ]
 
 
@@ -250,6 +254,26 @@ def plots_current(doc_dir: Path) -> bool:
 def pins_current(doc_dir: Path) -> bool:
     """`pins.json`'s twin of `specs_current`, keyed on `PINS_SCHEMA_VERSION`."""
     return _artifact_schema_current(doc_dir, PINS_ARTIFACT, PINS_SCHEMA_VERSION)
+
+
+def write_revision_diff(part_dir: Path, markdown: str) -> Path:
+    """Write `REVISION_DIFF.md` beside the part's `INDEX.md`; return the path.
+
+    Takes the rendered markdown rather than the diff, so the publish stage never
+    learns how a revision diff is laid out: `revdiff.render` owns that, and what
+    `dsa diff-rev` prints and what lands on disk are then the same string by
+    construction.
+
+    Unlike every other file here it is written by a **command**, not by a build:
+    it is a report of one comparison a person asked for, not a corpus artifact a
+    rebuild must keep current — which is why no `*_current` gate reads it and why
+    a stale one is simply overwritten by the next run.
+    """
+    part_dir = Path(part_dir)
+    part_dir.mkdir(parents=True, exist_ok=True)
+    path = part_dir / REVISION_DIFF_FILENAME
+    _atomic_write_text(path, markdown)
+    return path
 
 
 def registers_current(doc_dir: Path) -> bool:

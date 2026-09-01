@@ -351,6 +351,83 @@ def _reconcile_named_pdf(
     return sort_sources([*inventory, doc.source])
 
 
+class BuildRefused(RuntimeError):
+    """A build the acquire stage refused, with the reason in its message."""
+
+
+def _file_revision_label(
+    pdf_path: Path,
+    *,
+    part_number: str,
+    inventory: list[SourceDocument],
+    store: LibraryStore | None,
+    revision_label: str,
+) -> None:
+    """Record `dsa build --rev <label>` against the document's Library record.
+
+    The label is the name a human filed *this copy* under. It is written to the
+    Library (`LibraryDocument.revision_label`), never to `SourceDocument` — that
+    shape is frozen and embedded in every cached extraction — and never to
+    `sources.json`, which is regenerated from the Library at publish and would
+    erase it.
+
+    Two refusals, and one warning that names a rule this branch already had.
+
+    **A PDF already filed under a different label is not re-labelled.** A label
+    is how `dsa diff-rev` names a side, so silently overwriting it would rename
+    the earlier revision in every report that quoted it. A matching label is a
+    no-op, which keeps `dsa build --rev` idempotent.
+
+    **A label on a part that already holds another datasheet warns.** On this
+    branch `acquire.inventory.single_datasheet` builds one datasheet per part —
+    "a part is one device, and its datasheet is one document" — so a second
+    datasheet record is kept in the Library and skipped by the build. The label
+    is still recorded (it is true of that document), but the caller is told, in
+    the same breath, that it did not produce a second buildable side.
+    """
+    label = revision_label.strip()
+    if not label:
+        return
+    content_hash = compute_content_hash(pdf_path)
+    stored = get_document(store, content_hash)
+    if stored is None:
+        log.warning(
+            "--rev %s: %s is not in the Library, so no revision label was recorded",
+            label,
+            pdf_path.name,
+        )
+        return
+    existing = (stored.revision_label or "").strip()
+    if existing and existing != label:
+        raise BuildRefused(
+            f"{pdf_path.name} is already filed for {part_number} under revision "
+            f"label {existing!r}; it cannot be re-filed as {label!r} because the "
+            f"label is how `dsa diff-rev` names a side and every report that "
+            f"quoted the old one would silently change meaning. Clear it "
+            f"deliberately, or build the other revision's own PDF"
+        )
+    if existing != label:
+        store.set_revision_label(content_hash, label)
+    built = {src.content_hash for src in inventory}
+    skipped = [
+        doc
+        for doc in (store.for_part(part_number) if store is not None else [])
+        if doc.source.doc_type == DocType.DATASHEET and doc.content_hash not in built
+    ]
+    if skipped:
+        log.warning(
+            "--rev %s was recorded on %s, but %d other datasheet record(s) for %s "
+            "are not part of this build: a part builds one datasheet "
+            "(acquire.inventory.single_datasheet), so labelling a second one does "
+            "not make two revisions coexist under %s",
+            label,
+            pdf_path.name,
+            len(skipped),
+            part_number,
+            part_number,
+        )
+
+
 def _acquire(
     pdf_path: Path,
     part_dir: Path,
@@ -455,6 +532,7 @@ def build_part(
     vendor: str = "",
     use_cache: bool = True,
     use_llm: bool = True,
+    revision_label: str = "",
     on_progress: Callable[[str], None] | None = None,
     store: LibraryStore | None = None,
     self_contained: bool = False,
@@ -463,6 +541,15 @@ def build_part(
 
     ``vendor`` = explicit override of detection (recorded as cli-override
     evidence); "" = detection/pinned value.
+
+    ``revision_label`` (`dsa build --rev F`, phase 7 ticket 03) records the name
+    a human filed *this copy* under, on the document's Library record, so
+    `dsa diff-rev` can name a side by it. It changes nothing about which
+    documents are built: a part still builds one datasheet
+    (`acquire.inventory.single_datasheet`), and a label on a second one is
+    recorded and warned about rather than silently widening the build set.
+    Raises ``BuildRefused`` when it contradicts a label already recorded for the
+    same bytes.
 
     ``on_progress`` is an additive hook: when supplied it is called at each
     stage boundary (``extracting``, ``structuring``, ``enriching``,
@@ -500,6 +587,16 @@ def build_part(
     # identity drift: a detection contradicting a pin warns loudly but never
     # re-routes (the pinned value stays authoritative).
     warn_vendor_drift(inventory)
+
+    # `--rev` is filing metadata, written after the document is in the Library
+    # and before anything is extracted: a refused label must cost nothing.
+    _file_revision_label(
+        pdf_path,
+        part_number=part_number,
+        inventory=inventory,
+        store=store,
+        revision_label=revision_label,
+    )
 
     part_vendor = next(
         (s.vendor for s in inventory if s.doc_type == DocType.DATASHEET),

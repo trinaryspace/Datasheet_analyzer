@@ -500,6 +500,27 @@ class LibraryDocument(BaseModel):
     #: the same LIBRARY_SCHEMA_VERSION - a bump would make the store skip every
     #: file on the shelf.
     revision_state: RevisionState = Field(default_factory=RevisionState)
+    #: The name a human filed *this copy* under (`dsa build --rev F`, phase 7
+    #: ticket 03). Recorded as given and never derived from the document:
+    #: `SourceDocument.revision` is what the page printed, and conflating a
+    #: filing label with a reading of the page is how a revision diff ends up
+    #: naming the wrong two sides.
+    #:
+    #: It lives here rather than on `SourceDocument` for the reason
+    #: `revision_state` does - that shape is frozen by
+    #: `tests/unit/test_contracts.py::test_source_document_shape_is_unchanged`
+    #: and is embedded in every cached `RawDocument` - and rather than in
+    #: `sources.json`, which is a *derived* view regenerated at publish (ADR
+    #: 0005) and would erase it on the next build. Written only by
+    #: `LibraryStore.set_revision_label`; `put()` preserves whatever is stored,
+    #: exactly as it preserves `labels`.
+    #:
+    #: It is deliberately **not** part of the published document directory
+    #: name. The content hash already keeps two revisions from colliding, so a
+    #: `-rev<label>` suffix would buy legibility at the price of renaming a
+    #: directory that may be shared by several parts (ADR 0008's library store)
+    #: and orphaning every citation into it.
+    revision_label: str = ""
     added_at: datetime = Field(default_factory=_utcnow)
     schema_version: str = ""
 
