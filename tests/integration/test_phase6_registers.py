@@ -35,7 +35,7 @@ from pathlib import Path
 import fitz
 import pytest
 
-from datasheet_analyzer.config import PIPELINE_VERSION
+from datasheet_analyzer.config import PIPELINE_VERSION, REGISTERS_SCHEMA_VERSION
 from datasheet_analyzer.derive.provenance import REGISTERS_ARTIFACT, resolve_source
 from datasheet_analyzer.derive.registers import (
     build_registers,
@@ -102,6 +102,29 @@ def _cached_raw(content_hash: str, backend: str) -> RawDocument | None:
         return RawDocument.model_validate_json(path.read_text(encoding="utf-8"))
     except ValueError:
         return None
+
+
+def _register_sets_from_cache(built):
+    """Both documents' register maps, built from their cached extractions.
+
+    Not read from the published files: this measures what `build_registers`
+    emits *now*, which is the point when the thing under test is the shape of
+    an id. Skips rather than fails when an extraction is not cached on this
+    machine, the same guard the rest of the module uses.
+    """
+    _part_dir, manifest = built
+    sets = []
+    for doc in manifest.documents:
+        stats = manifest.extraction_stats.get(doc.content_hash)
+        raw = _cached_raw(doc.content_hash, stats.backend if stats else "")
+        if raw is None:
+            pytest.skip(f"no cached extraction for {doc.doc_type.value} {doc.content_hash[:8]}")
+        build = build_registers(raw, PART)
+        if build.registerset is not None:
+            sets.append(build.registerset)
+    if len(sets) < 2:
+        pytest.skip("this part does not publish two register maps on this machine")
+    return sets
 
 
 @pytest.fixture(scope="module")
@@ -322,22 +345,56 @@ class TestGoldenRegisterQuestions:
                 checked += 1
         assert checked == 70
 
-    def test_one_id_is_carried_by_a_record_in_each_document(self, built, registers):
-        """The measured limitation, asserted rather than left to be discovered.
+    def test_no_id_is_carried_by_a_record_in_two_documents(self, built, registers):
+        """The fix, on the documents that exposed the defect.
 
-        A register record's id is a pure function of its coordinates *inside a
-        document*, so the two documents that print this map compute the same
-        ids. Resolving `registers.json#reg_t0-r15` against the part's roots as
-        a list returns whichever document comes first. Recorded in
-        `KNOWN_SHORTCOMINGS.md`; the fix belongs with `models.py`, not here.
+        This test asserted the *defect* until phase 6.5's follow-up: a register
+        record's id was a pure function of its coordinates inside a document,
+        so the datasheet's `Table 7-1` and the register map's `Table 1-1` —
+        the same 35 registers, printed twice — computed one set of 35 ids for
+        70 records, and `resolve_source` against the part's roots as a list
+        returned whichever document came first. `register_record_id` now folds
+        in the document (`models.py`), which is the shape ticket 08 used one
+        level up.
+
+        Measured off the two cached extractions rather than the published
+        files, because the id shape is what changed and the published corpus
+        carries the shape it was written with until the next rebuild — the
+        assertion over the published artifacts is the test below, which says
+        so when it skips.
         """
+        sets = _register_sets_from_cache(built)
         by_id: dict[str, set[str]] = {}
-        for _name, registerset in registers.sets:
+        for registerset in sets:
             for record in registerset.registers:
                 by_id.setdefault(record.id, set()).add(registerset.doc_hash)
-        shared = {rid: docs for rid, docs in by_id.items() if len(docs) > 1}
-        assert len(by_id) == 35
-        assert len(shared) == 35, "every id is carried by a record in both documents"
+        n_records = sum(len(rs.registers) for rs in sets)
+        assert n_records == 70, "both documents' register maps"
+        assert len(by_id) == 70, "70 records, 70 ids"
+        assert not [rid for rid, docs in by_id.items() if len(docs) > 1]
+
+    def test_the_published_ids_are_distinct_once_the_part_is_rebuilt(self, registers):
+        """The same property over what is actually on disk.
+
+        A `registers.json` written before the id shape changed carries the old
+        one — ids are serialized, and the fallback for a record with no
+        `doc_key` is deliberately the old shape so citations already written
+        still resolve. This asserts nothing until the corpus is republished at
+        `REGISTERS_SCHEMA_VERSION` 2, and says which state it is in.
+        """
+        stale = [
+            name
+            for name, registerset in registers.sets
+            if registerset.schema_version != REGISTERS_SCHEMA_VERSION
+        ]
+        if stale:
+            pytest.skip(
+                f"published at an older registers schema ({', '.join(stale)}) — "
+                "the pending rebuild is what lands the new id shape on disk"
+            )
+        ids = [r.id for _n, rs in registers.sets for r in rs.registers]
+        assert len(ids) == 70
+        assert len(set(ids)) == 70
 
     def test_dsa_regs_answers_the_same_way_the_library_does(self, monkeypatch, capsys):
         if not (PARTS_DIR / PART).is_dir():

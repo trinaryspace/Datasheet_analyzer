@@ -131,6 +131,16 @@ def _extract(tmp_path: Path, name: str, rows: list[list[str]], **kwargs) -> RawD
     return PdfLayoutBackend().extract(source)
 
 
+def _extract_again(raw: RawDocument) -> RawDocument:
+    """The same document read a second time — a rebuild of identical input.
+
+    Same file, same bytes, so the same `content_hash` and the same `doc_key`.
+    Writing a second PDF with the same *content* is not this: fitz produces
+    different bytes, which is a different document and gets different ids.
+    """
+    return PdfLayoutBackend().extract(raw.source.model_copy(deep=True))
+
+
 def _reg_doc(
     tmp_path: Path,
     name: str = "regs.pdf",
@@ -214,17 +224,44 @@ class TestBuildAndProvenance:
         assert first.page == 1
         assert first.row_verbatim == ["0x1A04", "TXDIG_CTRL0", "0x00", "R/W"]
         assert first.confidence is Confidence.HIGH
-        assert first.id == register_record_id(0, 0)
+        assert first.id == register_record_id(first.doc_key, 0, 0)
+        assert first.doc_key and first.id.startswith(f"reg_d{first.doc_key}-")
         # Bit fields are ticket 06's: an empty list says "not extracted",
         # never "this register has no fields".
         assert first.fields == []
 
     def test_ids_are_unique_and_stable_across_a_rebuild(self, tmp_path):
-        first = build_registers(_reg_doc(tmp_path, "a.pdf"), "REGTEST").registerset
-        second = build_registers(_reg_doc(tmp_path, "b.pdf"), "REGTEST").registerset
+        """Identical *bytes* rebuild to identical ids; another document does not.
+
+        The second half is phase 6.5's register-id fix: an id folds in the
+        document it was printed in, so two documents printing the same table at
+        the same coordinates no longer compute one id. This test used to read
+        two separately written PDFs as "a rebuild" — they are two documents,
+        which is exactly the case the fix distinguishes — so the rebuild is now
+        the same file extracted twice, which is what "identical input" means.
+        """
+        raw = _reg_doc(tmp_path, "a.pdf")
+        first = build_registers(raw, "REGTEST").registerset
+        second = build_registers(_extract_again(raw), "REGTEST").registerset
         ids = [r.id for r in first.registers]
         assert len(set(ids)) == len(ids)
         assert ids == [r.id for r in second.registers]
+
+    def test_two_documents_printing_the_same_table_do_not_share_an_id(self, tmp_path):
+        """The measured defect, in miniature.
+
+        LMX1204's datasheet (`Table 7-1`) and its register map (`Table 1-1`)
+        print the same 35 registers, and the part published 70 records
+        computing 35 ids — one carried by a record in each document.
+        """
+        a = build_registers(_reg_doc(tmp_path, "a.pdf"), "REGTEST").registerset
+        b = build_registers(_reg_doc(tmp_path, "b.pdf"), "REGTEST").registerset
+        assert a.doc_hash != b.doc_hash
+        assert [r.row_verbatim for r in a.registers] == [r.row_verbatim for r in b.registers]
+        assert not {r.id for r in a.registers} & {r.id for r in b.registers}
+        assert len({r.id for r in a.registers} | {r.id for r in b.registers}) == 2 * len(
+            a.registers
+        )
 
     def test_every_register_resolves_back_to_its_record_and_printed_page(self, tmp_path):
         """Invariant 8's check, run the way a card will run it."""
@@ -432,7 +469,7 @@ class TestLookup:
         assert payload["reset"] == {"verbatim": "0x00", "value": 0}
         assert payload["page"] == 1
         assert payload["confidence"] == "high"
-        assert payload["id"] == register_record_id(0, 0)
+        assert payload["id"] == register_record_id(hit.record.doc_key, 0, 0)
 
     def test_an_unparsed_address_is_findable_by_its_printed_form_only(self):
         record = RegisterRecord(name="MYSTERY", address=RegisterValue(verbatim="0x1G"))
@@ -494,7 +531,8 @@ class TestCli:
         assert data["schema_version"] == REGISTERS_SCHEMA_VERSION
         assert data["part_number"] == ""  # shared artifacts are part-neutral
         assert [r["address"]["value"] for r in data["registers"]] == [6660, 6661, 6664, 6668]
-        assert data["registers"][0]["id"] == register_record_id(0, 0)
+        first = data["registers"][0]
+        assert first["id"] == register_record_id(first["doc_key"], 0, 0)
 
         loaded = load_part_registers(built.part_dir, "REGTEST")
         assert [r.name for r in loaded.registers] == [

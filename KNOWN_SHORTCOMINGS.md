@@ -14,12 +14,28 @@ re-extract and rebuild of all eleven parts at pipeline 0.5.0, extractor
 current, not carried forward. Closing numbers are in
 `Reports/PHASE_6_5_REPORT.md`.
 
-**Closed after wave 2 and deleted here:** *"Extraction cache: a fix in the
-structure layer is invisible to a cached extraction"* — the structure stage
-now has a version of its own (`config.STRUCTURE_STAGE_VERSION`, embedded in
+**Two entries closed after wave 2 and deleted here.**
+
+*"Extraction cache: a fix in the structure layer is invisible to a cached
+extraction"* — the structure stage now has a version of its own
+(`config.STRUCTURE_STAGE_VERSION`, embedded in
 `RawDocument.structure_version`) that invalidates the cache the way an
 extractor change does, so `--no-cache` is no longer the only way to land a
-`structure/` fix.
+`structure/` fix. Measured on the document that showed the defect: LMX1204's
+datasheet re-extracted on the version mismatch alone and pinned 484 of 501
+row pages, the number the phase-6.5 rebuild could only reach with
+`--no-cache`.
+
+*"Registers: one record id is carried by a record in each of a part's two
+documents"* — `register_record_id` folds in the document
+(`reg_d0e7de32d-t0-r5`), the shape ticket 08 used one level up, and
+`REGISTERS_SCHEMA_VERSION` is 2. Measured from both cached extractions:
+LMX1204's 70 register records now compute **70 distinct ids**, none shared
+between its two documents. The published `registers.json` files still carry
+the old ids until the next rebuild — a record with no `doc_key` computes the
+old shape on purpose, so citations already written keep resolving — and
+`test_the_published_ids_are_distinct_once_the_part_is_rebuilt` says so when
+it skips.
 
 ---
 
@@ -136,38 +152,4 @@ the trailing cross-reference prose (`extract/pdf_layout.py`), which would put
 twelve more registers in front of the validators, plus whatever the three
 genuine refusals then need. That is another cache-invalidating change to the
 layout floor, so it belongs to a deliberate re-extraction pass.
-
----
-
-## Registers: one record id is carried by a record in each of a part's two documents
-
-**Found by phase 6.5, wave 2, on the rebuild it performed.** Phase 6.5 ticket
-08 made a *spec* record's id unique within its document, and the rebuild
-confirms it: every part in the corpus now publishes as many distinct spec ids
-as it has records (AD9081 549/549, LMX1204 543/543 and 284/284, HMC520A 85/85,
-lm741 71/71, QPA1003P 41/41).
-
-A **register** record's id is likewise a pure function of its coordinates
-inside one document (`reg_t0-r15`), and that was sufficient while no part had
-two documents printing a register map. LMX1204 now does: the datasheet's
-`Table 7-1` and the register map's `Table 1-1` print the same 35 registers, and
-recovering the second one (ticket 05) means the part publishes two
-`registers.json` files whose records compute **the same 35 ids**. Measured:
-70 records, 35 distinct ids, every id carried by one record in each document.
-
-**What the tool does instead.** Nothing wrong, because the contract is
-per-document: `derive/provenance.resolve_source` is given the roots to search,
-and a derived value cites a record inside one document. Resolved against its
-own document's root every one of the 70 records resolves to itself, which is
-what `tests/integration/test_phase6_registers.py::…::
-test_every_published_register_resolves_to_a_record_and_a_page` asserts. A
-consumer that passes *both* roots as a list gets the first document's record.
-`dsa regs --addr 0x11` therefore answers twice — once per document, each hit
-citing its own page — which is honest but is two answers to one question.
-
-**What would close it.** The same fix ticket 08 applied one layer up: fold the
-document into a register record's id, or resolve a citation against the
-document it was written against rather than a list of roots. Both change the
-shape of every register citation already written, which is why this is recorded
-rather than done in passing.
 

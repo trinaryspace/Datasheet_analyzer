@@ -279,9 +279,21 @@ class TestRecordIds:
         assert row[0].id == pin_record_id(2, 0, "A1")
 
     def test_a_register_id_and_its_bit_field_ids_nest(self):
+        register = RegisterRecord(
+            doc_key="0e7de32d", table_index=0, row_index=5, name="TXDIG_CTRL0"
+        )
+        assert register.id == register_record_id("0e7de32d", 0, 5) == "reg_d0e7de32d-t0-r5"
+        assert bit_field_id(register.id, 3) == "reg_d0e7de32d-t0-r5.f3"
+
+    def test_a_register_written_before_doc_keys_keeps_its_old_id(self):
+        """The documented fallback: a citation already written still resolves.
+
+        Same shape ticket 08 gave `section_key` one level up — a record that
+        carries no `doc_key` computes exactly the id it computed before the
+        document was folded in.
+        """
         register = RegisterRecord(table_index=0, row_index=5, name="TXDIG_CTRL0")
-        assert register.id == register_record_id(0, 5) == "reg_t0-r5"
-        assert bit_field_id(register.id, 3) == "reg_t0-r5.f3"
+        assert register.id == register_record_id("", 0, 5) == "reg_t0-r5"
 
     def test_source_ref_is_the_one_way_a_source_string_is_built(self):
         record = SpecRecord(section="4.9", table_index=0, row_index=12)

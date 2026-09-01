@@ -187,9 +187,38 @@ def pin_record_id(table_index: int, row_index: int, pin: str) -> str:
     return record_id("pin", f"t{table_index}", f"r{row_index}", pin)
 
 
-def register_record_id(table_index: int, row_index: int) -> str:
-    """Id of one `RegisterRecord` — its row in the register summary table."""
-    return record_id("reg", f"t{table_index}", f"r{row_index}")
+#: Length of a `doc_key`: the leading hex characters of a document's content
+#: hash. The same discriminator `publish.doc_dir_name_for_source` names a
+#: document's directory with (`register_map-0e7de32d`), so an id and the
+#: directory it lives in name the document the same way.
+DOC_KEY_LEN = 8
+
+
+def register_record_id(doc_key: str, table_index: int, row_index: int) -> str:
+    """Id of one `RegisterRecord`: its document, its table, its row.
+
+    `doc_key` is here for the reason ticket 08 put a section key in
+    `spec_record_id` one level up: `(table_index, row_index)` is unique inside
+    **one document**, and that was enough only while no part had two documents
+    printing a register map. LMX1204 does — the datasheet's `Table 7-1` and the
+    register map's `Table 1-1` print the same 35 registers — and the part
+    published **70 records computing 35 ids**, every one carried by a record in
+    each document.
+
+    The key is the document's content-hash prefix: a pure function of the
+    document's bytes rather than of a position in a list, and the same
+    discriminator its published directory already carries, so two documents
+    that collided here would have collided on disk first. Keying on the
+    published directory itself was the other option and was rejected because a
+    record must be able to compute its own id before anything is published.
+
+    A record written before this carries no `doc_key` and keeps the old shape
+    (`reg_t0-r5`), so a citation already written still resolves — the same
+    fallback ticket 08 gave `section_key`.
+    """
+    if not doc_key:
+        return record_id("reg", f"t{table_index}", f"r{row_index}")
+    return record_id("reg", f"d{doc_key}", f"t{table_index}", f"r{row_index}")
 
 
 def bit_field_id(register_record_id_: str, field_index: int) -> str:
@@ -1168,6 +1197,12 @@ class RegisterRecord(BaseModel):
     section: str = ""
     table_index: int = 0
     row_index: int = 0
+    # The document this row was printed in — its content-hash prefix, which is
+    # what makes this record's id unique inside its *part* and not merely
+    # inside its document. See `register_record_id`. A record written before
+    # the field falls back to the old id shape, which keeps citations already
+    # written resolvable.
+    doc_key: str = ""
     page: int | None = None
     row_verbatim: list[str] = Field(default_factory=list)
     confidence: Confidence = Confidence.UNKNOWN
@@ -1175,8 +1210,8 @@ class RegisterRecord(BaseModel):
     @computed_field  # type: ignore[prop-decorator]
     @property
     def id(self) -> str:
-        """Stable, addressable id: `reg_t0-r5`."""
-        return register_record_id(self.table_index, self.row_index)
+        """Stable, addressable id: `reg_d0e7de32-t0-r5`."""
+        return register_record_id(self.doc_key, self.table_index, self.row_index)
 
 
 class RegisterSet(BaseModel):

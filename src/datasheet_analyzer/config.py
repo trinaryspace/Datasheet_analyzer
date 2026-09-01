@@ -73,7 +73,13 @@ LIBRARY_SCHEMA_VERSION = "1"
 # "" and is re-extracted once.
 STRUCTURE_STAGE_VERSION = "1"
 PINS_SCHEMA_VERSION = "1"
-REGISTERS_SCHEMA_VERSION = "1"
+# "2": a register record's id folds in the document it was printed in
+# (`models.register_record_id`), because `(table_index, row_index)` is unique
+# only inside one document and LMX1204 publishes two register maps printing
+# the same 35 rows — 70 records that computed 35 ids. Every register id
+# written before this changes; a record published without a `doc_key` keeps
+# the old shape, so citations already written still resolve.
+REGISTERS_SCHEMA_VERSION = "2"
 # 2: cards carry `corpus_key`, so a document that moved between the part
 # and the shared store invalidates the card that cited it (phase 6.5, 03).
 CARDS_SCHEMA_VERSION = "2"

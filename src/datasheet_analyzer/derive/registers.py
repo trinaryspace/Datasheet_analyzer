@@ -71,6 +71,7 @@ from pathlib import Path
 from datasheet_analyzer.config import REGISTERS_SCHEMA_VERSION, get_settings
 from datasheet_analyzer.derive.provenance import REGISTERS_ARTIFACT
 from datasheet_analyzer.models import (
+    DOC_KEY_LEN,
     Confidence,
     ExtractionStats,
     RawDocument,
@@ -136,8 +137,14 @@ def _register_value(text: str, *, hex_column: bool) -> RegisterValue:
     return RegisterValue(verbatim=printed, value=parse_address(printed, hex_default=hex_column))
 
 
-def _record(row: DeviceRow, *, hex_addresses: bool, hex_resets: bool) -> RegisterRecord:
-    """One `DeviceRow` -> one `RegisterRecord`, every printed cell copied."""
+def _record(
+    row: DeviceRow, *, hex_addresses: bool, hex_resets: bool, doc_key: str = ""
+) -> RegisterRecord:
+    """One `DeviceRow` -> one `RegisterRecord`, every printed cell copied.
+
+    `doc_key` is the document's content-hash prefix, which the record needs in
+    order to compute an id unique inside its *part* (`register_record_id`).
+    """
     return RegisterRecord(
         name=row.value(ROLE_NAME),
         address=_register_value(row.key, hex_column=hex_addresses),
@@ -146,6 +153,7 @@ def _record(row: DeviceRow, *, hex_addresses: bool, hex_resets: bool) -> Registe
         section=row.section,
         table_index=row.table_index,
         row_index=row.row_index,
+        doc_key=doc_key,
         page=row.page,
         row_verbatim=list(row.row_verbatim),
         confidence=row.confidence,
@@ -268,13 +276,17 @@ def build_registers(raw: RawDocument, part_number: str = "") -> RegisterBuild:
 
     registers: list[RegisterRecord] = []
     warnings: list[str] = []
+    # What makes an id unique inside the *part*: LMX1204's two documents print
+    # the same 35 registers at the same coordinates (`register_record_id`).
+    doc_key = raw.source.content_hash[:DOC_KEY_LEN]
     for result in accepted:
         if not result.rows:
             continue
         hex_addresses = column_is_hex(row.key for row in result.rows)
         hex_resets = column_is_hex(_values(result.rows, ROLE_RESET))
         registers.extend(
-            _record(row, hex_addresses=hex_addresses, hex_resets=hex_resets) for row in result.rows
+            _record(row, hex_addresses=hex_addresses, hex_resets=hex_resets, doc_key=doc_key)
+            for row in result.rows
         )
         warnings.extend(_missing_column_warnings(result))
         warnings.extend(_dropped_row_warning(result))

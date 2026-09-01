@@ -163,7 +163,7 @@ def _synthetic_record_id(artifact: str, node: dict[str, Any]) -> str:
     if name == PINS_ARTIFACT:
         return pin_record_id(table_index, row_index, str(node.get("pin", "")))
     if name == REGISTERS_ARTIFACT:
-        return register_record_id(table_index, row_index)
+        return register_record_id(str(node.get("doc_key", "")), table_index, row_index)
     return ""
 
 
