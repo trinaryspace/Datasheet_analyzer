@@ -1,7 +1,8 @@
 """Shared fixtures and helpers.
 
 Layout:
-- tests/fixtures/pdf/       the four real phase-4 gate PDFs (ungated —
+- tests/fixtures/pdf/       the four real phase-4 gate PDFs plus the four
+                            brand-less Mini-Circuits datasheets (ungated —
                             committed fixtures, pdf_layout never touches
                             the network)
 - tests/fixtures/ti_html/   recorded real TI document-viewer pages (no network in tests)
@@ -30,6 +31,16 @@ AD9081_PDF = GATE_PDFS / "ad9081.pdf"
 LM741_PDF = GATE_PDFS / "lm741.pdf"
 QPA1003P_PDF = GATE_PDFS / "QPA1003P.pdf"
 HMC520A_PDF = GATE_PDFS / "hmc520a.pdf"
+#: Four real Mini-Circuits datasheets: no brand word on page 1, no publisher
+#: in their metadata, no brand in their filenames. They are the evidence-free
+#: case vendor detection used to answer with a guess (`ti`, which routed them
+#: to `ti_html` and 404'd against ti.com). Ungated like the gate PDFs above.
+BRANDLESS_PDFS = (
+    GATE_PDFS / "LHA-83W+.pdf",
+    GATE_PDFS / "PMA1-14LN+.pdf",
+    GATE_PDFS / "PSA-8A+.pdf",
+    GATE_PDFS / "ZX10R-2-183-S+.pdf",
+)
 
 
 @pytest.fixture(autouse=True)
@@ -120,7 +131,16 @@ def make_synthetic_pdf():
     Features (p.1) + Absolute Maximum Ratings (p.2). One fixture so every
     pipeline-level test builds the same input bytes; ``marker`` (default "")
     appends to the page-1 text to produce deliberately different bytes while
-    keeping the structural shape identical."""
+    keeping the structural shape identical.
+
+    It carries TI's document metadata because the parts built from it are
+    *TI* parts — they replay recorded TI document-viewer HTML — and since
+    detection stopped guessing (``vendor.detect_vendor``) a document with no
+    brand mark anywhere is pinned ``unknown`` and routed to the layout floor.
+    The real TI datasheets in this repo (afe7950, afe7953, lmx1204, lm741)
+    carry exactly this author string and print no vendor word on page 1, so
+    the fixture matches its subject; the metadata is invisible to text
+    extraction, so nothing about the extracted document changes."""
 
     def _make(path: Path, marker: str = "") -> None:
         doc = fitz.open()
@@ -141,6 +161,7 @@ def make_synthetic_pdf():
                 [2, "4.1 Absolute Maximum Ratings", 2],
             ]
         )
+        doc.set_metadata({"author": "Texas Instruments, Incorporated"})
         doc.save(path)
         doc.close()
 

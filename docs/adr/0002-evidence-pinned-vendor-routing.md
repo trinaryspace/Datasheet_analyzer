@@ -20,3 +20,15 @@ contract), surprising without context (vendor feels like the obvious key,
 but it must stay inert), and was a genuine trade-off against richer
 per-vendor dialect profiles — which we rejected because vendor N+1 always
 arrives with unknown conventions, and the engine must survive it unchanged.
+
+**Update (phase 6.5 follow-up).** "Default `ti`" was the one clause of this
+decision that contradicted the rest of it: an unmatched document was pinned
+`ti` with *empty* evidence, which is the silent runtime guess this ADR
+forbids, and it routed four brand-less Mini-Circuits datasheets to `ti_html`
+where they 404'd against ti.com. Detection now reads three sources in
+strength order — page-1 text, the document's own PDF metadata (a cover page
+that prints its brand as a logo still carries it; every TI datasheet in this
+repo is that shape), then the filename — and a document that matches none of
+them is pinned `unknown`, which routes to the vendor-neutral layout floor.
+The reference parts are unchanged because their evidence is real: TI's
+`author` metadata, recorded as `brand:"texas instruments" (metadata)`.

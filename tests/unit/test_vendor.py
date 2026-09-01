@@ -21,7 +21,7 @@ from datasheet_analyzer.acquire.inventory import load_inventory, register_source
 from datasheet_analyzer.config import Settings
 from datasheet_analyzer.extract import get_backend
 from datasheet_analyzer.extract.http import MappingFetcher
-from datasheet_analyzer.extract.pdf_structure import compute_content_hash
+from datasheet_analyzer.extract.pdf_structure import compute_content_hash, first_page_text
 from datasheet_analyzer.models import DocType, SourceDocument
 from datasheet_analyzer.pipeline import build_part
 from datasheet_analyzer.vendor import (
@@ -30,16 +30,23 @@ from datasheet_analyzer.vendor import (
     select_backend,
     warn_vendor_drift,
 )
+from tests.conftest import BRANDLESS_PDFS, LM741_PDF
 
 SYN = Path(__file__).parent.parent / "fixtures" / "synthetic"
 
 
-def _pdf(path, pages: list[str]):
-    """Tiny synthetic PDF with known text per page (no TOC needed here)."""
+def _pdf(path, pages: list[str], metadata: dict[str, str] | None = None):
+    """Tiny synthetic PDF with known text per page (no TOC needed here).
+
+    `metadata` writes the PDF's own document information — where a publisher
+    stamps its name on a cover page that prints only a logo.
+    """
     doc = fitz.open()
     for text in pages:
         page = doc.new_page()
         page.insert_text((72, 72), text)
+    if metadata:
+        doc.set_metadata(metadata)
     doc.save(path)
     doc.close()
 
@@ -79,11 +86,17 @@ class TestDetectVendor:
         assert vendor == "adi"
         assert evidence == 'brand:"analog devices" (p.1)'
 
-    def test_unmatched_text_and_filename_default_to_ti(self, tmp_path):
+    def test_unmatched_text_and_filename_are_unknown_not_guessed(self, tmp_path):
+        """No brand mark anywhere -> `unknown`, with the absence recorded.
+
+        This asserted `ti` until the evidence-pinning fix: detection fell back
+        to the project's most common vendor, which is exactly the "silent
+        runtime guess" ADR 0002 forbids.
+        """
         pdf = tmp_path / "qpa1003p.pdf"
         _pdf(pdf, ["HIGH POWER AMPLIFIER 1 of 20"])  # no brand marks anywhere
         vendor, evidence = detect_vendor(pdf)
-        assert vendor == "ti"
+        assert vendor == "unknown"
         assert evidence == ""
 
     def test_brand_in_filename(self, tmp_path):
@@ -98,10 +111,39 @@ class TestDetectVendor:
         _pdf(pdf, ["Texas Instruments and Analog Devices on one cover page"])
         assert detect_vendor(pdf)[0] == "ti"
 
-    def test_unmatched_pdf_defaults_to_ti_with_empty_evidence(self, tmp_path):
+    def test_unmatched_pdf_is_unknown_with_empty_evidence(self, tmp_path):
         pdf = tmp_path / "mystery.pdf"
         _pdf(pdf, ["Untitled engineering document, page one"])
-        assert detect_vendor(pdf) == ("ti", "")
+        assert detect_vendor(pdf) == ("unknown", "")
+
+    def test_brand_in_document_metadata(self, tmp_path):
+        """A cover page that prints its brand as a logo still carries it.
+
+        Every TI datasheet in this repo is that shape: page 1 has no vendor
+        word at all, and `Texas Instruments, Incorporated` is in the PDF's own
+        author field. Metadata is real recorded evidence; the alternative was
+        the guess this fix removes.
+        """
+        pdf = tmp_path / "part.pdf"
+        _pdf(pdf, ["ACME9000 datasheet, page one"], metadata={"author": "Texas Instruments, Inc"})
+        assert detect_vendor(pdf) == ("ti", 'brand:"texas instruments" (metadata)')
+
+    def test_page_one_text_outranks_metadata(self, tmp_path):
+        """Sources are tried strongest-first: what the document prints wins."""
+        pdf = tmp_path / "part.pdf"
+        _pdf(pdf, ["Analog Devices ACME9000"], metadata={"author": "Texas Instruments, Inc"})
+        assert detect_vendor(pdf) == ("adi", 'brand:"analog devices" (p.1)')
+
+    def test_metadata_outranks_filename(self, tmp_path):
+        pdf = tmp_path / "qorvo-reprint.pdf"
+        _pdf(pdf, ["ACME9000 datasheet"], metadata={"author": "Analog Devices, Inc."})
+        assert detect_vendor(pdf) == ("adi", 'brand:"analog devices" (metadata)')
+
+    def test_typesetting_tool_is_not_brand_evidence(self, tmp_path):
+        """`producer`/`creator` name the tool, never the publisher."""
+        pdf = tmp_path / "part.pdf"
+        _pdf(pdf, ["ACME9000"], metadata={"producer": "Texas Instruments Publishing Engine"})
+        assert detect_vendor(pdf) == ("unknown", "")
 
 
 class TestSelectBackend:
@@ -199,7 +241,11 @@ class TestPinningPersistence:
         pdf, settings = vendor_env
         result = build_part(pdf, part_number="TEST9000", settings=settings, use_llm=False)
         (src,) = load_inventory(settings.parts_dir / "TEST9000")
-        assert src.vendor == "ti"  # synthetic page has no brand -> project default
+        # The synthetic part is a TI part (it replays TI document-viewer HTML)
+        # and its fixture carries TI's metadata like the real ones do. Nothing
+        # is pinned without evidence any more, so the evidence is asserted too.
+        assert src.vendor == "ti"
+        assert src.vendor_evidence == 'brand:"texas instruments" (metadata)'
         assert result.manifest.vendor == "ti"
 
 
@@ -328,6 +374,78 @@ class TestWarnVendorDriftStandalone:
             path=str(tmp_path / "gone.pdf"),
             doc_type=DocType.DATASHEET,
             vendor="ti",
+        )
+        with caplog.at_level(logging.WARNING):
+            warn_vendor_drift([source])
+        assert not any("vendor drift" in r.message for r in caplog.records)
+
+
+class TestEvidencePinnedOrUnknown:
+    """The regression this fix exists for, on the documents that showed it.
+
+    The four Mini-Circuits datasheets under `tests/fixtures/pdf/` print no
+    vendor word on page 1, carry an empty PDF author, and have no brand in
+    their filenames. Detection used to answer that with `ti` on empty
+    evidence, which routed them to the `ti_html` backend and 404'd against
+    ti.com — so they only built when forced with `--vendor unknown`.
+    """
+
+    @pytest.mark.parametrize("pdf", BRANDLESS_PDFS, ids=lambda p: p.stem)
+    def test_a_brandless_datasheet_is_unknown_with_no_evidence(self, pdf):
+        assert pdf.is_file(), f"committed fixture missing: {pdf}"
+        assert detect_vendor(pdf) == ("unknown", "")
+
+    @pytest.mark.parametrize("pdf", BRANDLESS_PDFS, ids=lambda p: p.stem)
+    def test_a_brandless_datasheet_routes_to_the_layout_floor(self, pdf):
+        # doc_type as `dsa build` pins it: the named PDF is the part's datasheet.
+        src = register_source(pdf, part_number=pdf.stem, doc_type=DocType.DATASHEET)
+        assert (src.vendor, src.vendor_evidence) == ("unknown", "")
+        assert select_backend(src.vendor, src.doc_type) == "pdf_layout"
+
+    def test_a_brandless_datasheet_builds_with_no_vendor_override(self, tmp_path):
+        """`dsa build <pdf> --part X` — no `--vendor unknown` anywhere.
+
+        Offline by construction: `unknown` routes to `pdf_layout`, which never
+        touches the network. Under the old default this same call reached
+        ti.com for a document TI never published.
+        """
+        pdf = next(p for p in BRANDLESS_PDFS if p.name == "PSA-8A+.pdf")
+        settings = Settings(parts_dir=tmp_path / "parts", cache_dir=tmp_path / ".cache").resolve()
+        result = build_part(pdf, part_number="PSA-8A", settings=settings, use_llm=False)
+        (src,) = load_inventory(settings.parts_dir / "PSA-8A")
+        assert src.vendor == "unknown"
+        assert result.manifest.vendor == "unknown"
+        assert result.manifest.extraction_stats[src.content_hash].backend == "pdf_layout"
+        assert result.manifest.sections
+
+    def test_lm741_prints_no_brand_on_page_one_and_its_override_still_wins(self, tmp_path):
+        """AGENTS.md's LM741 footnote, asserted rather than remembered.
+
+        The gate pins LM741 `--vendor unknown` because it carries no page-1
+        brand mark — still true, and the metadata axis does not change it: an
+        explicit `--vendor` is a deliberate contradiction, is recorded as
+        cli-override evidence, and never drift-warns.
+        """
+        page_one = first_page_text(LM741_PDF).lower()
+        assert "texas instruments" not in page_one
+        assert detect_vendor(LM741_PDF) == ("ti", 'brand:"texas instruments" (metadata)')
+
+        src = register_source(
+            LM741_PDF, part_number="LM741", vendor="unknown", doc_type=DocType.DATASHEET
+        )
+        assert (src.vendor, src.vendor_evidence) == ("unknown", "cli-override: --vendor unknown")
+        assert select_backend(src.vendor, src.doc_type) == "pdf_layout"
+
+    def test_a_document_with_no_detectable_brand_never_drift_warns(self, tmp_path, caplog):
+        """An absence of evidence contradicts nothing."""
+        pdf = tmp_path / "mystery.pdf"
+        _pdf(pdf, ["Untitled engineering document, page one"])
+        source = SourceDocument(
+            content_hash=compute_content_hash(pdf),
+            path=str(pdf),
+            doc_type=DocType.DATASHEET,
+            vendor="ti",
+            vendor_evidence='brand:"texas instruments" (p.1)',
         )
         with caplog.at_level(logging.WARNING):
             warn_vendor_drift([source])

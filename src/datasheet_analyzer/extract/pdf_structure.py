@@ -64,6 +64,30 @@ def first_page_text(path: Path) -> str:
         return doc[0].get_text() if doc.page_count else ""
 
 
+#: Metadata fields a publisher stamps its own name into. `producer`/`creator`
+#: name the typesetting tool ("Antenna House", "iText"), never the vendor, so
+#: they are deliberately not read as brand evidence.
+_BRAND_METADATA_FIELDS = ("author", "title", "subject")
+
+
+def document_metadata_text(path: Path) -> str:
+    """Publisher-bearing PDF metadata, joined (vendor detection).
+
+    A datasheet cover page often prints its brand as a *logo* — an image, with
+    no text for a page-1 scan to find (measured: AFE7950, AFE7953, LMX1204 and
+    LM741 all print no vendor word on page 1). The document's own metadata
+    still carries it ("Texas Instruments, Incorporated", "Analog Devices,
+    Inc."), so this is real recorded evidence rather than a guess about what a
+    brand-less document probably is. '' when the file cannot be read.
+    """
+    try:
+        with fitz.open(path) as doc:
+            meta = doc.metadata or {}
+    except Exception:  # noqa: BLE001 - detection is best-effort
+        return ""
+    return " ".join(str(meta.get(field) or "") for field in _BRAND_METADATA_FIELDS)
+
+
 # Revision shapes from a shared lexicon (SPEC story 23): "Rev. "-token
 # captions for any vendor's era ("Rev. 0", "Rev. A", "Rev. I", and
 # revision-history "Rev. N to Rev. M" — the last token is the current
