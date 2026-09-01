@@ -20,6 +20,7 @@ from datasheet_analyzer.acquire.inventory import (
     default_store,
     ensure_covers,
     get_document,
+    library_view,
     pin_vendor,
     register_into_library,
     relocate,
@@ -64,6 +65,7 @@ from datasheet_analyzer.publish.plots import (
     render_plot_pages_fallback,
 )
 from datasheet_analyzer.publish.writer import doc_dir_name
+from datasheet_analyzer.staleness import corpus_staleness, index_banner
 from datasheet_analyzer.structure.corpus import SectionPlan, build_section_plans
 from datasheet_analyzer.structure.pagemap import (
     pin_table_pages,
@@ -619,6 +621,10 @@ def build_part(
                     description=descriptions.get(sec.number or sec.title, ""),
                 )
             )
+    # The staleness banner is read off the Library records this build already
+    # wrote - never fetched. A build performs no revision check (phase 7,
+    # ticket 02), so a freshly built corpus banners `unknown` and says which
+    # command clears it; `dsa check-revisions` refreshes the block in place.
     index_md = build_index_markdown(
         part_number,
         brief,
@@ -626,6 +632,11 @@ def build_part(
         doc_summaries,
         metas,
         token_budget=settings.index_token_budget,
+        staleness_banner=index_banner(
+            corpus_staleness(
+                library_view(part_dir, part_number=part_number, store=store), part_number
+            )
+        ),
     )
 
     # publish

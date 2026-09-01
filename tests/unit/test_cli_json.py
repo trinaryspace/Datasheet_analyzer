@@ -35,7 +35,39 @@ JSON_INVOCATIONS: dict[str, list[str]] = {
     "regs": ["regs", "--part", "TEST", "--json"],
     "card": ["card", "--part", "TEST", "--card", "power", "--json"],
     "compare": ["compare", "TEST", "OTHER", "--card", "power", "--json"],
+    # The two phase-7 verbs are the ones that *may* reach the network, so both
+    # are exercised on the branch that cannot: a registry entry carrying no URL
+    # (see `_seed_registry`). They report the refusal as JSON on stdout, which
+    # is exactly the property this module is about, and open no socket.
+    "fetch": ["fetch", "TEST", "--json"],
+    "check-revisions": ["check-revisions", "TEST", "--json"],
 }
+
+
+def _seed_registry(settings) -> None:
+    """A document registry for TEST whose entry records no URL.
+
+    `dsa fetch` and `dsa check-revisions` both refuse an entry with no URL and
+    report the refusal - which keeps this test offline while still driving the
+    real `--json` path of both verbs. `built_settings` points `registry_dir` at
+    tmp, so nothing here touches the registry checked into the repo.
+    """
+    from datasheet_analyzer.acquire.registry import (
+        DocumentRegistry,
+        RegistryDocument,
+        RegistryEntry,
+        registry_path,
+        save_registry,
+    )
+
+    registry = DocumentRegistry()
+    registry.put(
+        RegistryEntry(
+            part_number="TEST",
+            document=RegistryDocument(url=None, url_reason="no URL has been supplied"),
+        )
+    )
+    save_registry(registry, registry_path(settings.registry_dir))
 
 
 # --- the mechanism ---------------------------------------------------------
@@ -103,8 +135,8 @@ def test_cli_import_does_not_reach_pymupdf():
 def test_every_json_verb_is_exercised():
     """The table above must cover every verb the parser gives a `--json`.
 
-    A ninth verb added without a row here is the failure this catches: the
-    guarantee is "every `--json` verb", not "the eight we thought of".
+    A new verb added without a row here is the failure this catches: the
+    guarantee is "every `--json` verb", not "the ones we thought of".
     """
     source = Path(cli.__file__).read_text(encoding="utf-8")
     tree = ast.parse(source)
@@ -152,6 +184,7 @@ def test_every_json_verb_is_exercised():
 @pytest.mark.parametrize("verb", sorted(JSON_INVOCATIONS))
 def test_json_verb_emits_only_json(verb, tmp_path, monkeypatch, capsys):
     settings = built_settings(tmp_path)
+    _seed_registry(settings)
     monkeypatch.setattr("datasheet_analyzer.cli.get_settings", lambda: settings)
 
     cli.main(JSON_INVOCATIONS[verb])

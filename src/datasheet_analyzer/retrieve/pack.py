@@ -83,6 +83,7 @@ from datasheet_analyzer.retrieve.results import (
 )
 from datasheet_analyzer.retrieve.retriever import PLOT_VOCABULARY, Retriever
 from datasheet_analyzer.retrieve.search import snippet
+from datasheet_analyzer.staleness import pack_footer
 from datasheet_analyzer.structure.aliases import padded, tokens
 from datasheet_analyzer.structure.search import tokenize
 from datasheet_analyzer.tokens import count_tokens, truncate_to_tokens
@@ -265,6 +266,14 @@ class AnswerPack:
     suggestions: tuple[str, ...] = ()
     notice: str = ""
     truncated: bool = False
+    # Revision awareness (phase 7, ticket 02). `staleness` is the three-state
+    # reading (`current` / `stale` / `unknown`) and `staleness_note` is the
+    # sentence `staleness.pack_footer` rendered from it. Both travel on the
+    # *frame*, which is laid down before anything discretionary, so the footer
+    # is reserved tail: a budget can cost extra rows and excerpt prose, never
+    # the line that says an answer came from a superseded datasheet.
+    staleness: str = ""
+    staleness_note: str = ""
 
     @property
     def header(self) -> str:
@@ -308,6 +317,11 @@ class AnswerPack:
         if self.excerpt is not None:
             blocks.append(f"### Supporting excerpt  ({self.excerpt.label})\n{self.excerpt.text}")
         blocks.append(f"### Verify\n{self.verify}")
+        # The staleness footer sits between the verify footer and the budget
+        # notice: it is about the *document* the answer came from, so it must
+        # be read before a reader decides the citation settles the question.
+        if self.staleness_note:
+            blocks.append(self.staleness_note)
         if self.notice:
             blocks.append(self.notice)
         return "\n".join(blocks)
@@ -342,6 +356,8 @@ class AnswerPack:
             "truncated": self.truncated,
             "notice": self.notice,
             "revision": self.revision,
+            "staleness": self.staleness,
+            "staleness_note": self.staleness_note,
             "doc": self.doc,
             "project": self.project,
             "parts": list(self.parts),
@@ -510,21 +526,34 @@ def _project_no_match(
 
 
 def _draft(retriever: Retriever, question: str, route: str, budget: int) -> AnswerPack:
-    """An empty pack carrying only the part's identity — the render frame."""
+    """An empty pack carrying only the part's identity — the render frame.
+
+    The frame is also where the staleness footer enters, which is what makes it
+    un-droppable: `_fit` measures every candidate row against a rendered frame,
+    so the footer is paid for before the first extra row is considered.
+    """
     manifest = retriever.index.manifest
     doc = manifest.documents[0] if (manifest and manifest.documents) else None
+    stale = retriever.staleness()
     return AnswerPack(
         part=retriever.part,
         question=question,
         route=route,
         budget=budget,
         revision=doc.revision if doc else "",
+        staleness=stale.state.value,
+        staleness_note=pack_footer(stale),
         doc=retriever.index.docs[0].name if retriever.index.docs else "",
     )
 
 
 def _project_draft(scope: ProjectRetriever, question: str, route: str, budget: int) -> AnswerPack:
-    """The render frame for a project pack: the design and its members."""
+    """The render frame for a project pack: the design and its members.
+
+    The staleness reading is the design's least fresh member and names it: a
+    pack drawn from three corpora is only as current as the worst of them.
+    """
+    stale = scope.staleness()
     return AnswerPack(
         part="",
         question=question,
@@ -532,6 +561,8 @@ def _project_draft(scope: ProjectRetriever, question: str, route: str, budget: i
         budget=budget,
         project=scope.name,
         parts=tuple(scope.parts),
+        staleness=stale.state.value,
+        staleness_note=pack_footer(stale),
     )
 
 
@@ -1173,6 +1204,8 @@ ANSWER_PACK_SCHEMA: dict = {
         "truncated",
         "notice",
         "revision",
+        "staleness",
+        "staleness_note",
         "doc",
         "project",
         "parts",
@@ -1195,6 +1228,11 @@ ANSWER_PACK_SCHEMA: dict = {
         "truncated": {"type": "boolean"},
         "notice": {"type": "string"},
         "revision": {"type": "string"},
+        # `""` is a pack with no single corpus behind it (a hand-built frame);
+        # the three real states are the `Staleness` enum, and a consumer must
+        # never read the absence of a state as `current`.
+        "staleness": {"enum": ["current", "stale", "unknown", ""]},
+        "staleness_note": {"type": "string"},
         "doc": {"type": "string"},
         "answers": {"type": "array", "items": _LINE_SCHEMA},
         "excerpt": {"anyOf": [_EXCERPT_SCHEMA, {"type": "null"}]},

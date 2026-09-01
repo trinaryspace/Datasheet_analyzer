@@ -900,6 +900,7 @@ def _part_vendor_info(part: Path) -> tuple[str, str, list[str], list[str]]:
     from datasheet_analyzer.acquire import load_inventory
     from datasheet_analyzer.models import DocType
     from datasheet_analyzer.retrieve import CorpusIndex
+    from datasheet_analyzer.staleness import load_corpus_staleness, status_lines
 
     sources = load_inventory(part) if (part / "sources.json").exists() else []
     vendor, evidence = "", ""
@@ -908,6 +909,10 @@ def _part_vendor_info(part: Path) -> tuple[str, str, list[str], list[str]]:
         vendor, evidence = ds.vendor, ds.vendor_evidence
     backends: list[str] = []
     doc_lines: list[str] = []
+    # Revision freshness first (phase 7, ticket 02): of everything `status`
+    # prints about a part, this is the only line that can invalidate the rest.
+    if sources:
+        doc_lines.extend(status_lines(load_corpus_staleness(part)))
     m = CorpusIndex.load(part).manifest
     if m is not None:
         backends = list(

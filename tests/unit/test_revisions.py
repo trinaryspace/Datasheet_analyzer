@@ -58,14 +58,16 @@ from datasheet_analyzer.models import (
     Staleness,
 )
 from datasheet_analyzer.pipeline import build_part
-from datasheet_analyzer.retrieve import clear_index_cache
+from datasheet_analyzer.retrieve import Retriever, clear_index_cache
 from datasheet_analyzer.staleness import (
     BANNER_BEGIN,
     apply_index_banner,
+    audit_metric,
     corpus_staleness,
     index_banner,
     pack_footer,
     project_staleness,
+    status_lines,
 )
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
@@ -645,3 +647,138 @@ class TestCheckRevisionsCli:
         assert payload["n_checked"] == 1 and payload["n_stale"] == 0
         assert payload["checks"][0]["staleness"] == "current"
         assert payload["checks"][0]["status"] == CHECKED
+
+
+# --- the four surfaces -------------------------------------------------------
+
+
+def _make_stale(settings: Settings, recorded: Path, tmp_path: Path):
+    """Run a real check that finds the corpus stale, and return its reading."""
+    reg_file = _register(settings, revision="Rev. A")
+    _record(recorded, URL, _make_pdf(tmp_path / "up.pdf", "B"))
+    check_part(
+        "TEST9100",
+        fetcher=ReplayBinaryFetcher(recorded),
+        settings=settings,
+        registry_file=reg_file,
+        now=FROZEN,
+    )
+    clear_index_cache()
+    clear_library_cache()
+    return corpus_staleness(_documents(settings), "TEST9100")
+
+
+class TestTheFourSurfaces:
+    """One warning, four places. A test per surface, then all four at once."""
+
+    def test_index_md_carries_the_banner(self, tmp_path, settings, recorded):
+        part_dir = _build(settings, revision="A")
+        assert "Revision not checked" in (part_dir / "INDEX.md").read_text(encoding="utf-8")
+        _make_stale(settings, recorded, tmp_path)
+        text = (part_dir / "INDEX.md").read_text(encoding="utf-8")
+        assert "Rev. B is available upstream" in text
+        assert "Verify before committing to silicon" in text
+        assert text.count(BANNER_BEGIN) == 1, "a refresh replaces, never stacks"
+
+    def test_dsa_status_reports_it(self, tmp_path, settings, recorded, monkeypatch, capsys):
+        _build(settings, revision="A")
+        _make_stale(settings, recorded, tmp_path)
+        monkeypatch.setattr("datasheet_analyzer.cli.get_settings", lambda: settings)
+        assert cli.main(["status"]) == 0
+        out = capsys.readouterr().out
+        assert "revision: stale" in out
+        assert "Rev. B is available upstream" in out
+
+    def test_the_audit_metric_carries_it(self, tmp_path, settings, recorded):
+        """`dsa audit` (ticket 05) renders this metric; the field lands here."""
+        _build(settings, revision="A")
+        st = _make_stale(settings, recorded, tmp_path)
+        metric = audit_metric(st)
+        assert metric["metric"] == "revision freshness"
+        assert metric["state"] == "stale" and metric["grade_input"] == "stale"
+        assert metric["upstream_revision"] == "Rev. B"
+        assert metric["checked_at"] == FROZEN.isoformat()
+        assert "available upstream" in metric["banner"]
+
+    def test_the_answer_pack_footer_carries_it(self, tmp_path, settings, recorded):
+        part_dir = _build(settings, revision="A")
+        _make_stale(settings, recorded, tmp_path)
+        pack = Retriever.for_part(part_dir).ask("supply voltage", budget=3000)
+        assert pack.staleness == "stale"
+        assert "Rev. B is available upstream" in pack.markdown
+        assert "Verify before committing to silicon" in pack.markdown
+        assert pack.as_dict()["staleness"] == "stale"
+
+    def test_all_four_surfaces_at_once(self, tmp_path, settings, recorded, monkeypatch, capsys):
+        """The catcher: a warning present in only three of four is the defect."""
+        part_dir = _build(settings, revision="A")
+        st = _make_stale(settings, recorded, tmp_path)
+        monkeypatch.setattr("datasheet_analyzer.cli.get_settings", lambda: settings)
+        cli.main(["status"])
+        surfaces = {
+            "INDEX.md": (part_dir / "INDEX.md").read_text(encoding="utf-8"),
+            "dsa status": capsys.readouterr().out,
+            "dsa audit": audit_metric(st)["banner"],
+            "answer pack": Retriever.for_part(part_dir).ask("supply", budget=3000).markdown,
+        }
+        missing = [name for name, text in surfaces.items() if "Rev. B" not in text]
+        assert not missing, f"staleness missing from: {missing}"
+
+    def test_an_unchecked_corpus_says_so_on_every_surface(self, settings):
+        part_dir = _build(settings, revision="A")
+        st = corpus_staleness(_documents(settings), "TEST9100")
+        pack = Retriever.for_part(part_dir).ask("supply voltage", budget=3000)
+        texts = [
+            (part_dir / "INDEX.md").read_text(encoding="utf-8"),
+            "\n".join(status_lines(st)),
+            audit_metric(st)["banner"],
+            pack.markdown,
+        ]
+        assert all("not checked" in t for t in texts)
+        assert st.state is Staleness.UNKNOWN and pack.staleness == "unknown"
+
+
+class TestTheFooterIsReservedTail:
+    def test_a_tiny_budget_never_removes_the_staleness_warning(self, tmp_path, settings, recorded):
+        """A budget may cost rows and prose; it may not cost this warning."""
+        part_dir = _build(settings, revision="A")
+        _make_stale(settings, recorded, tmp_path)
+        retriever = Retriever.for_part(part_dir)
+        for budget in (20, 60, 200, 3000):
+            pack = retriever.ask("supply voltage", budget=budget)
+            assert "available upstream" in pack.markdown, budget
+
+
+# --- MCP ---------------------------------------------------------------------
+
+
+class TestMcpCarriesStaleness:
+    def test_every_response_envelope_declares_the_state(self):
+        """SDK-free: the declared contract itself must carry the field."""
+        from datasheet_analyzer.mcp_server.responses import SCHEMAS, envelope
+
+        for tool, schema in SCHEMAS.items():
+            assert "staleness" in schema["required"], tool
+            assert schema["properties"]["staleness"]["enum"] == [
+                "current",
+                "stale",
+                "unknown",
+                "",
+            ]
+        assert envelope("ask", max_tokens=100)["staleness"] == ""
+        assert envelope("ask", max_tokens=100, staleness="stale")["staleness"] == "stale"
+
+    def test_a_scoped_response_reports_the_corpus_state(self, tmp_path, settings, recorded):
+        pytest.importorskip("mcp", reason="needs the optional [mcp] extra")
+        from mcp_session import call, payload_of
+
+        from datasheet_analyzer.mcp_server import server as S
+
+        _build(settings, revision="A")
+        _make_stale(settings, recorded, tmp_path)
+        server = S.build_server(settings)
+        assert payload_of(call(server, "get_index", part="TEST9100"))["staleness"] == "stale"
+        found = payload_of(call(server, "find_spec", part="TEST9100", symbol="TJ"))
+        assert found["staleness"] == "stale"
+        listed = payload_of(call(server, "list_parts"))
+        assert listed["parts"][0]["staleness"] == "stale"

@@ -68,7 +68,14 @@ def response_tokens(payload: dict) -> int:
     return count_tokens(json.dumps(payload, ensure_ascii=False, indent=2))
 
 
-def envelope(tool: str, *, max_tokens: int, part: str = "", project: str = "") -> dict:
+def envelope(
+    tool: str,
+    *,
+    max_tokens: int,
+    part: str = "",
+    project: str = "",
+    staleness: str = "",
+) -> dict:
     """The keys every MCP response carries, whatever the tool.
 
     `tokens` starts at `max_tokens` as a placeholder and stays that way while
@@ -76,10 +83,15 @@ def envelope(tool: str, *, max_tokens: int, part: str = "", project: str = "") -
     fit. The final value can only be smaller (it is a number ≤ the cap, so it
     can never be wider), which makes the reported `tokens` an honest upper
     bound rather than a figure measured on a payload that no longer exists.
+
+    `staleness` is the corpus's three-state revision reading. It defaults to
+    `""` (no corpus in scope) rather than to `current`, so a tool that forgot
+    to pass one can only ever under-claim.
     """
     return {
         "tool": tool,
         "scope": {"part": part, "project": project},
+        "staleness": staleness or NO_STALENESS,
         "error": "",
         # `error` means the call could not be answered; `warning` means it was
         # answered but something about the result is incomplete (a project
@@ -242,6 +254,25 @@ _CONFIDENCE = {"enum": ["high", "medium", "low", "unknown"]}
 _STR = {"type": "string"}
 _INT_OR_NULL = {"type": ["integer", "null"]}
 
+#: Revision freshness of the corpus a response was drawn from (phase 7,
+#: ticket 02). It rides the **envelope**, not one tool's body, because a remote
+#: agent needs it on whatever call it happens to make - an agent that reads a
+#: spec row over MCP and never calls `get_index` would otherwise never learn
+#: that the datasheet behind that row has been superseded.
+#: One enum, not an object: this field is paid for on **every** response,
+#: against the same cap the answer is measured under, so it carries the state
+#: and nothing else. The sentence that goes with it is where a caller is
+#: already looking - `get_index` returns an `INDEX.md` whose first block is the
+#: banner, `ask` returns a pack whose reserved tail is the footer, and
+#: `list_parts` shows the state per corpus. Repeating a warning sentence on
+#: every `find_spec` would spend the cap restating what the agent read once.
+#: `""` means no single corpus was in scope (`list_parts`, `compare_parts`);
+#: it is *not* a fourth state and must never be read as `current`.
+_STALENESS_SCHEMA = {"enum": ["current", "stale", "unknown", ""]}
+
+#: The reading a response carries when no single corpus is in scope.
+NO_STALENESS = ""
+
 _ENVELOPE_PROPS: dict[str, dict] = {
     "tool": _STR,
     "scope": {
@@ -250,6 +281,7 @@ _ENVELOPE_PROPS: dict[str, dict] = {
         "required": ["part", "project"],
         "properties": {"part": _STR, "project": _STR},
     },
+    "staleness": _STALENESS_SCHEMA,
     "error": _STR,
     "warning": _STR,
     "max_tokens": {"type": "integer"},
@@ -709,6 +741,7 @@ _PART_SCHEMA = {
         "searchable",
         "spec_confidence",
         "plot_confidence",
+        "staleness",
     ],
     "properties": {
         "part": _STR,
@@ -723,6 +756,8 @@ _PART_SCHEMA = {
         "searchable": {"type": "boolean"},
         "spec_confidence": {"type": "object"},
         "plot_confidence": {"type": "object"},
+        # A part row is always one corpus, so `""` is not among its states.
+        "staleness": {"enum": ["current", "stale", "unknown"]},
     },
 }
 

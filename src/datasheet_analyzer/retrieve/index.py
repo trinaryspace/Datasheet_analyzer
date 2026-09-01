@@ -39,6 +39,7 @@ from datasheet_analyzer.models import (
     SpecRecord,
     SpecSet,
 )
+from datasheet_analyzer.staleness import CorpusStaleness
 
 log = logging.getLogger(__name__)
 
@@ -156,6 +157,22 @@ class CorpusIndex:
             docs=tuple(docs),
             sections=tuple(manifest.sections) if manifest else (),
         )
+
+    @property
+    def staleness(self) -> CorpusStaleness:
+        """This corpus's freshness reading - `unknown` until somebody checks.
+
+        Read live off the Library rather than off the loaded manifest, and
+        deliberately *not* cached with the rest of this index: `dsa
+        check-revisions` writes its finding onto each document's Library record
+        without rebuilding, so a reading taken from the published snapshot
+        would keep saying `unknown` after a check had already found the corpus
+        stale. `LibraryStore` caches its own reads by `(path, mtime, size)`, so
+        re-reading here is cheap and correctly invalidated.
+        """
+        from datasheet_analyzer.staleness import load_corpus_staleness
+
+        return load_corpus_staleness(self.part_dir)
 
     def doc_for_hash(self, doc_hash: str) -> IndexedDoc | None:
         """The loaded document whose spec/plot sets carry `doc_hash`."""
