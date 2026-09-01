@@ -378,6 +378,49 @@ def load_inventory(part_dir: Path, *, store: LibraryStore | None = None) -> list
     return read_sources_file(part_dir)
 
 
+def library_view(
+    part_dir: Path,
+    *,
+    part_number: str = "",
+    store: LibraryStore | None = None,
+    migrate: bool = False,
+) -> list[LibraryDocument]:
+    """This part's documents as **Library records**, reduced the way a build is.
+
+    `load_inventory` answers "which `SourceDocument`s does this part build
+    from". This answers "which Library records are those", which is what a
+    reader or writer of per-document *mutable* metadata needs - applicability,
+    labels, and the revision state `dsa check-revisions` writes. The same
+    `_view` reduction is applied, so what this lists and what `load_inventory`
+    lists are the same document set rather than two nearly-equal ones.
+
+    `migrate=True` writes a Library record for any legacy `sources.json` entry
+    the store does not hold yet, exactly as `resolve_documents` does and just
+    as idempotently (the key is the content hash). It is off by default because
+    *reporting* a state is not the act that should migrate a shelf; only a
+    command that is about to write per-document metadata asks for it.
+    """
+    part_dir = Path(part_dir)
+    part_number = part_number or part_dir.name
+    if store is None:
+        store = default_store()
+    docs = _docs_for_part(store, part_number) or []
+    known = {doc.content_hash for doc in docs}
+    for src in read_sources_file(part_dir):
+        if src.content_hash in known:
+            continue
+        doc = LibraryDocument(
+            source=src,
+            applicability=Applicability.for_parts([part_number], evidence=MIGRATION_EVIDENCE),
+        )
+        if migrate:
+            _put(store, doc)
+        known.add(src.content_hash)
+        docs.append(doc)
+    kept = {src.content_hash for src in _view([doc.source for doc in docs])}
+    return [doc for doc in docs if doc.content_hash in kept]
+
+
 def resolve_documents(
     part_dir: Path,
     *,

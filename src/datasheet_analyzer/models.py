@@ -102,7 +102,7 @@ class Staleness(str, Enum):
     put; a design that read that as staleness would raise a false alarm on
     every TI part every day and train the user to ignore the one warning here
     that protects silicon. Bytes that moved under an unchanged revision are
-    recorded as `SourceDocument.content_drift` instead.
+    recorded as `RevisionState.content_drift` instead.
     """
 
     CURRENT = "current"
@@ -436,6 +436,46 @@ class Applicability(BaseModel):
         return True
 
 
+class RevisionState(BaseModel):
+    """What a revision check found about one document (phase 7, ticket 02).
+
+    Written **only** by `dsa check-revisions`, which is an explicit, opt-in,
+    network command; `dsa build` never fills it in, and that is what keeps a
+    build offline by construction. A freshly built corpus therefore reads
+    `UNKNOWN` until somebody checks, and says so everywhere it is surfaced.
+
+    It lives on `LibraryDocument`, not on `SourceDocument`, for the two reasons
+    `applicability` and `labels` do. `SourceDocument` is embedded in every
+    cached `RawDocument` under `.cache/extract/` and its shape is pinned by
+    `tests/unit/test_contracts.py::test_source_document_shape_is_unchanged`; and
+    a part's `sources.json` is a *derived* view regenerated from the Library at
+    publish time (ADR 0005), so a state written there would be erased by the
+    next build and would not be read back at all. Keyed by `content_hash`, the
+    reading also belongs to the *document* rather than to a part - upstream has
+    one answer about a document two parts happen to share.
+    """
+
+    #: Three-state freshness of this document. See `Staleness`.
+    staleness: Staleness = Staleness.UNKNOWN
+    #: When the last check actually completed. `None` until one does - never
+    #: back-filled with the build date or a plausible one.
+    checked_at: datetime | None = None
+    #: The revision identifier the upstream document reported at that check.
+    #: `""` when no check has run, or when upstream printed none we could read.
+    upstream_revision: str = ""
+    #: sha256 of the upstream bytes at that check. Recorded because it is a
+    #: fact, *not* because it decides staleness: see `content_drift`.
+    upstream_sha256: str = ""
+    #: Upstream's bytes differ while the revision identifier does **not**. A
+    #: regenerated document, not a revised one - reported distinctly so the
+    #: wording never implies a new revision exists.
+    content_drift: bool = False
+    #: Why the state is what it is when that needs saying: the reason a check
+    #: could not run (no registry URL, network unavailable), or the drift note.
+    #: Read back verbatim by every surface rather than re-derived per front end.
+    note: str = ""
+
+
 class LibraryDocument(BaseModel):
     """A `SourceDocument` in the flat Library, plus what a user may change.
 
@@ -455,6 +495,11 @@ class LibraryDocument(BaseModel):
     source: SourceDocument
     applicability: Applicability = Field(default_factory=Applicability)
     labels: list[str] = Field(default_factory=list)
+    #: What the last revision check found about this document. Additive and
+    #: defaulted, so every record written before it existed still loads under
+    #: the same LIBRARY_SCHEMA_VERSION - a bump would make the store skip every
+    #: file on the shelf.
+    revision_state: RevisionState = Field(default_factory=RevisionState)
     added_at: datetime = Field(default_factory=_utcnow)
     schema_version: str = ""
 

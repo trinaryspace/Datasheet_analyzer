@@ -43,7 +43,7 @@ from datasheet_analyzer.library.categories import (
     PARTS_FILE,
     CategoryStore,
 )
-from datasheet_analyzer.models import Applicability, LibraryDocument
+from datasheet_analyzer.models import Applicability, LibraryDocument, RevisionState
 
 log = logging.getLogger(__name__)
 
@@ -134,13 +134,20 @@ class LibraryStore:
         """Write the document, **preserving any labels already stored.**
 
         A build calls this every time it sees a PDF. Labels are user
-        annotation, so whatever is on disk wins over whatever the caller
-        happened to carry; `set_labels()` is the only path that changes them.
+        annotation and the revision state is what a network check found, so
+        whatever is on disk wins over whatever the caller happened to carry;
+        `set_labels()` and `set_revision_state()` are the only paths that
+        change them. Without the second rule a rebuild would silently reset a
+        `stale` corpus to `unknown` - a warning quietly cleared by the very
+        act that did nothing to address it.
         """
         path = self._require_path(doc.content_hash)
         stored = _read_document(path)
         labels = list(stored.labels) if stored is not None else list(doc.labels)
-        self._write(path, doc.model_copy(update={"labels": labels}))
+        revision_state = stored.revision_state if stored is not None else doc.revision_state
+        self._write(
+            path, doc.model_copy(update={"labels": labels, "revision_state": revision_state})
+        )
 
     def set_applicability(self, content_hash: str, applicability: Applicability) -> LibraryDocument:
         """Replace applicability; leave source and labels untouched."""
@@ -149,6 +156,17 @@ class LibraryStore:
     def set_labels(self, content_hash: str, labels: list[str]) -> LibraryDocument:
         """Replace the label list; leave source and applicability untouched."""
         return self._update(content_hash, {"labels": list(labels)})
+
+    def set_revision_state(self, content_hash: str, state: RevisionState) -> LibraryDocument:
+        """Replace what the last revision check found; leave everything else.
+
+        The only writer is `dsa check-revisions` (phase 7, ticket 02). It is a
+        separate entry point from `put()` for the reason `set_labels` is: a
+        build calls `put()` on every PDF it sees, and a freshness reading is
+        not something a build may compute or overwrite. `put()` therefore
+        preserves whatever state is stored, exactly as it preserves labels.
+        """
+        return self._update(content_hash, {"revision_state": state})
 
     # --- internals ------------------------------------------------------------
 
