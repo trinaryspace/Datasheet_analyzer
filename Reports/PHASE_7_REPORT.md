@@ -710,3 +710,147 @@ like a comparison and a scorecard.
   write one into the tree by accident — `conftest._point_dsa_at` exports
   `DSA_FAMILIES_DIR` and `TestNothingHereWritesIntoTheRepository` asserts
   `git status --porcelain -- families` is empty.
+
+---
+
+# Integration — the seams the four batches left
+
+Every item under "What the integration stage must still wire up" above is
+closed here, and the two entries in batch C's "Deliberately not ported" are
+closed with it. Commits `ae5f93a`…`96f7379` on `feat/gui-workbench`.
+
+## The MCP surface: thirteen tools to sixteen
+
+`get_audit`, `list_families` and `get_family_index` are declared, and the
+tool-count assertions moved with them — a set that says thirteen when sixteen
+are registered has stopped describing the server. `test_mcp_server.py` carries
+sixteen entries in its declared-tool set, in `ALL_CALLS` and in the duplicate
+parametrize table, so no cap assertion can skip a tool.
+
+| tool | default 6000-token cap, fixture corpus | at 400 | at 40 |
+|---|---|---|---|
+| `list_families` | 174 tok | fits | `over_cap`, announced |
+| `get_family_index` | 575 tok | sheds to 399, `truncated` | `over_cap`, announced |
+| `get_audit` | 1942 tok, grade B on 8 graded / 5 excluded | sheds to 359, `truncated` | `over_cap`, announced |
+
+Measured against the **committed** corpora rather than only the fixture:
+`list_families` 233 tok; `get_family_index AFE795x` 4695 tok (39 sections, 14
+shared, 384 deltas, no unbuilt member); `get_audit AFE7950` 1931 tok, grade
+**B**, score 3.25, 10 metrics graded and 3 `n/a`, 13 of 13 shown. All three
+validate against their own declared `_meta.response_schema`, and every
+truncation notice names `DSA_MCP_MAX_TOKENS`.
+
+`get_family_index` derives the index **live** rather than reading
+`families/<NAME>/`, for the reason `get_card` builds a card on demand: that
+directory is a cache of this call, not its source. Measured: the call writes
+nothing to disk.
+
+**Not done, deliberately.** The envelope `scope` object stays
+`{part, project}`. Both family tools name their family in their own body,
+following `compare_parts` — widening `scope` would change the declared shape of
+all sixteen tools to carry a key only two can fill, and would need a `family`
+argument and a refusal path on each of the nine scoped tools. So `search`,
+`find_spec` and `ask` still take no `family` over MCP. Recorded in
+`KNOWN_SHORTCOMINGS.md`.
+
+## The workbench: two one-liners, and the frontend work that is not one
+
+`ScopeRef.kind` widens to `part | project | family` and `deps.get_retriever`
+splits three ways, so `POST /api/chat/{id}/message` answers a whole series when
+a caller names one. Measured: a `family` scope returns a `FamilyRetriever` over
+both members with the reference first, and an undeclared family is a 400
+carrying the registry own refusal, "never inferred from a part number".
+`LibraryDocumentOut` carries `revision_state` **whole**, not flattened to a
+`staleness` string, with `Staleness` and `RevisionState` twins in
+`web/src/api/types.ts`, so `GET /api/library` reports freshness per document.
+
+Nothing renders either. `DocumentRow` meta line is a fixed four-span list with
+no slot for a freshness badge, and `scope_resolver.py` proposes only parts and
+projects so no pane can offer a family. Both need new components; both are
+recorded rather than half-built.
+
+## Decision — is `families/` committed?
+
+**Ignored**, and deliberately *not* the way `projects/` is handled. A project
+directory mixes authored and derived: `project.json` is the only record of who
+is on that board. A family directory holds `FAMILY_INDEX.md` and `family.json`
+and nothing else, both derived in full from tracked records, and the authored
+half — membership — is the tracked `registry/families.yaml`. `config.py`
+already says of `FAMILY_SCHEMA_VERSION` that a family index "is *not* part of
+any publish cache key … there is no stale file for a version to invalidate";
+committing one would manufacture that stale file.
+
+**And ignoring it defanged the guard that watched it.**
+`TestNothingHereWritesIntoTheRepository` asserted
+`git status --porcelain -- families` was empty, which an ignored path always
+is. Verified: `dsa family build AFE795x` writes 39 sections, 14 shared, 763
+rows aligned, 2290 tokens of a 4000 budget into the working tree and
+`git status` stays silent. Replaced with a git-independent detector —
+`conftest` snapshots the repository own `families/` listing at collection time
+and the test asserts it is unchanged — which is sharper, because a *user's*
+build is legitimate and only a change **during** a run is a test writing into
+the tree it asserts against. Negative control run both ways.
+
+## Decision — does the collapse extend beyond `ask`?
+
+**No, deliberately**, and the family this repo declares says why. `_collapse`
+keeps one member citation and *says whose*; a record list has nowhere to say
+it, so folding two members into one `SpecHit` ships a page number that is wrong
+for the other member.
+
+| measured on AFE795x | |
+|---|---|
+| spec rows the family returns | 1155 |
+| distinct printed rows | 763 |
+| common to both members | 387 |
+| **of those, citations disagree** | **177 (45.7%)** |
+
+`ADC resolution` is §4.6, p.14 in AFE7950 and §4.6, p.13 in AFE7953. The other
+two verbs would not pay for themselves either: `plots(q="output power")`
+returns 46 hits with 46 distinct (caption, citation) pairs, and a `SearchHit`
+carries a BM25 score `retrieve/project.py` already documents as not comparable
+across corpora. The record-level view exists under the verb built for it —
+`dsa family build` lists shared sections once and tabulates only deltas, with
+both operands' pages. Pinned by four tests so it cannot drift either way.
+
+## The agent protocol
+
+`VERBS` and `NETWORK_RULE` join `RULES` and `CONFIDENCE_ROWS` as canonical
+strings, rendered by `verbs_block()` into all three destinations, and
+`_mcp_block` names the three new tools. `PROTOCOL_VERSION` 1 to 2: a v1
+`AGENT.md` is not wrong, but it tells an agent the corpus can only be read.
+The two tracked corpora are brought current (ADR 0008) by rewriting `AGENT.md`
+and the one measurement that rewrite invalidated — `stats.agent_doc_tokens`,
+1450 to 1799 — and nothing else in either manifest. **No extraction ran, no
+corpus was rebuilt, and no `PdfLayoutBackend.output_version`,
+`STRUCTURE_STAGE_VERSION` or payload schema version moved.**
+
+Confirmed identical across destinations: 20 canonical strings appear verbatim
+in `parts/AFE7950/AGENT.md`, `parts/AFE7953/AGENT.md`, a rendered project
+`AGENT.md` and `.claude/skills/datasheet-corpus/SKILL.md` — **20/20 in each, 0
+missing** — and `SKILL.md` is byte-for-byte `build_skill_markdown()`.
+
+`AGENT_DOC_TOKEN_BUDGET` 1700 to 2200. Re-measured at v2: part **1799**,
+three-part project 1887, worst case the renderers allow **2045**, skill 1987.
+The old ceiling sat 4 tokens above its own worst case.
+
+## The gate, measured on the final tree
+
+| | tests | passed | failed | errors | skipped | time |
+|---|---|---|---|---|---|---|
+| working tree, 11 parts built | **2915** | **2881** | 0 | 0 | 34 | 580 s |
+| fresh `git clone` of `96f7379` | **2915** | **2812** | 0 | 0 | **103** | 570 s |
+
+`ruff check .` and `ruff format --check .` clean over 350 files. +36 tests on
+the 2879 batch D recorded, all of them added by this wave.
+
+The clone carries only the two tracked corpora, and every one of its 103 skips
+**names what was missing** rather than asserting on data a clone does not
+have: 18 for LMX1204 not built, 17 for the register-map PDF not in the
+checkout, 12 for AD9081, 9 for no cached extractions, 3 for the phase-6 gates
+that already carry this pattern (each naming the parts that *are* built), 1
+for no `ANTHROPIC_API_KEY`, 1 for no `web/node_modules`, and the ticket-owner
+placeholders. Nothing new was added to that list by this wave.
+
+Frontend, from `web/`: `npm run typecheck` clean, `npm test` **193 passed**
+across 6 files.
