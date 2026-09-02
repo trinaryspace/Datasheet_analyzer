@@ -365,14 +365,18 @@ section header.
 
 `INDEX.md` is the map; `AGENT.md` beside it is how to read it. It is written
 at publish for every part and every project, and it is short enough
-(~1.4k tokens, ceiling 1,700) to load next to the index every time:
+(~1.8k tokens, ceiling 2,200) to load next to the index every time:
 
 - the rules — index first, never bulk-read, prefer `ask`, quote units, cite
   `p.N`, check the confidence grade, and on `low` send the designer to the
   printed page;
 - both access paths, the `dsa` CLI and the MCP tools, each with a worked
   example scoped to that part or project;
-- the confidence table: what each grade means and what to do about it.
+- the confidence table: what each grade means and what to do about it;
+- the verbs beyond answering — `fetch`, `check-revisions`, `diff-rev`, `audit`,
+  `family` — and the one rule that goes with them: never run a network verb to
+  answer a question. A stale corpus is something to report, not to go and fix
+  mid-answer.
 
 The same text is checked into this repo as the Claude Code skill
 `.claude/skills/datasheet-corpus/SKILL.md`, so an agent working in this
@@ -521,7 +525,9 @@ On macOS/Linux the command is `/path/to/repo/.venv/bin/dsa`.
 |---|---|---|
 | `list_parts` | — | built parts: revision, vendor, counts, confidence mix |
 | `list_projects` | — | projects, their members, whether each is built |
+| `list_families` | — | declared families, their members, whether each is built |
 | `get_index` | part | the part's `INDEX.md` |
+| `get_family_index` | family | the series' `FAMILY_INDEX.md`, derived live |
 | `search` | part or project | BM25 hits, each cited by construction |
 | `find_spec` | part or project | spec records through the alias ladder |
 | `read_section` | part | one section verbatim, bounded by `max_tokens` |
@@ -532,6 +538,7 @@ On macOS/Linux the command is `/path/to/repo/.venv/bin/dsa`.
 | `find_register` | part or project | registers by name, address or bit field |
 | `get_card` | part | one design card (power / thermal / interface / limits) |
 | `compare_parts` | named parts | two or more parts aligned on one parameter or card |
+| `get_audit` | part | thirteen graded readings and the letter they average to |
 
 `find_plots` takes `x_label` / `y_label` (substrings of the printed axis
 titles) and `near_x` / `near_y` (a quantity the printed axis range must
@@ -539,8 +546,18 @@ cover, SI prefixes converted on both sides), so an agent narrows hundreds of
 figures to the one worth opening before spending a vision token. A figure
 whose axes could not be read is not a match — `axes.confidence` says so.
 
-The last four tools are the **derived** artifacts of phase 6, and they carry
-one extra rule: nothing on them is generated. Every value is printed text
+`list_families`, `get_family_index` and `get_audit` are phase 7's:
+`list_projects` and `get_index` one noun across, plus the trust call that
+grades a corpus *before* an agent answers from it. The family index is derived
+**live** from the members' records rather than read off `families/<NAME>/`, so
+a client never has to know whether `dsa family build` has run. Both family
+tools name their family in their own body — the envelope's `scope` is still
+`{part, project}`, which is why `search` / `find_spec` / `ask` take no
+`family` argument over MCP; the CLI has that scope and MCP does not.
+
+`find_pin`, `find_register`, `get_card` and `compare_parts` are the **derived**
+artifacts of phase 6, and they carry one extra rule: nothing on them is
+generated. Every value is printed text
 copied verbatim, a number computed from it by a named pure function, or a
 label from a checked-in lexicon, and each ships with the record and printed
 page it came from (`AGENTS.md` invariant 8, `docs/adr/0007-…`). A field that
@@ -630,7 +647,9 @@ by hand becomes a regression test.
 For development, `npm --prefix web run dev` serves the UI on `:5173` and
 proxies `/api` to `dsa serve` on `:8765`, so both halves reload independently.
 `web/dist/` is gitignored; so are `library/` (the document inventory and your
-labels) and `sessions/` (saved conversations).
+labels), `sessions/` (saved conversations) and `families/` (a family index is
+derived in full from tracked records, so it is a cache — the *declaration* it
+is built from, `registry/families.yaml`, is what this repo tracks).
 
 ### Add companion documents
 
@@ -693,6 +712,32 @@ Three states, and the default is the one that protects you:
 banner, `dsa status`, the `dsa audit` metric and every answer pack's footer.
 A check that cannot complete records only *why* and leaves the state exactly
 as it was, so a failed check can never clear a warning.
+
+### Compare two revisions of one part (`dsa diff-rev`)
+
+```bash
+dsa diff-rev --part AFE7950 --from "Rev. D" --to "Rev. E"   # writes REVISION_DIFF.md
+dsa diff-rev --part AFE7950 --json --no-write               # print it, write nothing
+```
+
+What moved between two revisions the part holds: sections added, removed and
+retitled; spec rows whose printed values changed, with an SI delta where the
+two are comparable; pins and registers appearing, disappearing or renamed.
+Both sides are cited, always — a diff you cannot open both pages of is not a
+finding.
+
+`--from` / `--to` accept a `--rev` label, a printed revision identifier, or a
+document directory; omit both and the part must hold exactly two. **No part in
+this repo does.** A part builds one datasheet, so the second side is either a
+companion document filed with `dsa add-doc` or the other revision built under
+its own part number — for which `dsa compare` is the right scope. Asked for a
+diff it cannot make, `dsa diff-rev` says which document the part holds and
+names both ways to give it a second:
+
+```text
+diff-rev error: AFE7950 holds one built document (datasheet-c1b4663b); a
+revision diff needs two.
+```
 
 ### Errata, cross-linked to what they invalidate
 

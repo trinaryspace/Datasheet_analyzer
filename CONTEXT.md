@@ -171,6 +171,38 @@ drops its least-important block first and says that it did; the part list and
 the index pointers are the product and are never what a budget removes.
 _Avoid_: summary, dashboard, manifest, catalog
 
+**Family**:
+A **declared** series: one device published in several options, listed by a
+human in `registry/families.yaml` and confirmed there. It is the third scope,
+beside `part` and `project`, and it is not a smaller project: a Project is
+parts somebody put on one board, a Family is one document template published
+several times. Membership is never inferred — `dsa family suggest` may only
+*propose* into a candidate file, and nothing it writes builds anything until a
+person moves it across. This is a different noun from the family **prefix** an
+Applicability may carry (`AFE79xx`, read off the printed page): that says
+which parts a document is about, this says which parts are one series.
+_Avoid_: series (in code), line, variant group, project, prefix
+
+**Family index**:
+`FAMILY_INDEX.md`: the single always-loadable file for a whole series, under a
+hard token budget. Every section the members print identically is listed
+**once** and every delta is tabulated with both operands' pages; rows that
+align and agree are counted, not listed, because listing them is the cost the
+family index exists to avoid. Derived in full from records the members already
+publish, so `families/<NAME>/` is a cache — the declaration is what is tracked.
+A member with no corpus is named in it, never dropped.
+_Avoid_: comparison, merge, summary, digest, super-index
+
+**Revision diff**:
+What moved between two revisions of one part — sections added, removed or
+retitled, spec rows whose printed values changed, pins and registers appearing
+or renamed — with **both** sides cited. It reports movement, never judgement:
+a value that changed is a fact about two printed pages, and nothing here says
+which one is right. A delta is computed only where the two cells are
+comparable under the same rule `dsa compare` uses; where they are not, both
+verbatim values are printed instead of a number.
+_Avoid_: changelog, upgrade notes, migration, what's new
+
 **SourceDocument**:
 A registered input file (datasheet, register map, errata, app note).
 Identity is the sha256 of its bytes. It belongs to the Library, not to any
@@ -199,8 +231,9 @@ data converters. A build may *propose* one by reading the built corpus; only
 a person may set one, and a person's answer survives every later rebuild,
 which is why it is recorded beside the Library and never in the manifest. One
 per part, always: a part that belongs in two places wants a Label, not a
-second category. A Family is read off the page (`AFE79xx` is printed in the
-datasheet); a category is a decision about a shelf.
+second category. A family *prefix* is read off the page (`AFE79xx` is
+printed in the datasheet) and a Family is declared by a person; a category is
+a decision about a shelf.
 _Avoid_: tag, label, folder, type, group
 
 **Supporting document**:
