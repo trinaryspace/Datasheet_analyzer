@@ -256,6 +256,19 @@ The protocol also ships in-repo as the Claude Code skill
     pages and checked against the corpus committed under `parts/` — the same
     substrate the ticket-04 regrade uses
     (`test_afe7950_build.py::TestAnswerPacksOnAfe7953`).
+    **A generated candidate never counts until a human confirms it.** `dsa
+    golden suggest` writes proposals to
+    `tests/fixtures/golden_qa_<PART>.candidate.yaml` with `confirmed: false`;
+    `load_golden` refuses that file by name, so a candidate is invisible to
+    `dsa verify`, to `dsa audit`'s `golden_pass_rate`, and to every gate in
+    this repository until `dsa golden confirm` merges it into the benchmark.
+    Machine evidence is not confirmation: checking that a candidate's verbatim
+    substrings really are on the page it cites is worth recording and is *not*
+    the human act — say "machine-verified" and never "confirmed". Ticket 08
+    measured 301 candidates across the fleet, 296 of them page-verified by
+    machine, and committed **none**; `tests/unit/test_golden_assist.py::
+    TestNothingHereCanReachTheRealBenchmarks` shells out to `git status
+    --porcelain -- tests/fixtures` and fails if any of them lands there.
 6. **Caching keyed by identity.** Extraction cache = (content_hash, backend).
    Schema/version changes that alter output must invalidate via filename or
    embedded version fields — and **every producer that writes into a cached

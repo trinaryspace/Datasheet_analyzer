@@ -353,6 +353,17 @@ and `sha256_origin` says whether a hash came from a file in this repo
 (`local_file:<path>`) or off the wire (`fetch:<url>`).
 _Avoid_: catalog, index, database, source list, manifest
 
+**Registry entry**:
+One part's row in the document registry: a vendor, the primary `document`, and
+any `companions` (register map, errata, application note). It is the unit
+`dsa fetch` resolves, `dsa check-revisions` re-reads and the scale gate counts,
+and it is a *record of what happened*, not an intention — `url_verified: true`
+means bytes arrived from that URL, `retrieved_at` is stamped only by a fetch
+that ran, and a part with no URL still gets an entry carrying the reason. The
+fleet at the close of phase 7 is 25 entries and 30 documents, all 25 URLs
+verified.
+_Avoid_: registry line, part record, datasheet entry, BOM row
+
 **Staleness**:
 Whether a corpus's document is still the current upstream revision —
 `current`, `stale`, or `unknown`. `unknown` is the default and is **not**
@@ -417,6 +428,19 @@ checked-in data beside every other lexicon. Nothing in `audit/` carries a cut
 point, so a metric the rubric does not name is not graded at all rather than
 falling back to a hidden default. A disagreement about a grade is a YAML edit.
 _Avoid_: config, policy, standard, scoring model
+
+**Audit grade**:
+The single letter `dsa audit` puts on a corpus — the weighted mean of the
+metric readings that could be computed, cut by the rubric's own thresholds. It
+grades **the extraction, never the datasheet and never the device**: a `C` says
+this corpus will answer some questions weakly, not that the part is poor or the
+vendor careless. It is comparable only against the same rubric version, and it
+moves for two different reasons that must not be conflated — the corpus got
+better, or a reading that was `n/a` became available. A grade below `B` is a
+statement an agent should repeat out loud before answering from that corpus, and
+where a part cannot reach `B` the reason belongs in `KNOWN_SHORTCOMINGS.md`
+rather than in a loosened threshold.
+_Avoid_: quality, score, rating, trust level, health
 
 **Golden candidate**:
 A *proposal* for a benchmark question, templated from one published record
