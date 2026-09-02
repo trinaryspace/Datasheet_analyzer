@@ -110,9 +110,24 @@ def _disambiguate(headers: list[str]) -> list[str]:
     return out
 
 
+#: Control characters a PDF's own text can carry. Measured on LMX1204's
+#: `lmx1204.pdf`: the `ft` ligature in `After` maps through the font's
+#: ToUnicode CMap to U+0000, so the extracted cell reads `A\x00er 2`. A NUL is
+#: not text a table can render or a reader can act on, and `csv.writer` refuses
+#: it outright with `need to escape, but no escapechar set` — which crashed the
+#: whole `pdf_layout` extraction of a 109-page document, the backend that is
+#: supposed to be the guaranteed floor. Stripped at the two renderings so a
+#: broken CMap costs a few glyphs rather than the document.
+_CONTROL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
+
+
+def _printable(cell: str) -> str:
+    return _CONTROL.sub("", cell)
+
+
 def _to_markdown(headers: list[str], grid: list[list[str]]) -> str:
     def esc(s: str) -> str:
-        return s.replace("|", "\\|").replace("\n", " ").strip()
+        return _printable(s).replace("|", "\\|").replace("\n", " ").strip()
 
     lines: list[str] = []
     if headers:
@@ -127,8 +142,8 @@ def _to_csv(headers: list[str], grid: list[list[str]]) -> str:
     buf = io.StringIO()
     w = csv.writer(buf, lineterminator="\n")
     if headers:
-        w.writerow(_disambiguate(headers))
-    w.writerows(grid)
+        w.writerow(_printable(h) for h in _disambiguate(headers))
+    w.writerows([_printable(c) for c in row] for row in grid)
     return buf.getvalue()
 
 

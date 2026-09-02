@@ -10,6 +10,8 @@ from __future__ import annotations
 from datasheet_analyzer.structure.tables import (
     cell_text,
     cited_markers,
+    grid_csv,
+    grid_markdown,
     html_table_to_block,
 )
 
@@ -166,6 +168,20 @@ def test_unicode_units_survive_end_to_end():
 def test_markdown_escapes_pipes():
     t = html_table_to_block("<table><tbody><tr><td>a|b</td><td>1</td></tr></tbody></table>")
     assert "a\\|b" in t.markdown
+
+
+def test_a_control_character_from_a_broken_font_map_does_not_kill_the_table():
+    """Measured on LMX1204's `lmx1204.pdf`: the `ft` ligature in `After` maps
+    through the font's ToUnicode CMap to U+0000, so the extracted cell reads
+    `A?er 2`. `csv.writer` refuses a field containing a NUL outright ---
+    `need to escape, but no escapechar set` --- and the exception propagated
+    out of `PdfLayoutBackend.extract`, so a broken CMap cost the whole
+    109-page document in the backend that is meant to be the guaranteed
+    floor. The glyphs are dropped; the document is not."""
+    nul, soh = chr(0), chr(1)
+    block = grid_csv(["A" + nul + "er"], [["1" + soh + "0", "ok"]])
+    assert block == "Aer\n10,ok\n"
+    assert grid_markdown(["A" + nul + "er"], [["1" + soh + "0"]]) == ("| Aer |\n| --- |\n| 10 |")
 
 
 def test_cited_markers_come_from_sup_only():
