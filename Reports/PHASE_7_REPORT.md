@@ -719,7 +719,7 @@ Every item under "What the integration stage must still wire up" above is
 closed here, and the two entries in batch C's "Deliberately not ported" are
 closed with it. Commits `ae5f93a`…`96f7379` on `feat/gui-workbench`.
 
-## The MCP surface: thirteen tools to sixteen
+## The MCP surface: thirteen tools to sixteen, and a third scope on four of them
 
 `get_audit`, `list_families` and `get_family_index` are declared, and the
 tool-count assertions moved with them — a set that says thirteen when sixteen
@@ -745,13 +745,47 @@ truncation notice names `DSA_MCP_MAX_TOKENS`.
 directory is a cache of this call, not its source. Measured: the call writes
 nothing to disk.
 
-**Not done, deliberately.** The envelope `scope` object stays
-`{part, project}`. Both family tools name their family in their own body,
-following `compare_parts` — widening `scope` would change the declared shape of
-all sixteen tools to carry a key only two can fill, and would need a `family`
-argument and a refusal path on each of the nine scoped tools. So `search`,
-`find_spec` and `ask` still take no `family` over MCP. Recorded in
-`KNOWN_SHORTCOMINGS.md`.
+**Deferred at the time, and closed on 2026-09-02 after the argument was
+re-measured.** The deferral read: the envelope `scope` object stays
+`{part, project}`; both family tools name their family in their own body,
+following `compare_parts`, because widening `scope` would change the declared
+shape of all sixteen tools to carry a key only two can fill.
+
+Both halves of that turned out to be wrong on the merits.
+
+- **The premise moved with the work.** "Only two can fill it" was true while
+  the fan-out was missing. With `family` on `search`, `find_spec`,
+  `find_plots` and `ask`, **seven** of the sixteen can fill `scope.family`.
+- **The principle proves too much.** `scope.part` is already declared on
+  `list_projects`, which can never fill it. That is what an envelope is for: a
+  caller reads *what answered* without knowing which tool it called — the same
+  argument `staleness` was put on the envelope under.
+- **The cost was 4 tokens**, measured with `tokens.count_tokens` over the
+  indented JSON the SDK ships: a 65-token envelope becomes 69, 0.067 % of the
+  6000-token cap. The one real consequence: the fixture's `read_section`
+  citation floor moved 168 → 172 tokens, so the cap in
+  `test_a_truncated_text_body_names_the_setting` moved 170 → 175.
+- **And the alternative was worse.** A `family` key in four tool bodies writes
+  the same fact in two places and leaves `scope` reading
+  `{"part": "", "project": ""}` for an answer a family gave — the same reading
+  `compare_parts` returns for *no* corpus in scope. A response that
+  misreports which scope produced it is the one failure the envelope exists to
+  prevent.
+
+Measured against the committed corpora after the change:
+`search --family AFE795x "sysref setup"` 3 hits across both members, 876 tok;
+`find_spec --family AFE795x` on junction temperature 8 hits, 1154 tok;
+`find_plots --family AFE795x q="output power"` 22 of 46 kept, `truncated`,
+notice naming `DSA_MCP_MAX_TOKENS`; `ask --family AFE795x` 973 tok. Naming two
+scopes is `FAMILY_SCOPE_ERROR` with both names echoed on `scope`; an
+undeclared family is the registry's own refusal. Only `ask` folds — the record
+lists have nowhere to say whose page a folded row carries.
+
+`find_pin` and `find_register` were deliberately **not** given a `family`: the
+CLI refuses `--family` on `dsa pins` / `dsa regs` / `dsa card` (each carries
+its own `_part_dirs` that never learned the third scope), and giving MCP a
+scope the CLI refuses swaps one asymmetry for its mirror. That CLI gap is
+recorded in `KNOWN_SHORTCOMINGS.md`.
 
 ## The workbench: two one-liners, and the frontend work that is not one
 
@@ -768,6 +802,19 @@ Nothing renders either. `DocumentRow` meta line is a fixed four-span list with
 no slot for a freshness badge, and `scope_resolver.py` proposes only parts and
 projects so no pane can offer a family. Both need new components; both are
 recorded rather than half-built.
+
+**The chat agent's tool surface, closed 2026-09-02.** `app/tools.py` was left
+at phase 5's nine and is now twelve: `list_families`, `get_family_index` and
+`get_audit`. They are *adapted*, not copied — the scope is injected on this
+surface, so `get_family_index` takes no family name and `get_audit` no part
+name, and both refuse a scope they cannot answer for. Driving that path found
+two defects a declared-only surface hides: `FamilyRetriever` subclasses
+`ProjectRetriever`, so every family payload reported `kind: "project"` and
+every part-only refusal called the series a design; and `build_tools` bound
+`scope=` to every tool, so `list_parts` and `list_projects` had been coming
+back to the model as `TypeError: … unexpected keyword argument 'scope'` since
+ticket 12. What remains is the picker: `scope_resolver.py` and `ScopeChip`,
+recorded and not made — `web/` belongs to another wave.
 
 ## Decision — is `families/` committed?
 
