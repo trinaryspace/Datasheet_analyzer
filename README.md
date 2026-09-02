@@ -4,7 +4,66 @@ Turn big IC datasheets into a **token-efficient, citation-verified markdown
 corpus** that AI agents navigate with an index file + grep/read — instead of
 loading tens of thousands of raw-PDF tokens into context.
 
-Two reference parts are built and verified in this repo:
+**The fleet: 25 parts across five vendors**, each onboarded through `dsa
+fetch` + `dsa batch` from `src/datasheet_analyzer/registry/datasheets.yaml` —
+30 documents, all 25 datasheet URLs verified against real upstream bytes.
+Every column is read off something the repo already holds — the registry
+(vendor, document count), each part's `sources.json` (pages), `INDEX.md`
+(tokens), `dsa audit --all --json` (the grade) and `tests/fixtures/` (the
+benchmarks) — rather than being maintained by hand. There is no generator
+script yet, so a reader who wants to re-derive it runs those five.
+
+| Part | Vendor | Docs | Pages | INDEX.md tokens | `dsa audit` | Confirmed goldens |
+|---|---|---:|---:|---:|:---:|:---:|
+| AD9081 | adi | 1 | 45 | 2,941 | **B** 3.39 | yes |
+| ADC12DJ5200RF | ti | 1 | 221 | 5,300 | **A** 3.73 | - |
+| AFE7950 | ti | 3 | 170 | 3,162 | **B** 3.25 | yes |
+| AFE7953 | ti | 1 | 134 | 2,425 | **A** 3.6 | yes |
+| AWR1843 | ti | 2 | 134 | 3,914 | **B** 3.19 | - |
+| HMC520A | adi | 1 | 32 | 2,753 | **B** 3.17 | yes |
+| LFCN-1000+ | minicircuits | 1 | 3 | 272 | **C** 2.44 | - |
+| LHA-83W+ | minicircuits | 1 | 5 | 368 | **C** 2.44 | - |
+| lm741 | ti | 1 | 17 | 2,337 | **B** 2.65 | yes |
+| LMX1204 | ti | 3 | 109 | 3,409 | **B** 2.89 | - |
+| LMX2820 | ti | 2 | 78 | 7,465 | **B** 3.47 | - |
+| PMA1-14LN+ | minicircuits | 1 | 9 | 478 | **B** 2.62 | - |
+| PSA-8A+ | minicircuits | 1 | 5 | 348 | **C** 2.44 | - |
+| QPA1003P | qorvo | 1 | 20 | 897 | **B** 2.87 | yes |
+| QPA2213 | qorvo | 1 | 28 | 983 | **B** 2.68 | - |
+| QPL9547 | qorvo | 1 | 11 | 542 | **B** 2.79 | - |
+| SKY13351-378LF | skyworks | 1 | 10 | 583 | **C** 2.58 | - |
+| SKY65405-21 | skyworks | 1 | 8 | 490 | **B** 2.95 | - |
+| SKY67183-396LF | skyworks | 1 | 32 | 1,351 | **C** 2.42 | - |
+| TCM1-83X+ | minicircuits | 1 | 3 | 306 | **C** 2.44 | - |
+| YAT-10+ | minicircuits | 1 | 4 | 302 | **C** 2.44 | - |
+| ZEM-4300+ | minicircuits | 1 | 2 | 267 | **C** 2.56 | - |
+| ZFDC-20-5+ | minicircuits | 1 | 1 | 220 | **C** 2.0 | - |
+| ZFSC-2-2500+ | minicircuits | 1 | 1 | 242 | **C** 2.44 | - |
+| ZX10R-2-183-S+ | minicircuits | 1 | 2 | 249 | **C** 2.44 | - |
+
+31 document references over 30 files (AFE7950 and LMX1204 share one TI
+application note), 1,084 printed pages, 41,604 INDEX.md tokens — mean 1,664
+per part.
+
+Three things this table is careful about:
+
+- **The grade is the extraction's, never the device's.** A `C` means this
+  corpus will answer some questions weakly. Mini-Circuits publishes one- and
+  two-page datasheets whose spec tables are frequency matrices, so there is
+  genuinely less here to extract; that is a fact about the document.
+- **Two of the thirteen audit metrics are not reproducible from a clone.**
+  `design cards hold rows` reads `parts/<PART>/cards/*.json`, which is a
+  gitignored on-demand cache, and `revision freshness` reads a state only
+  `dsa check-revisions` (network, opt-in) can set. Both were run before this
+  table was taken. From a cold clone the same corpora grade **A 2 / B 10 /
+  C 13** rather than the **A 2 / B 12 / C 11** above.
+- **"Confirmed goldens" means a human read the printed page.** Six parts
+  carry one; `dsa verify` passes 90/90 golden questions and 143/143 checks
+  across those six. The other nineteen carry none — generated candidates
+  exist and count for nothing (invariant 5).
+
+The two parts whose corpora are *tracked* in this repository, and so build and
+verify identically in a fresh clone, are AFE7950 and AFE7953 (ADR 0008):
 
 | | AFE7950 (SBASA41E) | AFE7953 (SBASAN1A) |
 |---|---|---|
@@ -16,10 +75,12 @@ Two reference parts are built and verified in this repo:
 | Corpus tokens | 46,073 | 39,033 |
 | INDEX.md tokens | 2,469 / 3,000 | 2,522 / 3,000 |
 
-A golden Q&A set (19 questions, answers hand-verified against the printed
-PDF) passes at ~2.5k tokens for parametric lookups, ~4.3k average for direct
-section reads, and ~4k for plot lookups — vs ~46k for a full-text dump —
-with every answer traceable to a printed page number.
+A golden Q&A set (answers hand-verified against the printed PDF) passes at
+~2.5k tokens for parametric lookups, ~4.3k average for direct section reads,
+and ~4k for plot lookups — vs ~46k for a full-text dump — with every answer
+traceable to a printed page number. Measured across all 25 parts, the mean
+`dsa ask` answer pack is **203 tokens** (median 208, max 367) against a
+4,000-token budget.
 
 ## What it does
 
@@ -858,10 +919,15 @@ against. Nothing in `datasheet_analyzer/audit/` hard-codes a threshold, a
 weight or a letter: a metric the YAML does not carry is not graded at all, and
 `tests/unit/test_audit.py` proves it by *deleting* one.
 
-**`revision freshness` reads `unknown` on every corpus in this repository, and
-`unknown` grades `C` rather than `A`.** Nobody has checked is not the same as
-still current. Run `dsa check-revisions` first if you want that row to mean
-something.
+**`unknown` freshness grades `C` rather than `A`.** Nobody has checked is not
+the same as still current, so run `dsa check-revisions` first if you want that
+row to mean something. Doing so across the fleet moved nine parts to
+`current` and **0 to `stale`**; the other sixteen stayed `unknown` for two
+recorded reasons — six have no registry URL, and every Mini-Circuits and
+Skyworks datasheet prints no revision identifier the shared lexicon can read,
+so the comparison is inconclusive rather than reassuring. Three documents
+(AFE7950, AFE7953, lm741) came back as **content drift**: the same printed
+revision, different bytes upstream.
 
 ### Propose benchmark questions, then confirm them (`dsa golden`)
 
