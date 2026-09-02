@@ -48,6 +48,9 @@ JSON_INVOCATIONS: dict[str, list[str]] = {
     # `dsa audit` reads only what the corpus already published, so the JSON
     # path is the whole verb here: one part, graded, as a single object.
     "audit": ["audit", "--part", "TEST", "--json"],
+    # `golden suggest` writes a candidate file; `--out` keeps it in tmp, which
+    # is also what keeps it away from the repository's own `tests/fixtures`.
+    "suggest": ["golden", "suggest", "--part", "TEST", "--n", "3", "--json"],
 }
 
 

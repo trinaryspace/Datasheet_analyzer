@@ -373,7 +373,16 @@ def _cmd_verify(args: argparse.Namespace) -> int:
             file=sys.stderr,
         )
         return 2
-    questions = load_golden(golden)
+    from datasheet_analyzer.evalh.candidates import GoldenAssistError
+
+    try:
+        questions = load_golden(golden)
+    except GoldenAssistError as exc:
+        # Pointing `--golden` at a candidate file is the one mistake that would
+        # silently swap the objective function for questions nobody confirmed
+        # (phase 7, ticket 06). It is refused with the fix, not verified.
+        print(f"verify error: {exc}", file=sys.stderr)
+        return 2
     if not questions:
         print(
             f"verify error: golden benchmark {golden} has 0 questions — nothing "
@@ -580,8 +589,8 @@ def _cmd_audit(args: argparse.Namespace) -> int:
 
     settings = get_settings()
     if args.all:
-        part_dirs = discover_parts(settings.parts_dir)
-        if not part_dirs:
+        targets = discover_parts(settings.parts_dir)
+        if not targets:
             print(
                 f"audit error: no parts under {settings.parts_dir} - build one first: "
                 f"`dsa build <pdf> --part <PART>`",
@@ -601,11 +610,11 @@ def _cmd_audit(args: argparse.Namespace) -> int:
                 file=sys.stderr,
             )
             return 2
-        part_dirs = [part_dir]
+        targets = [part_dir]
 
     cards = [
         build_scorecard(part_dir, golden=_default_golden_path(part_dir.name))
-        for part_dir in part_dirs
+        for part_dir in targets
     ]
     if args.json:
         payload = [card.model_dump(mode="json") for card in cards]
@@ -634,6 +643,180 @@ def _cmd_audit(args: argparse.Namespace) -> int:
         )
         return 1
     return 0
+
+
+def _cmd_golden(args: argparse.Namespace) -> int:
+    """`dsa golden suggest|confirm` - the ticket-06 pair (phase 7).
+
+    This command owns the exit codes and the paths; every rule about what a
+    candidate is, how it is stratified and what a decision does lives in
+    `evalh`. A `GoldenAssistError` already carries the fix in its message
+    (which flag, which file), so it is printed as-is rather than re-worded here
+    - the same stance `dsa project` takes toward `ProjectError`.
+
+    Exit codes: 0 it ran, 2 it refused (no corpus, no candidates, a decision
+    naming a candidate that is not in the set, no decisions on a non-terminal).
+    """
+    from datasheet_analyzer.evalh.candidates import GoldenAssistError
+
+    actions = {"suggest": _golden_suggest, "confirm": _golden_confirm}
+    try:
+        return actions[args.action](args)
+    except GoldenAssistError as exc:
+        print(f"golden error: {exc}", file=sys.stderr)
+        return 2
+
+
+def _golden_paths(args: argparse.Namespace) -> tuple[Path, Path, Path, Path]:
+    """`(part_dir, golden, candidates, rejected)` for one `dsa golden` run.
+
+    The benchmark resolves through `_default_golden_path`, which is
+    `DSA_GOLDEN_DIR`-aware: `confirm` writes here, and a run that inherited
+    default settings must not be able to edit the repository's own fixtures.
+    """
+    from datasheet_analyzer.evalh.candidates import candidate_path, rejected_path
+
+    settings = get_settings()
+    part_dir = settings.parts_dir / args.part
+    golden = Path(args.golden) if args.golden else _default_golden_path(args.part)
+    candidates = Path(args.out) if getattr(args, "out", "") else candidate_path(golden)
+    if getattr(args, "candidates", ""):
+        candidates = Path(args.candidates)
+    return part_dir, golden, candidates, rejected_path(golden)
+
+
+def _golden_suggest(args: argparse.Namespace) -> int:
+    import json
+
+    from datasheet_analyzer.evalh.candidates import existing_question_ids as golden_ids
+    from datasheet_analyzer.evalh.candidates import rejected_keys, write_candidates
+    from datasheet_analyzer.evalh.suggest import (
+        render_suggestion_report,
+        suggest_candidates,
+    )
+
+    part_dir, golden, out, rejected = _golden_paths(args)
+    candidates = suggest_candidates(
+        part_dir,
+        n=args.n,
+        rejected=rejected_keys(rejected),
+        existing_ids=golden_ids(golden),
+    )
+    write_candidates(out, candidates)
+    if args.json:
+        print(json.dumps(candidates.model_dump(mode="json"), ensure_ascii=False, indent=2))
+    else:
+        print(render_suggestion_report(candidates, out))
+    return 0
+
+
+def _split_ids(raw: str) -> list[str]:
+    return [item.strip() for item in (raw or "").split(",") if item.strip()]
+
+
+def _golden_confirm(args: argparse.Namespace) -> int:
+    from datasheet_analyzer.evalh.candidates import (
+        GoldenAssistError,
+        read_candidates,
+        write_candidates,
+        write_rejections,
+    )
+    from datasheet_analyzer.evalh.confirm import (
+        PROVENANCE_BULK,
+        PROVENANCE_CORPUS,
+        PROVENANCE_PAGE,
+        apply_decisions,
+        decisions_from_ids,
+        load_decisions,
+        merge_into_golden,
+        render_confirm_report,
+        run_interactive,
+    )
+    from datasheet_analyzer.evalh.suggest import strata_of
+    from datasheet_analyzer.models import GoldenCandidateSet
+
+    part_dir, golden, candidates_file, rejected_file = _golden_paths(args)
+    candidates = read_candidates(candidates_file)
+
+    decisions = decisions_from_ids(
+        _split_ids(args.accept_ids), _split_ids(args.reject_ids), reason=args.reject_reason
+    )
+    if args.decisions:
+        decisions = load_decisions(Path(args.decisions)) + decisions
+    # How the decisions were arrived at is recorded in the golden file, so it
+    # is decided here - where the command knows whether a page was ever shown -
+    # rather than assumed by the writer. The default is the bulk sentence: a
+    # claim of human page-verification is only made when one is true.
+    provenance = PROVENANCE_BULK
+    if not decisions:
+        # The interactive shell is the default *only* where there is a person
+        # to answer it. A non-interactive run with no decisions must refuse
+        # rather than accept nothing quietly or, far worse, accept everything.
+        if not (args.interactive or sys.stdin.isatty()):
+            raise GoldenAssistError(
+                "no decisions given and no terminal to ask on - pass "
+                "--decisions <file>, --accept-ids or --reject-ids "
+                "(run in a terminal, or add --interactive, to walk them by hand)"
+            )
+        pages = _page_texts(args.pdf) if args.pdf else []
+        provenance = PROVENANCE_PAGE if pages else PROVENANCE_CORPUS
+        decisions = run_interactive(candidates, part_dir=part_dir, page_texts=pages)
+
+    outcome = apply_decisions(candidates, decisions)
+    if args.dry_run:
+        print(
+            render_confirm_report(
+                outcome,
+                _dry_merge(golden, outcome, provenance),
+                rejected_file=rejected_file if outcome.rejected else None,
+            )
+        )
+        print("(--dry-run: nothing was written)")
+        return 0
+
+    merge = merge_into_golden(golden, outcome.accepted, provenance=provenance, part=candidates.part)
+    if outcome.rejected:
+        write_rejections(rejected_file, candidates.part, outcome.rejected)
+    write_candidates(
+        candidates_file,
+        GoldenCandidateSet(
+            schema_version=candidates.schema_version,
+            part=candidates.part,
+            candidates=outcome.deferred,
+            strata=strata_of(outcome.deferred),
+            pool=candidates.pool,
+            refused=candidates.refused,
+            skipped_rejected=candidates.skipped_rejected,
+            skipped_existing=candidates.skipped_existing,
+            notes=candidates.notes,
+        ),
+    )
+    print(
+        render_confirm_report(
+            outcome, merge, rejected_file=rejected_file if outcome.rejected else None
+        )
+    )
+    return 0
+
+
+def _dry_merge(golden: Path, outcome, provenance: str):
+    """The merge a `--dry-run` would have made, without making it."""
+    from datasheet_analyzer.evalh.candidates import existing_question_ids
+    from datasheet_analyzer.evalh.confirm import MergeResult
+
+    return MergeResult(
+        path=golden,
+        added=[q.id for q in outcome.accepted],
+        preserved=sorted(existing_question_ids(golden)),
+        created=not golden.exists(),
+        provenance=provenance,
+    )
+
+
+def _page_texts(pdf: str) -> list[str]:
+    from datasheet_analyzer.extract.pdf_structure import page_texts
+
+    return page_texts(Path(pdf))
 
 
 def _cmd_plots(args: argparse.Namespace) -> int:
@@ -1364,6 +1547,65 @@ def main(argv: list[str] | None = None) -> int:
     )
     p_audit.add_argument("--json", action="store_true", help="emit the scorecard(s) as JSON")
     p_audit.set_defaults(func=_cmd_audit)
+
+    p_golden = sub.add_parser(
+        "golden",
+        help="generate golden Q&A candidates, then confirm them by hand "
+        "(a candidate counts toward `dsa verify` only once confirmed)",
+    )
+    gsub = p_golden.add_subparsers(dest="action", required=True)
+
+    g_suggest = gsub.add_parser(
+        "suggest",
+        help="template stratified candidate questions from published records",
+    )
+    g_suggest.add_argument("--part", required=True, help="part number, e.g. AFE7950")
+    g_suggest.add_argument(
+        "--n", type=int, default=20, help="how many candidates to propose (default 20)"
+    )
+    g_suggest.add_argument("--golden", default="", help="the benchmark the candidates sit beside")
+    g_suggest.add_argument("--out", default="", help="write the candidate file here instead")
+    g_suggest.add_argument("--json", action="store_true", help="emit the candidate set as JSON")
+
+    g_confirm = gsub.add_parser(
+        "confirm",
+        help="walk candidates (accept/edit/reject) and merge the accepted ones",
+    )
+    g_confirm.add_argument("--part", required=True, help="part number")
+    g_confirm.add_argument("--pdf", default="", help="the printed PDF, shown beside each candidate")
+    g_confirm.add_argument("--golden", default="", help="benchmark file to merge into")
+    g_confirm.add_argument("--candidates", default="", help="candidate file to walk")
+    g_confirm.add_argument(
+        "--decisions",
+        default="",
+        help="a YAML decisions file (accept/edit/reject per candidate id)",
+    )
+    g_confirm.add_argument(
+        "--accept-ids",
+        dest="accept_ids",
+        default="",
+        help="comma-separated candidate ids to accept without prompting",
+    )
+    g_confirm.add_argument(
+        "--reject-ids",
+        dest="reject_ids",
+        default="",
+        help="comma-separated candidate ids to reject without prompting",
+    )
+    g_confirm.add_argument(
+        "--reject-reason",
+        dest="reject_reason",
+        default="",
+        help="the reason recorded for every --reject-ids rejection",
+    )
+    g_confirm.add_argument("--interactive", action="store_true", help="force the interactive walk")
+    g_confirm.add_argument(
+        "--dry-run",
+        dest="dry_run",
+        action="store_true",
+        help="print what would be merged without writing anything",
+    )
+    p_golden.set_defaults(func=_cmd_golden)
 
     p_plots = sub.add_parser("plots", help="deterministic plot lookup")
     _add_scope(p_plots)

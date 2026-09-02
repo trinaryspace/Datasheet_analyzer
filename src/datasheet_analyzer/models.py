@@ -2225,9 +2225,23 @@ class GoldenCandidateSet(BaseModel):
     candidates: list[GoldenCandidate] = Field(default_factory=list)
     strata: dict[str, dict[str, int]] = Field(default_factory=dict)
     pool: dict[str, int] = Field(default_factory=dict)
+    #: The population the generator *refused*, per artifact and per reason
+    #: (`{"specs.json": {"the record carries no printed page": 41}}`). ADR
+    #: 0005's unparsed-population clause applies to a selector as much as to a
+    #: derivation: a corpus that yields three candidates out of six hundred
+    #: records has to be able to say which rule dropped the other five hundred
+    #: and ninety-seven, or "the generator is broken" and "these records are
+    #: unaddressable" read identically. Additive; `{}` on a file written before
+    #: it existed.
+    refused: dict[str, dict[str, int]] = Field(default_factory=dict)
     skipped_rejected: int = 0
     skipped_existing: int = 0
     notes: list[str] = Field(default_factory=list)
+
+    @property
+    def n_refused(self) -> int:
+        """How many records were refused, over every artifact and reason."""
+        return sum(n for reasons in self.refused.values() for n in reasons.values())
 
 
 class GoldenRejection(BaseModel):

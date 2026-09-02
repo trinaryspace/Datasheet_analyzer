@@ -135,10 +135,32 @@ class TestPerPartGoldenDiscovery:
     by part name and hard-fails (no silent zero-question pass) when a
     part's benchmark is missing or empty."""
 
-    def test_default_golden_is_per_part_by_name(self):
+    def test_default_golden_is_per_part_by_name(self, monkeypatch):
+        # With no override the benchmark lives beside the committed ones. The
+        # suite always sets `DSA_GOLDEN_DIR` (conftest), because `dsa golden
+        # confirm` writes here - so the unoverridden rule is asserted by
+        # clearing it rather than by trusting the ambient environment.
+        from datasheet_analyzer.config import reset_settings_cache
+        from datasheet_analyzer.evalh.golden import GOLDEN_DIR
+
+        monkeypatch.delenv("DSA_GOLDEN_DIR", raising=False)
+        reset_settings_cache()
         path = cli._default_golden_path("AFE7950")
         assert path.name == "golden_qa_AFE7950.yaml"
         assert path.parent.name == "fixtures"
+        assert path.parent == GOLDEN_DIR
+        reset_settings_cache()
+
+    def test_the_golden_directory_follows_its_setting(self, monkeypatch, tmp_path):
+        """`DSA_GOLDEN_DIR` is what keeps a confirm run off the real fixtures."""
+        from datasheet_analyzer.config import reset_settings_cache
+
+        monkeypatch.setenv("DSA_GOLDEN_DIR", str(tmp_path / "elsewhere"))
+        reset_settings_cache()
+        assert cli._default_golden_path("AFE7950") == (
+            tmp_path / "elsewhere" / "golden_qa_AFE7950.yaml"
+        )
+        reset_settings_cache()
 
     def test_verify_discovers_golden_from_part_name(self, tmp_path, monkeypatch, capsys):
         settings = _part_settings(tmp_path)

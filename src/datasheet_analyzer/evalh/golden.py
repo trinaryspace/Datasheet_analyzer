@@ -60,7 +60,45 @@ def default_golden_path(part: str) -> Path:
     return golden_dir() / f"golden_qa_{part}.yaml"
 
 
+def candidate_golden_path(part: str) -> Path:
+    """`golden_qa_<PART>.candidate.yaml` - generated proposals.
+
+    Deliberately a *different* filename from `default_golden_path`, so nothing
+    that discovers a benchmark by part name can pick up candidates (phase 7,
+    ticket 06). Invariant 5's new clause is enforced by three independent
+    things and this is the first: the name, the file's `candidates:` key, and
+    `load_golden`'s refusal below.
+    """
+    from datasheet_analyzer.evalh.candidates import candidate_path as _path
+
+    return _path(default_golden_path(part))
+
+
+def rejected_golden_path(part: str) -> Path:
+    """`golden_qa_<PART>.rejected.yaml` - the rejection ledger."""
+    from datasheet_analyzer.evalh.candidates import rejected_path as _path
+
+    return _path(default_golden_path(part))
+
+
 def load_golden(path: Path) -> list[GoldenQuestion]:
+    """Load a benchmark; refuse a *candidate* file by name (phase 7, ticket 06).
+
+    The refusal is here rather than left to a `KeyError` because this is the one
+    mistake that would silently replace the objective function with generated
+    questions nobody confirmed. `--golden <file>` accepts any path a caller
+    names, so the caller has to be told what they named.
+    """
+    from datasheet_analyzer.evalh.candidates import CANDIDATE_SUFFIX, GoldenAssistError
+
+    path = Path(path)
+    if path.name.endswith(CANDIDATE_SUFFIX):
+        raise GoldenAssistError(
+            f"{path} holds generated candidates, not the benchmark: a candidate "
+            "counts toward nothing until a human confirms it "
+            "(`dsa golden confirm`). Point --golden at "
+            f"{path.name.removesuffix(CANDIDATE_SUFFIX)}.yaml instead."
+        )
     return load_golden_yaml(path)
 
 

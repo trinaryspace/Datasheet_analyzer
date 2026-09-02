@@ -68,6 +68,15 @@ def _point_dsa_at(root: Path):
     `.cache/http-bin` are committed recorded fixtures, and pointing the cache
     at a temporary directory would send the integration builds to the network
     for pages that are already on disk.
+
+    `DSA_GOLDEN_DIR` is here for the same reason `DSA_PARTS_DIR` is, one step
+    sharper: `dsa golden confirm` **writes** `golden_qa_<PART>.yaml`, which is
+    invariant 5's objective function and the file that gates every other test
+    in this suite. Without this, a confirm run reaching `get_settings()` would
+    resolve `evalh.golden.GOLDEN_DIR` - the repository's real `tests/fixtures`
+    - and edit the benchmark it is being measured against. Tests that want to
+    *read* the committed benchmarks name their paths explicitly (`conftest.FIXTURES`),
+    which is unaffected; only the settings-resolved default moves.
     """
     from _pytest.monkeypatch import MonkeyPatch
 
@@ -77,6 +86,7 @@ def _point_dsa_at(root: Path):
     mp.setenv("DSA_LIBRARY_DIR", str(root / "library"))
     mp.setenv("DSA_SESSIONS_DIR", str(root / "sessions"))
     mp.setenv("DSA_PARTS_DIR", str(root / "parts"))
+    mp.setenv("DSA_GOLDEN_DIR", str(root / "golden"))
     reset_settings_cache()
     yield root
     mp.undo()
