@@ -533,7 +533,9 @@ def build_pins(
     case, not an error — and it never emits a `PinSet` from a rejected table.
     """
     lex = lexicon or load_pin_lexicon()
-    extraction: DeviceTableExtraction = extract_device_tables(raw, kind=KIND_PIN)
+    extraction: DeviceTableExtraction = extract_device_tables(
+        raw, kind=KIND_PIN, part_number=part_number
+    )
     reasons = tuple(extraction.rejection_reasons)
     rows = extraction.rows
     if not rows:

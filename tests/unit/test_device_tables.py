@@ -20,6 +20,8 @@ Coverage, one class per acceptance checkbox:
   wrapped continuation rows;
 - validation failures reject the whole table with a recorded reason
   (duplicate keys, non-monotonic addresses, an unreadable key column);
+- a multi-device table's rows scoped to the *other* device are not rows about
+  this part, and only when the table names this part too;
 - rejection reasons join `ExtractionStats.rejection_reasons`;
 - multi-value key cells expand, each expanded record keeping the row's page;
 - a prose table that merely looks tabular is not accepted, and a parametric
@@ -367,6 +369,80 @@ class TestValidationRejectsWholeTables:
 
         assert found.rows == ()
         assert "1 of 4 printed rows" in found.rejected[0].reason
+
+
+class TestRowsPrintedForAnotherDevice:
+    """A datasheet that covers two part numbers prints one table for both and
+    scopes the rows that differ.
+
+    Measured on ADC12DJ5200RF's `Table 5-1 Pin Functions`: six of seventy rows
+    open their description with a part number --- two `ADC12DJ5200RF:` and four
+    `ADC12DJ5210RF:` --- and the sibling's four rows re-key twenty-two ball
+    designators the device's own rows already keyed (`DGND` on `D9, D10, J9,
+    J10`, `SGND` on the eight balls `DGND` claims, `VD11`/`VS11` likewise).
+    Reading all seventy as one pinout made `unique_keys` refuse the table for
+    `duplicate key 'D9' (rows 38 and 39)`, and a 221-page ADC published no pins
+    at all.
+    """
+
+    SCOPED_ROWS: ClassVar[list[list[str]]] = [
+        ["A1", "VSSA", "Ground", "Analog ground"],
+        ["A2", "VDDA", "Power", "Analog supply"],
+        ["B1", "CLKP", "Input", "Clock input positive"],
+        ["B2, B3", "DGND", "Ground", "DEVA1000: digital ground on both balls"],
+        ["B2", "DGND", "Ground", "DEVB2000: digital ground on one ball"],
+    ]
+
+    def test_the_sibling_device_s_rows_are_not_rows_about_this_part(self, tmp_path):
+        raw = _pin_doc(tmp_path, "two_devices.pdf", PIN_HEADERS, self.SCOPED_ROWS)
+        found = extract_device_tables(raw, kind=KIND_PIN, part_number="DEVA1000")
+
+        assert [row.key for row in found.rows] == ["A1", "A2", "B1", "B2", "B3"]
+        assert found.rejected == ()
+        assert "row 4: printed for DEVB2000, not DEVA1000" in found.accepted[0].notes
+
+    def test_the_same_table_read_as_the_sibling_keeps_the_other_row(self, tmp_path):
+        """Symmetry, and the proof that nothing here is keyed to one vendor:
+        the same printed table read as DEVB2000 drops DEVA1000's row instead."""
+        raw = _pin_doc(tmp_path, "two_devices_b.pdf", PIN_HEADERS, self.SCOPED_ROWS)
+        found = extract_device_tables(raw, kind=KIND_PIN, part_number="DEVB2000")
+
+        assert [row.key for row in found.rows] == ["A1", "A2", "B1", "B2"]
+        assert "row 3: printed for DEVA1000, not DEVB2000" in found.accepted[0].notes
+
+    def test_without_a_part_number_nothing_is_dropped(self, tmp_path):
+        """The refusal is the default. A caller that does not say which device
+        it is asking about gets the reading it got before this rule existed."""
+        raw = _pin_doc(tmp_path, "no_part.pdf", PIN_HEADERS, self.SCOPED_ROWS)
+        found = extract_device_tables(raw, kind=KIND_PIN)
+
+        assert found.rows == ()
+        assert "duplicate key 'B2'" in found.rejected[0].reason
+
+    def test_a_table_that_never_names_this_part_is_judged_unchanged(self, tmp_path):
+        """What makes the rule evidence rather than a guess: it fires only when
+        the table names *this* corpus's part as one of its row scopes. A table
+        that scopes rows to devices this part is not among says nothing about
+        which of them is meant, so it is refused exactly as before."""
+        raw = _pin_doc(tmp_path, "third_device.pdf", PIN_HEADERS, self.SCOPED_ROWS)
+        found = extract_device_tables(raw, kind=KIND_PIN, part_number="DEVC9000")
+
+        assert found.rows == ()
+        assert "duplicate key 'B2'" in found.rejected[0].reason
+
+    def test_a_leading_word_that_is_not_a_device_name_is_not_a_scope(self, tmp_path):
+        """`Note:` and `Warning:` open cells all over real datasheets. A scope
+        token has to carry a digit and be four characters or more, so prose
+        labels cannot be read as device names --- checked here by giving the
+        colliding rows `Note:` prefixes and watching the table stay refused."""
+        rows = [r[:] for r in self.SCOPED_ROWS]
+        rows[3][3] = "Note: digital ground on both balls"
+        rows[4][3] = "Warning: digital ground on one ball"
+        raw = _pin_doc(tmp_path, "prose_prefix.pdf", PIN_HEADERS, rows)
+        found = extract_device_tables(raw, kind=KIND_PIN, part_number="DEVA1000")
+
+        assert found.rows == ()
+        assert "duplicate key 'B2'" in found.rejected[0].reason
 
 
 class TestPrintedShapesThatAreLayoutNotContent:

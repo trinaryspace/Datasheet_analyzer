@@ -810,8 +810,67 @@ VALIDATORS = {
 }
 
 
+#: A cell that opens `DEVICE:` scopes its row to one device of a datasheet
+#: that covers several. Matched conservatively: the token must be a single
+#: uppercase word (hyphens and slashes allowed inside), at least this long,
+#: and must carry a digit -- so `Note:`, `Example:` and `WARNING:` cannot be
+#: read as device names, while `ADC12DJ5210RF:` can.
+_ROW_DEVICE_SCOPE = re.compile(r"^\s*([A-Z][A-Z0-9]*(?:[-/][A-Z0-9]+)*)\s*:")
+_SCOPE_TOKEN_MIN = 4
+
+
+def _row_device_scope(cells: Sequence[str]) -> str | None:
+    """The device a printed row scopes itself to, or `None`.
+
+    Read off the *first* cell that opens with one, because a row scopes itself
+    once -- ADC12DJ5200RF's `Pin Functions` puts it at the head of the
+    description and nowhere else.
+    """
+    for cell in cells:
+        match = _ROW_DEVICE_SCOPE.match(cell or "")
+        if match is None:
+            continue
+        token = match.group(1)
+        if len(token) >= _SCOPE_TOKEN_MIN and any(c.isdigit() for c in token):
+            return token
+    return None
+
+
+def _scoped_out(printed: list[_PrintedRow], part_number: str) -> tuple[set[int], list[str]]:
+    """The rows this table prints about a *different* device, and why.
+
+    A datasheet that covers two devices prints one table for both and scopes
+    the rows that differ. ADC12DJ5200RF's `Table 5-1 Pin Functions` is the
+    measured case: six of its seventy rows open with a part number, two with
+    `ADC12DJ5200RF:` and four with `ADC12DJ5210RF:`, and the sibling's four
+    rows re-key twenty-two ball designators the device's own rows already
+    keyed. Reading all seventy as one device's pinout made `unique_keys` --
+    correctly -- refuse the whole table, and a 221-page ADC published no pins.
+
+    The rule fires **only** when the table names this corpus's own part as one
+    row scope, which is what makes it evidence rather than a guess: a table
+    that scopes rows to devices this part is not among says nothing about
+    which of them is meant, so nothing is dropped and the validators judge the
+    table exactly as before. Rows carrying no scope at all belong to every
+    device the document covers and are always kept.
+    """
+    if not part_number.strip():
+        return set(), []
+    wanted = part_number.strip().upper()
+    scopes = {row.row_index: _row_device_scope(row.cells) for row in printed}
+    present = {s.upper() for s in scopes.values() if s}
+    if wanted not in present:
+        return set(), []
+    dropped = {i for i, scope in scopes.items() if scope and scope.upper() != wanted}
+    notes = [f"row {i}: printed for {scopes[i]}, not {part_number}" for i in sorted(dropped)]
+    return dropped, notes
+
+
 def _stage_rows(
-    printed: list[_PrintedRow], mapping: ColumnMapping, spec: KindSpec
+    printed: list[_PrintedRow],
+    mapping: ColumnMapping,
+    spec: KindSpec,
+    part_number: str = "",
 ) -> tuple[list[dict], list[str]]:
     """Read the printed rows into staged records, before validation judges them.
 
@@ -829,6 +888,13 @@ def _stage_rows(
       back onto the row it continues — the printed cell's text, whose line break
       was layout — instead of reading as two rows claiming one pin.
 
+    - **Rows printed for another device.** A datasheet covering two part
+      numbers scopes the rows that differ by opening them with the device's
+      name (`ADC12DJ5210RF: 1.1V SerDes supply.`). When the table names this
+      corpus's own part that way too, the sibling's rows are not rows about
+      this part; `_scoped_out` has the argument for why that is evidence and
+      not a guess.
+
     A repeated key is only read as a continuation on structural evidence: the
     row **leaves empty a column the row above filled**. A row that prints no
     name is not a record; a row that prints every column its neighbour did is,
@@ -839,9 +905,11 @@ def _stage_rows(
     another's description, and a rejection with a reason is worth more.
     """
     staged: list[dict] = []
-    notes: list[str] = []
+    scoped_out, notes = _scoped_out(printed, part_number)
     tail_roles = [r for r in mapping.columns if r != spec.key_role]
     for row in printed:
+        if row.row_index in scoped_out:
+            continue
         # A first cell the layout engine *lent* from a spanning parent is not
         # a key — the page prints none for this row. Reading it as one is what
         # made HMC520A's exposed-pad row claim pin 15 a second time and cost
@@ -913,6 +981,7 @@ def parse_device_table(
     *,
     kind: str | None = None,
     lexicon: DeviceLexicon | None = None,
+    part_number: str = "",
 ) -> DeviceTableResult | None:
     """Run identify -> map -> validate -> emit over one table.
 
@@ -941,7 +1010,7 @@ def parse_device_table(
     if len(printed) < spec.min_rows:
         return _rejected(result, f"{spec.label}: fewer than {spec.min_rows} printed rows")
 
-    staged, notes = _stage_rows(printed, mapping, spec)
+    staged, notes = _stage_rows(printed, mapping, spec, part_number)
     if not staged:
         return _rejected(result, f"{spec.label}: no keyed rows")
 
@@ -1025,6 +1094,7 @@ def extract_device_tables(
     *,
     kind: str,
     lexicon: DeviceLexicon | None = None,
+    part_number: str = "",
 ) -> DeviceTableExtraction:
     """Every device table of one kind in one document, accepted and rejected.
 
@@ -1033,6 +1103,11 @@ def extract_device_tables(
     the other's tables look like. A `pdf_text` document is skipped whole — that
     backend is explicitly degraded and publishes no trusted tables, so there is
     nothing here to be honest about.
+
+    `part_number` is the corpus's own part, and is used for exactly one
+    decision: a multi-device table's rows that the page scopes to a *different*
+    device are not rows about this part (`_scoped_out`). Left empty, no row is
+    ever dropped.
     """
     lex = lexicon or load_device_lexicon()
     if raw.extractor == "pdf_text":
@@ -1040,7 +1115,11 @@ def extract_device_tables(
     results = [
         result
         for section, table, table_index in iter_tables(raw)
-        if (result := parse_device_table(section, table, table_index, kind=kind, lexicon=lex))
+        if (
+            result := parse_device_table(
+                section, table, table_index, kind=kind, lexicon=lex, part_number=part_number
+            )
+        )
         is not None
     ]
     return DeviceTableExtraction(kind=kind, results=tuple(results))

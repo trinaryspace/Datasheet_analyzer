@@ -326,7 +326,9 @@ def build_registers(raw: RawDocument, part_number: str = "") -> RegisterBuild:
     reading for a whole printed column, so `0x0A` and `10` in the same column
     are 10 and 16, never 10 and 10.
     """
-    extraction: DeviceTableExtraction = extract_device_tables(raw, kind=KIND_REGISTER)
+    extraction: DeviceTableExtraction = extract_device_tables(
+        raw, kind=KIND_REGISTER, part_number=part_number
+    )
     reasons = tuple(extraction.rejection_reasons)
     accepted = extraction.accepted
     if not extraction.rows:
