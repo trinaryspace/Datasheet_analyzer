@@ -15,12 +15,23 @@ about documents rather than defects in this tool. Closing numbers for
 everything that has been retired are in `Reports/PHASE_6_5_REPORT.md` and
 `Reports/FIX_WAVE_2026-09-01.md`.
 
-The five entries after them come from the phase 7 port and are a different
-kind: each names a mechanism that is built, tested and **unexercised against
+The five entries after them come from the phase 7 port and were a different
+kind: each named a mechanism that was built, tested and **unexercised against
 the thing it was built for** — a live upstream, a real vendor errata sheet, a
 twenty-part fleet, a human confirming a generated question, a family whose
-members print one parameter differently. They are recorded here rather than
-reported as met.
+members print one parameter differently. **Two of those five were exercised on
+2026-09-02** and are rewritten in place with what was measured: the registry
+was fetched for real (25 requests, five vendors) and a real vendor errata
+document was read for the first time. Both entries got *shorter* on the parts
+that were guesses and *longer* on the parts that turned out to be wrong — the
+errata lexicon was missing the word the real document actually uses, and no
+test could have found that.
+
+The corpus is **25 parts across five vendors** as of that run (ti, adi, qorvo,
+minicircuits, skyworks), up from 11 across three. One entry below —
+*Extraction: what the new fleet reads badly* — is new, and exists because
+scaling a corpus five vendors wide is the only thing that could have produced
+it.
 
 The four entries that the fix wave closed are described in
 `Reports/FIX_WAVE_2026-09-01.md` with their measured before and after: the
@@ -32,30 +43,59 @@ away.
 
 ---
 
-## Pins: AFE7950 and AFE7953 publish no pin table
+## Pins: TI's public AFE79xx datasheet is abridged — settled, not open
 
-**Phase 6, ticket 04; re-measured on the 2026-09-01 fix wave.** The phase
-plan's acceptance gate
-asks for `dsa pins --part AFE7950 --type power` to return a hand-checked supply
-pin set. It returns nothing, and the reason is in the document rather than in
-the tool: **the AFE7950 datasheet in this corpus prints no pin table.** Its
-section 4 (Specifications) is followed directly by section 5 (Revision
-History) — there is no *Pin Configuration and Functions* section to read. The
-same is true of AFE7953. **Re-measured on the fix-wave rebuild at extractor
-`tables-10`: 0 pins for each, unchanged.**
+**Phase 6, ticket 04; re-measured 2026-09-01; closed as a fact 2026-09-02.**
+The phase plan's acceptance gate asks for `dsa pins --part AFE7950 --type
+power` to return a hand-checked supply pin set. It returns nothing, and the
+reason is in the document rather than in the tool: **the AFE7950 datasheet in
+this corpus prints no pin table.** Its section 4 (Specifications) is followed
+directly by section 5 (Revision History) — there is no *Pin Configuration and
+Functions* section to read. The same is true of AFE7953.
+
+This entry used to end "what would close it: a TI datasheet revision that
+includes the pin configuration section". **It will not, and the document says
+so on its own first page.** Page 1 of `afe7950.pdf`, under the heading
+`1 Features`, prints as its *first bullet*:
+
+> **Request full data sheet**
+
+`afe7953.pdf` p.1 prints the same bullet in the same place. The public
+AFE79xx datasheet is an **abridged** document; the pin-configuration section
+lives in the full datasheet, which TI gates behind a request. A gated document
+is out of scope for a public-documentation-only corpus, so this is not a defect
+waiting on an upstream release — it is the shape of what TI publishes.
+
+Three things were measured on 2026-09-02 to settle it:
+
+1. TI's current public revisions are still **SBASA41E** and **SBASAN1A** —
+   `dsa fetch AFE7950` and `dsa fetch AFE7953` both returned HTTP 200 from
+   `ti.com/lit/ds/<lit>/<lit>.pdf` and both served the revision already
+   recorded here. There is no newer revision to fetch.
+2. All **146** pages of `afe7950.pdf` and all **134** of `afe7953.pdf` were
+   scanned for seven cues — `pin configuration`, `pin functions`,
+   `pin description`, `pin assignment`, `pinout`, `signal descriptions`,
+   `terminal functions`. **Zero hits in either document.**
+3. TI's AFE7950 technical-documents page lists no errata and no register map.
+   The register-map-shaped material exists only as an `e2e.ti.com` forum
+   attachment — a user-upload path with no literature number and no revision
+   identifier — which is exactly the mirrored-source failure this corpus exists
+   to prevent, so it is not cited here.
 
 **What the tool does instead.** No `pins.json` is published for either part,
 and `dsa pins --part AFE7950` says so in as many words rather than printing an
 empty result that reads as "this part has no pins". The hand-checked supply
 pin set the gate asks for was produced for **AD9081** instead (22 rails, 79
 balls, checked against Table 21 of its datasheet) and is asserted in
-`tests/integration/test_phase6_pins.py::TestSupplyPinSet`; on the rebuild
-AD9081 still publishes **210** pins.
+`tests/integration/test_phase6_pins.py::TestSupplyPinSet`; AD9081 still
+publishes **210** pins.
 
-**What would close it.** A TI datasheet revision that includes the pin
-configuration section, added to the part with `dsa add-doc`. Nothing in
-`derive/pins.py` needs to change: it reads whatever pin table the document
-prints.
+**What the corpus has instead, since 2026-09-02.** A pin table is no longer
+something only AD9081 and HMC520A can exercise. **LMX2820** publishes 48 pins
+and is the first part whose pin count and package declaration agree exactly
+(48 declared, 48 read); **AWR1843** publishes 112 from a `Signal Descriptions`
+table under a heading the extractor was never keyed to; **SKY65405-21** and
+**SKY13351-378LF** publish 7 and 3 in a non-TI house style.
 
 ---
 
@@ -90,54 +130,78 @@ will start asserting the moment a part that prints one is added.
 
 ---
 
-## Reach: no URL in the registry has ever been fetched, and no corpus has ever been checked
+## Reach: the registry has been fetched — what is left is one network and one vendor
 
-**Phase 7, tickets 01–02, ported to this branch 2026-09-01.** Both features are
-*about* the network and both were implemented with none. Everything below is
-built and tested against a synthetic document served through the existing
-`ReplayBinaryFetcher` seam; nothing was marked done by a fabricated fixture.
-No URL was invented, no sha256 was guessed, no HTTP response was written and no
-`retrieved_at` was back-filled.
+**Phase 7, tickets 01–02, ported 2026-09-01. Largely closed 2026-09-02 by the
+first live run.** Both features are *about* the network and both were built
+with none. That is no longer true: `dsa fetch` made **25 real HTTP requests**
+across five vendors on 2026-09-02, `dsa check-revisions --all` ran against
+live upstream bytes, and the registry grew from 10 parts to **25 across five
+vendors (ti, adi, qorvo, minicircuits, skyworks), 30 documents, 25 URLs
+verified on the wire**.
 
-**What is unconfirmed, precisely.**
+**What the live run measured.**
 
-- **Three derived TI URLs ship `url_verified: false`.** `AFE7950`
-  (`SBASA41E`), `AFE7953` (`SBASAN1A`) and `lm741` (`SNOSC25D`) carry
-  `https://www.ti.com/lit/ds/<lit>/<lit>.pdf` composed from a literature number
-  parsed out of a PDF that is in this repo, through the one literature-path
-  pattern this repo already carries. That is a **hypothesis**, and the flag and
-  `url_derivation` say so. Only a live `dsa fetch` may flip it.
-- **The other seven entries carry no URL at all**, each with a recorded reason:
-  no adi pattern (`AD9081`, `HMC520A`), no qorvo pattern (`QPA1003P`), and no
-  vendor pinned from the document's own pages at all for the four
-  Mini-Circuits parts. `dsa fetch --url <URL> --part X` is the growth path.
-- **`LMX1204` is not in the registry**, although its corpus is built. Its two
-  PDFs are working files in this tree rather than tracked documents, so a
-  `sha256_origin: local_file:` hash for them would name a path a fresh clone
-  does not have — the one claim that field exists to make checkable.
-- **Every seeded hash is a `local_file:` hash**, so the first `dsa fetch` of
-  each TI part will report a sha256 mismatch essentially always: TI regenerates
-  a datasheet's package-materials addendum with the current date on every
-  download, so the bytes of an unchanged revision differ. The warning is
-  written for exactly that — it decides its cause from the parsed revision and
-  says the revision did *not* move — but it still costs a human read before
-  `--accept-new-revision` records a wire hash.
-- **All eleven corpora read `staleness: unknown`.** That is the designed and
-  honest state, and it is loud on all four surfaces. But it means the `stale`
-  path has only ever been exercised against a synthetic fixture whose revision
-  moved (`tests/unit/test_revisions.py::TestCheckRevisions`), never against a
-  vendor document that was really superseded.
+- **The three derived TI URLs are correct.** `AFE7950` (`SBASA41E`),
+  `AFE7953` (`SBASAN1A`) and `lm741` (`SNOSC25D`) each returned HTTP 200 and a
+  document reporting the exact recorded revision. The `ti_lit_ds` derivation
+  rule is 3 for 3, and all three now carry `url_verified: true`.
+- **All three also mismatched on sha256, and the warning was right about
+  why.** "Both documents report revision X, so this is NOT evidence of a new
+  revision — the bytes changed while the revision identifier did not." That is
+  the TI package-addendum behaviour the registry header predicted, confirmed on
+  three documents. Nothing was accepted: the recorded hashes are still
+  `local_file:` hashes of the committed copies, and `retrieved_at` is still
+  null on those three, because the hash that is recorded did not come off that
+  download. `url_verified: true` with `retrieved_at: null` is a deliberate,
+  asserted combination (`TestCheckedInRegistry`), not an inconsistency.
+- **`dsa check-revisions --all`: 3 checked, 0 stale, 3 content-drift, 9 could
+  not be checked.** AFE7950 and AFE7953's `INDEX.md` staleness banners are the
+  first in this repo to read "Revision current … regenerated, not revised"
+  instead of "not checked". The `stale` path is still unexercised against a
+  real superseded document — no vendor in this corpus has moved a revision
+  under us yet.
+- **`LMX1204` is in the registry now, and it is the strongest citation-fidelity
+  result here.** `https://www.ti.com/lit/ds/symlink/lmx1204.pdf` returns
+  `acd53c1fbc131e09…` — byte-for-byte the `content_hash` its corpus was built
+  from. The bytes on ti.com today are the bytes this corpus cites. The same
+  fetch parsed its revision as **SNAS800B**, correcting the `SYSREFOUT0`
+  page-heading fragment recorded when it was built.
+- **Two of the four Mini-Circuits parts turned out to be current too.**
+  `minicircuits.com/pdfs/<PART>.pdf` served **PSA-8A+** and **ZX10R-2-183-S+**
+  byte-identical; both now carry `fetch:` origins and live timestamps.
 
-**What would close it.** A connection, and the steps in
-`Reports/PHASE_7_LIVE_RUN.md` (L1–L6 on the source lineage): fetch the four
-derivable parts, read the mismatch warnings, re-run with
-`--accept-new-revision`, supply the URLs this repo cannot derive, then
-`dsa check-revisions --all --json` for the first real freshness reading.
+**What is still open, precisely.**
 
-**Two smaller parked items from the same port.**
-
-- `content_drift` is recorded (with `upstream_sha256`) and nothing consumes it
-  yet; `dsa diff-rev` is its natural consumer.
+- **`www.analog.com` is unreachable from this environment.** curl over HTTP/2,
+  curl `--http1.1` with a browser UA, `--tlsv1.2 -4`, PowerShell
+  `Invoke-WebRequest` and WebFetch all returned connection-reset or timed out;
+  `analog.com` 301s to `www.analog.com` and then resets. So **AD9081** and
+  **HMC520A** still carry `url: null`, and the ADI URL pattern
+  (`/media/en/technical-documentation/data-sheets/<part>.pdf`) is still
+  unverified and is deliberately **not** recorded. This is a network fact, not
+  a code defect. Someone on a network that can reach analog.com should record
+  those two and hunt companions.
+- **`qorvo.com` refuses this tool's own User-Agent.** `dsa fetch` against
+  `https://www.qorvo.com/products/d/da007268` with the default
+  `datasheet-analyzer/0.1 (research tooling)` returns **HTTP 429 Too Many
+  Requests** on the *first* request. `DSA_USER_AGENT="Mozilla/5.0 …"` gets 200,
+  and that is how QPL9547 and QPA2213 were fetched. The env override works, so
+  nothing is blocked, but a fresh clone will hit the 429 with no hint that a
+  User-Agent is the cause. Qorvo also serves `application/octet-stream` rather
+  than `application/pdf`; that costs nothing here only because this repo checks
+  whether the *bytes* open as a PDF (`readable_pdf_error`) and never reads the
+  content type — a strict content-type check would have rejected two valid
+  documents.
+- **`QPA1003P`, `LHA-83W+` and `PMA1-14LN+` still carry `url: null`.**
+  QPA1003P because no Qorvo document id is recorded for it; the two
+  Mini-Circuits parts because their upstream bytes differ from the copies here
+  and Mini-Circuits prints **no revision identifier at all**, so nothing can
+  say whether the document was revised or only regenerated. The refusal is
+  correct and the recorded reason now says exactly that.
+- **`content_drift` is recorded (with `upstream_sha256`) and nothing consumes
+  it yet**; `dsa diff-rev` is its natural consumer. Three parts now carry a
+  true `content_drift`, so the consumer finally has data to be written against.
 - ~~`RevisionState` reaches the workbench API and nothing renders it.~~
   **Closed 2026-09-02.** The workbench is the fifth surface. `describeRevision`
   in `web/src/routes/library/state.ts` mirrors `staleness.banner_text` by hand
@@ -154,51 +218,83 @@ derivable parts, read the mismatch warnings, re-run with
 - A two-document part reports one `dsa status` line naming its least fresh
   document. A per-document breakdown would be better and is not here.
 
+**And one thing the scale-up did not put in git.** 14 of the 25 corpora — and
+the PDFs they were built from — are working files in this tree, not tracked
+documents. That is the existing practice, not a new decision: 9 of the 11
+corpora that predate this run are untracked too, because a corpus published to
+the shared `library/` store cannot resolve in a fresh clone (ADR 0008), and
+only `AFE7950` and `AFE7953` are published `--self-contained`. What *is*
+tracked is the registry, which now names every one of the 25 parts with a URL
+and a hash anyone can re-fetch. Making the other 23 corpora self-contained is
+a real piece of work and it is not done.
+
 ---
 
-## Errata: no vendor errata document has ever been read
+## Errata: one real vendor errata is read now, and it taught the lexicon a word
 
-**Phase 7, ticket 04, ported to this branch 2026-09-01.** Errata cross-linking
-is built, tested and gated, and **no real errata PDF exists in this repo to
-point it at**. `dsa add-doc --type errata` and `dsa fetch --doc-type errata`
-have both existed for some time; nothing has ever been filed under either, and
-none of the eleven built parts registers an errata document. Every corpus in
-`parts/` therefore publishes no `errata_links.json`, which is the designed
-silence — a part with no errata document gets *no file*, because an empty one
-would read as "no known issues", a claim this corpus has no evidence for.
+**Phase 7, ticket 04, ported 2026-09-01. Opened for real 2026-09-02.** Until
+that day no real errata PDF existed anywhere in this repo and one whole audit
+metric (`errata_link_rate`) was calibrated on nothing. **AWR1843** now
+registers `SWRZ089C` — *AWR1843 Device Errata, Silicon Revision 1.0*, 48 pages,
+fetched from `ti.com/lit/er/swrz089/swrz089.pdf` — and publishes a real
+`errata_links.json`.
 
-**What is proven, precisely.** The gate
+**What the real document showed, and it was not what was expected.** The
+acquisition proposal that brought this document in said its items are headed
+`Advisory <n>`, which is the first marker word `registry/errata.yaml` lists.
+**That is wrong.** SWRZ089C heads its 46 items by owning subsystem —
+`MSS#44`, `ANA#08A` — and prints the word "Advisory" only as the caption of
+Table 5-1, *Advisory to Silicon Variant / Revision Map*, and as that table's
+column header. With no marker word matching, the lexicon fell through to
+`numbered_items`, which segmented on the numbered **workaround bullets inside**
+each advisory: 11 items whose text ran straight across advisory boundaries,
+one of them opening mid-sentence and swallowing the next advisory's title.
+
+The fix was the data change the file's own header promises — two entries,
+`ana` and `mss`, added to `item_markers`; `_MARKER_TAIL` already accepts the
+`#` separator and the `08A` letter suffix. No Python changed. Other prefixes
+TI uses in this family (`DSS`, `RCM`, `PCM`, `BSS`) are deliberately absent
+until a document that prints one is here.
+
+**Measured after the fix:** 98 items, **5 linked**, 93 unlinked, 20 targets,
+every item `derivation: errata-item-marker`. The links land on real records at
+real printed pages, hand-checked:
+
+| Item | Links to | Page | Rule / grade |
+|---|---|---|---|
+| `ANA#13` — TX1 to TX3 phase mismatch | pins `B4 TX1`, `B6 TX2`, `B8 TX3` | 14 | `pin-name`, high |
+| `ANA#11A` — TX/RX calibration sensitivity | spec *Transmitter Output power* | 28 | `alias-phrase`, medium |
+| `ANA#12A` — HD2 in the receiver | 9 clock/phase-noise spec rows | 28, 32 | `alias-phrase`, medium |
+| `ANA#18B` — spurs from digital coupling to XTAL | 3 ADC sample-rate rows | 28, 62 | `alias-phrase`, medium |
+
+Page 14 of `awr1843.pdf` really does print `TX1 … B4` under *6.2.2 Signal
+Descriptions - Analog*, checked against the PDF itself and not only against
+the record.
+
+**What is still wrong, and it is the segmentation.** 98 items for a document
+with 46 advisories. Table 5-1 lists every advisory id as a row, and each of
+those rows opens a line with a marker, so the map produces a near-duplicate
+short item for every real one (`err_37` and `err_83` are both `ANA#13`; one is
+the map row, one is the advisory). The lexicon has no way to say "not inside
+this table" — segmentation runs over `pdf_text` lines, which carry no table
+membership — so this is not fixable by data, and it is not fixed. A reader of
+`ERRATA.md` sees each advisory twice.
+
+**Also still unmeasured:** an errata sheet from a vendor other than TI, and an
+image-only errata scan (the segmenter yields nothing and the file records
+`empty_reason`, which no real document has exercised). SWRZ089C does have a
+table of contents, so the page-range behaviour is now exercised: the real
+advisories carry `p.7-46`, which is honest and nearly useless, because
+`pdf_text` carries no per-line page and the whole advisory section is one
+section.
+
+**What is proven synthetically, and still is.** The gate
 (`tests/integration/test_phase7_errata.py`) builds the real `lm741.pdf` through
-the whole pipeline and links a **synthetic** errata document against it. The
-split is deliberate and is the honest half: the section numbers, the spec rows,
-the record ids and the printed pages the links land on are all real and
-hand-read off that datasheet, while the errata *prose* — the part a vendor
-writes — is declared in `tests/fixtures/synthetic/errata_doc.py`. Measured
-there: 3 items, 2 linked, 1 unlinked; section 6.1 and both its `Junction
-temperature` rows on p.4, section 7.3.2 on p.7.
-
-**What that cannot tell us.** Whether a real vendor's errata sheet segments
-into the items its author intended. The lexicon's marker words (`advisory`,
-`anomaly`, `bug`, `errata item`, `erratum`, `issue`, `item`) are a reasonable
-guess at a vendor's vocabulary and **nothing has confirmed them against a
-document written by one**. A vendor heading its items some other way falls to
-the ordinal rule, and failing that to the per-section floor: every line is
-still published, but under one item per section, which links less well. That
-degradation is by design and is visible in `ERRATA.md` as an item's
-`derivation` — but it has never been observed on real vendor prose.
-
-**Also not measured on a real document:** an errata sheet with a table of
-contents (an item's page then becomes a range like `p.3-5`, because `pdf_text`
-carries no per-line page), and an image-only errata scan (the segmenter yields
-nothing and the file records `empty_reason`, which no real document has
-exercised).
-
-**What would close it.** A connection and a vendor: file a real errata PDF
-(`dsa fetch --url … --doc-type errata --part X`), rebuild, then read
-`ERRATA.md`'s unlinked list and every `matched_on` in `errata_links.json` and
-record the linked/unlinked split. Then confirm the banner and the inline pack
-warning on that part — `dsa ask --part X … --json` must carry a non-empty
-`errata` array on the answer row.
+the whole pipeline and links a **synthetic** errata document against it: 3
+items, 2 linked, 1 unlinked; section 6.1 and both its `Junction temperature`
+rows on p.4, section 7.3.2 on p.7. That test is unchanged and still passes —
+it pins the linker's behaviour on prose whose intended answer is known, which
+is something a real vendor document cannot do.
 
 **One smaller parked item from the same port.** A full-text search that matches
 the *banner* text still returns the banner in its snippet, cited to the
@@ -209,6 +305,55 @@ datasheet citation. The answer pack's supporting excerpt does not: it strips
 the banner (`errata.render.strip_banner`), because that surface exists to quote
 what the datasheet page prints and the erratum is already on the answer row
 above it.
+
+---
+
+## Extraction: what the new fleet reads badly
+
+**New 2026-09-02, and only findable at scale.** Fourteen parts across five
+vendors were onboarded in one run. Eleven of them read well. Four documents
+read worse than the page they came from, and all four are recorded here rather
+than averaged away, because a part that publishes zero of something looks
+identical to a part whose document prints none of it.
+
+| Part | The page prints | The corpus publishes |
+|---|---|---|
+| **LFCN-1000+** | `ELECTRICAL SPECIFICATIONS1,2 AT 25°C` — a 7-column Parameter / F# / Frequency / Min / Typ / Max / Units table | **0 tables detected**, 0 spec records |
+| **SKY67183-396LF** | `Pin Assignments` *and* `Signal Descriptions`, plus `Pin Configuration`, `Pinout`, `Pin Descriptions` — all five cues | 263 specs, 13 tables, **0 pins** |
+| **ADC12DJ5200RF** | section 5 `Pin Configuration and Functions`, `Pin Functions` tables from p.6 | 2254 specs, 344 tables, 123 registers, **0 pins** |
+| **QPA2213** | 28 pages that are almost entirely S-parameter and load-pull plots | 57 specs, **1 figure** |
+
+Three separate causes, none of them the same bug.
+
+- **LFCN-1000+ / YAT-10+ / TCM1-83X+** are the *short* Mini-Circuits shape and
+  the table detector finds nothing in them at all (0 detected, not 0 accepted).
+  Their siblings in the same house style do work — `ZFSC-2-2500+` publishes 63
+  spec records off a **one-page** document and `ZEM-4300+` publishes 44 — so
+  this is not "Mini-Circuits is unreadable", it is something narrower that
+  three of the six documents trip and three do not. Nobody has diffed the two
+  groups.
+- **ADC12DJ5200RF has no pins because its datasheet is read by `ti_html`, not
+  `pdf_layout`.** The vendor profile for `ti` prefers TI's own document viewer,
+  and that path publishes 155 sections, 344 tables and 123 registers off a
+  221-page document while yielding no pin table. `LMX2820` — same vendor, same
+  backend chain — publishes 48 pins, so the viewer is not incapable; this one
+  document's pin section does not survive it. `AWR1843` (also `ti_html`)
+  publishes 112 pins and **0 figures**, which is the same split from the other
+  side.
+- **SKY67183-396LF is `pdf_layout` and still publishes no pins**, which is the
+  one of the four with no ready explanation. It is the only Skyworks document
+  of the three that fails to: `SKY65405-21` publishes 7 and `SKY13351-378LF`
+  publishes 3, off the same vendor's pages.
+
+**What the tool does instead.** Nothing is faked: a part with no readable pin
+table publishes no `pins.json` and `dsa pins` says so, exactly as AFE7950 has
+always done. The risk this entry exists to name is that a reader takes four
+silences as four documents that print nothing, when the pages are right there.
+
+**What would close it.** Diff the three Mini-Circuits documents that yield
+tables against the three that yield none; run `SKY67183-396LF` and
+`ADC12DJ5200RF` through `derive/pins.py` by hand against the table their pages
+print. Neither is a schema question and neither needs a network.
 
 ---
 

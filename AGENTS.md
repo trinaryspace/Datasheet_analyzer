@@ -35,7 +35,13 @@ Gate parts (built in-tests from the ungated `tests/fixtures/pdf/` copies; measur
 | QPA1003P | qorvo | Rev. I | 20 | 20 | 5/2 | 41 | 4 | 14 Q @ 100% (11 text + 2 spec + 1 plot) |
 | HMC520A | adi | Rev. A | 32 | 36 | 6/1 | 30 | 107 | 13 Q @ 100% |
 
-*LM741 carries no page-1 brand mark (detection reads TI from the PDF's own metadata); the gate pins it `--vendor unknown` (recorded as cli-override evidence) for the layout floor, and an explicit override never drift-warns.
+*LM741 is pinned `--vendor unknown` (recorded as cli-override evidence), and the reason is routing, not identity. Detection reads `ti` from the PDF's own metadata and is **right** — SNOSC25D is a Texas Instruments datasheet. But `ti` prefers the `ti_html` chain, and TI publishes no document-viewer page for this part: `dsa build lm741.pdf --part LM741 --vendor ti` fetches `ti.com/document-viewer/LM741/datasheet` and fails with `no TOC entries parsed for LM741` (measured 2026-09-02). The override pins the vendor-neutral layout floor, which is the only backend that can read the document, and an explicit override never drift-warns. Re-checked on the 2026-09-02 scale-up: **still warranted**, and the earlier note that it was about a missing page-1 brand mark was describing the wrong half of the decision.
+
+### Corpus scale (2026-09-02)
+
+**25 parts across five vendors** — ti (7), minicircuits (10), qorvo (3), skyworks (3), adi (2) — listed with a URL and a hash each in `src/datasheet_analyzer/registry/datasheets.yaml`, which is the tracked record of the fleet. 14 of the 25 corpora and the PDFs behind them are working files in this tree rather than tracked documents, exactly as 9 of the previous 11 were: a corpus published to the shared `library/` store cannot resolve in a fresh clone (ADR 0008), and only AFE7950 and AFE7953 are published `--self-contained`.
+
+New this run and worth knowing about: **AWR1843** is the repo's first part with a real vendor errata document (`SWRZ089C`, 48 pp, items headed `ANA#nn`/`MSS#nn` — *not* `Advisory n`, see `KNOWN_SHORTCOMINGS.md`); **LMX2820** is the first part whose pin count and package declaration agree exactly (48/48) and the second independent register-map specimen; **ADC12DJ5200RF** is the largest corpus here (221 pp, 155 sections, 344 tables, 2254 specs, 123 registers); **SNAA360** is the first document applying to two parts at once (AFE7950 and LMX1204).
 
 Pipeline: `PDF → acquire → extract → structure → enrich → publish → eval`
 
