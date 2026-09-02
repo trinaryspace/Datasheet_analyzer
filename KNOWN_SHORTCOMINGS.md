@@ -136,3 +136,59 @@ derivable parts, read the mismatch warnings, re-run with
   CLI, the corpus files and MCP all carry it.
 - A two-document part reports one `dsa status` line naming its least fresh
   document. A per-document breakdown would be better and is not here.
+
+---
+
+## Errata: no vendor errata document has ever been read
+
+**Phase 7, ticket 04, ported to this branch 2026-09-01.** Errata cross-linking
+is built, tested and gated, and **no real errata PDF exists in this repo to
+point it at**. `dsa add-doc --type errata` and `dsa fetch --doc-type errata`
+have both existed for some time; nothing has ever been filed under either, and
+none of the eleven built parts registers an errata document. Every corpus in
+`parts/` therefore publishes no `errata_links.json`, which is the designed
+silence — a part with no errata document gets *no file*, because an empty one
+would read as "no known issues", a claim this corpus has no evidence for.
+
+**What is proven, precisely.** The gate
+(`tests/integration/test_phase7_errata.py`) builds the real `lm741.pdf` through
+the whole pipeline and links a **synthetic** errata document against it. The
+split is deliberate and is the honest half: the section numbers, the spec rows,
+the record ids and the printed pages the links land on are all real and
+hand-read off that datasheet, while the errata *prose* — the part a vendor
+writes — is declared in `tests/fixtures/synthetic/errata_doc.py`. Measured
+there: 3 items, 2 linked, 1 unlinked; section 6.1 and both its `Junction
+temperature` rows on p.4, section 7.3.2 on p.7.
+
+**What that cannot tell us.** Whether a real vendor's errata sheet segments
+into the items its author intended. The lexicon's marker words (`advisory`,
+`anomaly`, `bug`, `errata item`, `erratum`, `issue`, `item`) are a reasonable
+guess at a vendor's vocabulary and **nothing has confirmed them against a
+document written by one**. A vendor heading its items some other way falls to
+the ordinal rule, and failing that to the per-section floor: every line is
+still published, but under one item per section, which links less well. That
+degradation is by design and is visible in `ERRATA.md` as an item's
+`derivation` — but it has never been observed on real vendor prose.
+
+**Also not measured on a real document:** an errata sheet with a table of
+contents (an item's page then becomes a range like `p.3-5`, because `pdf_text`
+carries no per-line page), and an image-only errata scan (the segmenter yields
+nothing and the file records `empty_reason`, which no real document has
+exercised).
+
+**What would close it.** A connection and a vendor: file a real errata PDF
+(`dsa fetch --url … --doc-type errata --part X`), rebuild, then read
+`ERRATA.md`'s unlinked list and every `matched_on` in `errata_links.json` and
+record the linked/unlinked split. Then confirm the banner and the inline pack
+warning on that part — `dsa ask --part X … --json` must carry a non-empty
+`errata` array on the answer row.
+
+**One smaller parked item from the same port.** A full-text search that matches
+the *banner* text still returns the banner in its snippet, cited to the
+datasheet page the section prints on. That is the index being honest — the
+banner really is in the section file, and the banner names its own errata page
+inside the quote — but it means one surface quotes errata prose under a
+datasheet citation. The answer pack's supporting excerpt does not: it strips
+the banner (`errata.render.strip_banner`), because that surface exists to quote
+what the datasheet page prints and the erratum is already on the answer row
+above it.

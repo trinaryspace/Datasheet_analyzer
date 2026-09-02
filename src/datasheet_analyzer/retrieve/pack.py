@@ -77,7 +77,7 @@ from datasheet_analyzer.derive.provenance import (
     REGISTERS_ARTIFACT,
     SPECS_ARTIFACT,
 )
-from datasheet_analyzer.errata import pack_warning
+from datasheet_analyzer.errata import pack_warning, strip_banner
 from datasheet_analyzer.models import PlotRecord, SectionFile, SpecRecord, source_ref
 from datasheet_analyzer.retrieve.project import ProjectRetriever
 from datasheet_analyzer.retrieve.results import (
@@ -1044,7 +1044,13 @@ def _excerpt_for(retriever: Retriever, question: str, citation: Citation) -> Pac
     section = _section_for(retriever, citation)
     if section is None:
         return None
-    body = retriever.section_text(section)
+    # Without its errata banner: the excerpt quotes what the *datasheet page*
+    # prints, and the banner is publisher-inserted text about a different
+    # document's page. Left in it would also displace the prose the excerpt
+    # exists for, because it quotes the section title and so matches the words
+    # a question about that section is asked in. The erratum is not lost - it
+    # is on the answer row, in the section file, and in the search index.
+    body = strip_banner(retriever.section_text(section))
     if not body:
         return None
     # `snippet` centres on the first term it finds, so hand it the question's

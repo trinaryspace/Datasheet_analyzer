@@ -290,6 +290,20 @@ class TestAnswerPackCarriesTheWarning:
         assert validate_pack(payload) == []
         assert payload["answers"][0]["errata"]
 
+    def test_the_supporting_excerpt_quotes_the_page_not_the_banner(self, linked):
+        """The excerpt is what the datasheet page prints, under that page's
+        citation. The banner is neither, and because it quotes the section
+        title it matched the words the question was asked in - so it displaced
+        the prose the excerpt exists for. It is stripped at that one surface;
+        the erratum is still on the answer row above it."""
+        _settings, part_dir, _link_set = linked
+        pack = build_pack(Retriever.for_part(part_dir), "absolute maximum ratings", budget=2000)
+        assert pack.excerpt is not None
+        assert BANNER_MARKER not in pack.excerpt.text
+        assert "Advisory 1" not in pack.excerpt.text
+        assert pack.excerpt.text.strip()
+        assert any(line.errata for line in pack.answers), pack.markdown
+
 
 class TestPartWithoutErrataIsUnaffected:
     def test_no_file_no_banner_no_warning(self, tmp_path):

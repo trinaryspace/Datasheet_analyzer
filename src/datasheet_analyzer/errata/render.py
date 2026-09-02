@@ -117,6 +117,46 @@ def insert_banner(markdown: str, banner: str) -> str:
     return "\n".join([banner, ""] + lines)
 
 
+def strip_banner(markdown: str) -> str:
+    """`insert_banner` undone — the section body without its errata block.
+
+    For the one consumer that must quote a section as the *datasheet page*
+    prints it: an answer pack's supporting excerpt. The excerpt exists to show
+    the verbatim prose behind a value under that value's page citation, and the
+    banner is neither — it is publisher-inserted text that quotes an erratum
+    printed on the errata document's own page. Left in, it also *displaces* what
+    the excerpt was for, because the banner quotes the section title and so
+    matches the very words a question about that section is asked in.
+
+    Nothing is hidden by this: the erratum still travels on the answer row
+    (`pack_warning`), still sits in the section file on disk, and is still in
+    the text the search index was built from. Only the quote-this-page surface
+    drops it.
+    """
+    lines = markdown.split("\n")
+    out: list[str] = []
+    i = 0
+    while i < len(lines):
+        if lines[i].startswith(BANNER_MARKER):
+            # The block is the marker line plus its `> - …` continuations, and
+            # the blank line `insert_banner` put in front of it.
+            while out and not out[-1].strip():
+                out.pop()
+            was_leading = not out
+            i += 1
+            while i < len(lines) and lines[i].startswith(">"):
+                i += 1
+            # `insert_banner` puts one blank line *before* the block, or after
+            # it when the file had no source comment to hang it under. Only
+            # that one goes; the section's own blank lines are its text.
+            if was_leading and i < len(lines) and not lines[i].strip():
+                i += 1
+            continue
+        out.append(lines[i])
+        i += 1
+    return "\n".join(out)
+
+
 def render_errata(link_set: ErrataLinkSet) -> str:
     """`ERRATA.md` — every item this part carries, placed or not.
 

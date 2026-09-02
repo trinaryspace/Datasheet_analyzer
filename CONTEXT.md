@@ -342,3 +342,22 @@ where a rebuild would silently clear a `stale` warning). Written only by
 `dsa check-revisions`; a build never fills it in, which is what keeps builds
 offline by construction.
 _Avoid_: freshness record, check result, revision metadata
+
+**Errata item**:
+One numbered advisory a vendor's errata document prints, as this tool
+segments it: a marker line (`Advisory 3`) plus every printed line until the
+next marker, quoted verbatim, with the **page range** of the sections it
+spans. A range and not a page, because the `pdf_text` backend carries no
+per-line page and narrowing it would be an invented citation. Which rule drew
+the boundary travels with the item as its `derivation`, so a reader who
+disagrees with where an item starts can see why it starts there.
+_Avoid_: bug, issue, note, warning, advisory (a marker word, not the thing)
+
+**Errata link**:
+The connection between an Errata item and the published record it
+invalidates — a section, a spec row, a pin or a register. Produced only by an
+**exact** comparison against an identifier the errata document printed, and
+carrying what it matched on and a confidence grade. An item that no rule
+could place is *unlinked*, which is a published state with its own heading,
+never a discarded one: `n_items` is the sum of the linked and unlinked lists.
+_Avoid_: match, mapping, association, hit

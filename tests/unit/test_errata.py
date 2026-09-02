@@ -868,3 +868,50 @@ class TestAnswerPackCarriesTheWarning:
         pack = build_pack(Retriever.for_part(part_dir), "what is the VDD1P8 supply voltage?")
         assert all(line.errata == () for line in pack.answers)
         assert "\u26a0 errata" not in pack.markdown
+
+
+class TestTheExcerptQuotesThePageNotTheBanner:
+    """The banner belongs in the section file, not in a verbatim quote of it.
+
+    A supporting excerpt exists to show the prose the *datasheet page* prints,
+    under that page's citation. The banner is publisher-inserted text about a
+    different document's page, and because it quotes the section title it also
+    matches the very words a question about that section is asked in - so left
+    in, it displaced the prose the excerpt was for. `strip_banner` is the
+    inverse of `insert_banner`, applied at that one surface.
+    """
+
+    def test_strip_is_the_inverse_of_insert(self):
+        from datasheet_analyzer.errata.render import strip_banner
+
+        body = (
+            "# 6.1 Absolute Maximum Ratings\n"
+            "<!-- source: datasheet-c0ffee00 p.4 -->\n"
+            "\n"
+            "over operating free-air temperature range unless otherwise noted\n"
+        )
+        target = _target(sections=(_section("6.1", "Absolute Maximum Ratings"),))
+        link_set = _link_one("Section 6.1 states the wrong junction temperature.", target)
+        banners = sections_to_banner(link_set, [target])
+        banner = next(iter(banners.values()))
+        with_banner = insert_banner(body, section_banner(list(banner.links), banner.targets))
+        assert "Errata:" in with_banner
+        assert strip_banner(with_banner) == body
+
+    def test_a_body_with_no_banner_is_returned_unchanged(self):
+        from datasheet_analyzer.errata.render import strip_banner
+
+        body = "# 1 Features\n<!-- source: d p.1 -->\n\nA quad transmitter.\n"
+        assert strip_banner(body) == body
+
+    def test_the_erratum_is_still_on_the_answer_row(self, errata_part):
+        """Nothing is hidden: the row keeps its warning, the file keeps its
+        banner, and the excerpt goes back to quoting the datasheet."""
+        from datasheet_analyzer.errata.render import BANNER_MARKER
+        from datasheet_analyzer.retrieve import Retriever, build_pack
+
+        part_dir, _settings, _manifest = errata_part
+        pack = build_pack(Retriever.for_part(part_dir), "what is the VDD1P8 supply voltage?")
+        assert any(line.errata for line in pack.answers)
+        assert pack.excerpt is None or BANNER_MARKER not in pack.excerpt.text
+        assert BANNER_MARKER not in pack.markdown

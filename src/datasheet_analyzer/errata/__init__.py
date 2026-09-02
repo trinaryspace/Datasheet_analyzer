@@ -38,6 +38,7 @@ from datasheet_analyzer.errata.render import (
     pack_warning,
     render_errata,
     section_banner,
+    strip_banner,
 )
 
 __all__ = [
@@ -59,4 +60,5 @@ __all__ = [
     "render_errata",
     "section_banner",
     "sections_to_banner",
+    "strip_banner",
 ]

@@ -636,6 +636,48 @@ banner, `dsa status`, the `dsa audit` metric and every answer pack's footer.
 A check that cannot complete records only *why* and leaves the state exactly
 as it was, so a failed check can never clear a warning.
 
+### Errata, cross-linked to what they invalidate
+
+An errata document joins a part the way any companion does
+(`dsa add-doc lm741_errata.pdf --part LM741 --type errata`). What a rebuild
+then adds is the link: each item of that document is matched against the
+sections, spec rows, pins and registers the part published, and the result is
+written beside `INDEX.md`.
+
+```
+parts/LM741/
+  errata_links.json    every item, its targets, and what each one matched on
+  ERRATA.md            the same thing for a person to read
+```
+
+Every rule is an **exact** comparison against an identifier the document
+printed - a cued section number (`Section 6.1`), a printed table caption, a
+symbol, an alias phrase, a pin name, a cued pin designator (`ball A1`), a
+register name, a parsed register address. There is deliberately no
+prose-similarity rule and no threshold to loosen: an erratum and a datasheet
+section are written about the same device in the same words, so *resemblance*
+between them is the null hypothesis, not evidence, and a link produced that way
+would put a warning banner on a page the erratum was never about.
+
+Three things follow, and all three are asserted rather than documented:
+
+- **Nothing is lost.** An item no rule could place is published under
+  `## Unlinked errata`, in full. The report opens with an arithmetic a reader
+  can check - *N items: X linked, Y unlinked* - so nothing can go missing
+  between the errata document and the file.
+- **Every link says what it matched on**, so a wrong link is diagnosable from
+  the file instead of by re-reading the PDF.
+- **The warning follows the value.** A section an erratum names carries a
+  banner in its published markdown (inserted before the search index is built,
+  so what is searchable stays what is readable), and `dsa ask` prints the
+  erratum on the answer row itself - dropped only if that row is dropped,
+  exactly like its citation.
+
+A part that registers no errata document gets **no file at all**. That is the
+point: an empty `errata_links.json` would read as "no known issues", which is a
+claim this corpus has no evidence for. See `KNOWN_SHORTCOMINGS.md` for what has
+and has not been confirmed against a real vendor errata sheet.
+
 ### Other commands
 
 ```bash
