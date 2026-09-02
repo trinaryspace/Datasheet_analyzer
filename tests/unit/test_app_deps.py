@@ -13,6 +13,7 @@ steps aside the moment the real one exists, so this file never masks it.
 
 from __future__ import annotations
 
+import mimetypes
 import os
 import sys
 import types
@@ -507,6 +508,9 @@ def _build_dist(root: Path) -> Path:
     # Bytes, not text: this is compared byte-for-byte off the wire, and
     # Windows would translate the newline on the way in.
     (dist / "assets" / "app-abc123.js").write_bytes(b"export const x = 1;\n")
+    # A root-level module too: it comes off the SPA catch-all rather than
+    # the `assets` mount, and the two paths type their responses apart.
+    (dist / "registerSW.js").write_bytes(b"export const y = 2;" + bytes([10]))
     (dist / "favicon.svg").write_text("<svg/>", encoding="utf-8")
     return dist
 
@@ -533,6 +537,41 @@ class TestStatic:
         assert asset.text == "export const x = 1;\n"
 
         assert client.get("/favicon.svg").text == "<svg/>"
+
+    def test_a_served_module_is_javascript_whatever_the_machine_says(self, gui_env, monkeypatch):
+        """The defect: `mimetypes.guess_type` seeds itself from the Windows
+        registry, and a machine whose `.js` key there carries
+        `Content Type = text/plain` (measured on the one this was found on)
+        served every Vite bundle as plain text. A browser applies strict MIME checking to
+        `<script type="module">` and refuses such a response, so `dsa serve`
+        in production mode rendered a blank page while `/api/*` answered.
+
+        `guess_type` is forced to the broken answer here, so this fails on
+        any build that still reads it --- including on a clean CI box whose
+        registry is right and where the bug is otherwise invisible."""
+        monkeypatch.setattr(mimetypes, "guess_type", lambda *a, **k: ("text/plain", None))
+        dist = _build_dist(gui_env / "web")
+        app = create_app(get_settings())
+        mount_static(app, settings=get_settings(), dist_dir=dist)
+        client = TestClient(app)
+
+        mounted = client.get("/assets/app-abc123.js")
+        assert mounted.status_code == 200
+        assert mounted.headers["content-type"] == "text/javascript; charset=utf-8"
+
+        spa_served = client.get("/registerSW.js")
+        assert spa_served.status_code == 200
+        assert spa_served.headers["content-type"] == "text/javascript; charset=utf-8"
+
+        assert client.get("/").headers["content-type"] == "text/html; charset=utf-8"
+        assert client.get("/favicon.svg").headers["content-type"] == "image/svg+xml"
+
+    def test_the_media_type_table_is_read_by_suffix_and_never_guesses(self):
+        assert static_module.web_media_type("bundle.MJS") == "text/javascript"
+        assert static_module.web_media_type(Path("a/b/style.css")) == "text/css"
+        # Unlisted: the response keeps its own default rather than being handed
+        # a type this module has never measured.
+        assert static_module.web_media_type("archive.tar.zst") is None
 
     def test_api_still_wins_over_the_spa_fallback(self, gui_env):
         dist = _build_dist(gui_env / "web")

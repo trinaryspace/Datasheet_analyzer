@@ -21,6 +21,16 @@ Path handling copies `CorpusIndex.corpus_path`'s rule: a request that is
 absolute, drive-qualified, null-bearing or contains `..` is refused rather
 than normalized, and the resolved target is checked back against the dist
 root so a symlink cannot escape either.
+
+**Content types are decided here, not by the machine.** `mimetypes.guess_type`
+seeds itself from the Windows registry, and a machine whose `.js` key there
+carries `Content Type = text/plain` (measured on this one) makes every bundle
+come off the wire as plain text. A browser applies strict MIME checking to
+`<script type="module">` and refuses such a response outright, so `dsa serve`
+in production mode renders a blank page while `/api/*` answers normally --- a
+failure that reproduces on one developer's laptop and nowhere else. Every
+extension a build emits therefore gets its type from `WEB_MEDIA_TYPES` below,
+on all three serving paths (`/`, the SPA fallback, and the `assets` mount).
 """
 
 from __future__ import annotations
@@ -32,6 +42,8 @@ from pathlib import Path
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.responses import Response
+from starlette.types import Scope
 
 from datasheet_analyzer.app.contracts import API_PREFIX
 from datasheet_analyzer.config import Settings
@@ -42,8 +54,10 @@ __all__ = [
     "ASSETS_DIRNAME",
     "INDEX_FILENAME",
     "WEB_DIST_ENV",
+    "WEB_MEDIA_TYPES",
     "default_dist_dir",
     "mount_static",
+    "web_media_type",
 ]
 
 #: `vite.config.ts` sets `build.outDir` to `dist`; this is the other half of
@@ -58,6 +72,68 @@ ASSETS_DIRNAME = "assets"
 #: tree. Read from the environment rather than from `Settings` because
 #: `config.py` is frozen by ticket 00 and carries no `web_dist` field.
 WEB_DIST_ENV = "DSA_WEB_DIST"
+
+#: The content type served for each extension a Vite build emits, keyed by a
+#: lowercase suffix. This table exists *instead of* `mimetypes.guess_type`,
+#: not beside it: `guess_type` reads `HKEY_CLASSES_ROOT` on Windows, so the
+#: type a `.js` bundle is served with becomes a property of the machine
+#: rather than of the build. `text/javascript` is the type the HTML standard
+#: names for JavaScript; the charset suffix is left to `Response`, which
+#: appends `; charset=utf-8` to every `text/*`.
+WEB_MEDIA_TYPES: dict[str, str] = {
+    ".css": "text/css",
+    ".html": "text/html",
+    ".ico": "image/vnd.microsoft.icon",
+    ".jpeg": "image/jpeg",
+    ".jpg": "image/jpeg",
+    ".js": "text/javascript",
+    ".json": "application/json",
+    ".map": "application/json",
+    ".mjs": "text/javascript",
+    ".png": "image/png",
+    ".svg": "image/svg+xml",
+    ".ttf": "font/ttf",
+    ".txt": "text/plain",
+    ".wasm": "application/wasm",
+    ".webp": "image/webp",
+    ".woff": "font/woff",
+    ".woff2": "font/woff2",
+}
+
+
+def web_media_type(path: Path | str) -> str | None:
+    """The content type for `path`'s extension, or `None` when unlisted.
+
+    `None` means "not a kind this build serves by name" and leaves the
+    response to its own default (`application/octet-stream`), which is the
+    safe answer for a file whose type this module has never measured.
+    """
+    return WEB_MEDIA_TYPES.get(Path(path).suffix.lower())
+
+
+class _TypedStaticFiles(StaticFiles):
+    """`StaticFiles` with `WEB_MEDIA_TYPES` in place of the registry.
+
+    `StaticFiles.file_response` builds a `FileResponse` without a media type,
+    which makes `FileResponse` call `mimetypes.guess_type`. Overriding the
+    header afterwards is the whole change; conditional requests, range
+    handling and the 304 path stay Starlette's.
+    """
+
+    def file_response(
+        self,
+        full_path: os.PathLike[str] | str,
+        stat_result: os.stat_result,
+        scope: Scope,
+        status_code: int = 200,
+    ) -> Response:
+        response = super().file_response(full_path, stat_result, scope, status_code)
+        media = web_media_type(full_path)
+        if media is not None and "content-type" in response.headers:
+            if media.startswith("text/"):
+                media = f"{media}; charset={response.charset}"
+            response.headers["content-type"] = media
+        return response
 
 
 def default_dist_dir() -> Path:
@@ -99,7 +175,7 @@ def mount_static(
     index = root / INDEX_FILENAME
     assets = root / ASSETS_DIRNAME
     if assets.is_dir():
-        app.mount(f"/{ASSETS_DIRNAME}", StaticFiles(directory=assets), name="assets")
+        app.mount(f"/{ASSETS_DIRNAME}", _TypedStaticFiles(directory=assets), name="assets")
 
     api_root = API_PREFIX.strip("/")
 
@@ -115,7 +191,7 @@ def mount_static(
             raise HTTPException(status_code=404, detail=f"no such endpoint: /{spa_path}")
         target = _safe_file(root, spa_path)
         if target is not None:
-            return FileResponse(target)
+            return FileResponse(target, media_type=web_media_type(target))
         return FileResponse(index, media_type="text/html")
 
     app.state.web_dist = root
