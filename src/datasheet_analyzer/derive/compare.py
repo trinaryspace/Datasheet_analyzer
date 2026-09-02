@@ -66,7 +66,6 @@ from __future__ import annotations
 import argparse
 import json
 import logging
-import math
 import sys
 from collections.abc import Callable, Iterable, Iterator, Sequence
 from dataclasses import dataclass, field
@@ -731,7 +730,11 @@ def si_delta(a: DerivedValue, b: DerivedValue, cell: str) -> tuple[float, str] |
     if a.unit_si != b.unit_si:
         return None
     low, high = right[0] - left[0], right[1] - left[1]
-    if not math.isclose(low, high, rel_tol=1e-12, abs_tol=1e-12):
+    # Relative to the operands, never to a fixed floor: these are SI base
+    # units, so a timing span lives at 1e-9 and a fixed `abs_tol` would call
+    # two picosecond-apart shifts "the same" and publish one of them.
+    scale = max(abs(v) for v in (*left, *right))
+    if abs(high - low) > 1e-9 * scale:
         return None
     return low, a.unit_si
 

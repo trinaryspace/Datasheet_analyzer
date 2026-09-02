@@ -274,6 +274,13 @@ class TestSiDelta:
         assert si_delta(a, b, "value") is None
         assert si_delta(b, a, "value") is None
 
+    def test_the_tolerance_is_relative_to_the_operands_not_a_fixed_floor(self):
+        """Timing lives at 1e-9 s; a fixed absolute floor would swallow it."""
+        a = self._value("1 to 2 ns", 1e-9, "s", hi=2e-9)
+        b = self._value("2 to 4 ns", 2e-9, "s", hi=4e-9)
+        # +1 ns at the bottom and +2 ns at the top is not one number.
+        assert si_delta(a, b, "value") is None
+
     def test_ranges_that_move_together_subtract_to_one_number(self):
         """A shifted span *is* a scalar difference: +20 °C at both ends."""
         a = self._value("-40 to 85", -40.0, "°C", hi=85.0)
