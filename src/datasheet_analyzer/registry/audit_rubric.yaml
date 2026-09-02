@@ -1,0 +1,295 @@
+# Audit rubric - what each corpus statistic has to reach to earn a letter.
+#
+# Data, not code (the same philosophy as `aliases.yaml`, `pin_types.yaml`,
+# `device_tables.yaml`, `cards.yaml` and `errata.yaml`). Nothing in
+# `datasheet_analyzer/audit/` hard-codes a threshold, a weight or a letter:
+# moving a cut point is an edit here, and `tests/unit/test_audit.py` asserts
+# both that editing this file moves a real grade and that *deleting* a metric
+# from it makes that metric `n/a` - which is what proves there is no Python
+# fallback hiding behind the data. That is what makes a grade arguable rather
+# than an oracle: a hardware designer who thinks 93 % table fidelity should not
+# be an `A` can say so in YAML.
+#
+# ---------------------------------------------------------------------------
+# WHY THESE NUMBERS  (the ticket's "a grade is defensible rather than arbitrary")
+# ---------------------------------------------------------------------------
+#
+# Every cut point below is anchored to a value **measured on this repository's
+# own eleven built corpora**, not carried over from a report. The readings are
+# `dsa audit --all` on the corpora under `parts/` as they stand: AD9081,
+# AFE7950, AFE7953, HMC520A, LHA-83W+, LMX1204, PMA1-14LN+, PSA-8A+, QPA1003P,
+# ZX10R-2-183-S+ and lm741. The full table is in `Reports/PHASE_7_REPORT.md`.
+# The rule used to place a cut point was the same every time:
+#
+#   * `A` sits at or just below what the *best* real corpus achieves, so an `A`
+#     means "as good as this pipeline has ever managed", not "perfect".
+#   * `C` sits where the metric starts changing what an agent should say. Below
+#     `C`, an answer needs a printed-page check before it is acted on.
+#   * `F` is reserved for a reading that makes the artifact untrustworthy on its
+#     own, not merely imperfect. Every ratio metric declares an explicit `F`
+#     rung, so "worse than `D`" is a stated grade rather than a fallback.
+#
+# Per metric, with the readings the cut points were placed against:
+#
+#   section_page_coverage - measured 100 % on all eleven corpora, because a
+#     section with no page range is refused a citation upstream (invariant 3).
+#     `A` is 0.98 rather than 1.0 only to leave room for one unmatched section
+#     in a much larger document. Under 0.70 a third of the corpus cannot be
+#     cited at all, which is the `F` case.
+#
+#   table_accept_rate - the layout engine's own gate, and `n/a` on any corpus
+#     no `pdf_layout` document produced. Measured 100 % (AD9081), 86 %
+#     (HMC520A), 83 % (QPA1003P), 82 % (LMX1204), 75 % (lm741). A rejected
+#     table is *recorded* and refused whole - a half-parsed table reads as a
+#     complete one - so a low rate is honest rather than wrong, but it is still
+#     a corpus with holes in it. `A` at 0.90, `F` under 0.50, where more of the
+#     document's tables are missing than present.
+#
+#   mean_fidelity - the layout engine's self-verification score per accepted
+#     table. Measured 93 % (QPA1003P), 88 % (AD9081), 81 % (HMC520A), 72 %
+#     (lm741), 68 % (LMX1204). `A` is 0.92, the best real corpus. Only
+#     `pdf_layout` computes it, and only over documents that accepted a table;
+#     everything else reports `n/a` rather than 0 (see the unavailable policy).
+#
+#   spec_page_rate - measured 100 % on all seven corpora that publish spec
+#     records, because a row with no pinned page falls back to its section's
+#     start page. The thresholds are therefore deliberately tight: this metric
+#     earns its place by catching a corpus where that fallback itself failed,
+#     not by discriminating between good ones.
+#
+#   record_confidence - the share of graded records (specs, plots, pins,
+#     registers) carrying `high`. This is the metric an agent uses to choose
+#     its own words, so its cut points matter most for the deliverable
+#     sentence, and the measured range is the sobering one: 54 % (AFE7950),
+#     52 % (AFE7953), 49 % (AD9081), 38 % (HMC520A), 22 % (LMX1204), 9 %
+#     (QPA1003P), 4 % (lm741) - and 100 % on PMA1-14LN+, over a denominator of
+#     two, which is why the scorecard prints the counts beside the percentage.
+#     `A` stays at 0.45 and the low end is graded honestly rather than curved:
+#     lm741 publishes 70 spec rows and grades every one of them `low`, which is
+#     a corpus where the printed page has to be opened for every value, and `F`
+#     is the true reading of that.
+#
+#   pins_present / registers_present / cards_present - presence of the phase-6
+#     derived artifacts, each weighted 1, because absence is usually a fact
+#     about the *document* rather than a defect in the corpus. Registers are
+#     the clearest case: most datasheets print no register summary at all (ten
+#     of these eleven parts publish none), so a missing one grades `C` -
+#     neutral, "there is nothing here to ask" - rather than `D`. A missing pin
+#     table is graded harder (`D`) because almost every datasheet prints one,
+#     so absence usually means the table was rejected. Cards are graded `D`
+#     too, because all four are written for every part - no rows at all means
+#     the selectors matched nothing (measured: HMC520A).
+#
+#   axis_coverage - the share of *attempted* axis readings that came out
+#     `high`. Measured 78 % (AFE7950), 76 % (AFE7953), 68 % (LMX1204), 39 %
+#     (HMC520A) and 0 % on AD9081, QPA1003P, PMA1-14LN+ and lm741, whose
+#     figures are raster plots with axes that exist only as pixels. Figures
+#     whose axes were never read at all are not in the denominator; a corpus
+#     with none of them reports `n/a`. `A` is 0.75 - the best real corpus - and
+#     this is the one cut point that moved on this branch: the lineage this
+#     rubric was ported from set `A` at 0.45 against a fleet whose best reading
+#     was 50 %, and leaving it there would hand an `A` to a corpus reading less
+#     than the median of what these corpora manage.
+#
+#   errata_link_rate - of the errata items a part publishes, how many a
+#     deterministic rule could place against a record it also publishes. **This
+#     is the one metric here with no measurement behind it**: no part in this
+#     repository registers an errata document today, so every corpus reports
+#     `n/a` and the cut points are placed by argument rather than by reading.
+#     The argument is the asymmetry: an item that names no record is an issue
+#     an answer will silently omit, so `C` sits at 0.50 - half the known issues
+#     unreachable is where an agent must say so out loud - and `F` under 0.25.
+#     Weight 2 rather than 3 because the population is small wherever it exists
+#     at all. Zero items is `n/a`, never 100 %: a part with no errata document
+#     is silent, not clean.
+#
+#   alias_hit_rate - of the golden questions asked in a designer's *words* (a
+#     `spec_query` keyed by `name`), how many the alias lexicon resolved rather
+#     than a substring or fuzzy rung. Measured 40 % (AFE7953, 5 asked) and 0 %
+#     (AFE7950, 11 asked); the other four benchmarks ask no name-keyed spec
+#     question at all and report `n/a`. It measures the *lexicon and the
+#     benchmark*, not the corpus's extraction, which is why it is weighted 1 -
+#     a miss is a YAML edit away. Its top rungs are uncalibrated: nothing here
+#     has ever read above 40 %.
+#
+#   revision_freshness - weighted 3, and `unknown` grades `C`, not `A`. That
+#     asymmetry is the entire argument of ticket 02: nobody has checked is not
+#     the same as still current. `stale` grades `D` rather than `F` because a
+#     stale corpus is still internally correct - it cites what the document it
+#     was built from actually says - but every answer it gives may be
+#     superseded. Measured `unknown` on all eleven: no corpus here has been
+#     checked against a live upstream.
+#
+#   golden_pass_rate - weighted 4, the heaviest weight here, because invariant
+#     5 makes the golden set this project's objective function. `A` is 1.0: the
+#     documented standard is 100 %, and a corpus at 95 % has a known-failing
+#     hand-verified question in it. Measured 100 % on all six parts that carry
+#     a benchmark (16 to 40 corpus-side checks each); the five that carry none
+#     report `n/a`.
+
+schema_version: "1"
+
+# Grade points. The overall score is the weighted mean of the graded metrics'
+# points, so this is the scale everything else is expressed on.
+points:
+  A: 4.0
+  B: 3.0
+  C: 2.0
+  D: 1.0
+  F: 0.0
+
+# Cut points on that weighted mean, highest first. Each cut sits *below* its own
+# letter's point value, which is the property that makes the scale
+# self-consistent: a corpus every one of whose metrics grades `C` averages 2.0
+# and must grade `C`, not `D`. The gaps then decide how much a weak metric
+# costs - with `A` at 3.5, three `C`s among thirteen otherwise-`A` metrics still
+# grade `A`, and four do not.
+overall:
+  - {grade: A, min: 3.5}
+  - {grade: B, min: 2.6}
+  - {grade: C, min: 1.8}
+  - {grade: D, min: 0.9}
+  - {grade: F, min: 0.0}
+
+# How few graded metrics is too few for an average to mean anything. Below this
+# the scorecard reports **no** overall grade and says why, rather than
+# publishing a letter earned by three readings out of thirteen. Four is the
+# floor because the metrics every built corpus can always answer - section page
+# coverage, the three derived-artifact presence readings, and revision
+# freshness - are the minimum that describes both the extraction and its
+# verification.
+min_graded_metrics: 4
+
+# The convention for a metric that cannot be computed, stated in the grade
+# output itself (a ticket-05 acceptance criterion) rather than left to the
+# reader to assume.
+unavailable_policy: >-
+  A metric this corpus carries no fact for is reported as n/a and excluded from
+  the overall grade. It is never scored 0 (which would defame a corpus for a
+  statistic nobody recorded) and never scored full marks (which would flatter
+  one). The overall grade is the weighted mean of the metrics that could be
+  computed, and the count of those that could not is printed beside it.
+
+metrics:
+  section_page_coverage:
+    label: section page coverage
+    kind: ratio
+    weight: 3
+    thresholds:
+      - {grade: A, min: 0.98}
+      - {grade: B, min: 0.93}
+      - {grade: C, min: 0.85}
+      - {grade: D, min: 0.70}
+      - {grade: F, min: 0.0}
+
+  table_accept_rate:
+    label: table accept rate
+    kind: ratio
+    weight: 2
+    thresholds:
+      - {grade: A, min: 0.90}
+      - {grade: B, min: 0.80}
+      - {grade: C, min: 0.65}
+      - {grade: D, min: 0.50}
+      - {grade: F, min: 0.0}
+
+  mean_fidelity:
+    label: mean table fidelity
+    kind: ratio
+    weight: 2
+    thresholds:
+      - {grade: A, min: 0.92}
+      - {grade: B, min: 0.85}
+      - {grade: C, min: 0.75}
+      - {grade: D, min: 0.60}
+      - {grade: F, min: 0.0}
+
+  spec_page_rate:
+    label: spec page rate
+    kind: ratio
+    weight: 2
+    thresholds:
+      - {grade: A, min: 0.99}
+      - {grade: B, min: 0.95}
+      - {grade: C, min: 0.85}
+      - {grade: D, min: 0.70}
+      - {grade: F, min: 0.0}
+
+  record_confidence:
+    label: records graded high
+    kind: ratio
+    weight: 3
+    thresholds:
+      - {grade: A, min: 0.45}
+      - {grade: B, min: 0.30}
+      - {grade: C, min: 0.15}
+      - {grade: D, min: 0.05}
+      - {grade: F, min: 0.0}
+
+  pins_present:
+    label: pin records published
+    kind: boolean
+    weight: 1
+    values: {"true": A, "false": D}
+
+  registers_present:
+    label: register records published
+    kind: boolean
+    weight: 1
+    values: {"true": A, "false": C}
+
+  cards_present:
+    label: design cards hold rows
+    kind: boolean
+    weight: 1
+    values: {"true": A, "false": D}
+
+  axis_coverage:
+    label: figure axes read
+    kind: ratio
+    weight: 1
+    thresholds:
+      - {grade: A, min: 0.75}
+      - {grade: B, min: 0.60}
+      - {grade: C, min: 0.35}
+      - {grade: D, min: 0.10}
+      - {grade: F, min: 0.0}
+
+  errata_link_rate:
+    label: errata items placed against a record
+    kind: ratio
+    weight: 2
+    thresholds:
+      - {grade: A, min: 0.90}
+      - {grade: B, min: 0.75}
+      - {grade: C, min: 0.50}
+      - {grade: D, min: 0.25}
+      - {grade: F, min: 0.0}
+
+  alias_hit_rate:
+    label: golden name lookups resolved by the alias lexicon
+    kind: ratio
+    weight: 1
+    thresholds:
+      - {grade: A, min: 0.90}
+      - {grade: B, min: 0.70}
+      - {grade: C, min: 0.50}
+      - {grade: D, min: 0.25}
+      - {grade: F, min: 0.0}
+
+  revision_freshness:
+    label: revision freshness
+    kind: state
+    weight: 3
+    values: {current: A, unknown: C, stale: D}
+
+  golden_pass_rate:
+    label: golden pass rate
+    kind: ratio
+    weight: 4
+    thresholds:
+      - {grade: A, min: 1.0}
+      - {grade: B, min: 0.95}
+      - {grade: C, min: 0.85}
+      - {grade: D, min: 0.70}
+      - {grade: F, min: 0.0}

@@ -45,6 +45,9 @@ JSON_INVOCATIONS: dict[str, list[str]] = {
     # branch worth exercising here: a refusal under `--json` is still JSON on
     # stdout, exactly as the two verbs above report theirs.
     "diff-rev": ["diff-rev", "--part", "TEST", "--json"],
+    # `dsa audit` reads only what the corpus already published, so the JSON
+    # path is the whole verb here: one part, graded, as a single object.
+    "audit": ["audit", "--part", "TEST", "--json"],
 }
 
 

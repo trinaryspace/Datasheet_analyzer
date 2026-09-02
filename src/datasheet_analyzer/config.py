@@ -213,6 +213,16 @@ class Settings(BaseSettings):
     # against a corpus without editing the source.
     card_version: str = "1"
 
+    # Where the per-part golden benchmarks live (`DSA_GOLDEN_DIR`, phase 7,
+    # ticket 06). Empty means the repository's own `tests/fixtures`, which is
+    # what `dsa verify` and `dsa audit` read. It is settable because `dsa
+    # golden confirm` *writes* a benchmark, and the objective function of this
+    # repository must not be reachable by a test run or by a prototype that
+    # inherited default settings: the suite points this at a temporary
+    # directory per test, so a confirm run there cannot touch
+    # `tests/fixtures/golden_qa_<PART>.yaml`.
+    golden_dir: str = ""
+
     # `dsa batch` worker pool: --workers flag overrides; this env-backed
     # value is the default; 4 is the fallback.
     batch_workers: int = Field(default=4, ge=1)

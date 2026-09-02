@@ -22,6 +22,43 @@ from datasheet_analyzer.models import GoldenQuestion
 from datasheet_analyzer.retrieve import CorpusIndex
 from datasheet_analyzer.tokens import count_tokens
 
+#: Where a part's hand-verified benchmark lives, relative to the repo root.
+#: One rule, not three: `dsa verify`, `dsa audit` and `dsa golden` must all
+#: mean the same file by "this part's golden set", or the golden pass rate an
+#: agent reads would be measured against a different benchmark from the one the
+#: build gate enforces (invariant 5).
+#:
+#: It is a *default*, and `golden_dir()` below is what a caller actually reads:
+#: this constant points into the working tree, so a test that let it stand
+#: would write into the repository's own objective function.
+GOLDEN_DIR = Path(__file__).resolve().parent.parent.parent.parent / "tests" / "fixtures"
+
+
+def golden_dir() -> Path:
+    """The directory `default_golden_path` resolves against.
+
+    `Settings.golden_dir` (`DSA_GOLDEN_DIR`) wins when it is set, and the test
+    suite sets it per test. That indirection exists because `dsa golden
+    confirm` **writes** here: without it, every confirm run in every test -
+    and every prototype run outside pytest that inherits default settings -
+    would edit `tests/fixtures/golden_qa_<PART>.yaml`, which is invariant 5's
+    objective function and the file that gates everything else in this repo.
+    """
+    from datasheet_analyzer.config import get_settings
+
+    configured = get_settings().golden_dir
+    return Path(configured) if configured else GOLDEN_DIR
+
+
+def default_golden_path(part: str) -> Path:
+    """`<golden dir>/golden_qa_<PART>.yaml` - per-part golden discovery.
+
+    SPEC story 26: each part verifies against its own benchmark, so a missing
+    one is a hard failure in `dsa verify` and an `n/a` metric in `dsa audit` -
+    never a silent zero-question pass.
+    """
+    return golden_dir() / f"golden_qa_{part}.yaml"
+
 
 def load_golden(path: Path) -> list[GoldenQuestion]:
     return load_golden_yaml(path)
