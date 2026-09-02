@@ -44,6 +44,7 @@ from datasheet_analyzer.derive.provenance import resolve_source
 from datasheet_analyzer.mcp_server import responses as R
 from datasheet_analyzer.mcp_server import server as S
 from datasheet_analyzer.retrieve import Retriever, clear_index_cache
+from datasheet_analyzer.retrieve.scope import FAMILY_SCOPE_ERROR
 from datasheet_analyzer.tokens import count_tokens
 
 # Tools that return corpus content, and therefore must cite it. `list_parts`,
@@ -580,12 +581,28 @@ class TestTheResponseCap:
         assert payload["citations"]
 
     def test_a_truncated_text_body_names_the_setting(self, settings):
-        server = S.build_server(self._capped(settings, 170))
+        # 170 was this fixture's `read_section` floor before the envelope
+        # declared the third scope. `"family": ""` costs 4 tokens, so the
+        # floor measured 168 -> 172 and a 170-token cap now sits *below* it
+        # (the response is honest about that: `over_cap`, citation kept). The
+        # rule under test is unchanged — a body that had to shrink says so and
+        # keeps its citation — so the cap moved with the floor it measures,
+        # exactly as the plot-hit cap above moved when a hit grew axes.
+        server = S.build_server(self._capped(settings, 175))
         payload = payload_of(call(server, "read_section", part="TEST", ref="4.3"))
         assert payload["truncated"] is True
-        assert R.response_tokens(payload) <= 170
+        assert R.response_tokens(payload) <= 175
         assert "DSA_MCP_MAX_TOKENS" in payload["notice"]
         assert payload["citation"] == "§4.3, p.6", "a cap must never cost the citation"
+
+    def test_the_family_scope_survives_a_cap_that_bites(self, settings):
+        """A capped family response still says a family answered it."""
+        server = S.build_server(self._capped(settings, 500))
+        payload = payload_of(call(server, "find_plots", family="TESTx"))
+        assert payload["truncated"] is True
+        assert 0 < payload["count"] < payload["total"]
+        assert "DSA_MCP_MAX_TOKENS" in payload["notice"]
+        assert payload["scope"] == {"part": "", "project": "", "family": "TESTx"}
 
     def test_the_caller_s_own_max_tokens_bounds_the_text_and_is_named(self, settings):
         """`max_tokens` is a reading budget: it bounds the text, not the cite."""
@@ -783,6 +800,140 @@ class TestTheFamilyTools:
             "a family answer quietly missing one device reads as an answer for all of them"
         )
         assert payload["error"] == "", "a gap is a warning, not a refusal"
+
+
+#: The four fan-out tools, each named with a family instead of a part. The
+#: CLI resolves `--family` for exactly these four verbs (`dsa query`, `search`,
+#: `plots`, `ask`), so this list *is* the parity claim: an MCP client can name
+#: the same scope on the same lookups.
+FAMILY_CALLS = [
+    ("search", {"family": "TESTx", "query": "sysref setup"}),
+    ("find_spec", {"family": "TESTx", "name": "junction temperature"}),
+    ("find_plots", {"family": "TESTx"}),
+    ("ask", {"family": "TESTx", "question": "max junction temperature"}),
+]
+
+
+class TestTheFamilyScopeOnTheFanOutTools:
+    """A family is nameable on the four lookups the CLI resolves one for.
+
+    The port shipped the family *catalog* and the family *map* and not the
+    fan-out, which left an MCP client strictly less capable than
+    `dsa ask --family AFE795x`. What is under test here is not that the
+    fan-out works — `retrieve.scope` and `FamilyRetriever` own that, and the
+    project scope proves the same code path — but the two things this surface
+    is responsible for: the envelope must say *which* scope answered, and the
+    refusals must stay ADR 0006's.
+    """
+
+    @pytest.mark.parametrize("tool,arguments", FAMILY_CALLS)
+    def test_a_family_answer_says_a_family_answered_it(self, server, tool, arguments):
+        payload = payload_of(call(server, tool, **arguments))
+        assert payload["error"] == ""
+        assert payload["scope"] == {"part": "", "project": "", "family": "TESTx"}, (
+            "a response must never misreport which scope produced it"
+        )
+        assert R.validate_response(payload, tool) == []
+
+    @pytest.mark.parametrize("tool,arguments", FAMILY_CALLS)
+    def test_every_tool_still_declares_the_shape_it_returns(self, server, tool, arguments):
+        """The declared schema is the widened one, and it is what ships."""
+        payload = payload_of(call(server, tool, **arguments))
+        scope_schema = R.SCHEMAS[tool]["properties"]["scope"]
+        assert scope_schema["required"] == ["part", "project", "family"]
+        assert set(payload["scope"]) == set(scope_schema["properties"])
+
+    def test_the_fan_out_reaches_every_declared_member(self, server):
+        """Not just "it answered" — it answered from both corpora."""
+        payload = payload_of(call(server, "find_spec", family="TESTx", name="junction temperature"))
+        assert {hit["part"] for hit in payload["hits"]} == {"TEST", "OTHER"}
+
+    def test_a_family_search_labels_each_hit_with_the_member_it_came_from(self, server):
+        payload = payload_of(call(server, "search", family="TESTx", query="sysref setup"))
+        assert payload["hits"], "the family fixture is searchable"
+        assert {hit["part"] for hit in payload["hits"]} == {"TEST", "OTHER"}
+        assert all(hit["citation"] for hit in payload["hits"])
+
+    def test_an_answer_common_to_every_member_is_returned_once(self, server):
+        """`ask` is the one verb that folds — the collapse is the pack's."""
+        payload = payload_of(call(server, "ask", family="TESTx", question="junction temperature"))
+        answers = payload["pack"]["answers"]
+        assert answers and all(row["citation"] for row in answers)
+        assert "TEST" in payload["pack"]["markdown"]
+
+    @pytest.mark.parametrize("tool,arguments", FAMILY_CALLS)
+    def test_naming_two_scopes_is_refused_with_the_three_scope_wording(
+        self, server, tool, arguments
+    ):
+        payload = payload_of(call(server, tool, part="TEST", **arguments))
+        assert payload["error"] == FAMILY_SCOPE_ERROR
+        assert payload["scope"] == {"part": "TEST", "project": "", "family": "TESTx"}, (
+            "a refusal echoes back every name the caller gave"
+        )
+        assert R.validate_response(payload, tool) == []
+
+    @pytest.mark.parametrize("tool,arguments", FAMILY_CALLS)
+    def test_an_undeclared_family_is_refused_rather_than_guessed(self, server, tool, arguments):
+        payload = payload_of(call(server, tool, **{**arguments, "family": "NOPE"}))
+        assert "never inferred from a part number" in payload["error"]
+        assert payload["scope"]["family"] == "NOPE"
+        assert R.validate_response(payload, tool) == []
+
+    @pytest.mark.parametrize("tool,arguments", FAMILY_CALLS)
+    def test_an_unbuilt_member_is_a_warning_and_never_a_silent_gap(self, settings, tool, arguments):
+        """A family answering from two of three devices must say so."""
+        from datasheet_analyzer.families.registry import (
+            FamilyEntry,
+            FamilyRegistry,
+            families_path,
+            save_families,
+        )
+
+        save_families(
+            FamilyRegistry(
+                families={
+                    "GAPPY": FamilyEntry(
+                        name="GAPPY",
+                        title="one built, one not",
+                        members=["TEST", "GHOST"],
+                        confirmed=True,
+                    )
+                }
+            ),
+            families_path(settings.registry_dir),
+        )
+        server = S.build_server(settings)
+        payload = payload_of(call(server, tool, **{**arguments, "family": "GAPPY"}))
+        assert payload["error"] == "", "a gap is a warning, not a refusal"
+        assert "GHOST" in payload["warning"]
+        assert payload["scope"]["family"] == "GAPPY"
+
+    def test_the_two_scopes_that_were_always_there_are_unchanged(self, server):
+        """The widening is additive: a part call reads exactly as before."""
+        payload = payload_of(call(server, "search", part="TEST", query="sysref setup"))
+        assert payload["scope"] == {"part": "TEST", "project": "", "family": ""}
+        project = payload_of(call(server, "search", project="rf-frontend", query="sysref setup"))
+        assert project["scope"] == {"part": "", "project": "rf-frontend", "family": ""}
+
+    def test_the_family_map_names_its_family_on_the_envelope_too(self, server):
+        """`get_family_index` is family-scoped, so `scope.family` says so."""
+        payload = payload_of(call(server, "get_family_index", name="TESTx"))
+        assert payload["scope"]["family"] == "TESTx"
+        assert payload["family"] == "TESTx", "the body still reports the resolved name"
+
+    def test_a_catalog_call_fills_no_scope_at_all(self, server):
+        """`list_families` is about every family, so its `scope` stays empty."""
+        payload = payload_of(call(server, "list_families"))
+        assert payload["scope"] == {"part": "", "project": "", "family": ""}
+
+    def test_the_server_computes_nothing_the_retriever_did_not(self, settings, server):
+        """Format-only, checked against the scope object the CLI resolves."""
+        from datasheet_analyzer.retrieve.scope import resolve_scope
+
+        scope, reason = resolve_scope("", "", settings=settings, family="TESTx")
+        assert reason == ""
+        payload = payload_of(call(server, "find_spec", family="TESTx", name="junction temperature"))
+        assert payload["total"] == len(scope.specs(name="junction temperature"))
 
 
 class TestGetAudit:

@@ -528,12 +528,12 @@ On macOS/Linux the command is `/path/to/repo/.venv/bin/dsa`.
 | `list_families` | — | declared families, their members, whether each is built |
 | `get_index` | part | the part's `INDEX.md` |
 | `get_family_index` | family | the series' `FAMILY_INDEX.md`, derived live |
-| `search` | part or project | BM25 hits, each cited by construction |
-| `find_spec` | part or project | spec records through the alias ladder |
+| `search` | part, project or family | BM25 hits, each cited by construction |
+| `find_spec` | part, project or family | spec records through the alias ladder |
 | `read_section` | part | one section verbatim, bounded by `max_tokens` |
-| `find_plots` | part or project | the plot catalog, filtered by text, section, tags **or axis** |
+| `find_plots` | part, project or family | the plot catalog, filtered by text, section, tags **or axis** |
 | `get_figure` | part | one figure **as an image content block** |
-| `ask` | part or project | one cited, budget-bounded answer pack |
+| `ask` | part, project or family | one cited, budget-bounded answer pack |
 | `find_pin` | part or project | pins by designator, name, description or type |
 | `find_register` | part or project | registers by name, address or bit field |
 | `get_card` | part | one design card (power / thermal / interface / limits) |
@@ -550,10 +550,24 @@ whose axes could not be read is not a match — `axes.confidence` says so.
 `list_projects` and `get_index` one noun across, plus the trust call that
 grades a corpus *before* an agent answers from it. The family index is derived
 **live** from the members' records rather than read off `families/<NAME>/`, so
-a client never has to know whether `dsa family build` has run. Both family
-tools name their family in their own body — the envelope's `scope` is still
-`{part, project}`, which is why `search` / `find_spec` / `ask` take no
-`family` argument over MCP; the CLI has that scope and MCP does not.
+a client never has to know whether `dsa family build` has run.
+
+**A family is a scope, not just a catalog entry.** `search`, `find_spec`,
+`find_plots` and `ask` each take a `family` beside `part` and `project` — the
+same four verbs `dsa --family` resolves — and name exactly one of the three.
+The envelope's `scope` object carries all three names, so every response says
+which scope answered it; a family answer that reported `{part: "",
+project: ""}` would be indistinguishable from a call that named no corpus at
+all. The extra key costs 4 tokens on a 65-token envelope, 0.067 % of the
+6000-token cap.
+
+Only `ask` folds. A finding every member printed identically, character for
+character, comes back once, cited to the reference member and labelled with
+the members it is common to. `search`, `find_spec` and `find_plots` return one
+row per member, because a record list has nowhere to say whose page a folded
+row came from — measured on AFE795x, 45.7 % of the spec rows common to both
+members print on different pages. The aligned, folded view of a series is
+`get_family_index`, which prints both operands' pages on every delta.
 
 `find_pin`, `find_register`, `get_card` and `compare_parts` are the **derived**
 artifacts of phase 6, and they carry one extra rule: nothing on them is

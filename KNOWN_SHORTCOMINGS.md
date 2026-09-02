@@ -397,12 +397,33 @@ and projects — a question naming `AFE79xx` produces part candidates through
 its own tests, and a picker section: real work in two languages, not a wiring
 change. On MCP the same boundary holds for a different reason — see below.
 
-**Also parked: `search` / `find_spec` / `find_plots` / `ask` take no `family`
-argument over MCP.** `list_families` and `get_family_index` are ported and name
-their family in their own response body. Widening the shared envelope's `scope`
-object from `{part, project}` to `{part, project, family}` would change the
-declared `_meta.response_schema` of all sixteen tools — every one of them
-gaining a key only the family-scoped calls could ever fill — and would need a
-`family` parameter and a refusal path on each of the nine scoped tools. The
-CLI has all of this (`dsa ask --family AFE795x`); MCP has the catalog and the
-map and not the fan-out.
+**Closed 2026-09-01: `search` / `find_spec` / `find_plots` / `ask` now take a
+`family` over MCP.** The envelope's `scope` object carries all three names, so
+a response says which scope answered it; the measured cost of the third key is
+4 tokens on a 65-token envelope (0.067 % of the 6000-token cap), and with the
+fan-out in, 7 of the 16 tools can fill it rather than 2. The reasoning is in
+`mcp_server/server.py`'s module docstring and the argument that replaced the
+deferral is `Reports/PHASE_7_REPORT.md`.
+
+**Still open, and found while closing it: `dsa pins` / `dsa regs` / `dsa card`
+accept `--family` and refuse it.** `cli._add_scope` puts `--family` on all
+seven scoped commands, but `pins`, `regs` and `card` do not go through
+`retrieve.scope.resolve_scope` — each of `derive/pins.py`, `derive/registers.py`
+and `derive/cards.py` carries its own `_part_dirs` that resolves *directories*
+rather than a retriever, and each re-implements the two-scope XOR. Measured:
+`dsa pins --family AFE795x --type ground`, `dsa regs --family AFE795x --name x`
+and `dsa card --family AFE795x --card power` all print `SCOPE_ERROR` ("name
+exactly one of `part` or `project`") and exit 2, while `dsa query`, `search`,
+`plots` and `ask` all answer. So the family scope is offered by the argument
+parser on three commands that cannot honour it, and the message a user gets
+does not name the argument they passed.
+
+`find_pin` and `find_register` over MCP were deliberately **not** given a
+`family` for the same reason: MCP mirrors the CLI's scope set, and giving MCP
+a scope the CLI refuses would swap one asymmetry for its mirror image. Closing
+this properly means the three `_part_dirs` copies resolving through
+`retrieve/scope.py` — a fourth front end's worth of scope logic collapsing into
+the one place ADR 0006 is written down — and then the two MCP tools follow for
+free. Not attempted here: three modules, three exit-code contracts, and no
+member of the one declared family publishes a pin table or a register map to
+test it against (see the pins entry above).

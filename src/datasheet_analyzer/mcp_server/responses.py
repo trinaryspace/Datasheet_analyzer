@@ -74,6 +74,7 @@ def envelope(
     max_tokens: int,
     part: str = "",
     project: str = "",
+    family: str = "",
     staleness: str = "",
 ) -> dict:
     """The keys every MCP response carries, whatever the tool.
@@ -87,10 +88,13 @@ def envelope(
     `staleness` is the corpus's three-state revision reading. It defaults to
     `""` (no corpus in scope) rather than to `current`, so a tool that forgot
     to pass one can only ever under-claim.
+
+    `family` is the third scope, and it rides here rather than in four tool
+    bodies for the reason `scope` exists at all — see `_ENVELOPE_PROPS`.
     """
     return {
         "tool": tool,
-        "scope": {"part": part, "project": project},
+        "scope": {"part": part, "project": project, "family": family},
         "staleness": staleness or NO_STALENESS,
         "error": "",
         # `error` means the call could not be answered; `warning` means it was
@@ -108,15 +112,26 @@ def envelope(
 
 
 def error_response(
-    tool: str, message: str, *, max_tokens: int, part: str = "", project: str = "", **body: Any
+    tool: str,
+    message: str,
+    *,
+    max_tokens: int,
+    part: str = "",
+    project: str = "",
+    family: str = "",
+    **body: Any,
 ) -> dict:
     """A refused call in the declared shape, with the reason in `error`.
 
     Refusals are payloads, not exceptions, so an agent reads *why* in the same
     structure it reads an answer from — and the empty body says plainly that
     nothing was found, rather than a stack trace implying something broke.
+
+    The refused scope is echoed back on all three names, so a caller that
+    named a family reads its own argument in `scope.family` rather than an
+    empty object that looks like a call which named nothing.
     """
-    payload = envelope(tool, max_tokens=max_tokens, part=part, project=project)
+    payload = envelope(tool, max_tokens=max_tokens, part=part, project=project, family=family)
     payload["error"] = message
     payload.update(body)
     return finalize(payload, max_tokens)
@@ -275,11 +290,24 @@ NO_STALENESS = ""
 
 _ENVELOPE_PROPS: dict[str, dict] = {
     "tool": _STR,
+    #: **All three scopes, on every response.** `retrieve.scope` resolves
+    #: `part | project | family`, and a response whose `scope` object could
+    #: only name two of them cannot say which one answered: a family lookup
+    #: would report `{"part": "", "project": ""}`, the same reading
+    #: `compare_parts` returns for *no* corpus in scope. Silently misreporting
+    #: the scope of an answer is the one failure this envelope exists to
+    #: prevent, so `family` is declared here rather than in the four tool
+    #: bodies that can fill it — the alternative writes the same fact in two
+    #: places and leaves the generic reading wrong.
+    #: The cost was measured rather than argued: `"family": ""` adds **4
+    #: tokens** to a 65-token envelope, 0.067 % of the 6000-token cap. The
+    #: objection that only some tools can fill it is already true of the two
+    #: keys that were here first — `list_projects` can never fill `part`.
     "scope": {
         "type": "object",
         "additionalProperties": False,
-        "required": ["part", "project"],
-        "properties": {"part": _STR, "project": _STR},
+        "required": ["part", "project", "family"],
+        "properties": {"part": _STR, "project": _STR, "family": _STR},
     },
     "staleness": _STALENESS_SCHEMA,
     "error": _STR,
@@ -911,11 +939,14 @@ SCHEMAS: dict[str, dict] = {
     ),
     # Phase 7. A family is the third scope `retrieve.scope` resolves, and these
     # two are its catalog and its map — `list_families` is `list_projects` one
-    # noun across, and `get_family_index` is `get_index` one noun across. Both
-    # name the family in their own body rather than on the envelope's `scope`:
-    # `compare_parts` set that precedent for a tool whose subject is several
-    # parts at once, and widening `scope` would change the declared shape of
-    # every other tool to say something only these two have to say.
+    # noun across, and `get_family_index` is `get_index` one noun across.
+    # `get_family_index` names its family **twice, deliberately**: once on the
+    # envelope's `scope.family`, which is where a caller reads what answered
+    # whatever tool it called, and once in its own body, which is this tool's
+    # subject and reports the *resolved*, canonical name rather than the string
+    # the caller typed. `list_families` fills neither: its subject is every
+    # family, so an empty `scope` is the honest reading there, the same one
+    # `list_parts` and `compare_parts` carry.
     "list_families": _schema({"families": {"type": "array", "items": _FAMILY_SCHEMA}}, listed=True),
     "get_family_index": _schema(
         {

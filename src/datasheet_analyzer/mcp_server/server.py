@@ -16,12 +16,12 @@ the moment retrieval creeps back in here.
 | `list_families` | — | declared families, their members and whether each is built |
 | `get_index` | part | the part's `INDEX.md` |
 | `get_family_index` | family | the series' `FAMILY_INDEX.md`, derived live |
-| `search` | part or project | BM25 hits, each cited by construction |
-| `find_spec` | part or project | spec records through the alias ladder |
+| `search` | part, project or family | BM25 hits, each cited by construction |
+| `find_spec` | part, project or family | spec records through the alias ladder |
 | `read_section` | part | one section's verbatim markdown, budgeted |
-| `find_plots` | part or project | the plot catalog, filtered by text, section, tags **or axis** |
+| `find_plots` | part, project or family | the plot catalog, filtered by text, section, tags **or axis** |
 | `get_figure` | part | one figure **as an image content block** |
-| `ask` | part or project | one cited, budget-bounded answer pack |
+| `ask` | part, project or family | one cited, budget-bounded answer pack |
 | `find_pin` | part or project | pins by designator, name, description or type |
 | `find_register` | part or project | registers by name, address or bit field |
 | `get_card` | part | one task-shaped design card, every value cited |
@@ -30,12 +30,32 @@ the moment retrieval creeps back in here.
 
 `list_families`, `get_family_index` and `get_audit` are phase 7's. The first
 two are `list_projects` and `get_index` one noun across — a family is the
-third scope `retrieve.scope` resolves — and both name their family in their
-own body rather than on the envelope's `scope`, following `compare_parts`:
-widening `scope` would change the declared shape of every other tool to say
-something only these two have to say. `get_audit` is the trust call: it grades
+third scope `retrieve.scope` resolves. `get_audit` is the trust call: it grades
 a corpus *before* an agent answers from it, off records the corpus already
 published.
+
+**The family scope reaches the four fan-out tools, and it rides the
+envelope.** The phase-7 port shipped the family *catalog* (`list_families`)
+and the family *map* (`get_family_index`) but not the fan-out, so an MCP
+client was strictly less capable than `dsa ask --family AFE795x`. It now names
+a family on `search`, `find_spec`, `find_plots` and `ask` — the same four
+verbs the CLI resolves a family for — through the same
+`retrieve.scope.resolve_scope` the CLI and the web application call, so ADR
+0006's "exactly one scope" precondition is still written down once.
+
+The deferral this replaced argued that widening the envelope's `scope` object
+would make sixteen tools declare a key only two could fill. Two things about
+that were re-measured rather than re-argued. The premise moved: with the
+fan-out in, **seven** of the sixteen can fill `scope.family`. And the
+principle proves too much — `scope.part` has always been declared on
+`list_projects`, which can never fill it, because an envelope exists so a
+caller can read *what answered* without knowing which tool it called. The cost
+is 4 tokens on a 65-token envelope: 0.067 % of the 6000-token cap. The
+alternative, a `family` key in four tool bodies, writes the same fact in two
+places and leaves the generic reading — `scope` — saying `{"part": "",
+"project": ""}` for an answer a family gave, which is the same reading
+`compare_parts` returns for no corpus at all. Misreporting which scope
+answered is the one thing this envelope exists to prevent.
 
 Phase 6's four derived views (`find_pin`, `find_register`, `get_card`,
 `compare_parts`) carry one extra rule the extracted ones do not need: nothing
@@ -155,9 +175,12 @@ def build_server(settings: Settings | None = None) -> MCPServer:
             "`find_pin` during schematic capture, `find_register` for bring-up, "
             "`get_card` for a task-shaped summary (power, thermal, interface, "
             "limits) and `compare_parts` to choose between devices. A declared "
-            "series is the third scope: `list_families` names them and "
+            "series is the third scope: `list_families` names them, "
             "`get_family_index` maps one, listing what its members share once "
-            "and only what moved between them. Before trusting a corpus, "
+            "and only what moved between them, and `search` / `find_spec` / "
+            "`find_plots` / `ask` each take a `family` beside `part` and "
+            "`project` — name exactly one. Every response says which of the "
+            "three answered it, in `scope`. Before trusting a corpus, "
             "`get_audit` grades it and returns one headline sentence to put in "
             "front of your answer. Every value "
             "carries a page citation and a confidence grade; open the printed "
@@ -258,15 +281,26 @@ def build_server(settings: Settings | None = None) -> MCPServer:
         try:
             entry = resolve_family_entry(load_families(families_path(settings.registry_dir)), name)
         except (FamilyMiss, FamilyUnconfirmed) as exc:
-            return error_response(
+            wanted = (name or "").strip()
+            payload = error_response(
                 "get_family_index",
                 str(exc),
                 max_tokens=cap,
-                **{**_EMPTY_FAMILY_INDEX, "family": (name or "").strip()},
+                family=wanted,
+                **{k: v for k, v in _EMPTY_FAMILY_INDEX.items() if k != "family"},
             )
+            # Set after the call rather than through `**body`: the envelope's
+            # scope key and this tool's body key are both spelled `family`, and
+            # one keyword cannot fill two slots. Re-finalized so the reported
+            # token count is measured on the payload that actually ships.
+            payload["family"] = wanted
+            return finalize(payload, cap)
         members = load_members(entry.members, settings.parts_dir)
         index = build_family_index(members, name=entry.name, title=entry.title)
-        payload = envelope("get_family_index", max_tokens=cap)
+        # The envelope names the scope that answered, exactly as it does for a
+        # part or a project. `family` stays in the body too: it is this tool's
+        # subject, and the body reports the *resolved*, canonical name.
+        payload = envelope("get_family_index", max_tokens=cap, family=index.name)
         payload["family"] = index.name
         payload["title"] = index.title
         payload["members"] = list(index.members)
@@ -290,15 +324,22 @@ def build_server(settings: Settings | None = None) -> MCPServer:
     # --- lookups -------------------------------------------------------------
 
     @server.tool(name="search", meta=declared("search"))
-    def search(query: str, part: str = "", project: str = "", limit: int = 5) -> dict[str, Any]:
-        """Full-text search over a part or a whole project.
+    def search(
+        query: str, part: str = "", project: str = "", family: str = "", limit: int = 5
+    ) -> dict[str, Any]:
+        """Full-text search over a part, a whole project, or a declared family.
 
         Ranked with BM25 over the index built at publish. Every hit carries its
         section, page range and a snippet — cited by construction, so never
         attribute a page yourself. Returns an error when the corpus has no
         current index: that is "could not look", not "not in the datasheet".
+
+        Name exactly one scope. A family fans out over its declared members and
+        every hit stays labelled with the member it came from — hits are *not*
+        folded, because a BM25 score is computed against its own corpus's
+        statistics and two members' scores are not strictly comparable.
         """
-        scope, error = _scope(part, project)
+        scope, error = _scope(part, project, family)
         if scope is None:
             return error_response(
                 "search",
@@ -306,6 +347,7 @@ def build_server(settings: Settings | None = None) -> MCPServer:
                 max_tokens=cap,
                 part=part,
                 project=project,
+                family=family,
                 hits=[],
                 count=0,
                 total=0,
@@ -318,6 +360,7 @@ def build_server(settings: Settings | None = None) -> MCPServer:
                 max_tokens=cap,
                 part=part,
                 project=project,
+                family=family,
                 hits=[],
                 count=0,
                 total=0,
@@ -327,18 +370,26 @@ def build_server(settings: Settings | None = None) -> MCPServer:
             max_tokens=cap,
             part=part,
             project=project,
+            family=family,
             staleness=_staleness(scope),
         )
         # A design where only *some* members are searchable can still answer;
         # what it must not do is let the result read as the whole design. That
         # is a warning, not an error: the call succeeded, the coverage did not.
-        payload["warning"] = getattr(scope, "search_gap", lambda: "")()
+        payload["warning"] = _join_warnings(
+            getattr(scope, "search_gap", lambda: "")(), _family_gap_warning(family, settings)
+        )
         payload["hits"] = [hit.as_dict() for hit in scope.search(query, limit=limit)]
         return fit_list(payload, "hits", cap)
 
     @server.tool(name="find_spec", meta=declared("find_spec"))
     def find_spec(
-        part: str = "", project: str = "", symbol: str = "", name: str = "", section: str = ""
+        part: str = "",
+        project: str = "",
+        family: str = "",
+        symbol: str = "",
+        name: str = "",
+        section: str = "",
     ) -> dict[str, Any]:
         """Look up parametric spec records by symbol or by a designer's words.
 
@@ -346,8 +397,15 @@ def build_server(settings: Settings | None = None) -> MCPServer:
         substring, fuzzy); each hit names the rung it matched on in
         `matched_via` and carries its page citation and confidence grade. No
         match returns an empty list plus nearest candidates — never a guess.
+
+        Name exactly one scope. A family fans out over its declared members and
+        every row keeps its own member's citation; rows common to several
+        members are **not** folded here, because one folded row can carry only
+        one page number and (measured on AFE795x) 45.7 % of the rows common to
+        both members print on different pages. The folded, aligned view of a
+        series is `get_family_index`, which prints both operands' pages.
         """
-        scope, error = _scope(part, project)
+        scope, error = _scope(part, project, family)
         if scope is None:
             return error_response(
                 "find_spec",
@@ -355,6 +413,7 @@ def build_server(settings: Settings | None = None) -> MCPServer:
                 max_tokens=cap,
                 part=part,
                 project=project,
+                family=family,
                 hits=[],
                 suggestions=[],
                 count=0,
@@ -366,8 +425,10 @@ def build_server(settings: Settings | None = None) -> MCPServer:
             max_tokens=cap,
             part=part,
             project=project,
+            family=family,
             staleness=_staleness(scope),
         )
+        payload["warning"] = _family_gap_warning(family, settings)
         payload["hits"] = [hit.as_dict() for hit in hits]
         term = (symbol or name).strip()
         payload["suggestions"] = [] if hits else scope.suggest_specs(term)
@@ -377,6 +438,7 @@ def build_server(settings: Settings | None = None) -> MCPServer:
     def find_plots(
         part: str = "",
         project: str = "",
+        family: str = "",
         q: str = "",
         section: str = "",
         tags: list[str] | None = None,
@@ -398,8 +460,13 @@ def build_server(settings: Settings | None = None) -> MCPServer:
         they narrow hundreds of figures to the one worth opening *before* a
         vision token is spent. A figure whose axes could not be read is not a
         match for an axis filter — its `axes.confidence` says why.
+
+        Name exactly one scope. A family fans out over its declared members;
+        every hit keeps its own member's caption and citation and nothing is
+        folded — measured on AFE795x, `q="output power"` returns 46 hits with
+        46 distinct (caption, citation) pairs, so there is nothing to fold.
         """
-        scope, error = _scope(part, project)
+        scope, error = _scope(part, project, family)
         if scope is None:
             return error_response(
                 "find_plots",
@@ -407,6 +474,7 @@ def build_server(settings: Settings | None = None) -> MCPServer:
                 max_tokens=cap,
                 part=part,
                 project=project,
+                family=family,
                 hits=[],
                 count=0,
                 total=0,
@@ -416,8 +484,10 @@ def build_server(settings: Settings | None = None) -> MCPServer:
             max_tokens=cap,
             part=part,
             project=project,
+            family=family,
             staleness=_staleness(scope),
         )
+        payload["warning"] = _family_gap_warning(family, settings)
         payload["hits"] = [
             hit.as_dict()
             for hit in scope.plots(
@@ -778,18 +848,38 @@ def build_server(settings: Settings | None = None) -> MCPServer:
         )
 
     @server.tool(name="ask", meta=declared("ask"))
-    def ask(question: str, part: str = "", project: str = "", budget: int = 0) -> dict[str, Any]:
+    def ask(
+        question: str,
+        part: str = "",
+        project: str = "",
+        family: str = "",
+        budget: int = 0,
+    ) -> dict[str, Any]:
         """One question in, one cited answer pack out.
 
         Routes deterministically — spec ladder, then figures, then full text —
         with no model in the decision, and reports which route answered. Every
         row carries its citation and grade; the pack states its own budget and
         announces anything it had to drop.
+
+        Name exactly one scope. A family answers **once** for the whole series:
+        a finding every member printed identically, character for character, is
+        returned as one row cited to the reference member and labelled with the
+        members it is common to; anything that is not common is returned per
+        member and flagged. That collapse is the answer pack's alone — the
+        record lists (`search`, `find_spec`, `find_plots`) have nowhere to say
+        whose page a folded row came from, so they do not fold.
         """
-        scope, error = _scope(part, project)
+        scope, error = _scope(part, project, family)
         if scope is None:
             return error_response(
-                "ask", error, max_tokens=cap, part=part, project=project, pack=None
+                "ask",
+                error,
+                max_tokens=cap,
+                part=part,
+                project=project,
+                family=family,
+                pack=None,
             )
         return _ask_within_cap(
             scope,
@@ -797,6 +887,8 @@ def build_server(settings: Settings | None = None) -> MCPServer:
             budget or settings.ask_budget,
             part=part,
             project=project,
+            family=family,
+            warning=_family_gap_warning(family, settings),
             cap=cap,
         )
 
@@ -867,16 +959,20 @@ def build_server(settings: Settings | None = None) -> MCPServer:
 
     # --- scope resolution ----------------------------------------------------
 
-    def _scope(part: str, project: str):
-        """`(Retriever | ProjectRetriever, "")`, or `(None, reason)`.
+    def _scope(part: str, project: str, family: str = ""):
+        """`(Retriever | ProjectRetriever | FamilyRetriever, "")`, or `(None, reason)`.
 
         Bound to this server's settings and otherwise nothing but a call into
         `retrieve.scope.resolve_scope` — the one implementation the CLI, this
         server and the web application share. It chooses a scope and nothing
-        else; both branches hand back an object from `retrieve/`, which is why
+        else; every branch hands back an object from `retrieve/`, which is why
         this server can format an answer without knowing how one is found.
+
+        `family` is the third scope and is additive: a two-argument call means
+        exactly what it meant before, and naming more than one is refused by
+        `resolve_scope` with ADR 0006's own wording rather than resolved here.
         """
-        return resolve_scope(part, project, settings=settings)
+        return resolve_scope(part, project, settings=settings, family=family)
 
     def _part_scope(part: str):
         """`(Retriever, "")` for one built part, or `(None, reason)`."""
@@ -1018,6 +1114,49 @@ _EMPTY_AUDIT: dict[str, Any] = {
     "count": 0,
     "total": 0,
 }
+
+
+def _family_gap_warning(family: str, settings: Settings) -> str:
+    """The warning a family-scoped lookup carries when a member is not built.
+
+    A design's rule, one noun across: a declared member with no corpus on disk
+    is *named*, never silently skipped, because a family answer quietly missing
+    one device reads as an answer for all of them. The CLI prints this to
+    stderr (`cli._scope`); over MCP it is a `warning`, not an `error` — the
+    call succeeded, the coverage did not.
+    """
+    from datasheet_analyzer.retrieve.scope import missing_corpus_warning, unbuilt_family_members
+
+    if not (family or "").strip():
+        return ""
+    return missing_corpus_warning(unbuilt_family_members(family, settings=settings))
+
+
+def _join_warnings(*warnings: str) -> str:
+    """Every non-empty warning in one string; `""` when there is none.
+
+    Two gaps can bite the same call — a family member with no corpus *and* a
+    member whose search index is missing — and dropping one to keep the other
+    would make the response quietly less honest than the call that produced it.
+    The envelope carries one `warning` string, so they are joined, not raced.
+    """
+    return " ".join(w for w in warnings if w)
+
+
+def _family_gap_warning(family: str, settings: Settings) -> str:
+    """The warning a family-scoped lookup carries when a member is not built.
+
+    A design's rule, one noun across: a declared member with no corpus on disk
+    is *named*, never silently skipped, because a family answer quietly missing
+    one device reads as an answer for all of them. The CLI prints this to
+    stderr (`cli._scope`); over MCP it is a `warning`, not an `error` — the call
+    succeeded, the coverage did not.
+    """
+    from datasheet_analyzer.retrieve.scope import missing_corpus_warning, unbuilt_family_members
+
+    if not (family or "").strip():
+        return ""
+    return missing_corpus_warning(unbuilt_family_members(family, settings=settings))
 
 
 def _unbuilt_warning(parts: list[str]) -> str:
@@ -1187,7 +1326,15 @@ def _figure_error(tool: str, message: str, *, part: str, cap: int) -> CallToolRe
 
 
 def _ask_within_cap(
-    scope, question: str, budget: int, *, part: str, project: str, cap: int
+    scope,
+    question: str,
+    budget: int,
+    *,
+    part: str,
+    project: str,
+    cap: int,
+    family: str = "",
+    warning: str = "",
 ) -> dict[str, Any]:
     """An answer pack that fits the response cap, shrunk by budget, not by edit.
 
@@ -1210,8 +1357,10 @@ def _ask_within_cap(
             max_tokens=cap,
             part=part,
             project=project,
+            family=family,
             staleness=_staleness(scope),
         )
+        payload["warning"] = warning
         payload["pack"] = pack.as_dict()
         payload["citations"] = list(pack.citations)
         # `truncated` is the pack's own answer: a budget lowered to fit the
