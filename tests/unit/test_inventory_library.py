@@ -491,6 +491,42 @@ class TestLegacyMigration:
         assert len(empty.all()) == 1
         assert len(empty.for_part("LEGACY9000")) == 1
 
+    def test_a_shared_document_is_widened_by_migration_not_re_filed(self, settings, corpus):
+        """One app note, two parts — and the second build must not steal it.
+
+        Measured on TI's SNAA360, *Getting the Most of Your Data Converter
+        Clocking System Using LMX1204*, which names both AFE7950 and LMX1204.
+        `dsa fetch` had registered it against each part, so it sat in both
+        parts' `sources.json`; migration then saw a hash the Library did not
+        cover **for this part** and answered it with a brand-new single-part
+        record, replacing the applicability the other part's build had written.
+        Whichever part built second owned the document, and the first part
+        silently lost it on its next build.
+
+        "Not covered here" and "never seen" are different states, and only the
+        second may be answered with a new record.
+        """
+        shared = corpus["family"]  # any companion PDF; its own applicability is unused here
+        store = FakeLibraryStore()
+        first = settings.parts_dir / "PART_A"
+        second = settings.parts_dir / "PART_B"
+        for part_dir, part in ((first, "PART_A"), (second, "PART_B")):
+            part_dir.mkdir(parents=True)
+            src = register_source(shared, part_number=part, doc_type=DocType.APP_NOTE, vendor="adi")
+            save_inventory([src], part_dir)
+
+        resolve_documents(first, part_number="PART_A", store=store)
+        assert store.for_part("PART_A")
+
+        resolve_documents(second, part_number="PART_B", store=store)
+        (doc,) = store.all()
+        assert doc.applicability.parts == ["PART_A", "PART_B"]
+        assert MIGRATION_EVIDENCE in doc.applicability.evidence
+        assert "named for PART_B" in doc.applicability.evidence
+        # And the first part still resolves it — the regression itself.
+        assert [d.content_hash for d in store.for_part("PART_A")] == [doc.content_hash]
+        assert len(store.all()) == 1
+
     def test_resolve_documents_without_a_store_reads_the_file(self, settings, corpus):
         """No Library at all is still a working build path."""
         part_dir = self._legacy_part(settings, corpus)

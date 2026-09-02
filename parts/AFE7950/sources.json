@@ -14,6 +14,30 @@
       "vendor": "ti",
       "vendor_evidence": "brand:\"texas instruments\" (metadata)",
       "registered_at": "2026-08-01T09:30:34.094236Z"
+    },
+    {
+      "content_hash": "4e5890085737aed420f9c0da3727619f15229320784638017edaea061d99f5cf",
+      "path": "C:\\Users\\afpim\\Repos\\datasheet_analyzer\\parts\\AFE7950\\documents\\sbaa637.pdf",
+      "part_number": "AFE7950",
+      "doc_type": "app_note",
+      "revision": "",
+      "page_count": 12,
+      "nda": false,
+      "vendor": "ti",
+      "vendor_evidence": "brand:\"texas instruments\" (p.1)",
+      "registered_at": "2026-09-02T05:28:14.661708Z"
+    },
+    {
+      "content_hash": "5731d2b05143e1285b361bfa4a4c87ffc3e4f1f9766ee4e37e7b79e1a9fc400e",
+      "path": "parts\\AFE7950\\documents\\snaa360.pdf",
+      "part_number": "AFE7950",
+      "doc_type": "app_note",
+      "revision": "",
+      "page_count": 12,
+      "nda": false,
+      "vendor": "ti",
+      "vendor_evidence": "brand:\"texas instruments\" (p.1)",
+      "registered_at": "2026-09-02T05:52:14.164781Z"
     }
   ]
 }

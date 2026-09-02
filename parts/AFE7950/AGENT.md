@@ -7,9 +7,9 @@ This is a **retrieval corpus**, not a document. `INDEX.md` beside this file is t
 ## This corpus
 
 - part **AFE7950** — revision SBASA41E
-- 39 sections, 619 spec records, 514 figure files
+- 86 sections, 619 spec records, 514 figure files
 - map: `INDEX.md` — sections: `docs/<doc>/sections/*.md` — table twins: `docs/<doc>/tables/*.csv`
-- documents: `docs/datasheet-c1b4663b/`
+- documents: `docs/datasheet-c1b4663b/`, `docs/app_note-4e589008/`, `docs/app_note-5731d2b0/`
 
 ## The protocol
 

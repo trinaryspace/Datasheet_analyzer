@@ -27,6 +27,17 @@ item_markers:
   - erratum
   - issue
   - item
+  # TI's mmWave/Jacinto errata identify an item by the subsystem that owns it
+  # rather than by a marker word: `SWRZ089C` (AWR1843 Device Errata, silicon
+  # 1.0) heads its 46 items `MSS#44` and `ANA#08A`, and prints "Advisory" only
+  # as the caption of Table 5-1, *Advisory to Silicon Variant / Revision Map*.
+  # Without these two the document declares no marker at all, `numbered_items`
+  # takes over, and it segments on the numbered workaround bullets *inside*
+  # each advisory — 11 items whose text runs across advisory boundaries.
+  # Measured on that document; other prefixes TI uses in this family (DSS, RCM,
+  # PCM, BSS) are deliberately absent until a document that prints one is here.
+  - ana
+  - mss
 
 # Also treat a line that opens with an ordinal ("3.", "3)") as an item start.
 # Errata documents that number their items and nothing else are common enough

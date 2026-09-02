@@ -409,13 +409,22 @@ def library_view(
     for src in read_sources_file(part_dir):
         if src.content_hash in known:
             continue
+        known.add(src.content_hash)
+        # Same rule as `resolve_documents`: a document the Library already
+        # holds for another part is widened, never re-filed under this one.
+        shared = _get(store, src.content_hash)
+        if shared is not None:
+            if migrate:
+                ensure_covers(shared, part_number, store=store)
+                shared = _get(store, src.content_hash) or shared
+            docs.append(shared)
+            continue
         doc = LibraryDocument(
             source=src,
             applicability=Applicability.for_parts([part_number], evidence=MIGRATION_EVIDENCE),
         )
         if migrate:
             _put(store, doc)
-        known.add(src.content_hash)
         docs.append(doc)
     kept = {src.content_hash for src in _view([doc.source for doc in docs])}
     return [doc for doc in docs if doc.content_hash in kept]
@@ -449,13 +458,25 @@ def resolve_documents(
         for src in legacy:
             if src.content_hash in known:
                 continue
+            known.add(src.content_hash)
+            # "The Library does not cover this part with it" and "the Library
+            # has never seen it" are different states, and only the second one
+            # may be answered with a brand-new single-part record. A document
+            # that already applies to *another* part is widened — replacing its
+            # applicability here would take an app note away from the part it
+            # was filed under, silently, on the next build of a second part
+            # that names it. (Measured on TI's SNAA360, which names both
+            # AFE7950 and LMX1204: whichever part built second owned it.)
+            shared = _get(store, src.content_hash)
+            if shared is not None:
+                resolved.append(ensure_covers(shared, part_number, store=store))
+                continue
             doc = LibraryDocument(
                 source=src,
                 applicability=Applicability.for_parts([part_number], evidence=MIGRATION_EVIDENCE),
             )
             if _put(store, doc):
                 migrated += 1
-            known.add(src.content_hash)
             resolved.append(src)
         if migrated:
             log.info(
