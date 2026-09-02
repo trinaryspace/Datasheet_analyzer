@@ -37,9 +37,11 @@ from datasheet_analyzer.app import tools as T
 from datasheet_analyzer.config import Settings, reset_settings_cache
 from datasheet_analyzer.projects import load_project, part_dirs
 from datasheet_analyzer.retrieve import Citation, ProjectRetriever, Retriever
+from datasheet_analyzer.retrieve.family import FamilyRetriever
 
 PART = "TEST"
 PROJECT = "rf-frontend"
+FAMILY = "TESTx"
 
 
 @pytest.fixture(autouse=True)
@@ -51,12 +53,21 @@ def _fresh_settings():
 
 
 def make_settings(tmp_path: Path, **overrides) -> Settings:
-    """Two built parts, one project over both, every directory under tmp."""
+    """Two built parts, one project and one family over both, all under tmp.
+
+    `registry_dir` and `families_dir` are carried across from `built_settings`
+    deliberately: without them `list_families` and `get_family_index` would
+    read the family registry **this repository ships**, which is a test
+    reaching into the source tree (invariant 4) and would make the assertions
+    below depend on what somebody declared in `registry/families.yaml`.
+    """
     base = built_settings(tmp_path)
     return Settings(
         parts_dir=base.parts_dir,
         cache_dir=base.cache_dir,
         projects_dir=base.projects_dir,
+        families_dir=base.families_dir,
+        registry_dir=base.registry_dir,
         library_dir=tmp_path / "library",
         sessions_dir=tmp_path / "sessions",
         **overrides,
@@ -77,6 +88,16 @@ def part(settings: Settings) -> Retriever:
 def project(settings: Settings) -> ProjectRetriever:
     loaded = load_project(PROJECT, settings.projects_dir)
     return ProjectRetriever.for_parts(loaded.name, part_dirs(loaded, settings.parts_dir))
+
+
+@pytest.fixture
+def family(settings: Settings) -> FamilyRetriever:
+    """The declared family over the same two parts, resolved the one way."""
+    from datasheet_analyzer.retrieve.scope import resolve_scope
+
+    scope, reason = resolve_scope("", "", settings=settings, family=FAMILY)
+    assert reason == "", reason
+    return scope
 
 
 # --- the seam ----------------------------------------------------------------
@@ -180,20 +201,30 @@ class TestAgentToolsAreFormatOnly:
 EXPECTED_PARAMS = {
     "list_parts": ["settings"],
     "list_projects": ["settings"],
+    "list_families": ["settings"],
     "get_index": ["scope", "settings"],
+    "get_family_index": ["scope", "settings"],
     "search": ["scope", "query", "limit", "settings"],
     "find_spec": ["scope", "symbol", "name", "section", "settings"],
     "find_plots": ["scope", "q", "section", "tags", "settings"],
     "read_section": ["scope", "ref", "max_tokens", "settings"],
     "get_figure": ["scope", "file", "settings"],
     "ask": ["scope", "question", "budget", "settings"],
+    "get_audit": ["scope", "settings"],
 }
 
 
-class TestTheNineToolsExistAsFrozen:
-    """Ticket 00 froze these names and signatures; ticket 12 dispatches on them."""
+class TestTheTwelveToolsExistAsFrozen:
+    """Ticket 00 froze nine names and signatures; phase 7 added three.
 
-    def test_the_registry_is_the_nine_names_in_order(self):
+    `list_families`, `get_family_index` and `get_audit` reached the MCP
+    surface with the phase-7 port and not this one. They take **no name**
+    here, unlike their MCP twins: the scope is resolved once before the loop
+    starts and shown to the user, so a `name` or `part` argument would let the
+    agent answer from a corpus the user was not shown.
+    """
+
+    def test_the_registry_is_the_twelve_names_in_order(self):
         assert T.TOOL_NAMES == tuple(EXPECTED_PARAMS)
         assert tuple(T.TOOLS) == T.TOOL_NAMES
 
@@ -221,9 +252,9 @@ class TestScopeIsInjectedNeverChosen:
     """
 
     @pytest.mark.parametrize("name", list(EXPECTED_PARAMS))
-    def test_no_tool_accepts_a_part_or_project_name(self, name):
+    def test_no_tool_accepts_a_part_project_or_family_name(self, name):
         params = set(inspect.signature(T.TOOLS[name]).parameters)
-        assert not params & {"part", "project", "part_number", "scope_ref"}
+        assert not params & {"part", "project", "family", "part_number", "scope_ref"}
 
     def test_a_part_scope_is_reported_back_verbatim(self, part, settings):
         payload = T.find_spec(scope=part, symbol="TJ", settings=settings)
@@ -257,9 +288,12 @@ class TestPartOnlyToolsRefuseAProjectScope:
         "get_index": {},
         "read_section": {"ref": "4.3"},
         "get_figure": {"file": FIGURE},
+        # A scorecard is a statement about one published corpus, so it joins
+        # the three that cannot answer for a design.
+        "get_audit": {},
     }
 
-    def test_the_three_part_only_tools_are_the_declared_three(self):
+    def test_the_four_part_only_tools_are_the_declared_four(self):
         assert set(T.PART_ONLY_TOOLS) == set(self.CALLS)
 
     @pytest.mark.parametrize("name", sorted(CALLS))
@@ -614,3 +648,139 @@ class TestReadSectionAndGetIndex:
         payload = T.search(scope=Retriever.for_part(bare), query="sysref", settings=settings)
         assert "no full-text index" in payload["error"]
         assert payload["hits"] == []
+
+
+# --- phase 7's three, and the scope kind they answer for ----------------------
+
+
+class TestTheFamilyScopeReportsItself:
+    """`FamilyRetriever` subclasses `ProjectRetriever`, and that used to lie.
+
+    Before phase 7's tools reached this surface every `isinstance` check here
+    asked about the project first, so a turn scoped to a declared series came
+    back as `kind: "project"` on every payload and every part-only refusal
+    called it a design. Measured on the real corpus before the fix:
+    `{"kind": "project", "name": "AFE795x", "parts": [...]}`, and
+    "`get_index` needs one part, but this turn is scoped to project
+    'AFE795x'". A response that misreports which scope produced it is the one
+    failure the `scope` key exists to prevent.
+    """
+
+    def test_a_family_scope_is_reported_back_as_a_family(self, family, settings):
+        payload = T.find_spec(scope=family, symbol="TJ", settings=settings)
+        assert payload["scope"] == {
+            "kind": "family",
+            "name": FAMILY,
+            "parts": ["TEST", "OTHER"],
+        }
+
+    def test_a_part_only_refusal_names_the_family_as_a_family(self, family, settings):
+        payload = T.get_index(scope=family, settings=settings)
+        assert f"scoped to family '{FAMILY}'" in payload["error"]
+        assert "project" not in payload["error"]
+
+    def test_the_fan_out_still_reaches_both_members(self, family, settings):
+        payload = T.find_spec(scope=family, name="junction temperature", settings=settings)
+        assert {hit["part"] for hit in payload["hits"]} == {"TEST", "OTHER"}
+
+
+class TestListFamilies:
+    def test_it_reports_declared_membership_and_built_state(self, settings):
+        payload = T.list_families(settings=settings)
+        assert payload["error"] == ""
+        [row] = payload["families"]
+        assert row["name"] == FAMILY
+        assert row["reference"] == "TEST", "deltas are signed against the first declared"
+        assert row["members"] == [
+            {"part": "TEST", "built": True},
+            {"part": "OTHER", "built": True},
+        ]
+        assert row["confirmed"] is True
+
+    def test_it_is_a_catalog_call_and_takes_no_scope(self, settings):
+        """It names what exists and quotes no datasheet, so it cites nothing."""
+        payload = T.list_families(settings=settings)
+        assert payload["scope"] == {"kind": "", "name": "", "parts": []}
+        assert payload["citations"] == []
+        assert "scope" not in inspect.signature(T.list_families).parameters
+
+    def test_a_machine_with_no_declared_families_lists_none(self, tmp_path):
+        bare = Settings(
+            parts_dir=tmp_path / "parts",
+            cache_dir=tmp_path / ".cache",
+            projects_dir=tmp_path / "projects",
+            registry_dir=tmp_path / "registry",
+            families_dir=tmp_path / "families",
+            library_dir=tmp_path / "library",
+            sessions_dir=tmp_path / "sessions",
+        ).resolve()
+        payload = T.list_families(settings=bare)
+        assert payload["families"] == []
+        assert payload["error"] == "", "nothing declared is an empty list, not a failure"
+
+
+class TestGetFamilyIndex:
+    def test_it_maps_the_family_this_turn_was_scoped_to(self, family, settings):
+        payload = T.get_family_index(scope=family, settings=settings)
+        assert payload["error"] == ""
+        assert payload["family"] == FAMILY
+        assert payload["members"] == ["TEST", "OTHER"]
+        assert payload["n_sections"] > 0
+        assert payload["scope"]["kind"] == "family"
+        assert FAMILY in payload["text"]
+
+    def test_it_is_derived_live_rather_than_read_off_disk(self, family, settings):
+        """No `dsa family build` has run, and the call still answers."""
+        assert not (settings.families_dir / FAMILY).exists()
+        payload = T.get_family_index(scope=family, settings=settings)
+        assert payload["n_sections"] > 0
+        assert not (settings.families_dir / FAMILY).exists(), "reading writes nothing"
+
+    @pytest.mark.parametrize("kind", ["part", "project"])
+    def test_it_refuses_a_scope_that_is_not_a_family(self, kind, part, project, settings):
+        scope = part if kind == "part" else project
+        payload = T.get_family_index(scope=scope, settings=settings)
+        assert "maps a declared series" in payload["error"]
+        assert f"scoped to {kind}" in payload["error"]
+        assert payload["text"] == "" and payload["members"] == []
+
+    def test_the_family_only_refusal_carries_the_tool_s_body_keys(self, part, family, settings):
+        refused = T.get_family_index(scope=part, settings=settings)
+        answered = T.get_family_index(scope=family, settings=settings)
+        assert set(answered) <= set(refused)
+
+    def test_it_takes_no_family_name_the_model_could_choose(self):
+        """The whole reason it differs from its MCP twin."""
+        assert "name" not in inspect.signature(T.get_family_index).parameters
+        assert "family" not in inspect.signature(T.get_family_index).parameters
+
+
+class TestGetAudit:
+    def test_it_grades_the_scoped_corpus_and_returns_the_headline(self, part, settings):
+        payload = T.get_audit(scope=part, settings=settings)
+        assert payload["error"] == ""
+        assert payload["scope"] == {"kind": "part", "name": PART, "parts": [PART]}
+        assert payload["grade"] in ("A", "B", "C", "D", "F", None)
+        assert payload["headline"], "the sentence the whole artifact exists to produce"
+        assert payload["rubric_version"], "a grade names the thresholds it was read under"
+        assert payload["count"] == payload["total"] == len(payload["metrics"])
+
+    def test_a_metric_it_could_not_measure_is_excluded_rather_than_scored(self, part, settings):
+        payload = T.get_audit(scope=part, settings=settings)
+        unavailable = [m for m in payload["metrics"] if not m["available"]]
+        assert all(m["value"] is None and m["unavailable_reason"] for m in unavailable)
+        assert payload["n_unavailable"] == len(unavailable)
+
+    def test_it_computes_nothing_the_audit_package_did_not(self, part, settings):
+        """Format-only: the payload is the scorecard, field for field."""
+        from datasheet_analyzer.audit import build_scorecard
+        from datasheet_analyzer.evalh.golden import default_golden_path
+
+        card = build_scorecard(part.part_dir, golden=default_golden_path(part.part))
+        payload = T.get_audit(scope=part, settings=settings)
+        assert payload["headline"] == card.headline
+        assert payload["score"] == card.score
+        assert payload["metrics"] == [m.model_dump(mode="json") for m in card.metrics]
+
+    def test_it_takes_no_part_name_the_model_could_choose(self):
+        assert "part" not in inspect.signature(T.get_audit).parameters

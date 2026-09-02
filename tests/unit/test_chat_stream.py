@@ -175,6 +175,11 @@ def settings(tmp_path) -> Settings:
         parts_dir=tmp_path / "parts",
         cache_dir=tmp_path / "cache",
         projects_dir=tmp_path / "projects",
+        # Redirected for the reason `mcp_corpus` redirects them: `list_families`
+        # reaches the family registry, and a test may not read the families
+        # this repository ships (invariant 4).
+        registry_dir=tmp_path / "registry",
+        families_dir=tmp_path / "families",
         library_dir=tmp_path / "library",
         sessions_dir=tmp_path / "sessions",
         anthropic_api_key="test-key-not-used",
@@ -368,14 +373,54 @@ def test_no_tool_exposes_a_scope_argument_to_the_model(settings: Settings) -> No
 # --- tool frames --------------------------------------------------------------
 
 
-def test_default_registry_builds_the_nine_agent_tools(settings: Settings) -> None:
-    """The tool surface is ticket 11's registry, not a list this module invents."""
+def test_default_registry_builds_every_agent_tool(settings: Settings) -> None:
+    """The tool surface is `app/tools.py`'s registry, not a list this module invents.
+
+    Asserted against `TOOL_NAMES` rather than against a literal, so a tool
+    added to the registry and forgotten here is a failure in this module
+    instead of a capability silently missing from the browser.
+    """
     from datasheet_analyzer.app import tools as agent_tools
 
     built = chat.build_tools(object(), settings=settings)
     assert [tool.name for tool in built] == list(agent_tools.TOOL_NAMES)
     for tool in built:
         assert tool.to_dict()["description"], f"{tool.name} needs a description for the model"
+        assert chat.tool_summary(tool.name) != f"Running {tool.name}", (
+            f"{tool.name} needs a human sentence for the `tool` frame"
+        )
+
+
+def test_a_catalog_tool_is_not_handed_a_scope_it_cannot_take(settings: Settings) -> None:
+    """The bug a merely-declared tool surface cannot catch.
+
+    `build_tools` bound `scope=` to every registry callable, but `list_parts`,
+    `list_projects` and `list_families` take none — they name what exists on
+    this machine and answer from no corpus. Every call therefore came back to
+    the model as an `is_error` tool result reading
+    `TypeError: list_parts() got an unexpected keyword argument 'scope'`, on
+    the real registry, since ticket 12. Nothing declared-only saw it: the tool
+    was listed, described and never executed.
+    """
+    from datasheet_analyzer.app import tools as agent_tools
+
+    scope = object()
+    built = {tool.name: tool for tool in chat.build_tools(scope, settings=settings)}
+    for name in ("list_parts", "list_projects", "list_families"):
+        payload = asyncio.run(asyncio.wait_for(built[name].call({}), DEADLINE))
+        assert json.loads(payload)["tool"] == name
+
+    # ...and a scoped tool still gets the scope it was resolved with.
+    seen: list[Any] = []
+
+    def fake_search(*, scope: Any, settings: Settings, **kwargs: Any) -> dict:
+        seen.append(scope)
+        return {"tool": "search", "hits": []}
+
+    tools = chat.build_tools(scope, settings=settings, registry={"search": fake_search})
+    asyncio.run(asyncio.wait_for(tools[0].call({"query": "x"}), DEADLINE))
+    assert seen == [scope]
+    assert set(agent_tools.TOOLS) >= {"list_families", "get_family_index", "get_audit"}
 
 
 def test_get_figure_becomes_an_image_block_plus_its_metadata(settings: Settings) -> None:
@@ -903,3 +948,109 @@ def test_a_second_turn_opening_with_a_heading_starts_on_its_own_line() -> None:
     assert chat._paragraph_gap(["I'll look this up."]) == "\n\n"
     assert chat._paragraph_gap(["I'll look this up.\n"]) == "\n"
     assert chat._paragraph_gap(["I'll look this up.\n\n"]) == ""
+
+
+# --- phase 7's three tools, driven end to end ---------------------------------
+
+
+def _one_tool_turn(name: str, answer: str = "Done.") -> list[tuple[list[Any], BetaMessage]]:
+    """A scripted turn that calls `name` with no arguments, then answers."""
+    return [
+        (
+            [tool_stop_event("toolu_1", name, {})],
+            assistant_message(
+                [{"type": "tool_use", "id": "toolu_1", "name": name, "input": {}}],
+                "tool_use",
+            ),
+        ),
+        ([text_event(answer)], assistant_message([{"type": "text", "text": answer}], "end_turn")),
+    ]
+
+
+def _tool_result(client: FakeAnthropic) -> dict[str, Any]:
+    """The payload the runner actually fed back to the model, parsed.
+
+    Read off the *request* rather than off the tool, because what is under test
+    is the round trip: a tool that raises comes back as an `is_error` block
+    carrying a traceback, and that is invisible from the tool object.
+    """
+    blocks = [
+        block if isinstance(block, dict) else block.model_dump()
+        for message in client.messages.requests[-1]["messages"]
+        if isinstance(message.get("content"), list)
+        for block in message["content"]
+    ]
+    results = [b for b in blocks if b.get("type") == "tool_result"]
+    assert results, "the runner fed no tool result back"
+    body = results[-1]["content"]
+    assert not results[-1].get("is_error"), body
+    return json.loads(body if isinstance(body, str) else body[0]["text"])
+
+
+@pytest.mark.parametrize(
+    "kind,name,tool",
+    [
+        ("part", "TEST", "get_audit"),
+        ("family", "TESTx", "get_family_index"),
+        ("family", "TESTx", "list_families"),
+        ("part", "TEST", "list_parts"),
+    ],
+)
+def test_the_new_tools_run_through_the_real_runner_over_a_real_corpus(
+    tmp_path, kind: str, name: str, tool: str
+) -> None:
+    """Not "the tool is declared" — the tool ran, and the model got its payload.
+
+    The corpus is the shared synthetic one, the registry is `app/tools.py`'s
+    real one, and the runner is the SDK's. Only the transport is fake, so this
+    exercises the whole chat path an answer takes.
+    """
+    from mcp_corpus import built_settings
+
+    from datasheet_analyzer.retrieve.scope import resolve_scope
+
+    base = built_settings(tmp_path)
+    made = Settings(
+        parts_dir=base.parts_dir,
+        cache_dir=base.cache_dir,
+        projects_dir=base.projects_dir,
+        registry_dir=base.registry_dir,
+        families_dir=base.families_dir,
+        library_dir=tmp_path / "library",
+        sessions_dir=tmp_path / "sessions",
+        anthropic_api_key="test-key-not-used",
+    ).resolve()
+    retriever, reason = resolve_scope(
+        name if kind == "part" else "",
+        "",
+        settings=made,
+        family=name if kind == "family" else "",
+    )
+    assert reason == "", reason
+
+    client = FakeAnthropic(_one_tool_turn(tool))
+    events = drive(
+        chat.stream_turn(
+            question="q",
+            resolution=ScopeResolution(
+                scope=ScopeRef(kind=kind, name=name), confident=True, matched_via="exact"
+            ),
+            client=client,
+            retriever=retriever,
+            settings=made,
+        )
+    )
+    assert kinds(events)[:2] == ["scope", "tool"]
+    assert kinds(events)[-1] == "done"
+
+    payload = _tool_result(client)
+    assert payload["tool"] == tool
+    assert payload["error"] == "", payload["error"]
+    if tool == "get_audit":
+        assert payload["headline"] and payload["metrics"]
+        assert payload["scope"] == {"kind": "part", "name": name, "parts": [name]}
+    if tool == "get_family_index":
+        assert payload["family"] == name and payload["n_sections"] > 0
+        assert payload["scope"]["kind"] == "family"
+    if tool == "list_families":
+        assert [row["name"] for row in payload["families"]] == [name]

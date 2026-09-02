@@ -645,6 +645,15 @@ and there is no "everything" scope to fall back to
 (`docs/adr/0006-auto-resolved-scope.md`). Answers stream token by token and
 carry the same citations, match reasons and confidence grades the CLI prints.
 
+The agent behind that box has twelve tools — the same corpus reads the CLI and
+MCP make, plus `get_audit`, which grades the corpus before the answer quotes
+it, and `list_families` / `get_family_index` for a declared series. **None of
+them takes a part, project or family name.** The scope is resolved once, shown
+to you, and injected into every tool, so the agent has no argument through
+which it could answer from a device you were not shown — which is why
+`get_family_index` here maps the series *this* conversation is about, although
+its MCP twin takes a family name.
+
 **4. Verify.** Click a citation. The PDF opens in the pane beside the answer,
 at that page, with the cited block highlighted. The highlight is found on
 demand by searching the printed page for the record's own text — nothing is

@@ -385,17 +385,33 @@ family states nothing about pins, which is not the same as stating they
 agree"* — rather than printing an empty table a reader could mistake for
 agreement.
 
-**Also parked: the family scope is nameable everywhere and offered nowhere.**
-The integration wave widened `ScopeRef.kind` to `part | project | family`, so
-`deps.get_retriever` resolves a family and `POST /api/chat/{id}/message` will
-answer a whole series with the common-once collapse when a caller names one.
-Nothing *offers* that scope. `app/scope_resolver.py` still proposes only parts
-and projects — a question naming `AFE79xx` produces part candidates through
-`_family_matches`, which is a string pattern and not this noun — and
-`ScopeChip` lists `getParts()` and `getProjects()`. Closing it needs
-`known_scopes` to read the family registry, a third tier in the resolver with
-its own tests, and a picker section: real work in two languages, not a wiring
-change. On MCP the same boundary holds for a different reason — see below.
+**Still parked, and now the only thing standing between a browser user and a
+family: the family scope is nameable everywhere and offered nowhere.**
+`ScopeRef.kind` is `part | project | family`, `deps.get_retriever` resolves a
+family, `POST /api/chat/{id}/message` answers a whole series with the
+common-once collapse, and — since 2026-09-02 — the chat agent has a
+`get_family_index` tool that maps the series its turn was scoped to. All of
+that is reachable **only by a client that posts
+`ScopeRef(kind="family", name=...)` itself.** Nothing in the running UI does.
+
+Two things are missing, both in code this wave did not own:
+
+- **`app/scope_resolver.py` proposes only parts and projects.** A question
+  naming `AFE79xx` produces *part* candidates through `_family_matches`, which
+  is a string pattern over part numbers and not this noun. Closing it means
+  `chat.known_scopes` reading the family registry (it returns
+  `(parts, projects)` today) and a third tier in the resolver with its own
+  tests — Python, and this wave's to do had it not needed the picker too.
+- **`ScopeChip` lists `getParts()` and `getProjects()` and has no family
+  section** — real frontend work in `web/`, which another agent owns. It is
+  **recorded here and deliberately not made**: nothing in `web/` was touched
+  by this wave.
+
+Until the picker lands, `get_family_index` and the family fan-out are proven
+end to end through the API and the chat loop (`tests/unit/test_chat_stream.py::
+test_the_new_tools_run_through_the_real_runner_over_a_real_corpus`) and are
+unreachable from a mouse. `dsa ask --family` and MCP have had the scope since
+this port; the browser has the plumbing and not the door.
 
 **Closed 2026-09-01: `search` / `find_spec` / `find_plots` / `ask` now take a
 `family` over MCP.** The envelope's `scope` object carries all three names, so

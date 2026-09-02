@@ -875,10 +875,17 @@ def _frozen_seams() -> list[tuple[str, Callable[..., Any], dict[str, Any], list[
             {"pdf_path": Path("x.pdf"), "page": 1, "needle": "TJ"},
             ["pdf_path", "page", "needle"],
         ),
-        # app/tools.py — ticket 11
+        # app/tools.py — ticket 11, plus phase 7's three
         ("tools.list_parts", tools.list_parts, {}, ["settings"]),
         ("tools.list_projects", tools.list_projects, {}, ["settings"]),
+        ("tools.list_families", tools.list_families, {}, ["settings"]),
         ("tools.get_index", tools.get_index, {"scope": scope}, ["scope", "settings"]),
+        (
+            "tools.get_family_index",
+            tools.get_family_index,
+            {"scope": scope},
+            ["scope", "settings"],
+        ),
         (
             "tools.search",
             tools.search,
@@ -915,6 +922,7 @@ def _frozen_seams() -> list[tuple[str, Callable[..., Any], dict[str, Any], list[
             {"scope": scope, "question": "max TJ?"},
             ["scope", "question", "budget", "settings"],
         ),
+        ("tools.get_audit", tools.get_audit, {"scope": scope}, ["scope", "settings"]),
         # app/sessions.py — ticket 15
         ("SessionStore.for_settings", sessions.SessionStore.for_settings, {}, ["settings"]),
         ("SessionStore.create", session_store.create, {"title": "t"}, ["title", "scope"]),
@@ -986,23 +994,66 @@ def test_stub_modules_import_cleanly():
         __import__(name)
 
 
-def test_tool_surface_is_the_nine_mcp_tools():
+def test_tool_surface_is_a_deliberate_list_of_twelve():
+    """The browser agent's tool surface, pinned so that growing it is a decision.
+
+    Phase 5 froze nine. Phase 7 added `list_families`, `get_family_index` and
+    `get_audit` to the MCP surface and left this one behind, so a browser turn
+    could be *scoped* to a family and had no tool that could read one, and no
+    way at all to grade a corpus before quoting it. This assertion moves for
+    the same reason the MCP tool-count assertion moved when those three tools
+    were genuinely added — three real capabilities, named here on purpose.
+
+    What this test pins is unchanged, and it is not the number: it is that the
+    surface is *enumerated*. A tool reachable by the agent must appear in
+    `TOOL_NAMES`, must be callable through `TOOLS`, and must declare which
+    scope kinds it can answer for. Adding one by editing `tools.py` alone
+    still fails here, which is the whole point.
+
+    The four MCP tools deliberately **not** here are `find_pin`,
+    `find_register`, `get_card` and `compare_parts`: the workbench has panes
+    for the first three, and `compare_parts` names its own parts, which is the
+    scope hole `PART_ONLY_TOOLS` and the no-name rule exist to close.
+    """
     from datasheet_analyzer.app import tools
 
     assert tools.TOOL_NAMES == (
         "list_parts",
         "list_projects",
+        "list_families",
         "get_index",
+        "get_family_index",
         "search",
         "find_spec",
         "find_plots",
         "read_section",
         "get_figure",
         "ask",
+        "get_audit",
     )
     assert set(tools.TOOLS) == set(tools.TOOL_NAMES)
     assert all(callable(tool) for tool in tools.TOOLS.values())
     assert set(tools.PART_ONLY_TOOLS) <= set(tools.TOOL_NAMES)
+    assert set(tools.FAMILY_ONLY_TOOLS) <= set(tools.TOOL_NAMES)
+    assert not set(tools.PART_ONLY_TOOLS) & set(tools.FAMILY_ONLY_TOOLS), (
+        "a tool cannot need one part and a whole series at the same time"
+    )
+
+
+def test_no_agent_tool_names_the_scope_it_answers_for():
+    """The rule the tool surface rests on, pinned beside the surface itself.
+
+    `get_family_index` and `get_audit` take a family name and a part name over
+    MCP, where a client chooses its scope per call. Here the scope is resolved
+    once, before the loop starts, and shown to the user — so a tool that could
+    be handed another name would answer from a second corpus under the first
+    one's label. Adding a tool that takes one has to fail here.
+    """
+    from datasheet_analyzer.app import tools
+
+    for name, tool in tools.TOOLS.items():
+        params = set(inspect.signature(tool).parameters)
+        assert not params & {"part", "project", "family", "part_number", "scope_ref"}, name
 
 
 def test_app_tools_never_imports_the_mcp_server():

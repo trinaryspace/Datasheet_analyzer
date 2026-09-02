@@ -1,9 +1,22 @@
-"""The nine agent tools (ticket 11), mirroring the MCP tool list.
+"""The twelve agent tools (ticket 11), mirroring the MCP tool list.
 
-`list_parts`, `list_projects`, `get_index`, `search`, `find_spec`,
-`find_plots`, `read_section`, `get_figure`, `ask` — the same nine the MCP
-server exposes, because the surface an agent needs does not change with the
-transport.
+`list_parts`, `list_projects`, `list_families`, `get_index`,
+`get_family_index`, `search`, `find_spec`, `find_plots`, `read_section`,
+`get_figure`, `ask`, `get_audit` — because the surface an agent needs does not
+change with the transport.
+
+Phase 5 froze the first nine. Phase 7 added `list_families`,
+`get_family_index` and `get_audit` to the MCP surface and this one was left
+behind, so a browser turn could be *scoped* to a family (`ScopeRef.kind`
+carries it, `deps.get_retriever` resolves it) and had no tool that could read
+one, and no way at all to grade a corpus before answering from it. The three
+that MCP takes as arguments — `get_family_index(name)`, `get_audit(part)` —
+take none here, for the reason below.
+
+The four MCP tools this surface still does not carry are `find_pin`,
+`find_register`, `get_card` and `compare_parts`. That is the workbench having
+panes for them rather than an oversight: `compare_parts` in particular names
+its own parts and would be a scope hole exactly like a `part` argument.
 
 Every one is a **thin adapter over `retrieve/`**: no retrieval logic, no
 citation formatting, no JSON shapes of its own. Results come from each hit's
@@ -22,16 +35,24 @@ opposed needs. The logic worth sharing already lives in `retrieve/`; that is
 the seam working as designed.
 
 **Scope is injected, never chosen.** A tool receives an already-resolved
-`Retriever` or `ProjectRetriever`, not a `part`/`project` string pair.
-Resolution happened once, before the loop started (ticket 10), and the agent
-must not be able to change scope mid-answer: the scope shown to the user has
-to be the scope the answer came from. No tool takes a part or project name,
-so there is no argument through which the agent could widen it.
+`Retriever`, `ProjectRetriever` or `FamilyRetriever`, not a name. Resolution
+happened once, before the loop started (ticket 10), and the agent must not be
+able to change scope mid-answer: the scope shown to the user has to be the
+scope the answer came from. No tool takes a part, project **or family** name,
+so there is no argument through which the agent could widen it — which is why
+`get_family_index` here maps the series this turn is scoped to rather than one
+the model names, and `get_audit` grades the corpus the answer will come from.
 
-The three part-only tools reject a `ProjectRetriever` with a structured error
-rather than an `AttributeError`: an index, a section file and a figure each
-belong to one part, and "the project has no `index_markdown`" is a stack
-trace, not an answer.
+The four part-only tools reject a `ProjectRetriever` with a structured error
+rather than an `AttributeError`: an index, a section file, a figure and a
+scorecard each belong to one part, and "the project has no `index_markdown`"
+is a stack trace, not an answer. `get_family_index` is that rule's mirror and
+refuses anything that is not a family.
+
+`FamilyRetriever` **subclasses** `ProjectRetriever`, so every `isinstance`
+check here asks about the family first. With the checks the other way round a
+series reports `kind: "project"` on every payload and every refusal calls it
+a design — which is what this module did before phase 7's tools reached it.
 
 Truncation at `chat_tool_max_tokens` is **always announced** in the payload.
 Silent loss is the one failure an agent cannot detect, so a payload that had
@@ -61,10 +82,14 @@ from datasheet_analyzer.retrieve import (
     Retriever,
     discover_parts,
 )
+from datasheet_analyzer.retrieve.family import FamilyRetriever
 from datasheet_analyzer.tokens import count_tokens, truncate_to_tokens
 
-#: A resolved scope: one part corpus, or one project's member corpora.
-Scope = Retriever | ProjectRetriever
+#: A resolved scope: one part corpus, one project's member corpora, or one
+#: declared family's. `FamilyRetriever` is a `ProjectRetriever` subclass, so
+#: every `isinstance` check in this module asks about the **family** first —
+#: getting that order wrong is how a family answer reports itself as a project.
+Scope = Retriever | ProjectRetriever | FamilyRetriever
 
 #: The tool surface, in the order the system prompt introduces it. Ticket 12
 #: builds the runner's tool list from this, so a tool that is not named here
@@ -72,18 +97,26 @@ Scope = Retriever | ProjectRetriever
 TOOL_NAMES: tuple[str, ...] = (
     "list_parts",
     "list_projects",
+    "list_families",
     "get_index",
+    "get_family_index",
     "search",
     "find_spec",
     "find_plots",
     "read_section",
     "get_figure",
     "ask",
+    "get_audit",
 )
 
-#: The three tools that need one part's corpus and cannot answer for a
-#: project: an index, a section file and a figure all belong to one part.
-PART_ONLY_TOOLS: tuple[str, ...] = ("get_index", "read_section", "get_figure")
+#: The four tools that need one part's corpus and cannot answer for a project
+#: or a family: an index, a section file, a figure and a corpus scorecard all
+#: belong to one part.
+PART_ONLY_TOOLS: tuple[str, ...] = ("get_index", "read_section", "get_figure", "get_audit")
+
+#: The one tool that needs a *family* scope. Its mirror image: `get_index` is
+#: refused for a series, `get_family_index` is refused for anything else.
+FAMILY_ONLY_TOOLS: tuple[str, ...] = ("get_family_index",)
 
 #: The setting every truncation notice names. A notice that does not say how
 #: to see the rest is only half a notice.
@@ -111,11 +144,18 @@ _BUDGET_NOTICE = (
 )
 
 _PART_ONLY_NOTICE = (
-    "`{tool}` needs one part, but this turn is scoped to project {name!r} "
-    "({parts}). An index, a section file and a figure each belong to a single "
-    "part. Use `search`, `find_spec`, `find_plots` or `ask`, which do span a "
-    "project, or start a new turn scoped to one of its parts — a tool cannot "
-    "change the scope it was given."
+    "`{tool}` needs one part, but this turn is scoped to {kind} {name!r} "
+    "({parts}). An index, a section file, a figure and a corpus scorecard each "
+    "belong to a single part. Use `search`, `find_spec`, `find_plots` or "
+    "`ask`, which do span a {kind}, or start a new turn scoped to one of its "
+    "parts — a tool cannot change the scope it was given."
+)
+
+_FAMILY_ONLY_NOTICE = (
+    "`{tool}` maps a declared series, but this turn is scoped to {kind} "
+    "{name!r}. Start a new turn scoped to a family — `list_families` names "
+    "the ones this machine has — because a tool cannot change the scope it "
+    "was given, and a family index reads pages from every member."
 )
 
 #: Image types by extension — **data, not the host's configuration**, the same
@@ -163,6 +203,7 @@ _EMPTY_FIGURE: dict[str, Any] = {
 __all__ = [
     "ASK_BUDGET_FLOOR",
     "CAP_SETTING",
+    "FAMILY_ONLY_TOOLS",
     "FIGURE_MEDIA_TYPES",
     "PART_ONLY_TOOLS",
     "TOOLS",
@@ -171,16 +212,55 @@ __all__ = [
     "ask",
     "find_plots",
     "find_spec",
+    "get_audit",
+    "get_family_index",
     "get_figure",
     "get_index",
+    "list_families",
     "list_parts",
     "list_projects",
     "read_section",
     "search",
 ]
 
+#: The body keys `get_family_index` still owes a caller when it cannot answer.
+_EMPTY_FAMILY_INDEX: dict[str, Any] = {
+    "family": "",
+    "title": "",
+    "members": [],
+    "reference": "",
+    "unbuilt": [],
+    "file": "",
+    "n_sections": 0,
+    "n_shared_sections": 0,
+    "n_deltas": 0,
+    "n_specs_aligned": 0,
+    "n_specs_identical": 0,
+    "schema_version": "",
+    "text": "",
+}
 
-# --- the nine tools -----------------------------------------------------------
+#: The body keys `get_audit` still owes a caller when it cannot answer. `grade`
+#: is `None` rather than `"F"`: a corpus nobody could read has not earned a
+#: letter, and printing one would be the defamation the `n/a` rule forbids.
+_EMPTY_AUDIT: dict[str, Any] = {
+    "grade": None,
+    "score": None,
+    "rubric_version": "",
+    "schema_version": "",
+    "metrics": [],
+    "n_graded": 0,
+    "n_unavailable": 0,
+    "unavailable_policy": "",
+    "banner": "",
+    "headline": "",
+    "notes": [],
+    "count": 0,
+    "total": 0,
+}
+
+
+# --- the twelve tools ---------------------------------------------------------
 
 
 def list_parts(*, settings: Settings | None = None) -> dict[str, Any]:
@@ -206,6 +286,86 @@ def list_projects(*, settings: Settings | None = None) -> dict[str, Any]:
         _project_summary(name, settings) for name in _project_names(settings.projects_dir)
     ]
     return _fit_list(payload, "projects", cap)
+
+
+def list_families(*, settings: Settings | None = None) -> dict[str, Any]:
+    """Every declared part family: its members, and whether each is built.
+
+    Membership is read from `registry/families.yaml` and nowhere else. A
+    grouping nobody has confirmed lives in the candidate file and is not listed
+    here — proposing one is `dsa family suggest`, a local command deliberately
+    not offered to the agent: nothing a model calls may widen the set of
+    families this application will answer for.
+
+    A catalog call, like `list_parts` and `list_projects`: it names what exists
+    and quotes no datasheet, so it carries no citations and takes no scope.
+    """
+    settings = _settings(settings)
+    cap = settings.chat_tool_max_tokens
+    payload = _envelope("list_families", max_tokens=cap)
+    registry = _load_families(settings)
+    payload["families"] = [
+        _family_summary(registry.families[name], settings) for name in registry.names
+    ]
+    return _fit_list(payload, "families", cap)
+
+
+def get_family_index(*, scope: Scope, settings: Settings | None = None) -> dict[str, Any]:
+    """The injected family's `FAMILY_INDEX.md` — one map for a whole series.
+
+    `get_index` one noun across, and **derived live** from the members'
+    published records rather than read off `families/<NAME>/`, for the reason
+    a design card is built on demand: that directory is a cache of this call,
+    not its source, so a turn never depends on whether somebody ran
+    `dsa family build` first.
+
+    It takes **no family name**. The series it maps is the one this turn was
+    scoped to, because a `name` argument would be a hole in the promise the
+    whole module rests on: a tool that could be handed `AFE795x` while the user
+    was shown `AFE7950` would answer from a second datasheet's pages under the
+    first one's label. A non-family scope is refused with the sentence that
+    says so.
+
+    A member with no corpus is named in `unbuilt` and contributes nothing; it
+    is never silently dropped, because a family answer quietly missing one
+    device reads as an answer for all of them.
+    """
+    from datasheet_analyzer.families import build_family_index, render_family_index
+    from datasheet_analyzer.families.store import FAMILY_INDEX_FILENAME
+    from datasheet_analyzer.retrieve.family import load_members
+
+    settings = _settings(settings)
+    cap = settings.chat_tool_max_tokens
+    refused = _refuse_non_family("get_family_index", scope, cap, **_EMPTY_FAMILY_INDEX)
+    if refused is not None:
+        return refused
+    entry = _load_families(settings).families.get(scope.name)
+    members = load_members(list(scope.parts), settings.parts_dir)
+    index = build_family_index(
+        members,
+        name=scope.name,
+        title=entry.title if entry is not None else "",
+    )
+    payload = _envelope("get_family_index", max_tokens=cap, scope=scope)
+    payload["family"] = index.name
+    payload["title"] = index.title
+    payload["members"] = list(index.members)
+    payload["reference"] = index.reference
+    payload["unbuilt"] = [m.part_number for m in members if not m.built]
+    payload["file"] = FAMILY_INDEX_FILENAME
+    payload["n_sections"] = len(index.sections)
+    payload["n_shared_sections"] = len(index.shared_sections)
+    payload["n_deltas"] = index.n_deltas
+    payload["n_specs_aligned"] = index.n_specs_aligned
+    payload["n_specs_identical"] = index.n_specs_identical
+    payload["schema_version"] = index.schema_version
+    payload["warning"] = _unbuilt_warning(payload["unbuilt"])
+    # Rendered under the *chat* budget rather than the file's own, because
+    # that is the budget this reader pays; `render_family_index` degrades in
+    # the order the family index declares rather than losing its tail to a
+    # blind trim.
+    payload["text"] = render_family_index(index, token_budget=cap)
+    return _fit_text(payload, "text", cap)
 
 
 def get_index(*, scope: Scope, settings: Settings | None = None) -> dict[str, Any]:
@@ -424,17 +584,64 @@ def ask(
         attempt = max(ASK_BUDGET_FLOOR, attempt // 2)
 
 
+def get_audit(*, scope: Scope, settings: Settings | None = None) -> dict[str, Any]:
+    """Grade the scoped corpus before answering from it: readings and a letter.
+
+    `dsa audit` on the chat surface. Every reading is a count of records the
+    corpus already published divided by another — no model is called anywhere
+    on this path — and the thresholds are checked-in data
+    (`registry/audit_rubric.yaml`), so a disagreement about a grade is a YAML
+    edit rather than an argument with this tool.
+
+    `headline` is the sentence the whole artifact exists to produce: one line
+    to put in front of an answer to downgrade its own confidence language
+    before speaking. A metric that could not be measured is `available: false`
+    with a reason, is excluded from the overall letter, and is never reported
+    as `0`; `grade` is null when too few metrics could be computed for an
+    average to mean anything.
+
+    Part-scoped, and it takes no part name: a scorecard is a statement about
+    one published corpus, and the corpus it grades has to be the one the answer
+    will come from.
+    """
+    from datasheet_analyzer.audit import build_scorecard
+    from datasheet_analyzer.evalh.golden import default_golden_path
+
+    settings = _settings(settings)
+    cap = settings.chat_tool_max_tokens
+    refused = _refuse_project("get_audit", scope, cap, **_EMPTY_AUDIT)
+    if refused is not None:
+        return refused
+    card = build_scorecard(scope.part_dir, golden=default_golden_path(scope.part))
+    payload = _envelope("get_audit", max_tokens=cap, scope=scope)
+    payload["grade"] = card.grade.value if card.grade else None
+    payload["score"] = card.score
+    payload["rubric_version"] = card.rubric_version
+    payload["schema_version"] = card.schema_version
+    payload["metrics"] = [m.model_dump(mode="json") for m in card.metrics]
+    payload["n_graded"] = card.n_graded
+    payload["n_unavailable"] = card.n_unavailable
+    payload["unavailable_policy"] = card.unavailable_policy
+    payload["banner"] = card.banner
+    payload["headline"] = card.headline
+    payload["notes"] = list(card.notes)
+    return _fit_list(payload, "metrics", cap)
+
+
 #: Name -> callable, in `TOOL_NAMES` order. The registry ticket 12 iterates.
 TOOLS: dict[str, Any] = {
     "list_parts": list_parts,
     "list_projects": list_projects,
+    "list_families": list_families,
     "get_index": get_index,
+    "get_family_index": get_family_index,
     "search": search,
     "find_spec": find_spec,
     "find_plots": find_plots,
     "read_section": read_section,
     "get_figure": get_figure,
     "ask": ask,
+    "get_audit": get_audit,
 }
 
 
@@ -446,20 +653,32 @@ def _settings(settings: Settings | None) -> Settings:
 
 
 def _scope_ref(scope: Scope | None) -> dict[str, Any]:
-    """The scope, as the payload reports it back — never as an argument in."""
+    """The scope, as the payload reports it back — never as an argument in.
+
+    `kind` is `ScopeRef.kind`'s vocabulary (`part | project | family`), so what
+    a tool result says answered the turn is the same noun the `scope` frame
+    showed the user before the loop started. The family branch comes **first**
+    because `FamilyRetriever` subclasses `ProjectRetriever`: with the checks
+    the other way round a series reports itself as a design, and every refusal
+    below calls it one.
+    """
     if scope is None:
         return {"kind": "", "name": "", "parts": []}
+    if isinstance(scope, FamilyRetriever):
+        return {"kind": "family", "name": scope.name, "parts": list(scope.parts)}
     if isinstance(scope, ProjectRetriever):
         return {"kind": "project", "name": scope.name, "parts": list(scope.parts)}
     return {"kind": "part", "name": scope.part, "parts": [scope.part]}
 
 
 def _refuse_project(tool: str, scope: Scope, cap: int, **body: Any) -> dict[str, Any] | None:
-    """`None` for a part scope; a structured refusal for a project scope.
+    """`None` for a part scope; a structured refusal for a multi-part scope.
 
     Asked before anything touches the scope object, so a project never reaches
     a `Retriever`-only attribute and the caller reads a sentence instead of an
-    `AttributeError`.
+    `AttributeError`. The refusal names the scope by the kind it actually is:
+    telling a user their family is a project is a small lie, and it is the
+    same lie `_scope_ref` used to tell.
     """
     if not isinstance(scope, ProjectRetriever):
         return None
@@ -467,6 +686,7 @@ def _refuse_project(tool: str, scope: Scope, cap: int, **body: Any) -> dict[str,
         tool,
         _PART_ONLY_NOTICE.format(
             tool=tool,
+            kind=_scope_ref(scope)["kind"],
             name=scope.name,
             parts=", ".join(scope.parts) or "no member parts",
         ),
@@ -474,6 +694,72 @@ def _refuse_project(tool: str, scope: Scope, cap: int, **body: Any) -> dict[str,
         scope=scope,
         **body,
     )
+
+
+def _refuse_non_family(tool: str, scope: Scope, cap: int, **body: Any) -> dict[str, Any] | None:
+    """`None` for a family scope; a structured refusal for anything else.
+
+    `_refuse_project` one noun across, and the mirror of the same rule: a tool
+    answers at the scope it was handed or says why it cannot, and never widens
+    one part into the series it happens to belong to.
+    """
+    if isinstance(scope, FamilyRetriever):
+        return None
+    ref = _scope_ref(scope)
+    return _error(
+        tool,
+        _FAMILY_ONLY_NOTICE.format(tool=tool, kind=ref["kind"] or "nothing", name=ref["name"]),
+        max_tokens=cap,
+        scope=scope,
+        **body,
+    )
+
+
+def _load_families(settings: Settings):
+    """The declared family registry, read from `registry/families.yaml`.
+
+    A read, not a decision: `families.registry` owns what a family *is*, and
+    this application only reports what it finds there. Imported at call time
+    like every other optional reach, so `app/tools.py` stays importable.
+    """
+    from datasheet_analyzer.families import load_families
+    from datasheet_analyzer.families.registry import families_path
+
+    return load_families(families_path(settings.registry_dir))
+
+
+def _family_summary(entry: Any, settings: Settings) -> dict[str, Any]:
+    """One `list_families` row, with each member's built state.
+
+    No `error` key, unlike `_project_summary`: a project is a file that can
+    fail to load, while a family is one entry in a registry this call has
+    already loaded whole. There is nothing left to go wrong per row.
+    """
+    from datasheet_analyzer.families.store import FAMILY_INDEX_FILENAME
+
+    return {
+        "name": entry.name,
+        "title": entry.title,
+        "members": [
+            {"part": member, "built": is_built(member, settings.parts_dir)}
+            for member in entry.members
+        ],
+        "reference": entry.reference,
+        "confirmed": entry.confirmed,
+        "note": entry.note,
+        "built": (settings.families_dir / entry.name / FAMILY_INDEX_FILENAME).exists(),
+    }
+
+
+def _unbuilt_warning(parts: list[str]) -> str:
+    """The warning a family answer carries when a member has no corpus.
+
+    `retrieve.scope.missing_corpus_warning` is that wording, written once; a
+    second phrasing here would be a second promise about what is missing.
+    """
+    from datasheet_analyzer.retrieve.scope import missing_corpus_warning
+
+    return missing_corpus_warning(parts)
 
 
 def _revision(scope: Retriever) -> str:

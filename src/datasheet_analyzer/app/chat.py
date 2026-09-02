@@ -2,16 +2,19 @@
 
 One question in, a stream of `ChatEvent`s out. The loop itself is the
 Anthropic SDK's **Tool Runner** (`client.beta.messages.tool_runner(...,
-stream=True)`) over ticket 11's nine tools — the request -> execute ->
+stream=True)`) over `app/tools.py`'s registry — the request -> execute ->
 feed-back cycle is the SDK's job, and this module's job is the two promises a
 cited answer rests on:
 
 **Scope is fixed before the first model call and cannot change.** It is
 resolved once (ticket 10), emitted as the stream's first frame, and the
 already-resolved retriever is *injected into the tools*, so no tool takes a
-`part` argument and the agent has no way to widen or move the scope
-mid-answer. An ambiguous resolution never starts a loop at all: the
-candidates go out on the `scope` frame and the turn ends, so the UI can ask.
+`part`, `project` or `family` argument and the agent has no way to widen or
+move the scope mid-answer. An ambiguous resolution never starts a loop at all:
+the candidates go out on the `scope` frame and the turn ends, so the UI can
+ask. The two phase-7 tools that name their subject over MCP —
+`get_family_index(name)` and `get_audit(part)` — therefore name nothing here:
+they read the scope this turn was given.
 
 **Citations are extracted structurally, never parsed out of prose.** Every
 `citation` frame is built from a `Citation` living inside a tool result the
@@ -36,6 +39,7 @@ from __future__ import annotations
 
 import base64
 import functools
+import inspect
 import json
 import logging
 from collections.abc import AsyncIterator, Mapping, Sequence
@@ -322,16 +326,39 @@ def tool_summary(name: str, arguments: Mapping[str, Any] | None = None) -> str:
         )
     if name == "get_index":
         return "Reading the corpus index"
+    if name == "get_family_index":
+        return "Reading the family index"
+    if name == "get_audit":
+        return "Grading this corpus"
     if name == "list_parts":
         return "Listing parts"
     if name == "list_projects":
         return "Listing projects"
+    if name == "list_families":
+        return "Listing families"
     return f"Running {name}"
 
 
 def _payload_text(payload: object) -> str:
     """One tool result as JSON the model can read; never raises on odd types."""
     return json.dumps(payload, indent=None, default=str, ensure_ascii=False)
+
+
+def _accepts(fn: Any, name: str) -> bool:
+    """Whether `fn` would accept `name=` as a keyword.
+
+    A callable that takes `**kwargs` accepts anything, and a callable whose
+    signature cannot be read is given the benefit of the doubt — this decides
+    what to *pass*, and refusing to pass a scope to a tool that wanted one is
+    the worse of the two failures.
+    """
+    try:
+        params = inspect.signature(fn).parameters
+    except (TypeError, ValueError):  # pragma: no cover - builtins, C callables
+        return True
+    if any(p.kind is inspect.Parameter.VAR_KEYWORD for p in params.values()):
+        return True
+    return name in params
 
 
 def build_tools(
@@ -341,11 +368,15 @@ def build_tools(
     registry: Mapping[str, Any] | None = None,
     on_result: Any = None,
 ) -> list[Any]:
-    """The nine tools, each bound to the already-resolved `scope`.
+    """The twelve tools, each bound to the already-resolved `scope`.
 
-    `scope` is the `Retriever` / `ProjectRetriever` ticket 10 resolved, and it
-    is closed over rather than passed as an argument: the model never sees a
-    `part` parameter, so it cannot change the scope its answer is drawn from.
+    `scope` is the `Retriever` / `ProjectRetriever` / `FamilyRetriever` ticket
+    10 resolved, and it is closed over rather than passed as an argument: the
+    model never sees a `part`, `project` or `family` parameter, so it cannot
+    change the scope its answer is drawn from. That is why `get_family_index`
+    takes no family name and `get_audit` takes no part name here, although
+    both do over MCP — an MCP client chooses its own scope per call, and this
+    loop was given one before it started.
 
     `registry` defaults to `app.tools.TOOLS` (ticket 11) and is injectable so
     a test can drive the loop over fakes. `on_result` is called with every
@@ -361,7 +392,17 @@ def build_tools(
         # Positional-only: `find_spec` takes a `name` argument of its own, and
         # a keyword collision here would be a runtime error in one tool only.
         fn = registry[tool_name]
-        bound = functools.partial(fn, scope=scope, settings=settings, **kwargs)
+        # The catalog tools (`list_parts`, `list_projects`, `list_families`)
+        # take no scope: they name what exists on this machine and answer from
+        # no corpus. Binding `scope=` to them unconditionally made every call
+        # come back as an `is_error` tool result reading
+        # `TypeError: list_parts() got an unexpected keyword argument 'scope'`
+        # — a real defect that only a driven turn could find, because a tool
+        # that is merely *declared* never gets called. Asked of the callable
+        # rather than of a hard-coded name list, so an injected fake registry
+        # (whose tools take `**kwargs`) still receives the scope it expects.
+        extra = {"scope": scope} if _accepts(fn, "scope") else {}
+        bound = functools.partial(fn, settings=settings, **extra, **kwargs)
         payload = await anyio.to_thread.run_sync(bound)
         if on_result is not None:
             on_result(tool_name, payload)
@@ -378,9 +419,23 @@ def build_tools(
         return _payload_text(await call("list_projects"))
 
     @beta_async_tool
+    async def list_families() -> str:
+        """Every declared part family on this machine, and whether each member is built."""
+        return _payload_text(await call("list_families"))
+
+    @beta_async_tool
     async def get_index() -> str:
         """The part's INDEX.md — the map of its corpus. Read this first."""
         return _payload_text(await call("get_index"))
+
+    @beta_async_tool
+    async def get_family_index() -> str:
+        """This family's FAMILY_INDEX.md: what every member prints identically, and what moved.
+
+        Only for a turn scoped to a declared family. It maps the series this
+        conversation is about; there is no way to ask it about another one.
+        """
+        return _payload_text(await call("get_family_index"))
 
     @beta_async_tool
     async def search(query: str, limit: int = 5) -> str:
@@ -444,16 +499,29 @@ def build_tools(
         """
         return _payload_text(await call("ask", question=question, budget=budget))
 
+    @beta_async_tool
+    async def get_audit() -> str:
+        """Grade this corpus before quoting it: readings, a letter and one headline sentence.
+
+        Deterministic counts over what the corpus already published — no model
+        is involved. Call it when the answer will carry numbers a reader might
+        act on, and put `headline` in front of the answer if the grade is low.
+        """
+        return _payload_text(await call("get_audit"))
+
     ordered = [
         list_parts,
         list_projects,
+        list_families,
         get_index,
+        get_family_index,
         search,
         find_spec,
         find_plots,
         read_section,
         get_figure,
         ask,
+        get_audit,
     ]
     names = set(registry)
     return [tool for tool in ordered if tool.name in names]
