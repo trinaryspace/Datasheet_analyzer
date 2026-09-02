@@ -14,7 +14,7 @@
       "mean_fidelity": 0.0
     }
   },
-  "generated_at": "2026-09-01T19:10:59.317913Z",
+  "generated_at": "2026-09-02T04:58:55.844689Z",
   "documents": [
     {
       "content_hash": "52d435c0095ec0b002e36dcbc56711ecc7c909945cc756768ed168907be3b131",
@@ -547,7 +547,7 @@
     "n_specs": 536,
     "n_plot_files": 492,
     "total_tokens": 39059,
-    "index_tokens": 2351,
+    "index_tokens": 2411,
     "boilerplate_tokens_removed": 0,
     "sections_with_pages": 39,
     "sections_without_pages": 0,
@@ -563,6 +563,8 @@
       "medium": 492,
       "low": 0
     },
-    "agent_doc_tokens": 1799
+    "agent_doc_tokens": 1799,
+    "n_errata_items": 0,
+    "n_errata_linked": 0
   }
 }

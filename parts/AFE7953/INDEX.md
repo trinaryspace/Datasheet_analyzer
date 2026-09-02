@@ -1,3 +1,7 @@
+<!-- dsa:staleness -->
+> ⚠ Revision not checked: this corpus is built from SBASAN1A and has not been confirmed against upstream. Run `dsa check-revisions --part AFE7953` before relying on it for a design decision.
+<!-- /dsa:staleness -->
+
 # AFE7953 — datasheet corpus
 
 > The AFE7953 is a high performance, wide bandwidth multi-channel transceiver, integrating two RF sampling transmitter chains and two RF sampling receiver chains. With operation up to 12GHz, this device enables direct RF sampling in the L, S, C and X-band frequency ranges without the need for additional frequency conversions stages. This improvement in density and flexibility enables high-channel-count, multi-mission systems.

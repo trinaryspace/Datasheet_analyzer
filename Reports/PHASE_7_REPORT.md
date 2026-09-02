@@ -511,6 +511,12 @@ the 4000-token budget that ships — a bound you did not apply is not a result:
 |---|---|---|---|---|---|---|---|---|
 | 39 | 14 | 763 | 379 | 384 | 461 | **2290 tok** | 4758 tok | **0.481** |
 
+Re-measured after the protocol-v2 republish of 2026-09-02: the two members'
+`INDEX.md` files are 2466 and 2411 tokens (4877 together, up from 4758) because
+the republish restored the revision-not-checked banner at the top of each, and
+the ratio is **0.470**. `FAMILY_INDEX.md` is unchanged at 2290 tokens — the
+family index is derived from records, and no record moved.
+
 The other half of the win is the one the ticket names: **3664 tokens** of
 section body are identical across both members and are listed once rather than
 twice.

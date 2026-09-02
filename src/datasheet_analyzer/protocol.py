@@ -51,6 +51,10 @@ AGENT_FILENAME = "AGENT.md"
 # The two tracked reference corpora were regenerated in the same commit (ADR
 # 0008: a tracked corpus is current), which is a rewrite of `AGENT.md` and its
 # recorded token count, not a rebuild: no extraction ran and no schema moved.
+# The nine local corpora that were still at v1 republished on 2026-09-02, the
+# same way: `dsa build --no-llm` per part, extraction served from
+# `.cache/extract` for all twelve (content hash, backend) pairs, deterministic
+# descriptions, nothing but `AGENT.md`, `INDEX.md` and `manifest.json` rewritten.
 PROTOCOL_VERSION = "2"
 PROTOCOL_MARKER = f"<!-- dsa-agent-protocol: v{PROTOCOL_VERSION} -->"
 

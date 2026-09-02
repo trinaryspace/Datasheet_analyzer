@@ -482,8 +482,11 @@ identical in both and listed once (3664 tokens counted once instead of twice);
 763 spec rows aligned, 379 printing the same values everywhere and counted
 rather than tabulated, 384 in the delta table, 461 refusals listed with their
 printed values. `FAMILY_INDEX.md` renders to **2290 tokens** under its 4000
-budget against **4758** for the two members' own `INDEX.md` files — a ratio of
-**0.481** — and `family.json` beside it always holds every row the budget capped.
+budget against **4877** for the two members' own `INDEX.md` files — a ratio of
+**0.470** — and `family.json` beside it always holds every row the budget capped.
+(Re-measured 2026-09-02: the member figure was 4758 until the protocol-v2
+republish put the revision-not-checked banner back at the top of each
+`INDEX.md`, which is 59 and 60 tokens. Nothing about the family index moved.)
 
 Neither AFE795x member publishes a readable pin table or register map, and the
 index says so in those words rather than printing an empty table: *"no member
