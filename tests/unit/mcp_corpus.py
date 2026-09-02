@@ -24,6 +24,12 @@ from datasheet_analyzer.config import (
 )
 from datasheet_analyzer.derive.pins import write_pinset
 from datasheet_analyzer.derive.registers import write_registerset
+from datasheet_analyzer.families.registry import (
+    FamilyEntry,
+    FamilyRegistry,
+    families_path,
+    save_families,
+)
 from datasheet_analyzer.models import (
     Confidence,
     DocType,
@@ -309,6 +315,25 @@ def built_settings(tmp_path: Path) -> Settings:
         parts_dir=resolved.parts_dir,
         projects_dir=resolved.projects_dir,
         token_budget=resolved.project_index_token_budget,
+    )
+    # One declared family over the same two parts (phase 7, ticket 07). It is
+    # written into the *tmp* registry, never the packaged one, for the reason
+    # `registry_dir` is redirected at all: a test may not read or rewrite the
+    # families this repository ships. Both members are built, so the family
+    # tools exercise a real index rather than a refusal.
+    save_families(
+        FamilyRegistry(
+            families={
+                "TESTx": FamilyEntry(
+                    name="TESTx",
+                    title="TEST-series fixture devices",
+                    members=["TEST", "OTHER"],
+                    note="fixture family: two corpora built from the same template",
+                    confirmed=True,
+                )
+            }
+        ),
+        families_path(resolved.registry_dir),
     )
     return resolved
 

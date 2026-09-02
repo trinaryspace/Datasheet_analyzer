@@ -1,4 +1,4 @@
-"""The MCP server itself: thirteen tools, two resources, local stdio only.
+"""The MCP server itself: sixteen tools, two resources, local stdio only.
 
 **This is a front end.** It holds no retrieval logic — no corpus walk, no
 parsing of corpus artifacts, no hand-built citation string. Every lookup goes
@@ -13,7 +13,9 @@ the moment retrieval creeps back in here.
 |---|---|---|
 | `list_parts` | — | built parts: revision, vendor, section/spec/plot counts, grade mix |
 | `list_projects` | — | projects, their members and whether each is built |
+| `list_families` | — | declared families, their members and whether each is built |
 | `get_index` | part | the part's `INDEX.md` |
+| `get_family_index` | family | the series' `FAMILY_INDEX.md`, derived live |
 | `search` | part or project | BM25 hits, each cited by construction |
 | `find_spec` | part or project | spec records through the alias ladder |
 | `read_section` | part | one section's verbatim markdown, budgeted |
@@ -24,9 +26,20 @@ the moment retrieval creeps back in here.
 | `find_register` | part or project | registers by name, address or bit field |
 | `get_card` | part | one task-shaped design card, every value cited |
 | `compare_parts` | named parts | two or more parts aligned on one parameter or card |
+| `get_audit` | part | thirteen graded readings and the letter they average to |
 
-The last four are phase 6's **derived** artifacts, and they carry one extra
-rule the extracted ones do not need: nothing on them is generated. Every value
+`list_families`, `get_family_index` and `get_audit` are phase 7's. The first
+two are `list_projects` and `get_index` one noun across — a family is the
+third scope `retrieve.scope` resolves — and both name their family in their
+own body rather than on the envelope's `scope`, following `compare_parts`:
+widening `scope` would change the declared shape of every other tool to say
+something only these two have to say. `get_audit` is the trust call: it grades
+a corpus *before* an agent answers from it, off records the corpus already
+published.
+
+Phase 6's four derived views (`find_pin`, `find_register`, `get_card`,
+`compare_parts`) carry one extra rule the extracted ones do not need: nothing
+on them is generated. Every value
 is printed text copied verbatim, a number computed from it by a named pure
 function, or a label from a checked-in lexicon — and each ships with the
 record and printed page it came from, so a client can check a derived number
@@ -57,6 +70,7 @@ from mcp.server import MCPServer
 from mcp.server.mcpserver.resources import FunctionResource
 from mcp.types import CallToolResult, ImageContent, TextContent
 
+from datasheet_analyzer.audit import build_scorecard
 from datasheet_analyzer.config import PIPELINE_VERSION, Settings, get_settings
 from datasheet_analyzer.derive.cards import load_or_build_card
 from datasheet_analyzer.derive.compare import compare_parts
@@ -67,6 +81,19 @@ from datasheet_analyzer.derive.registers import (
     load_part_registers,
     no_bit_fields_message,
     no_registers_message,
+)
+from datasheet_analyzer.evalh.golden import default_golden_path
+from datasheet_analyzer.families import (
+    FAMILY_INDEX_FILENAME,
+    FamilyMiss,
+    FamilyUnconfirmed,
+    build_family_index,
+    families_path,
+    load_families,
+    render_family_index,
+)
+from datasheet_analyzer.families import (
+    resolve as resolve_family_entry,
 )
 from datasheet_analyzer.mcp_server.responses import (
     ASK_BUDGET_FLOOR,
@@ -99,6 +126,7 @@ from datasheet_analyzer.retrieve import (
     Retriever,
     discover_parts,
 )
+from datasheet_analyzer.retrieve.family import load_members
 from datasheet_analyzer.retrieve.scope import resolve_part, resolve_scope
 
 SERVER_NAME = "datasheet-analyzer"
@@ -126,7 +154,12 @@ def build_server(settings: Settings | None = None) -> MCPServer:
             "`find_plots` to narrow. For design work there are derived views: "
             "`find_pin` during schematic capture, `find_register` for bring-up, "
             "`get_card` for a task-shaped summary (power, thermal, interface, "
-            "limits) and `compare_parts` to choose between devices. Every value "
+            "limits) and `compare_parts` to choose between devices. A declared "
+            "series is the third scope: `list_families` names them and "
+            "`get_family_index` maps one, listing what its members share once "
+            "and only what moved between them. Before trusting a corpus, "
+            "`get_audit` grades it and returns one headline sentence to put in "
+            "front of your answer. Every value "
             "carries a page citation and a confidence grade; open the printed "
             "page when a grade is `low`. Nothing on a derived view is "
             "generated — a field that could not be filled is null and says why. "
@@ -166,6 +199,21 @@ def build_server(settings: Settings | None = None) -> MCPServer:
         ]
         return fit_list(payload, "projects", cap)
 
+    @server.tool(name="list_families", meta=declared("list_families"))
+    def list_families() -> dict[str, Any]:
+        """List every declared part family: its members, and whether each is built.
+
+        Membership is read from `registry/families.yaml` and nowhere else. A
+        grouping nobody has confirmed lives in the candidate file and is not
+        listed here — proposing one is `dsa family suggest`, which is a local
+        command and deliberately not a tool: nothing an agent calls may widen
+        the set of families this server will answer for.
+        """
+        payload = envelope("list_families", max_tokens=cap)
+        registry = load_families(families_path(settings.registry_dir))
+        payload["families"] = [_family_summary(registry.families[n]) for n in registry.names]
+        return fit_list(payload, "families", cap)
+
     @server.tool(name="get_index", meta=declared("get_index"))
     def get_index(part: str) -> dict[str, Any]:
         """Read a part's INDEX.md — the always-loadable map of its corpus.
@@ -190,6 +238,53 @@ def build_server(settings: Settings | None = None) -> MCPServer:
         payload["revision"] = _revision(scope)
         payload["file"] = INDEX_FILENAME
         payload["text"] = scope.index_markdown()
+        return fit_text(payload, "text", cap)
+
+    @server.tool(name="get_family_index", meta=declared("get_family_index"))
+    def get_family_index(name: str) -> dict[str, Any]:
+        """Read a family's FAMILY_INDEX.md — one map for a whole series.
+
+        `get_index` one noun across: the always-loadable file that says which
+        sections the members share, which diverge, and what moved between
+        them. It is **derived live** from the members' published records rather
+        than read off disk, for the reason `get_card` builds a card on demand —
+        `families/<NAME>/` is a cache of this call, not its source, so a client
+        never has to know whether somebody ran `dsa family build` first.
+
+        A member with no corpus is named in `unbuilt` and contributes nothing;
+        it is never silently dropped, because a family answer quietly missing
+        one device reads as an answer for all of them.
+        """
+        try:
+            entry = resolve_family_entry(load_families(families_path(settings.registry_dir)), name)
+        except (FamilyMiss, FamilyUnconfirmed) as exc:
+            return error_response(
+                "get_family_index",
+                str(exc),
+                max_tokens=cap,
+                **{**_EMPTY_FAMILY_INDEX, "family": (name or "").strip()},
+            )
+        members = load_members(entry.members, settings.parts_dir)
+        index = build_family_index(members, name=entry.name, title=entry.title)
+        payload = envelope("get_family_index", max_tokens=cap)
+        payload["family"] = index.name
+        payload["title"] = index.title
+        payload["members"] = list(index.members)
+        payload["reference"] = index.reference
+        payload["unbuilt"] = [m.part_number for m in members if not m.built]
+        payload["file"] = FAMILY_INDEX_FILENAME
+        payload["n_sections"] = len(index.sections)
+        payload["n_shared_sections"] = len(index.shared_sections)
+        payload["n_deltas"] = index.n_deltas
+        payload["n_specs_aligned"] = index.n_specs_aligned
+        payload["n_specs_identical"] = index.n_specs_identical
+        payload["schema_version"] = index.schema_version
+        payload["warning"] = _unbuilt_warning(payload["unbuilt"])
+        # Rendered under the *response* cap rather than the file's own token
+        # budget: the budget this reader is paying is `DSA_MCP_MAX_TOKENS`, and
+        # `render_family_index` degrades in the order the family index declares
+        # rather than losing its tail to a blind trim.
+        payload["text"] = render_family_index(index, token_budget=cap)
         return fit_text(payload, "text", cap)
 
     # --- lookups -------------------------------------------------------------
@@ -516,6 +611,45 @@ def build_server(settings: Settings | None = None) -> MCPServer:
         payload["warning"] = " ".join(comparison.warnings)
         return fit_list(payload, "rows", cap)
 
+    # --- trust (phase 7) -----------------------------------------------------
+
+    @server.tool(name="get_audit", meta=declared("get_audit"))
+    def get_audit(part: str) -> dict[str, Any]:
+        """Grade one corpus before trusting it: thirteen readings and a letter.
+
+        `dsa audit` over MCP. Every reading is a count of records the corpus
+        already published divided by another — no model is called anywhere on
+        this path — and the thresholds are checked-in data
+        (`registry/audit_rubric.yaml`), so a disagreement about a grade is a
+        YAML edit rather than an argument with this tool.
+
+        `headline` is the sentence the whole artifact exists to produce: one
+        line to put in front of an answer to downgrade its own confidence
+        language before speaking. A metric that could not be measured is
+        `available: false` with a reason, is excluded from the overall letter,
+        and is never reported as `0`; `grade` is null when too few metrics
+        could be computed for an average to mean anything.
+        """
+        scope, error = _part_scope(part)
+        if scope is None:
+            return error_response("get_audit", error, max_tokens=cap, part=part, **_EMPTY_AUDIT)
+        card = build_scorecard(scope.part_dir, golden=default_golden_path(scope.part))
+        payload = envelope(
+            "get_audit", max_tokens=cap, part=scope.part, staleness=_staleness(scope)
+        )
+        payload["grade"] = card.grade.value if card.grade else None
+        payload["score"] = card.score
+        payload["rubric_version"] = card.rubric_version
+        payload["schema_version"] = card.schema_version
+        payload["metrics"] = [m.model_dump(mode="json") for m in card.metrics]
+        payload["n_graded"] = card.n_graded
+        payload["n_unavailable"] = card.n_unavailable
+        payload["unavailable_policy"] = card.unavailable_policy
+        payload["banner"] = card.banner
+        payload["headline"] = card.headline
+        payload["notes"] = list(card.notes)
+        return fit_list(payload, "metrics", cap)
+
     @server.tool(name="read_section", meta=declared("read_section"))
     def read_section(part: str, ref: str, max_tokens: int = 0) -> dict[str, Any]:
         """Read one section verbatim, bounded by `max_tokens`.
@@ -789,6 +923,26 @@ def build_server(settings: Settings | None = None) -> MCPServer:
             "staleness": scope.staleness().state.value,
         }
 
+    def _family_summary(entry) -> dict[str, Any]:
+        """One declared family, with each member's built state.
+
+        No `error` key, unlike `_project_summary`: a project is a file that can
+        fail to load, while a family is one entry in a registry this call has
+        already loaded whole. There is nothing left to go wrong per row.
+        """
+        return {
+            "name": entry.name,
+            "title": entry.title,
+            "members": [
+                {"part": member, "built": is_built(member, settings.parts_dir)}
+                for member in entry.members
+            ],
+            "reference": entry.reference,
+            "confirmed": entry.confirmed,
+            "note": entry.note,
+            "built": (settings.families_dir / entry.name / FAMILY_INDEX_FILENAME).exists(),
+        }
+
     def _project_summary(name: str) -> dict[str, Any]:
         try:
             project = load_project(name, settings.projects_dir)
@@ -828,6 +982,55 @@ _EMPTY_SECTION: dict[str, Any] = {
     "matched_via": "",
     "text": "",
 }
+
+#: The same debt for `get_family_index` and `get_audit`. A refused family
+#: still names the family that was asked for (the caller fills `family` in);
+#: a refused audit reports no grade at all rather than an `F`, which would be
+#: a letter earned by a corpus nobody could read.
+_EMPTY_FAMILY_INDEX: dict[str, Any] = {
+    "family": "",
+    "title": "",
+    "members": [],
+    "reference": "",
+    "unbuilt": [],
+    "file": "",
+    "n_sections": 0,
+    "n_shared_sections": 0,
+    "n_deltas": 0,
+    "n_specs_aligned": 0,
+    "n_specs_identical": 0,
+    "schema_version": "",
+    "text": "",
+}
+
+_EMPTY_AUDIT: dict[str, Any] = {
+    "grade": None,
+    "score": None,
+    "rubric_version": "",
+    "schema_version": "",
+    "metrics": [],
+    "n_graded": 0,
+    "n_unavailable": 0,
+    "unavailable_policy": "",
+    "banner": "",
+    "headline": "",
+    "notes": [],
+    "count": 0,
+    "total": 0,
+}
+
+
+def _unbuilt_warning(parts: list[str]) -> str:
+    """The gap a family index still has, in the wording every scope uses.
+
+    `retrieve.scope.missing_corpus_warning` is that wording, written once; this
+    only decides that an MCP response carries it in `warning` rather than on
+    stderr.
+    """
+    from datasheet_analyzer.retrieve.scope import missing_corpus_warning
+
+    return missing_corpus_warning(parts)
+
 
 #: The same debt for `get_card`: a refusal is a payload in the declared shape,
 #: so every body key is present and empty rather than absent.

@@ -781,6 +781,80 @@ _PROJECT_SCHEMA = {
     },
 }
 
+#: One graded reading off `dsa audit` (phase 7, ticket 05). `value`, `grade`,
+#: `numerator` and `denominator` are all nullable because "could not measure"
+#: is a first-class outcome here: a metric the corpus cannot answer carries
+#: `available: false` and a reason, and is excluded from the overall letter
+#: rather than scored `0` (which would defame it) or full marks (which would
+#: flatter it). `source` and `derivation` ride every reading for the reason
+#: invariant 8 requires them on every derived value.
+_AUDIT_METRIC_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": [
+        "key",
+        "label",
+        "kind",
+        "value",
+        "state",
+        "numerator",
+        "denominator",
+        "grade",
+        "weight",
+        "available",
+        "unavailable_reason",
+        "detail",
+        "source",
+        "derivation",
+    ],
+    "properties": {
+        "key": _STR,
+        "label": _STR,
+        "kind": {"enum": ["ratio", "boolean", "state"]},
+        "value": {"type": ["number", "null"]},
+        "state": _STR,
+        "numerator": _INT_OR_NULL,
+        "denominator": _INT_OR_NULL,
+        "grade": {"enum": ["A", "B", "C", "D", "F", None]},
+        "weight": {"type": "number"},
+        "available": {"type": "boolean"},
+        "unavailable_reason": _STR,
+        "detail": _STR,
+        "source": _STR,
+        "derivation": _STR,
+    },
+}
+
+#: One declared member of a family, as `list_families` reports it. `built`
+#: is the same fact `list_projects` reports per member and for the same
+#: reason: a series whose members are not all built answers for the ones that
+#: are, and the caller has to be able to see which those were.
+_FAMILY_MEMBER_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["part", "built"],
+    "properties": {"part": _STR, "built": {"type": "boolean"}},
+}
+
+#: One declared family. `confirmed` is always `true` here — `list_families`
+#: reads `registry/families.yaml`, and an unconfirmed grouping lives in the
+#: candidate file, which this server never reads — but it is carried anyway so
+#: a client reads the fact rather than inferring it from which tool answered.
+_FAMILY_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["name", "title", "members", "reference", "confirmed", "note", "built"],
+    "properties": {
+        "name": _STR,
+        "title": _STR,
+        "members": {"type": "array", "items": _FAMILY_MEMBER_SCHEMA},
+        "reference": _STR,
+        "confirmed": {"type": "boolean"},
+        "note": _STR,
+        "built": {"type": "boolean"},
+    },
+}
+
 _FIGURE_SCHEMA = {
     "type": "object",
     "additionalProperties": False,
@@ -834,6 +908,51 @@ SCHEMAS: dict[str, dict] = {
     "list_parts": _schema({"parts": {"type": "array", "items": _PART_SCHEMA}}, listed=True),
     "list_projects": _schema(
         {"projects": {"type": "array", "items": _PROJECT_SCHEMA}}, listed=True
+    ),
+    # Phase 7. A family is the third scope `retrieve.scope` resolves, and these
+    # two are its catalog and its map — `list_families` is `list_projects` one
+    # noun across, and `get_family_index` is `get_index` one noun across. Both
+    # name the family in their own body rather than on the envelope's `scope`:
+    # `compare_parts` set that precedent for a tool whose subject is several
+    # parts at once, and widening `scope` would change the declared shape of
+    # every other tool to say something only these two have to say.
+    "list_families": _schema({"families": {"type": "array", "items": _FAMILY_SCHEMA}}, listed=True),
+    "get_family_index": _schema(
+        {
+            "family": _STR,
+            "title": _STR,
+            "members": {"type": "array", "items": _STR},
+            "reference": _STR,
+            "unbuilt": {"type": "array", "items": _STR},
+            "file": _STR,
+            "n_sections": {"type": "integer"},
+            "n_shared_sections": {"type": "integer"},
+            "n_deltas": {"type": "integer"},
+            "n_specs_aligned": {"type": "integer"},
+            "n_specs_identical": {"type": "integer"},
+            "schema_version": _STR,
+            "text": _STR,
+        }
+    ),
+    # `dsa audit`, one call across. The metrics list is the body a cap sheds
+    # from; `grade`, `score`, `banner` and `headline` are the floor, because a
+    # scorecard that lost its headline has lost the sentence it exists to
+    # produce.
+    "get_audit": _schema(
+        {
+            "grade": {"enum": ["A", "B", "C", "D", "F", None]},
+            "score": {"type": ["number", "null"]},
+            "rubric_version": _STR,
+            "schema_version": _STR,
+            "metrics": {"type": "array", "items": _AUDIT_METRIC_SCHEMA},
+            "n_graded": {"type": "integer"},
+            "n_unavailable": {"type": "integer"},
+            "unavailable_policy": _STR,
+            "banner": _STR,
+            "headline": _STR,
+            "notes": {"type": "array", "items": _STR},
+        },
+        listed=True,
     ),
     # No `part` key of their own: the envelope's `scope.part` already names it,
     # and one fact in two places is one fact that can disagree with itself.

@@ -47,9 +47,12 @@ from datasheet_analyzer.retrieve import Retriever, clear_index_cache
 from datasheet_analyzer.tokens import count_tokens
 
 # Tools that return corpus content, and therefore must cite it. `list_parts`,
-# `list_projects` and `get_index` are catalog/orientation calls: they make no
-# claim about what a datasheet says, so an empty citation list is the honest
-# answer there rather than a manufactured one.
+# `list_projects`, `list_families`, `get_index` and `get_family_index` are
+# catalog/orientation calls: they make no claim about what a datasheet says, so
+# an empty citation list is the honest answer there rather than a manufactured
+# one. `get_audit` is deliberately with them: a scorecard is a statement about
+# the *corpus* — how much of it carries pages, grades and a golden set — and it
+# quotes no printed value, so there is no page for it to cite.
 CITING_TOOLS = (
     "search",
     "find_spec",
@@ -70,7 +73,9 @@ CITING_TOOLS = (
 ALL_CALLS = [
     ("list_parts", {}),
     ("list_projects", {}),
+    ("list_families", {}),
     ("get_index", {"part": "TEST"}),
+    ("get_family_index", {"name": "TESTx"}),
     ("search", {"part": "TEST", "query": "sysref setup"}),
     ("find_spec", {"part": "TEST", "name": "supply"}),
     ("read_section", {"part": "TEST", "ref": "4.3"}),
@@ -81,6 +86,7 @@ ALL_CALLS = [
     ("find_register", {"part": "TEST", "addr": "0x1A04"}),
     ("get_card", {"part": "TEST", "card": "power"}),
     ("compare_parts", {"parts": ["TEST", "OTHER"], "symbol": "TJ"}),
+    ("get_audit", {"part": "TEST"}),
 ]
 # Everything except `ask`: a pack carries its own rendered markdown *and* its
 # structured rows, so it has a real serialization floor of a few hundred
@@ -147,6 +153,12 @@ class TestEveryToolOverTheMemoryTransport:
             "find_register",
             "get_card",
             "compare_parts",
+            # Phase 7. Three genuinely new tools, so this set grows by three:
+            # a family catalog, a family map, and the trust call that grades a
+            # corpus before an agent answers from it.
+            "list_families",
+            "get_family_index",
+            "get_audit",
         }
 
     def test_every_tool_ships_its_declared_response_schema(self, server):
@@ -161,7 +173,9 @@ class TestEveryToolOverTheMemoryTransport:
         [
             ("list_parts", {}),
             ("list_projects", {}),
+            ("list_families", {}),
             ("get_index", {"part": "TEST"}),
+            ("get_family_index", {"name": "TESTx"}),
             ("search", {"part": "TEST", "query": "sysref setup"}),
             ("find_spec", {"part": "TEST", "name": "junction temperature"}),
             ("read_section", {"part": "TEST", "ref": "4.3"}),
@@ -172,6 +186,7 @@ class TestEveryToolOverTheMemoryTransport:
             ("find_register", {"part": "TEST", "addr": "0x1A04"}),
             ("get_card", {"part": "TEST", "card": "power"}),
             ("compare_parts", {"parts": ["TEST", "OTHER"], "symbol": "TJ"}),
+            ("get_audit", {"part": "TEST"}),
         ],
     )
     def test_every_response_validates_against_its_declared_schema(self, server, tool, arguments):
@@ -694,3 +709,122 @@ class TestServeWiring:
         monkeypatch.setattr("datasheet_analyzer.cli.get_settings", lambda: settings)
         assert cli.main(["serve", "--mcp"]) == 0
         assert started == ["stdio"]
+
+
+# --- phase 7: the family scope and the trust call ----------------------------
+
+
+class TestTheFamilyTools:
+    """`list_families` and `get_family_index` — a series over MCP.
+
+    The rule under test is the one a family exists for: membership is
+    *declared*, and an index lists what the members share once. Neither tool
+    may widen the set of families the server answers for.
+    """
+
+    def test_list_families_reports_declared_membership_and_built_state(self, server):
+        payload = payload_of(call(server, "list_families"))
+        assert payload["error"] == ""
+        [family] = payload["families"]
+        assert family["name"] == "TESTx"
+        assert family["reference"] == "TEST", "deltas are signed against the first declared"
+        assert family["members"] == [
+            {"part": "TEST", "built": True},
+            {"part": "OTHER", "built": True},
+        ]
+        assert family["confirmed"] is True
+
+    def test_a_machine_with_no_declared_families_lists_none(self, bare_settings):
+        payload = payload_of(call(S.build_server(bare_settings), "list_families"))
+        assert payload["families"] == []
+        assert payload["error"] == "", "nothing declared is an empty list, not a failure"
+
+    def test_the_index_is_derived_live_rather_than_read_off_disk(self, settings):
+        """No `dsa family build` has run, and the call still answers."""
+        assert not (settings.families_dir / "TESTx").exists()
+        payload = payload_of(call(S.build_server(settings), "get_family_index", name="TESTx"))
+        assert payload["family"] == "TESTx"
+        assert payload["members"] == ["TEST", "OTHER"]
+        assert payload["n_sections"] > 0
+        assert payload["n_shared_sections"] == payload["n_sections"], (
+            "two corpora built from one template share every section"
+        )
+        assert "TESTx" in payload["text"] and "Members: TEST, OTHER" in payload["text"]
+        assert not (settings.families_dir / "TESTx").exists(), "reading writes nothing"
+
+    def test_an_undeclared_family_is_refused_with_the_command_that_fixes_it(self, server):
+        payload = payload_of(call(server, "get_family_index", name="NOPE"))
+        assert payload["family"] == "NOPE", "the refusal still names what was asked for"
+        assert "never inferred from a part number" in payload["error"]
+        assert "dsa family confirm" in payload["error"]
+        assert payload["text"] == "" and payload["members"] == []
+
+    def test_an_unbuilt_member_is_named_rather_than_dropped(self, settings, tmp_path):
+        from datasheet_analyzer.families.registry import (
+            FamilyEntry,
+            FamilyRegistry,
+            families_path,
+            save_families,
+        )
+
+        save_families(
+            FamilyRegistry(
+                families={
+                    "GAPPY": FamilyEntry(
+                        name="GAPPY", title="one built, one not", members=["TEST", "GHOST"]
+                    )
+                }
+            ),
+            families_path(settings.registry_dir),
+        )
+        payload = payload_of(call(S.build_server(settings), "get_family_index", name="GAPPY"))
+        assert payload["unbuilt"] == ["GHOST"]
+        assert "GHOST" in payload["warning"], (
+            "a family answer quietly missing one device reads as an answer for all of them"
+        )
+        assert payload["error"] == "", "a gap is a warning, not a refusal"
+
+
+class TestGetAudit:
+    """`get_audit` — grade the corpus *before* answering from it."""
+
+    def test_it_grades_the_corpus_and_returns_the_headline(self, server):
+        payload = payload_of(call(server, "get_audit", part="TEST"))
+        assert payload["scope"]["part"] == "TEST"
+        assert payload["grade"] in ("A", "B", "C", "D", "F")
+        assert payload["headline"], "the sentence the whole artifact exists to produce"
+        assert payload["rubric_version"], "a grade names the thresholds it was read under"
+        assert payload["count"] == payload["total"] == len(payload["metrics"])
+
+    def test_a_metric_it_could_not_measure_is_excluded_rather_than_scored(self, server):
+        payload = payload_of(call(server, "get_audit", part="TEST"))
+        unavailable = [m for m in payload["metrics"] if not m["available"]]
+        assert unavailable, "this fixture corpus carries no golden set and no errata"
+        for metric in unavailable:
+            assert metric["grade"] is None, "never scored F, which would defame it"
+            assert metric["value"] is None, "never scored 0, which would read as a reading"
+            assert metric["unavailable_reason"], "and it says which fact is missing"
+        assert payload["n_unavailable"] == len(unavailable)
+        assert payload["n_graded"] + payload["n_unavailable"] == len(payload["metrics"])
+        assert "never scored 0" in payload["unavailable_policy"]
+
+    def test_every_reading_names_where_it_came_from(self, server):
+        payload = payload_of(call(server, "get_audit", part="TEST"))
+        for metric in payload["metrics"]:
+            if metric["available"]:
+                assert metric["source"], metric["key"]
+                assert metric["derivation"], metric["key"]
+
+    def test_an_unbuilt_part_is_ungraded_rather_than_graded_f(self, bare_settings):
+        payload = payload_of(call(S.build_server(bare_settings), "get_audit", part="TEST"))
+        assert payload["grade"] is None
+        assert payload["metrics"] == []
+        assert "dsa build" in payload["error"]
+
+    def test_a_capped_scorecard_says_so_and_names_the_setting(self, settings):
+        server = S.build_server(settings.model_copy(update={"mcp_max_tokens": 400}))
+        payload = payload_of(call(server, "get_audit", part="TEST"))
+        assert payload["truncated"] is True
+        assert R.CAP_SETTING in payload["notice"]
+        assert payload["headline"], "the headline is the floor, not a sheddable row"
+        assert payload["over_cap"] is False
