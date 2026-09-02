@@ -10,6 +10,7 @@ budget cannot be enforced on text the core did not produce, so the pack renders
 itself and reports what it cost.
 """
 
+from datasheet_analyzer.retrieve.family import FamilyRetriever, load_members
 from datasheet_analyzer.retrieve.index import (
     INDEX_FILENAME,
     CorpusIndex,
@@ -71,6 +72,7 @@ __all__ = [
     "AnswerPack",
     "Citation",
     "CorpusIndex",
+    "FamilyRetriever",
     "IndexedDoc",
     "PackExcerpt",
     "PackLine",
@@ -87,6 +89,7 @@ __all__ = [
     "build_project_pack",
     "clear_index_cache",
     "discover_parts",
+    "load_members",
     "revision_documents",
     "score_sections",
     "select_revision",
