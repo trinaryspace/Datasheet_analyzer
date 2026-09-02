@@ -85,6 +85,7 @@ from datasheet_analyzer.models import (
     RegisterValue,
 )
 from datasheet_analyzer.retrieve.results import Citation
+from datasheet_analyzer.retrieve.scope import ScopeDirs
 from datasheet_analyzer.structure.device_tables import (
     KIND_REGISTER,
     DeviceRow,
@@ -674,35 +675,46 @@ def no_bit_fields_message(part: str) -> str:
     )
 
 
+def no_member_registers_message(scope: ScopeDirs, without: Sequence[str]) -> str:
+    """The scope-level form of `no_registers_message`; `""` when it does not apply.
+
+    Same distinction `no_member_pins_message` draws, drawn for register maps: a
+    project or family that returned nothing because no member published a
+    register map has not established that the series has no registers, and a
+    reader must never have to add up per-member lines to learn which of the two
+    they are looking at.
+    """
+    if not scope.is_multi or not without:
+        return ""
+    if len(without) < len(scope.parts):
+        return ""
+    return (
+        f"{scope.name}: no member publishes a register map "
+        f"({', '.join(without)}) — this {scope.kind} states nothing about "
+        f"registers, which is not the same as stating its members have none."
+    )
+
+
 # --- CLI -------------------------------------------------------------------
 
 
-def _part_dirs(args: argparse.Namespace) -> tuple[list[tuple[str, Path]], str]:
-    """`([(part, dir)], "")` for the requested scope, or `([], reason)`.
+def _scope_dirs(args: argparse.Namespace) -> ScopeDirs:
+    """The scope this invocation named, resolved to corpus directories.
 
     Scope resolution is `retrieve/scope.py`'s rule (ADR 0006: exactly one of
-    `--part` / `--project`), reused rather than re-decided here. Registers are
-    read off published artifacts rather than through `Retriever`, so this
-    resolves to directories instead of to a retriever.
+    `--part`, `--project` or `--family`) and this is the whole of the CLI's
+    part in it. Registers are read off published artifacts rather than through
+    `Retriever`, which is why it is `resolve_scope_dirs` and not
+    `resolve_scope`; the decision behind both is the same function.
     """
-    from datasheet_analyzer.projects import ProjectError, is_built, load_project, part_dirs
-    from datasheet_analyzer.retrieve.scope import SCOPE_ERROR, no_corpus_error
+    from datasheet_analyzer.retrieve.scope import resolve_scope_dirs
 
-    settings = get_settings()
-    part = (getattr(args, "part", "") or "").strip()
-    project = (getattr(args, "project", "") or "").strip()
-    if bool(part) == bool(project):
-        return [], SCOPE_ERROR
-    if part:
-        if not is_built(part, settings.parts_dir):
-            return [], no_corpus_error(part, settings=settings)
-        return [(part, settings.parts_dir / part)], ""
-    try:
-        loaded = load_project(project, settings.projects_dir)
-    except ProjectError as exc:
-        return [], str(exc)
-    dirs = part_dirs(loaded, settings.parts_dir)
-    return [(d.name, d) for d in dirs], ""
+    return resolve_scope_dirs(
+        getattr(args, "part", "") or "",
+        getattr(args, "project", "") or "",
+        settings=get_settings(),
+        family=getattr(args, "family", "") or "",
+    )
 
 
 def cli_regs(args: argparse.Namespace) -> int:
@@ -714,11 +726,11 @@ def cli_regs(args: argparse.Namespace) -> int:
     from one on stderr, because the two mean different things to someone
     deciding whether to open the PDF.
     """
-    parts, reason = _part_dirs(args)
-    if reason:
-        print(reason, file=sys.stderr)
+    scope = _scope_dirs(args)
+    if scope.reason:
+        print(scope.reason, file=sys.stderr)
         return 2
-    show_part = bool((getattr(args, "project", "") or "").strip())
+    show_part = scope.is_multi
     name = getattr(args, "name", "") or ""
     addr = getattr(args, "addr", "") or ""
     wanted_field = getattr(args, "field", "") or ""
@@ -727,7 +739,7 @@ def cli_regs(args: argparse.Namespace) -> int:
     without: list[str] = []
     fieldless: list[str] = []
     warnings: list[str] = []
-    for part, part_dir in parts:
+    for part, part_dir in scope.parts:
         part_registers = load_part_registers(part_dir, part)
         if not part_registers.sets:
             without.append(part)
@@ -743,11 +755,16 @@ def cli_regs(args: argparse.Namespace) -> int:
         print(no_registers_message(part), file=sys.stderr)
     for part in fieldless:
         print(no_bit_fields_message(part), file=sys.stderr)
+    silent_scope = no_member_registers_message(scope, without)
+    if silent_scope:
+        print(silent_scope, file=sys.stderr)
 
     if getattr(args, "json", False):
         payload = {
             "part": getattr(args, "part", ""),
             "project": getattr(args, "project", ""),
+            "family": getattr(args, "family", ""),
+            "scope": {"kind": scope.kind, "name": scope.name},
             "query": {
                 "name": name,
                 "addr": addr,
@@ -756,6 +773,7 @@ def cli_regs(args: argparse.Namespace) -> int:
             },
             "hits": [h.as_dict() for h in hits],
             "parts_without_registers": without,
+            "no_member_publishes_registers": bool(silent_scope),
             "parts_without_bit_fields": fieldless,
             "warnings": warnings,
         }

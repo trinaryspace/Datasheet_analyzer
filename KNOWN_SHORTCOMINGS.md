@@ -421,25 +421,45 @@ fan-out in, 7 of the 16 tools can fill it rather than 2. The reasoning is in
 `mcp_server/server.py`'s module docstring and the argument that replaced the
 deferral is `Reports/PHASE_7_REPORT.md`.
 
-**Still open, and found while closing it: `dsa pins` / `dsa regs` / `dsa card`
-accept `--family` and refuse it.** `cli._add_scope` puts `--family` on all
-seven scoped commands, but `pins`, `regs` and `card` do not go through
-`retrieve.scope.resolve_scope` — each of `derive/pins.py`, `derive/registers.py`
-and `derive/cards.py` carries its own `_part_dirs` that resolves *directories*
-rather than a retriever, and each re-implements the two-scope XOR. Measured:
-`dsa pins --family AFE795x --type ground`, `dsa regs --family AFE795x --name x`
-and `dsa card --family AFE795x --card power` all print `SCOPE_ERROR` ("name
-exactly one of `part` or `project`") and exit 2, while `dsa query`, `search`,
-`plots` and `ask` all answer. So the family scope is offered by the argument
-parser on three commands that cannot honour it, and the message a user gets
-does not name the argument they passed.
+**Closed 2026-09-02: `dsa pins` / `dsa regs` / `dsa card` accepted `--family`
+and refused it.** `cli._add_scope` put `--family` on all seven scoped commands,
+but `pins`, `regs` and `card` did not go through `retrieve.scope` — each of
+`derive/pins.py`, `derive/registers.py` and `derive/cards.py` carried its own
+`_part_dirs` that resolved *directories* rather than a retriever, and each
+re-implemented the **two**-scope XOR as `bool(part) == bool(project)`. A
+`--family` therefore fell out of that test as "you named neither" and printed
+the two-scope `SCOPE_ERROR`, which is why the refusal never named the argument
+the caller passed: the code had no branch for it to fall into.
 
-`find_pin` and `find_register` over MCP were deliberately **not** given a
-`family` for the same reason: MCP mirrors the CLI's scope set, and giving MCP
-a scope the CLI refuses would swap one asymmetry for its mirror image. Closing
-this properly means the three `_part_dirs` copies resolving through
-`retrieve/scope.py` — a fourth front end's worth of scope logic collapsing into
-the one place ADR 0006 is written down — and then the two MCP tools follow for
-free. Not attempted here: three modules, three exit-code contracts, and no
-member of the one declared family publishes a pin table or a register map to
-test it against (see the pins entry above).
+The three copies are gone. `retrieve/scope.py` now answers the same question in
+two shapes — `resolve_scope` for the lookups that need a retriever,
+`resolve_scope_dirs` for the three that read published artifacts off disk — and
+both call one `chosen_scope`, so ADR 0006's XOR and its wording exist once. The
+directory shape is kept rather than routing the three through `resolve_scope`
+on purpose: a `Retriever` loads a member's specs, plots and search index, which
+is a lot of reading to answer a question about `pins.json`. Every exit-code
+contract is unchanged — 2 for a scope that will not resolve (an unbuilt part, an
+unknown project, an undeclared or unconfirmed family), 1 for an honest empty
+result, 0 for hits — and `tests/unit/test_scope_seam.py` now carries the
+grep-shaped assertion that no `derive/` module counts scopes of its own.
+
+**What a family `dsa pins` says, given that neither AFE795x member publishes a
+pin table.** Each member still gets its own `no pin table was published` line,
+and the scope gets one more: `AFE795x: no member publishes a pin table
+(AFE7950, AFE7953) — this family states nothing about pins, which is not the
+same as stating its members have none.` That is the family index's own wording
+for the same fact, one noun across, so the two surfaces cannot drift; the exit
+code stays 1, and `--json` carries it as `no_member_publishes_pins`. `dsa regs`
+says the same about a register map, `dsa card` about a card no member fills. A
+single `--part` scope does not get the extra line: `no_pins_message` has
+already said it about the one part.
+
+**Still open: `find_pin` and `find_register` over MCP take no `family`.** They
+were deliberately left without one so the two surfaces would keep the same scope
+set, and that argument has now inverted — the CLI resolves a family on all seven
+scoped verbs and MCP on five of seven. The mechanism they need is in place
+(`_pins_for` and `_registers_for` already fan out over a `ProjectRetriever`, and
+`FamilyRetriever` is one), so what is left is the tool signature, the two
+docstrings, the scope table in the module docstring and the envelope tests.
+Recorded rather than done, because it is a change to a declared tool surface and
+this session's remit was the CLI.

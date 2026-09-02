@@ -95,6 +95,7 @@ from datasheet_analyzer.models import (
     SpecRecord,
     source_ref,
 )
+from datasheet_analyzer.retrieve.scope import ScopeDirs
 from datasheet_analyzer.structure.aliases import AliasLexicon, load_lexicon, padded
 from datasheet_analyzer.structure.quantities import Quantity, parse_record_cells, resolve_unit
 
@@ -1526,30 +1527,22 @@ def _iter_values(card: Card) -> Iterable[tuple[str, DerivedValue]]:
 # --- CLI -------------------------------------------------------------------
 
 
-def scoped_part_dirs(args: argparse.Namespace) -> tuple[list[tuple[str, Path]], str]:
-    """`([(part, dir)], "")` for the requested scope, or `([], reason)`.
+def scoped_part_dirs(args: argparse.Namespace) -> ScopeDirs:
+    """The scope this invocation named, resolved to corpus directories.
 
-    ADR 0006's rule — exactly one of `--part` / `--project` — reused rather
-    than re-decided. Cards are read off published artifacts, so this resolves
-    to directories rather than to a `Retriever`.
+    ADR 0006's rule — exactly one of `--part`, `--project` or `--family` —
+    reused rather than re-decided. Cards are read off published artifacts, so
+    this asks `resolve_scope_dirs` rather than `resolve_scope`; the decision
+    behind both is the same function.
     """
-    from datasheet_analyzer.projects import ProjectError, is_built, load_project, part_dirs
-    from datasheet_analyzer.retrieve.scope import SCOPE_ERROR, no_corpus_error
+    from datasheet_analyzer.retrieve.scope import resolve_scope_dirs
 
-    settings = get_settings()
-    part = (getattr(args, "part", "") or "").strip()
-    project = (getattr(args, "project", "") or "").strip()
-    if bool(part) == bool(project):
-        return [], SCOPE_ERROR
-    if part:
-        if not is_built(part, settings.parts_dir):
-            return [], no_corpus_error(part, settings=settings)
-        return [(part, settings.parts_dir / part)], ""
-    try:
-        loaded = load_project(project, settings.projects_dir)
-    except ProjectError as exc:
-        return [], str(exc)
-    return [(d.name, d) for d in part_dirs(loaded, settings.parts_dir)], ""
+    return resolve_scope_dirs(
+        getattr(args, "part", "") or "",
+        getattr(args, "project", "") or "",
+        settings=get_settings(),
+        family=getattr(args, "family", "") or "",
+    )
 
 
 def cli_card(args: argparse.Namespace) -> int:
@@ -1559,9 +1552,9 @@ def cli_card(args: argparse.Namespace) -> int:
     rows, 1 for an honest empty card — a real answer, and the reason is
     printed with it — and 2 for a scope that could not be resolved.
     """
-    parts, reason = scoped_part_dirs(args)
-    if reason:
-        print(reason, file=sys.stderr)
+    scope = scoped_part_dirs(args)
+    if scope.reason:
+        print(scope.reason, file=sys.stderr)
         return 2
     kind = (getattr(args, "card", "") or "").strip()
     if kind not in CARD_KINDS:
@@ -1571,11 +1564,21 @@ def cli_card(args: argparse.Namespace) -> int:
         )
         return 2
 
-    cards = [load_or_build_card(part_dir, part, kind) for part, part_dir in parts]
+    cards = [load_or_build_card(part_dir, part, kind) for part, part_dir in scope.parts]
+    empty = [card.part_number for card in cards if not card.rows]
+    if scope.is_multi and len(empty) == len(cards) and empty:
+        print(
+            f"{scope.name}: no member fills the {kind} card ({', '.join(empty)}) — "
+            f"this {scope.kind} states nothing about {kind}, which is not the "
+            f"same as stating its members have no such parameters.",
+            file=sys.stderr,
+        )
     if getattr(args, "json", False):
         payload = {
             "part": getattr(args, "part", ""),
             "project": getattr(args, "project", ""),
+            "family": getattr(args, "family", ""),
+            "scope": {"kind": scope.kind, "name": scope.name},
             "card": kind,
             "cards": [json.loads(card.model_dump_json()) for card in cards],
         }

@@ -70,6 +70,7 @@ from datasheet_analyzer.models import (
     RawDocument,
 )
 from datasheet_analyzer.retrieve.results import Citation
+from datasheet_analyzer.retrieve.scope import ScopeDirs
 from datasheet_analyzer.structure.device_tables import (
     KIND_PIN,
     DeviceRow,
@@ -801,35 +802,51 @@ def no_pins_message(part: str) -> str:
     )
 
 
+def no_member_pins_message(scope: ScopeDirs, without: Sequence[str]) -> str:
+    """The scope-level form of `no_pins_message`; `""` when it does not apply.
+
+    A project or a family that returned nothing has two very different reasons
+    for it — the members published pin tables and none of them matched, or no
+    member published a pin table at all — and only the first is a no-match.
+    Said once for the scope, in the wording the family index already uses for
+    the same fact, because a reader scanning a per-member list of "no pin
+    table" lines still has to add them up to learn what the *scope* answered.
+
+    A single `--part` scope is not covered here: `no_pins_message` has already
+    said it about the one part, and repeating it as a statement about "the
+    scope" would be the same sentence twice.
+    """
+    if not scope.is_multi or not without:
+        return ""
+    if len(without) < len(scope.parts):
+        return ""
+    return (
+        f"{scope.name}: no member publishes a pin table "
+        f"({', '.join(without)}) — this {scope.kind} states nothing about "
+        f"pins, which is not the same as stating its members have none."
+    )
+
+
 # --- CLI -------------------------------------------------------------------
 
 
-def _part_dirs(args: argparse.Namespace) -> tuple[list[tuple[str, Path]], str]:
-    """`([(part, dir)], "")` for the requested scope, or `([], reason)`.
+def _scope_dirs(args: argparse.Namespace) -> ScopeDirs:
+    """The scope this invocation named, resolved to corpus directories.
 
     Scope resolution is `retrieve/scope.py`'s rule (ADR 0006: exactly one of
-    `--part` / `--project`), reused rather than re-decided here. Pins are read
-    off published artifacts rather than through `Retriever`, so this resolves
-    to directories instead of to a retriever.
+    `--part`, `--project` or `--family`) and this is the whole of the CLI's
+    part in it. Pins are read off published artifacts rather than through
+    `Retriever`, which is why it is `resolve_scope_dirs` and not
+    `resolve_scope`; the decision behind both is the same function.
     """
-    from datasheet_analyzer.projects import ProjectError, is_built, load_project, part_dirs
-    from datasheet_analyzer.retrieve.scope import SCOPE_ERROR, no_corpus_error
+    from datasheet_analyzer.retrieve.scope import resolve_scope_dirs
 
-    settings = get_settings()
-    part = (getattr(args, "part", "") or "").strip()
-    project = (getattr(args, "project", "") or "").strip()
-    if bool(part) == bool(project):
-        return [], SCOPE_ERROR
-    if part:
-        if not is_built(part, settings.parts_dir):
-            return [], no_corpus_error(part, settings=settings)
-        return [(part, settings.parts_dir / part)], ""
-    try:
-        loaded = load_project(project, settings.projects_dir)
-    except ProjectError as exc:
-        return [], str(exc)
-    dirs = part_dirs(loaded, settings.parts_dir)
-    return [(d.name, d) for d in dirs], ""
+    return resolve_scope_dirs(
+        getattr(args, "part", "") or "",
+        getattr(args, "project", "") or "",
+        settings=get_settings(),
+        family=getattr(args, "family", "") or "",
+    )
 
 
 def cli_pins(args: argparse.Namespace) -> int:
@@ -841,18 +858,18 @@ def cli_pins(args: argparse.Namespace) -> int:
     one in the message and on stderr, because the two mean different things to
     someone deciding whether to open the PDF.
     """
-    parts, reason = _part_dirs(args)
-    if reason:
-        print(reason, file=sys.stderr)
+    scope = _scope_dirs(args)
+    if scope.reason:
+        print(scope.reason, file=sys.stderr)
         return 2
-    show_part = bool((getattr(args, "project", "") or "").strip())
+    show_part = scope.is_multi
     wanted = (getattr(args, "type", "") or "").strip().lower()
     q = getattr(args, "q", "") or ""
 
     hits: list[PinHit] = []
     without: list[str] = []
     warnings: list[str] = []
-    for part, part_dir in parts:
+    for part, part_dir in scope.parts:
         part_pins = load_part_pins(part_dir, part)
         if not part_pins.sets:
             without.append(part)
@@ -864,15 +881,21 @@ def cli_pins(args: argparse.Namespace) -> int:
         print(f"warning: {warning}", file=sys.stderr)
     for part in without:
         print(no_pins_message(part), file=sys.stderr)
+    silent_scope = no_member_pins_message(scope, without)
+    if silent_scope:
+        print(silent_scope, file=sys.stderr)
 
     if getattr(args, "json", False):
         payload = {
             "part": getattr(args, "part", ""),
             "project": getattr(args, "project", ""),
+            "family": getattr(args, "family", ""),
+            "scope": {"kind": scope.kind, "name": scope.name},
             "query": {"q": q, "type": wanted},
             "hits": [h.as_dict() for h in hits],
             "counts": type_counts(h.record for h in hits),
             "parts_without_pins": without,
+            "no_member_publishes_pins": bool(silent_scope),
             "warnings": warnings,
         }
         print(json.dumps(payload, ensure_ascii=False, indent=2))

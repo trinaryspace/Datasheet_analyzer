@@ -553,8 +553,11 @@ grades a corpus *before* an agent answers from it. The family index is derived
 a client never has to know whether `dsa family build` has run.
 
 **A family is a scope, not just a catalog entry.** `search`, `find_spec`,
-`find_plots` and `ask` each take a `family` beside `part` and `project` — the
-same four verbs `dsa --family` resolves — and name exactly one of the three.
+`find_plots` and `ask` each take a `family` beside `part` and `project`, and
+name exactly one of the three. On the CLI all seven scoped verbs resolve a
+family — `query`, `search`, `plots`, `ask`, and since 2026-09-02 `pins`,
+`regs` and `card`, which used to accept the flag and refuse it; `find_pin` and
+`find_register` over MCP have yet to follow (KNOWN_SHORTCOMINGS.md).
 The envelope's `scope` object carries all three names, so every response says
 which scope answered it; a family answer that reported `{part: "",
 project: ""}` would be indistinguishable from a call that named no corpus at

@@ -17,14 +17,19 @@ Commands:
   card --part NAME --card power|thermal|interface|limits   a task-shaped view
   compare A B [--symbol S | --card power]   two parts, aligned row by row
   project new|add|remove|build|status   the noun above `part`: a design
+  family list|suggest|confirm|build     a declared series, shared sections once
   serve                     the local workbench (browser) on DSA_SERVE_HOST/PORT
   serve --mcp               the corpus as MCP tools over local stdio
   status                    configuration + detected parts + projects
   version                   print version
 
-`query`, `search`, `ask` and `plots` each take either `--part NAME` or
-`--project NAME`; a project fans the lookup out across its member parts and
-labels every hit with the part it came from.
+All seven scoped lookups — `query`, `search`, `ask`, `plots`, `pins`, `regs`
+and `card` — take exactly one of `--part NAME`, `--project NAME` or
+`--family NAME`. A project fans the lookup out across the parts someone put on
+one board and a family across the members of one declared series; either way
+every hit is labelled with the part it came from. There is no "everything"
+scope (`docs/adr/0006-auto-resolved-scope.md`), and the rule is resolved in one
+place, `retrieve/scope.py`.
 """
 
 from __future__ import annotations

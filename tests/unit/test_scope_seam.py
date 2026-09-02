@@ -33,11 +33,13 @@ from datasheet_analyzer.projects import save_project
 from datasheet_analyzer.retrieve import Citation, ProjectRetriever, Retriever, SectionHit
 from datasheet_analyzer.retrieve import scope as scope_module
 from datasheet_analyzer.retrieve.scope import (
+    FAMILY_SCOPE_ERROR,
     PART_REQUIRED_ERROR,
     SCOPE_ERROR,
     missing_corpus_warning,
     resolve_part,
     resolve_scope,
+    resolve_scope_dirs,
     unbuilt_members,
 )
 from tests.unit.mcp_corpus import built_settings, empty_settings
@@ -493,3 +495,234 @@ class TestTheWebExtraIsDeclared:
 
     def test_the_hint_names_the_extra_the_pyproject_declares(self):
         assert ".[web]" in cli.WEB_INSTALL_HINT
+
+
+# --- 4. the third scope, for the lookups that read published artifacts -------
+
+# `cli._add_scope` has put `--family` on all seven scoped commands since phase
+# 7 ticket 07, but `pins`, `regs` and `card` never went through
+# `resolve_scope`: each carried a private `_part_dirs` that knew two scopes and
+# refused everything else with the *two*-scope `SCOPE_ERROR`. A family
+# therefore fell out of `bool(part) == bool(project)` as "you named neither" —
+# a flag the parser advertised and the command rejected, with a message that
+# did not name the argument passed. The three copies are gone;
+# `resolve_scope_dirs` is what replaced them.
+
+
+#: The three derived lookups' sources, read once — the grep-shaped assertions
+#: below are about what these modules do *not* contain.
+DERIVE_SOURCES = {
+    name: Path(find_spec(f"datasheet_analyzer.derive.{name}").origin).read_text(encoding="utf-8")
+    for name in ("cards", "pins", "registers")
+}
+
+
+def _declared_family(tmp_path) -> Settings:
+    """Two synthetic family members, declared and confirmed in a tmp registry."""
+    from datasheet_analyzer.families import FamilyEntry, FamilyRegistry, save_families
+    from datasheet_analyzer.families.registry import families_path
+    from tests.unit.family_corpus import family_settings
+
+    wired = family_settings(tmp_path)
+    registry = FamilyRegistry()
+    registry.put(FamilyEntry(name="TEST995x", members=["TEST9950", "TEST9953"], confirmed=True))
+    save_families(registry, families_path(wired.registry_dir))
+    return wired
+
+
+class TestResolveScopeDirs:
+    @pytest.fixture
+    def declared(self, tmp_path) -> Settings:
+        return _declared_family(tmp_path)
+
+    def test_a_part_resolves_to_its_one_directory(self, settings):
+        resolved = resolve_scope_dirs("TEST", "", settings=settings)
+        assert (resolved.kind, resolved.name, resolved.reason) == ("part", "TEST", "")
+        assert resolved.part_numbers == ["TEST"]
+        assert resolved.parts[0][1] == settings.parts_dir / "TEST"
+
+    def test_a_project_resolves_to_every_member_in_membership_order(self, settings):
+        resolved = resolve_scope_dirs("", "rf-frontend", settings=settings)
+        assert resolved.kind == "project"
+        assert resolved.part_numbers == ["TEST", "OTHER"]
+
+    def test_a_family_resolves_to_every_declared_member(self, declared):
+        resolved = resolve_scope_dirs("", "", settings=declared, family="TEST995x")
+        assert (resolved.kind, resolved.name, resolved.reason) == ("family", "TEST995x", "")
+        assert resolved.part_numbers == ["TEST9950", "TEST9953"]
+
+    def test_an_undeclared_family_carries_the_registrys_own_fix(self, declared):
+        resolved = resolve_scope_dirs("", "", settings=declared, family="NOPE9x")
+        assert resolved.parts == ()
+        assert "dsa family suggest" in resolved.reason
+
+    def test_naming_two_scopes_is_refused_with_the_same_xor_reason(self, settings):
+        assert resolve_scope_dirs("TEST", "rf-frontend", settings=settings).reason == SCOPE_ERROR
+
+    def test_naming_a_family_and_a_part_names_the_argument_passed(self, settings):
+        """The refusal lists three options because the caller passed the third."""
+        reason = resolve_scope_dirs("TEST", "", settings=settings, family="X9x").reason
+        assert reason == FAMILY_SCOPE_ERROR
+        assert "`family`" in reason
+
+    def test_an_unbuilt_part_is_a_refusal_not_an_empty_scope(self, settings):
+        resolved = resolve_scope_dirs("NOPE", "", settings=settings)
+        assert resolved.parts == ()
+        assert "dsa build <pdf> --part NOPE" in resolved.reason
+
+    def test_only_a_multi_part_scope_labels_its_hits(self, settings, declared):
+        assert resolve_scope_dirs("TEST", "", settings=settings).is_multi is False
+        assert resolve_scope_dirs("", "rf-frontend", settings=settings).is_multi is True
+        assert resolve_scope_dirs("", "", settings=declared, family="TEST995x").is_multi is True
+
+    def test_it_answers_the_same_scopes_resolve_scope_does(self, settings, declared):
+        """Two shapes, one decision — the pair agrees on what resolves and why."""
+        for part, project, family, wired in (
+            ("TEST", "", "", settings),
+            ("", "rf-frontend", "", settings),
+            ("", "", "TEST995x", declared),
+            ("NOPE", "", "", settings),
+            ("", "ghost", "", settings),
+            ("TEST", "rf-frontend", "", settings),
+        ):
+            scope, reason = resolve_scope(part, project, settings=wired, family=family)
+            dirs = resolve_scope_dirs(part, project, settings=wired, family=family)
+            assert (scope is None) == bool(dirs.reason)
+            assert reason == dirs.reason
+
+
+class TestTheDerivedVerbsTakeTheThirdScope:
+    """`dsa pins`, `dsa regs`, `dsa card` — the three that used to refuse it."""
+
+    @pytest.fixture
+    def wired(self, tmp_path, monkeypatch) -> Settings:
+        settings = _declared_family(tmp_path)
+        for module in ("cards", "pins", "registers"):
+            monkeypatch.setattr(
+                f"datasheet_analyzer.derive.{module}.get_settings", lambda s=settings: s
+            )
+        return settings
+
+    def test_pins_answers_a_family_and_labels_each_member(self, wired, capsys):
+        assert cli.main(["pins", "--family", "TEST995x"]) == 0
+        out = capsys.readouterr().out
+        assert "[TEST9950]" in out and "[TEST9953]" in out
+
+    def test_regs_answers_a_family_and_labels_each_member(self, wired, capsys):
+        assert cli.main(["regs", "--family", "TEST995x"]) == 0
+        out = capsys.readouterr().out
+        assert "[TEST9950]" in out and "[TEST9953]" in out
+
+    def test_card_renders_one_card_per_member(self, wired, capsys):
+        assert cli.main(["card", "--family", "TEST995x", "--card", "power"]) == 0
+        out = capsys.readouterr().out
+        assert "# TEST9950 " in out and "# TEST9953 " in out
+
+    @pytest.mark.parametrize(
+        "argv",
+        [
+            ["pins", "--family", "NOPE9x"],
+            ["regs", "--family", "NOPE9x"],
+            ["card", "--family", "NOPE9x", "--card", "power"],
+        ],
+    )
+    def test_an_undeclared_family_still_exits_2_with_the_registrys_fix(self, wired, capsys, argv):
+        """The exit-code contract each verb already had, unchanged for bad input."""
+        assert cli.main(argv) == 2
+        assert "dsa family suggest" in capsys.readouterr().err
+
+    @pytest.mark.parametrize(
+        "argv",
+        [
+            ["pins", "--part", "NOPE"],
+            ["regs", "--part", "NOPE"],
+            ["card", "--part", "NOPE", "--card", "power"],
+        ],
+    )
+    def test_an_unbuilt_part_still_exits_2(self, wired, capsys, argv):
+        assert cli.main(argv) == 2
+        assert "dsa build <pdf> --part NOPE" in capsys.readouterr().err
+
+    def test_no_family_caller_is_shown_the_two_scope_wording(self, wired, capsys):
+        cli.main(["pins", "--family", "NOPE9x"])
+        assert SCOPE_ERROR not in capsys.readouterr().err
+
+
+class TestNoMemberPublishesIsNotAnEmptySuccess:
+    """The AFE795x case, on a synthetic corpus: no member publishes a pin table.
+
+    Three states have to stay apart — the members published pin tables and none
+    matched, no member published one at all, and the scope could not be
+    resolved. The middle one is where the one declared family lands, and it is
+    the one an empty result would be read as agreement about.
+    """
+
+    @pytest.fixture
+    def stripped(self, tmp_path, monkeypatch) -> Settings:
+        """The declared family with every member's `pins.json` removed."""
+        settings = _declared_family(tmp_path)
+        for published in settings.parts_dir.glob("*/docs/*/pins.json"):
+            published.unlink()
+        monkeypatch.setattr("datasheet_analyzer.derive.pins.get_settings", lambda: settings)
+        return settings
+
+    def test_it_says_no_member_publishes_a_pin_table(self, stripped, capsys):
+        assert cli.main(["pins", "--family", "TEST995x"]) == 1
+        err = capsys.readouterr().err
+        assert "TEST995x: no member publishes a pin table" in err
+        assert "TEST9950, TEST9953" in err
+
+    def test_it_refuses_to_be_read_as_the_family_having_no_pins(self, stripped, capsys):
+        cli.main(["pins", "--family", "TEST995x"])
+        assert "states nothing about pins" in capsys.readouterr().err
+
+    def test_every_member_is_still_named_individually(self, stripped, capsys):
+        cli.main(["pins", "--family", "TEST995x"])
+        err = capsys.readouterr().err
+        for part in ("TEST9950", "TEST9953"):
+            assert f"{part}: no pin table was published" in err
+
+    def test_the_json_form_carries_the_same_fact_as_a_field(self, stripped, capsys):
+        import json as json_module
+
+        assert cli.main(["pins", "--family", "TEST995x", "--json"]) == 1
+        payload = json_module.loads(capsys.readouterr().out)
+        assert payload["no_member_publishes_pins"] is True
+        assert payload["parts_without_pins"] == ["TEST9950", "TEST9953"]
+        assert payload["scope"] == {"kind": "family", "name": "TEST995x"}
+
+    def test_a_family_that_does_publish_pins_says_nothing_of_the_kind(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        settings = _declared_family(tmp_path)
+        monkeypatch.setattr("datasheet_analyzer.derive.pins.get_settings", lambda: settings)
+        assert cli.main(["pins", "--family", "TEST995x"]) == 0
+        assert "no member publishes" not in capsys.readouterr().err
+
+    def test_one_part_is_told_once_not_twice(self, stripped, capsys):
+        """A `--part` scope keeps `no_pins_message` and gains no scope line."""
+        assert cli.main(["pins", "--part", "TEST9950"]) == 1
+        err = capsys.readouterr().err
+        assert "TEST9950: no pin table was published" in err
+        assert "no member publishes" not in err
+
+
+class TestNoDerivedLookupKeepsACopyOfTheRule:
+    """Grep-shaped, like `TestNeitherFrontEndKeepsACopy` above, and for the
+    same reason: three private two-scope copies are what made `--family` a flag
+    the parser advertised and the command refused. This is the assertion that
+    fails the moment a fourth one is written."""
+
+    @pytest.mark.parametrize("module", ["cards", "pins", "registers"])
+    def test_it_resolves_through_the_shared_module(self, module):
+        assert "resolve_scope_dirs" in DERIVE_SOURCES[module]
+
+    @pytest.mark.parametrize("module", ["cards", "pins", "registers"])
+    def test_it_counts_no_scopes_of_its_own(self, module):
+        source = DERIVE_SOURCES[module]
+        assert "bool(part) == bool(project)" not in source
+        assert "load_project" not in source
+
+    @pytest.mark.parametrize("module", ["cards", "pins", "registers"])
+    def test_it_does_not_restate_the_xor_reason(self, module):
+        assert "defaulting to 'everything'" not in DERIVE_SOURCES[module]
