@@ -29,13 +29,22 @@ is in this working tree but not in the repo is left out rather than recorded.
 `LMX1204`'s two documents are exactly that case on this branch; the growth path
 for them is `dsa fetch --url <URL> --part LMX1204`.
 
+**It seeds; it does not overwrite.** The registry grows by use — `dsa fetch`
+records a live URL, a wire sha256 with a `fetch:` origin and a real
+`retrieved_at` against an entry, and none of those three can be recomputed
+from a local file. So a part the registry already carries is left exactly as
+it is, and this script only adds entries for committed documents that have
+none. Re-running it on a grown registry is a no-op, which is what makes
+`--check` safe to keep in a test.
+
 Run it after adding a document to the repo:
 
     .venv/Scripts/python.exe scripts/seed_datasheet_registry.py [--check]
 
-`tests/unit/test_fetch.py::TestSeedRegistry` asserts the checked-in file
+`tests/unit/test_fetch.py::TestCheckedInRegistry` asserts the checked-in file
 agrees with this render and that every recorded sha256 still matches the file
-it names, so the registry cannot drift away from the bytes it describes.
+or the URL it names, so the registry cannot drift away from the bytes it
+describes.
 """
 
 from __future__ import annotations
@@ -54,6 +63,7 @@ from datasheet_analyzer.acquire.registry import (
     DocumentRegistry,
     RegistryDocument,
     RegistryEntry,
+    load_registry,
     registry_path,
     registry_yaml,
     ti_lit_url,
@@ -158,17 +168,27 @@ def seed_document(rel_path: str, doc_type: DocType) -> tuple[RegistryDocument, s
     return doc, vendor
 
 
-def build_registry() -> DocumentRegistry:
-    """The registry rendered from every seed document present in this checkout.
+def build_registry(base: DocumentRegistry | None = None) -> DocumentRegistry:
+    """`base`, plus a seed entry for every committed document it lacks.
 
     A seed path that is absent is skipped rather than fabricated: this script
     can only record hashes of bytes it can read, and saying nothing about a
     document is the honest answer when the document is not here.
+
+    A part `base` already knows is skipped too, and that is the more important
+    of the two refusals. Once `dsa fetch` has run against an entry it holds a
+    URL that was confirmed on the wire, a sha256 whose origin is `fetch:<url>`
+    and a `retrieved_at` — three recorded facts that a local file cannot
+    reproduce. Re-seeding over them would silently demote measurements back to
+    hypotheses.
     """
-    registry = DocumentRegistry()
+    registry = base if base is not None else DocumentRegistry()
+    grown = {part for part in registry.parts}
     for part_number, rel_path, doc_type in SEED_DOCUMENTS:
         if not (REPO_ROOT / rel_path).exists():
             print(f"skipping {part_number}: {rel_path} is not in this checkout", file=sys.stderr)
+            continue
+        if part_number in grown:
             continue
         doc, vendor = seed_document(rel_path, doc_type)
         entry = registry.get(part_number)
@@ -184,8 +204,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--check", action="store_true", help="exit 1 if the file is stale")
     args = ap.parse_args(argv)
 
-    rendered = registry_yaml(build_registry())
     dest = registry_path()
+    base = load_registry(dest) if dest.exists() else None
+    rendered = registry_yaml(build_registry(base))
     if args.check:
         current = dest.read_text(encoding="utf-8") if dest.exists() else ""
         if current != rendered:

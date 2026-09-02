@@ -723,20 +723,23 @@ def seeded() -> DocumentRegistry:
     return load_registry(registry_path())
 
 
-class TestSeedRegistry:
-    """The checked-in registry ships non-empty and describes real bytes."""
+class TestCheckedInRegistry:
+    """The checked-in registry describes real bytes — seeded or fetched.
 
-    def test_registry_ships_non_empty_and_covers_the_existing_parts(self, seeded):
-        """Every part whose source PDF is committed here has an entry.
+    It used to be a pure *seed* file, and these assertions said so: nothing had
+    been fetched, so nothing was allowed to claim it had. That premise expired
+    on 2026-09-02, when the first live `dsa fetch` run grew the file from 10
+    parts to 25 across five vendors. What survives growth is the rule that
+    every recorded fact names where it came from and can be re-checked there —
+    a `local_file:` hash against a file in this repo, a `fetch:` hash against
+    the URL it was taken from.
+    """
 
-        `lm741` is spelled the way its corpus under `parts/` is, because that
-        is the name `dsa check-revisions --all` pairs an entry with. The four
-        Mini-Circuits parts are on this branch and not on the lineage this was
-        ported from; LMX1204 is absent because its two PDFs are working files
-        in this tree rather than committed documents, so no `local_file:` hash
-        for them would be checkable in a fresh clone.
-        """
-        assert set(seeded.parts) == {
+    #: Every part the seed script bootstraps from a committed PDF. The
+    #: registry may hold more (it grows by `dsa fetch`); it may never hold
+    #: fewer, or `dsa check-revisions --all` loses a corpus it can pair.
+    SEEDED_PARTS = frozenset(
+        {
             "AD9081",
             "AFE7950",
             "AFE7953",
@@ -748,40 +751,90 @@ class TestSeedRegistry:
             "ZX10R-2-183-S+",
             "lm741",
         }
+    )
 
-    def test_every_recorded_sha256_matches_the_file_it_names(self, seeded):
+    def test_every_committed_document_still_has_an_entry(self, seeded):
+        assert self.SEEDED_PARTS <= set(seeded.parts)
+
+    def test_the_scale_gate_is_readable_from_the_registry(self, seeded):
+        """Phase 7, ticket 08: >=20 parts across >=3 vendors, asserted on data.
+
+        And no entry may sit at `unknown`: a vendor column that cannot name a
+        publisher cannot demonstrate a vendor spread, which is what made the
+        missing `minicircuits` profile a blocker for this gate rather than a
+        cosmetic gap.
+        """
+        vendors = {entry.vendor for entry in seeded.parts.values()}
+        assert len(seeded.parts) >= 20
+        assert len(vendors) >= 3
+        assert "unknown" not in vendors
+        assert "" not in vendors
+
+    def test_a_local_file_hash_still_matches_the_file_it_names(self, seeded):
         checked = 0
         for part, entry in seeded.parts.items():
             for doc in entry.documents:
                 assert doc.sha256, f"{part} {doc.doc_type.value} records no sha256"
-                assert doc.sha256_origin.startswith("local_file:"), part
+                if not doc.sha256_origin.startswith("local_file:"):
+                    continue
                 rel = doc.sha256_origin.split(":", 1)[1]
                 path = REPO_ROOT / rel
                 assert path.exists(), f"{part}: {rel} is not in this repo"
                 assert hashlib.sha256(path.read_bytes()).hexdigest() == doc.sha256
                 checked += 1
-        assert checked == 10
+        assert checked, "no local_file hash left to re-check"
+        # Every seeded part still records an origin one of the two rules above
+        # can re-check. Two of the ten moved from `local_file:` to `fetch:` on
+        # the 2026-09-02 run — PSA-8A+ and ZX10R-2-183-S+ came back
+        # byte-identical from minicircuits.com — which is a promotion, not a
+        # loss: a hash taken off the wire is checkable by anyone with a
+        # network, and one taken off a local file only by someone holding it.
+        for part in self.SEEDED_PARTS:
+            origin = seeded.get(part).document.sha256_origin
+            assert origin.startswith(("local_file:", "fetch:")), f"{part}: {origin!r}"
 
-    def test_no_seed_entry_claims_a_verified_url_or_a_retrieval_date(self, seeded):
-        """Nothing was fetched to produce this file, so nothing may say it was."""
+    def test_a_fetch_hash_names_the_url_it_was_taken_from(self, seeded):
+        """`fetch:<url>` is only checkable if the URL is the entry's own."""
         for part, entry in seeded.parts.items():
             for doc in entry.documents:
-                assert doc.url_verified is False, part
-                assert doc.retrieved_at is None, part
+                if not doc.sha256_origin.startswith("fetch:"):
+                    continue
+                assert doc.sha256_origin == f"fetch:{doc.url}", part
+                assert doc.url_verified is True, part
+                assert doc.retrieved_at is not None, part
 
-    def test_every_url_is_derived_by_a_named_rule_from_a_parsed_literature_number(self, seeded):
+    def test_a_retrieval_date_is_only_ever_a_wire_fact(self, seeded):
+        """No entry may date a hash it did not take off the wire.
+
+        The converse does not hold, and deliberately: AFE7950, AFE7953 and
+        lm741 are `url_verified` with `retrieved_at: null`, because bytes did
+        arrive from those URLs and hashed differently from the committed copy
+        the recorded sha256 was taken from. TI regenerates a datasheet's
+        package-materials addendum on every download; the URL is confirmed,
+        the recorded hash is still the local file's, and stamping a date on it
+        would say the hash came from that download.
+        """
+        for part, entry in seeded.parts.items():
+            for doc in entry.documents:
+                if doc.retrieved_at is not None:
+                    assert doc.sha256_origin.startswith("fetch:"), part
+                if doc.url_verified:
+                    assert doc.url is not None, part
+
+    def test_every_derived_url_follows_the_named_rule(self, seeded):
         derived = 0
         for part, entry in seeded.parts.items():
             for doc in entry.documents:
-                if doc.url is None:
+                if not doc.url_derivation:
                     continue
                 assert doc.url_derivation.startswith("ti_lit_ds("), part
                 lit = doc.url_derivation[len("ti_lit_ds(") : -1]
                 assert lit == doc.revision, part  # the number actually parsed
                 assert doc.url == ti_lit_url(lit), part
                 derived += 1
-        # Three TI datasheets carry a parseable literature number here; the
-        # other seven documents record why no URL could be derived instead.
+        # Three TI datasheets carry a parseable literature number here. All
+        # three URLs were fetched live on 2026-09-02 and served the recorded
+        # revision, so the derivation rule is 3 for 3 and they are verified.
         assert derived == 3
 
     def test_every_missing_url_records_why(self, seeded):
@@ -791,6 +844,12 @@ class TestSeedRegistry:
                     assert doc.url_reason, part
 
     def test_the_checked_in_file_is_what_the_seed_script_renders(self):
+        """Re-seeding a grown registry is a no-op, so this still holds.
+
+        `build_registry` takes the checked-in file as its base and adds only
+        the committed documents it does not already carry; it never rewrites a
+        fetched entry back into a seeded one.
+        """
         import sys
 
         sys.path.insert(0, str(REPO_ROOT / "scripts"))
@@ -798,7 +857,7 @@ class TestSeedRegistry:
             from seed_datasheet_registry import build_registry
         finally:
             sys.path.pop(0)
-        rendered = registry_yaml(build_registry())
+        rendered = registry_yaml(build_registry(load_registry(registry_path())))
         assert registry_path().read_text(encoding="utf-8") == rendered
 
 
