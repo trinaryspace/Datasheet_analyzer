@@ -2,7 +2,7 @@
 
 Layout:
 - tests/fixtures/pdf/       the four real phase-4 gate PDFs plus the four
-                            brand-less Mini-Circuits datasheets (ungated —
+                            Mini-Circuits datasheets (ungated —
                             committed fixtures, pdf_layout never touches
                             the network)
 - tests/fixtures/ti_html/   recorded real TI document-viewer pages (no network in tests)
@@ -31,11 +31,16 @@ AD9081_PDF = GATE_PDFS / "ad9081.pdf"
 LM741_PDF = GATE_PDFS / "lm741.pdf"
 QPA1003P_PDF = GATE_PDFS / "QPA1003P.pdf"
 HMC520A_PDF = GATE_PDFS / "hmc520a.pdf"
-#: Four real Mini-Circuits datasheets: no brand word on page 1, no publisher
-#: in their metadata, no brand in their filenames. They are the evidence-free
-#: case vendor detection used to answer with a guess (`ti`, which routed them
-#: to `ti_html` and 404'd against ti.com). Ungated like the gate PDFs above.
-BRANDLESS_PDFS = (
+#: Four real Mini-Circuits datasheets: no publisher in their metadata, no brand
+#: in their filenames, and no hyphenated brand *word* on page 1 for three of
+#: the four (it is set as a logo image). They were the case vendor detection
+#: used to answer with a guess (`ti`, which routed them to `ti_html` and 404'd
+#: against ti.com), then with `unknown` on empty evidence once the guess was
+#: removed. What every one of them *does* print in page-1 text is the
+#: `www.minicircuits.com  P.O. Box 350166 …` address banner, so once
+#: `VENDOR_PROFILES` carried a `minicircuits` entry they became evidence-pinned
+#: like every other vendor. Ungated like the gate PDFs above.
+MINICIRCUITS_PDFS = (
     GATE_PDFS / "LHA-83W+.pdf",
     GATE_PDFS / "PMA1-14LN+.pdf",
     GATE_PDFS / "PSA-8A+.pdf",

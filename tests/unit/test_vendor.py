@@ -30,7 +30,7 @@ from datasheet_analyzer.vendor import (
     select_backend,
     warn_vendor_drift,
 )
-from tests.conftest import BRANDLESS_PDFS, LM741_PDF
+from tests.conftest import LM741_PDF, MINICIRCUITS_PDFS
 
 SYN = Path(__file__).parent.parent / "fixtures" / "synthetic"
 
@@ -383,38 +383,52 @@ class TestWarnVendorDriftStandalone:
 class TestEvidencePinnedOrUnknown:
     """The regression this fix exists for, on the documents that showed it.
 
-    The four Mini-Circuits datasheets under `tests/fixtures/pdf/` print no
-    vendor word on page 1, carry an empty PDF author, and have no brand in
-    their filenames. Detection used to answer that with `ti` on empty
-    evidence, which routed them to the `ti_html` backend and 404'd against
-    ti.com — so they only built when forced with `--vendor unknown`.
+    The four Mini-Circuits datasheets under `tests/fixtures/pdf/` carry an
+    empty PDF author and have no brand in their filenames, and three of the
+    four print no hyphenated brand *word* on page 1 — Mini-Circuits sets it as
+    a logo image. Detection used to answer that with `ti` on empty evidence,
+    which routed them to the `ti_html` backend and 404'd against ti.com — so
+    they only built when forced with `--vendor unknown`.
+
+    Then they answered `unknown` on empty evidence, which was honest but still
+    wrong about the document: every one of these four prints
+    `www.minicircuits.com  P.O. Box 350166, Brooklyn, NY 11235-0003` in page-1
+    *text*. The missing piece was never a detector rule, it was a lexicon
+    entry — so with `minicircuits` in `VENDOR_PROFILES` they are pinned on
+    evidence like every other vendor, and the backend they route to does not
+    move, because `minicircuits` prefers the same vendor-neutral layout floor
+    `unknown` fell back to.
     """
 
-    @pytest.mark.parametrize("pdf", BRANDLESS_PDFS, ids=lambda p: p.stem)
-    def test_a_brandless_datasheet_is_unknown_with_no_evidence(self, pdf):
+    @pytest.mark.parametrize("pdf", MINICIRCUITS_PDFS, ids=lambda p: p.stem)
+    def test_a_minicircuits_datasheet_is_pinned_on_page_one_evidence(self, pdf):
         assert pdf.is_file(), f"committed fixture missing: {pdf}"
-        assert detect_vendor(pdf) == ("unknown", "")
+        vendor, evidence = detect_vendor(pdf)
+        assert vendor == "minicircuits"
+        # The mark is whichever spelling that cover page prints; both are p.1.
+        assert evidence in {'brand:"minicircuits" (p.1)', 'brand:"mini-circuits" (p.1)'}
 
-    @pytest.mark.parametrize("pdf", BRANDLESS_PDFS, ids=lambda p: p.stem)
-    def test_a_brandless_datasheet_routes_to_the_layout_floor(self, pdf):
+    @pytest.mark.parametrize("pdf", MINICIRCUITS_PDFS, ids=lambda p: p.stem)
+    def test_a_minicircuits_datasheet_routes_to_the_layout_floor(self, pdf):
         # doc_type as `dsa build` pins it: the named PDF is the part's datasheet.
         src = register_source(pdf, part_number=pdf.stem, doc_type=DocType.DATASHEET)
-        assert (src.vendor, src.vendor_evidence) == ("unknown", "")
+        assert src.vendor == "minicircuits"
+        assert src.vendor_evidence.startswith("brand:")
         assert select_backend(src.vendor, src.doc_type) == "pdf_layout"
 
-    def test_a_brandless_datasheet_builds_with_no_vendor_override(self, tmp_path):
+    def test_a_minicircuits_datasheet_builds_with_no_vendor_override(self, tmp_path):
         """`dsa build <pdf> --part X` — no `--vendor unknown` anywhere.
 
-        Offline by construction: `unknown` routes to `pdf_layout`, which never
-        touches the network. Under the old default this same call reached
-        ti.com for a document TI never published.
+        Offline by construction: `minicircuits` routes to `pdf_layout`, which
+        never touches the network. Under the old `ti` default this same call
+        reached ti.com for a document TI never published.
         """
-        pdf = next(p for p in BRANDLESS_PDFS if p.name == "PSA-8A+.pdf")
+        pdf = next(p for p in MINICIRCUITS_PDFS if p.name == "PSA-8A+.pdf")
         settings = Settings(parts_dir=tmp_path / "parts", cache_dir=tmp_path / ".cache").resolve()
         result = build_part(pdf, part_number="PSA-8A", settings=settings, use_llm=False)
         (src,) = load_inventory(settings.parts_dir / "PSA-8A")
-        assert src.vendor == "unknown"
-        assert result.manifest.vendor == "unknown"
+        assert src.vendor == "minicircuits"
+        assert result.manifest.vendor == "minicircuits"
         assert result.manifest.extraction_stats[src.content_hash].backend == "pdf_layout"
         assert result.manifest.sections
 

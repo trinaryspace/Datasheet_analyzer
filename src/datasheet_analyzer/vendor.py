@@ -82,6 +82,24 @@ VENDOR_PROFILES: dict[str, VendorProfile] = {
         brand_marks=("qorvo",),
         backend_chain=("pdf_layout",),
     ),
+    # Two marks, because Mini-Circuits prints its name two ways and only one
+    # of them is on every page. The hyphenated brand word appears on some
+    # cover pages (`ZX10R-2-183-S+`, `ZEM-4300+`) but not on others
+    # (`LHA-83W+`, `PMA1-14LN+`, `PSA-8A+`, `TCM1-83X+`, where it is set as a
+    # logo image); what all ten Mini-Circuits documents in this corpus *do*
+    # print in page-1 text is the address banner
+    # `www.minicircuits.com  P.O. Box 350166, Brooklyn, NY 11235-0003`.
+    # An unhyphenated second mark is a lexicon entry, not a rule.
+    "minicircuits": VendorProfile(
+        name="minicircuits",
+        brand_marks=("mini-circuits", "minicircuits"),
+        backend_chain=("pdf_layout",),
+    ),
+    "skyworks": VendorProfile(
+        name="skyworks",
+        brand_marks=("skyworks",),
+        backend_chain=("pdf_layout",),
+    ),
     # What detection emits when no brand mark was found anywhere, and what
     # --vendor unknown pins explicitly. Its empty `brand_marks` is why the
     # detection loop skips it: "unknown" is never *matched*, only defaulted to.
