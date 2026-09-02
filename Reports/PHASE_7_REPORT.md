@@ -804,10 +804,15 @@ carrying the registry own refusal, "never inferred from a part number".
 `staleness` string, with `Staleness` and `RevisionState` twins in
 `web/src/api/types.ts`, so `GET /api/library` reports freshness per document.
 
-Nothing renders either. `DocumentRow` meta line is a fixed four-span list with
-no slot for a freshness badge, and `scope_resolver.py` proposes only parts and
-projects so no pane can offer a family. Both need new components; both are
-recorded rather than half-built.
+Nothing rendered either at the time of this report. `DocumentRow` meta line was
+a fixed four-span list with no slot for a freshness badge, and
+`scope_resolver.py` proposed only parts and projects so no pane could offer a
+family. Both needed new components; both were recorded rather than half-built.
+
+**Both were built on 2026-09-02** (`feat/fe-family-freshness`): `GET
+/api/families` plus a family tier in `scope_resolver` and a family section in
+`ScopeChip`, and `describeRevision` / `RevisionBadge` in the Library. See
+KNOWN_SHORTCOMINGS.md for what each closed and what each deliberately did not.
 
 **The chat agent's tool surface, closed 2026-09-02.** `app/tools.py` was left
 at phase 5's nine and is now twelve: `list_families`, `get_family_index` and

@@ -138,16 +138,19 @@ derivable parts, read the mismatch warnings, re-run with
 
 - `content_drift` is recorded (with `upstream_sha256`) and nothing consumes it
   yet; `dsa diff-rev` is its natural consumer.
-- `RevisionState` **reaches the workbench API and nothing renders it.** The
-  integration wave put the whole reading on `LibraryDocumentOut` (and its
-  TypeScript twin) rather than a flattened `staleness` string, so
-  `GET /api/library` now carries `staleness`, `checked_at`,
-  `upstream_revision`, `content_drift` and the verbatim `note` for every
-  document. No pane reads them: `DocumentRow`'s meta line is a fixed four-span
-  list and its three sections are applicability, labels and parts-reached.
-  Surfacing it needs a badge component and a place to put it — real frontend
-  work, deliberately not started here. The CLI, the corpus files and MCP
-  carried it already.
+- ~~`RevisionState` reaches the workbench API and nothing renders it.~~
+  **Closed 2026-09-02.** The workbench is the fifth surface. `describeRevision`
+  in `web/src/routes/library/state.ts` mirrors `staleness.banner_text` by hand
+  and `RevisionBadge.tsx` draws it in three places: the compact shelf row in
+  `CategoryContents`, the part summary above it (`worstRevision` — a part is
+  only as fresh as its least fresh document, the same rule
+  `staleness.corpus_staleness` applies), and `DocumentRow`'s meta line, which
+  is now five spans. `unknown` renders as **"not checked"** with the warning
+  glyph and the warning colours — the same loudness `stale` gets — and its
+  tooltip carries the whole sentence and the `dsa check-revisions` that clears
+  it; `current` is the only state drawn as a confirmation, and it prints the
+  date the claim was made. Verified in a real browser against a scratch shelf
+  holding all three readings, not only in jsdom.
 - A two-document part reports one `dsa status` line naming its least fresh
   document. A per-document breakdown would be better and is not here.
 
@@ -385,14 +388,23 @@ family states nothing about pins, which is not the same as stating they
 agree"* — rather than printing an empty table a reader could mistake for
 agreement.
 
-**Still parked, and now the only thing standing between a browser user and a
-family: the family scope is nameable everywhere and offered nowhere.**
-`ScopeRef.kind` is `part | project | family`, `deps.get_retriever` resolves a
-family, `POST /api/chat/{id}/message` answers a whole series with the
-common-once collapse, and — since 2026-09-02 — the chat agent has a
-`get_family_index` tool that maps the series its turn was scoped to. All of
-that is reachable **only by a client that posts
-`ScopeRef(kind="family", name=...)` itself.** Nothing in the running UI does.
+**~~Also parked: the family scope is nameable everywhere and offered
+nowhere.~~ Closed 2026-09-02, in the workbench only.** `GET /api/families`
+lists what `registry/families.yaml` declares — every entry read through
+`families.registry.resolve`, so a proposal, an unconfirmed entry and an empty
+family are absent rather than quietly present — and `ScopeChip` offers that
+list beside the parts and projects. `known_scopes` returns a third name list
+and `scope_resolver.resolve` takes `families=`, matching a declared family
+**only** on an exact whole-token hit of its declared name and returning it as
+a *candidate*: no path through the resolver makes a family the confident
+scope, so a family becomes a scope because a person chose it. The picker
+cannot invent one either — the filter narrows the declared list and never adds
+to it, and typing `AFE79xx` (the wildcard the part tier matches on) offers
+nothing. An undeclared family named anyway comes back as `deps.get_retriever`'s
+400 carrying the registry's own refusal, rendered verbatim in the turn.
+Verified in a real browser, both with the repo's declared `AFE795x` and
+against an empty registry. On MCP the same boundary still holds for a
+different reason — see below.
 
 Two things are missing, both in code this wave did not own:
 

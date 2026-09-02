@@ -18,6 +18,7 @@
  * click and the shelf rail already use.
  */
 import type { CategoryOut, LibraryDocumentOut } from '../../api/types';
+import { RevisionBadge } from './RevisionBadge';
 
 export interface PartGroup {
   part_number: string;
@@ -84,6 +85,11 @@ function DocumentLine({
           </span>
         ))}
       </button>
+      {/* Outside the open button on purpose: inside, its sentence would be
+          swallowed by that button's explicit accessible name and a screen
+          reader would never hear it. This is the shelf row a user actually
+          reads, so this is where the freshness has to be. */}
+      <RevisionBadge state={document.revision_state} subject={document.filename} />
       {onEditDocument ? (
         <button
           type="button"
@@ -149,6 +155,11 @@ export function CategoryContents({
               {group.documents.length === 1 ? '1 document' : `${group.documents.length} documents`}
             </span>
             {group.built ? null : <span className="cat-unbuilt">unbuilt</span>}
+            {/* The part's least fresh document, so a collapsed row still says
+                whether anything here has been checked. A part is only as
+                fresh as its least fresh document — the same rule
+                `staleness.corpus_staleness` applies on every other surface. */}
+            <RevisionBadge documents={group.documents} subject={group.part_number} />
             {!group.built && onBuild ? (
               // The Library already knows which documents reach this part and
               // where they are; making the user go to Analyze and retype a

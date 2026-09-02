@@ -549,11 +549,12 @@ class ScopeRef(BaseModel):
     `family` is the third kind (phase 7, ticket 07) and is additive: it sits
     beside `project` rather than under it, because a project is parts someone
     put on one board and a family is one device published in several options.
-    `retrieve.scope.resolve_scope` has resolved all three since that ticket;
-    this is what lets an HTTP caller *name* the third one. Nothing in this
-    application infers a family from a question - `app/scope_resolver.py`
-    still proposes only parts and projects - so a family scope arrives only
-    because a client asked for it by name.
+    `retrieve.scope.resolve_scope` has resolved all three since that ticket.
+    Nothing in this application *infers* a family. `app/scope_resolver.py`
+    offers the ones declared in `registry/families.yaml`, matched only by
+    their exact declared name and never returned as the confident scope, and
+    `GET /api/families` lists the same declared set for a picker - so a family
+    scope arrives only because a person named or chose one.
     """
 
     kind: Literal["part", "project", "family"] = "part"

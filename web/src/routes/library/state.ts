@@ -12,7 +12,12 @@
  * cannot mean anything — `kind: "parts"` with no parts — must be stopped here
  * rather than sent and rejected.
  */
-import type { Applicability, LibraryDocumentOut } from '../../api/types';
+import type {
+  Applicability,
+  LibraryDocumentOut,
+  RevisionState,
+  Staleness,
+} from '../../api/types';
 
 /** The empty value of either filter: no filtering at all. */
 export const NO_FILTER = '';
@@ -354,4 +359,132 @@ export function categoryContents(
     .sort((a, b) => a.part_number.localeCompare(b.part_number));
 
   return { parts, supporting };
+}
+
+// --- upstream freshness (phase 7, ticket 02) -------------------------------------
+
+/**
+ * One document's freshness reading, ready to render.
+ *
+ * The words are mirrored by hand from `staleness.banner_text` in the Python
+ * package, which is the one place this sentence is written and which the CLI,
+ * the `INDEX.md` banner, the `dsa audit` metric and the answer-pack footer all
+ * call. This is a fifth surface, and the rule it inherits is the rule that
+ * matters: **`unknown` is the default and it is not `current`.** A corpus that
+ * has never been checked reads "not checked" and says which command clears it.
+ * Reading "nobody checked" as "still current" is the inversion the whole
+ * ticket exists to prevent — it is the difference between a designer knowing
+ * they are on their own and believing they were told.
+ *
+ * The second rule, equally load-bearing: **a hash difference is never
+ * staleness.** A vendor that regenerates a PDF with today's date on every
+ * download moves the bytes of an unchanged revision daily, so `content_drift`
+ * is worded as "regenerated", never as "revised", and never implies a new
+ * revision exists.
+ */
+export interface RevisionReading {
+  staleness: Staleness;
+  /** The badge's word: `not checked`, `superseded`, `current`. */
+  label: string;
+  /** The whole sentence — the badge's tooltip and its accessible name. */
+  detail: string;
+  /**
+   * True when this is something a designer must be shown. Mirrors
+   * `CorpusStaleness.warns`: anything but `current`, plus a `current` reading
+   * whose bytes drifted.
+   */
+  warns: boolean;
+}
+
+/** The command that clears an `unknown`, named in every message that has one. */
+export const CHECK_COMMAND = 'dsa check-revisions';
+
+/** `2026-08-01` from an ISO timestamp; `''` when there is none to print. */
+function checkedOn(checkedAt: string | null): string {
+  const text = (checkedAt ?? '').trim();
+  return text ? text.slice(0, 10) : '';
+}
+
+/**
+ * The drift sentence — worded so it can never read as a new revision.
+ *
+ * Mirrors `staleness._drift_sentence`: bytes moved, the printed revision did
+ * not, so the document was regenerated rather than revised.
+ */
+function driftSentence(): string {
+  return (
+    'Upstream’s bytes differ but its revision identifier has not moved: the document was ' +
+    'regenerated, not revised — this is not evidence of a new revision.'
+  );
+}
+
+/** What one document's `revision_state` says, in words a person can act on. */
+export function describeRevision(state: RevisionState | null | undefined): RevisionReading {
+  const staleness: Staleness =
+    state?.staleness === 'current' || state?.staleness === 'stale' ? state.staleness : 'unknown';
+  const note = (state?.note ?? '').trim();
+  const checked = checkedOn(state?.checked_at ?? null);
+  const drift = Boolean(state?.content_drift);
+
+  if (staleness === 'stale') {
+    const upstream = (state?.upstream_revision ?? '').trim() || 'a different revision';
+    return {
+      staleness,
+      label: 'superseded',
+      detail:
+        `Superseded: ${upstream} is available upstream` +
+        (checked ? ` (checked ${checked})` : '') +
+        '. Verify before committing to silicon.' +
+        (note ? ` ${note}` : ''),
+      warns: true,
+    };
+  }
+
+  if (staleness === 'current') {
+    // "Current" is never an unqualified reassurance: it carries the date the
+    // claim was made, because a check from six months ago is a different fact
+    // from a check this morning.
+    const detail =
+      `Revision current: confirmed against upstream${checked ? ` (checked ${checked})` : ''}.` +
+      (drift ? ` ${driftSentence()}` : '') +
+      (note ? ` ${note}` : '');
+    return { staleness, label: 'current', detail, warns: drift };
+  }
+
+  return {
+    staleness,
+    // Not the word `unknown`, which reads as a shrug. "Not checked" names who
+    // did not do what, and the sentence names the command that fixes it.
+    label: 'not checked',
+    detail:
+      'Revision not checked: this document has never been confirmed against upstream' +
+      (note ? ` — ${note}` : '') +
+      `. Run \`${CHECK_COMMAND}\` before relying on it for a design decision.`,
+    warns: true,
+  };
+}
+
+/** Worst first: `stale`, then `unknown`, then `current`. */
+const SEVERITY: Record<Staleness, number> = { stale: 0, unknown: 1, current: 2 };
+
+/**
+ * The reading for a set of documents: the least fresh one, datasheet first.
+ *
+ * Mirrors `staleness.corpus_staleness`. A part is only as fresh as its least
+ * fresh document — a current datasheet beside an unchecked register map is not
+ * a current part, because the register map is what a bring-up question is
+ * answered from. Ties go to the datasheet, which is the document that speaks
+ * for the part. An empty set reads `unknown`, because "there is nothing here"
+ * and "nobody has checked" are both un-checked and neither is `current`.
+ */
+export function worstRevision(documents: LibraryDocumentOut[]): RevisionReading {
+  const ranked = [...documents].sort((a, b) => {
+    const bySeverity =
+      SEVERITY[describeRevision(a.revision_state).staleness] -
+      SEVERITY[describeRevision(b.revision_state).staleness];
+    if (bySeverity !== 0) return bySeverity;
+    const rank = (document: LibraryDocumentOut) => (document.doc_type === 'datasheet' ? 0 : 1);
+    return rank(a) - rank(b);
+  });
+  return describeRevision(ranked[0]?.revision_state ?? null);
 }

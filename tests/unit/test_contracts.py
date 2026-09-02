@@ -1188,6 +1188,10 @@ def test_client_exposes_one_function_per_endpoint_plus_sse():
     assert {
         "getParts",
         "getProjects",
+        # The declared-family list a scope picker offers from. Named here
+        # because the endpoint exists to be *offered*: a client that cannot
+        # call it leaves the third scope kind nameable and unreachable again.
+        "getFamilies",
         "scanDirectory",
         "startAnalyze",
         "openAnalyzeStream",

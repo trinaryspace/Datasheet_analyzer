@@ -332,3 +332,17 @@
   display: flex;
   gap: 0.4rem;
 }
+
+/* --- the picker's family note ------------------------------------------------
+   Present in both states: "these are declared" and "none are declared". A
+   family is the one scope a user could believe the tool invented, so the
+   picker says where the list comes from rather than leaving it to be guessed. */
+
+.chat-scope-families-note {
+  margin: 0.45rem 0 0;
+  padding-top: 0.35rem;
+  border-top: 1px solid var(--dsa-rule, #d1d5db);
+  font-size: 0.78em;
+  line-height: 1.35;
+  color: var(--dsa-muted, #6b7280);
+}

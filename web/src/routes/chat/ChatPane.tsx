@@ -39,7 +39,7 @@ import {
 import { useWorkingSet } from '../../shell/workingSet';
 import { AnswerBody, citedInText } from './AnswerBody';
 import { CitationLink } from './CitationLink';
-import { ScopeChip, scopeKey } from './ScopeChip';
+import { ScopeChip, scopeKey, scopeLabel } from './ScopeChip';
 import {
   applyChatEvent,
   errorText,
@@ -438,7 +438,11 @@ function TurnView({ turn, onScope, onCitation }: TurnViewProps) {
                     data-scope-kind={candidate.kind}
                     onClick={() => onScope(turn, candidate)}
                   >
-                    {candidate.name}
+                    {/* `scopeLabel`, not `name`: a candidate list that printed
+                        `AFE795x` bare would offer a whole declared series in
+                        the same shape as a part number, and the user would be
+                        picking a scope they were never shown the kind of. */}
+                    {scopeLabel(candidate)}
                   </button>
                 </li>
               ))}

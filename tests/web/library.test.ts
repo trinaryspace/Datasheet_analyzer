@@ -26,6 +26,7 @@ import { ApiError } from '../../web/src/api/client';
 import type {
   Applicability,
   LibraryDocumentOut,
+  RevisionState,
   LibraryOut,
   PartOut,
   ProjectOut,
@@ -41,11 +42,13 @@ import {
   addLabel,
   collectLabels,
   collectParts,
+  describeRevision,
   filterDocuments,
   labelSuggestions,
   rebuildOffer,
   removeLabel,
   validateApplicability,
+  worstRevision,
 } from '../../web/src/routes/library/state';
 import { downloadText } from '../../web/src/routes/sessions/download';
 import { SessionsScreen } from '../../web/src/routes/sessions/route';
@@ -173,6 +176,18 @@ function shelfDocument(over: Partial<ShelfDocument> = {}): ShelfDocument {
 
 function applicability(over: Partial<Applicability> = {}): Applicability {
   return { kind: 'all', parts: [], family: '', category: '', evidence: '', ...over };
+}
+
+function revisionState(over: Partial<RevisionState> = {}): RevisionState {
+  return {
+    staleness: 'unknown',
+    checked_at: null,
+    upstream_revision: '',
+    upstream_sha256: '',
+    content_drift: false,
+    note: '',
+    ...over,
+  };
 }
 
 function libraryDocument(over: Partial<LibraryDocumentOut> = {}): LibraryDocumentOut {
@@ -449,6 +464,189 @@ describe('library model', () => {
     expect(rebuildOffer([])).toBe('');
     expect(rebuildOffer(['AFE7951'])).toContain('AFE7951');
     expect(rebuildOffer(['AFE7951', 'AFE7952'])).toContain('AFE7951, AFE7952');
+  });
+});
+
+// --- upstream freshness ----------------------------------------------------------
+//
+// Every corpus in this repo reads `unknown`, because nothing has ever been
+// checked against real upstream bytes. So the assertion carrying the most
+// weight here is a negative one: `unknown` must never render as, sort with, or
+// be quieter than `current`. A badge that let "nobody looked" read as "still
+// good" would be worse than no badge at all.
+
+describe('the freshness reading', () => {
+  it('reads an unchecked document as not checked, never as current', () => {
+    const reading = describeRevision(revisionState());
+
+    expect(reading.staleness).toBe('unknown');
+    expect(reading.label).toBe('not checked');
+    expect(reading.label).not.toContain('current');
+    // Loud, exactly as `stale` is: the two differ in what they say, not in
+    // how much attention they ask for.
+    expect(reading.warns).toBe(true);
+    expect(reading.detail).toContain('never been confirmed against upstream');
+    // A warning that does not say how to clear it trains the reader to ignore it.
+    expect(reading.detail).toContain('dsa check-revisions');
+  });
+
+  it('carries the recorded reason for an unchecked document verbatim', () => {
+    const reading = describeRevision(revisionState({ note: 'no registry URL for this document' }));
+
+    expect(reading.detail).toContain('no registry URL for this document');
+  });
+
+  it('treats a missing or unrecognised reading as unchecked, not as current', () => {
+    for (const state of [null, undefined, revisionState({ staleness: 'sunny' as never })]) {
+      const reading = describeRevision(state);
+      expect(reading.staleness).toBe('unknown');
+      expect(reading.warns).toBe(true);
+    }
+  });
+
+  it('names the upstream revision and the date on a superseded document', () => {
+    const reading = describeRevision(
+      revisionState({
+        staleness: 'stale',
+        upstream_revision: 'SBASA41F',
+        checked_at: '2026-08-14T10:00:00Z',
+      }),
+    );
+
+    expect(reading.label).toBe('superseded');
+    expect(reading.warns).toBe(true);
+    expect(reading.detail).toContain('SBASA41F is available upstream');
+    expect(reading.detail).toContain('checked 2026-08-14');
+    expect(reading.detail).toContain('Verify before committing to silicon');
+  });
+
+  it('makes current a claim with a date on it', () => {
+    const reading = describeRevision(
+      revisionState({ staleness: 'current', checked_at: '2026-08-14T10:00:00Z' }),
+    );
+
+    expect(reading.label).toBe('current');
+    expect(reading.warns).toBe(false);
+    expect(reading.detail).toContain('confirmed against upstream');
+    expect(reading.detail).toContain('checked 2026-08-14');
+  });
+
+  it('words content drift as regenerated, never as a new revision', () => {
+    const reading = describeRevision(
+      revisionState({ staleness: 'current', content_drift: true, checked_at: '2026-08-14' }),
+    );
+
+    // Still current - the printed revision did not move - but it warns,
+    // because bytes moving under a verified hash is a fact worth knowing.
+    expect(reading.staleness).toBe('current');
+    expect(reading.warns).toBe(true);
+    expect(reading.detail).toContain('regenerated, not revised');
+    expect(reading.detail).not.toMatch(/new revision (is|available)/i);
+  });
+
+  it('reads a part as its least fresh document, datasheet breaking a tie', () => {
+    const current = libraryDocument({
+      content_hash: 'c1',
+      revision_state: revisionState({ staleness: 'current' }),
+    });
+    const unchecked = libraryDocument({ content_hash: 'u1' });
+    const superseded = libraryDocument({
+      content_hash: 's1',
+      revision_state: revisionState({ staleness: 'stale', upstream_revision: 'Rev J' }),
+    });
+
+    // A current datasheet beside an unchecked register map is not a current
+    // part: the register map is what a bring-up question is answered from.
+    expect(worstRevision([current, unchecked]).label).toBe('not checked');
+    expect(worstRevision([current, unchecked, superseded]).label).toBe('superseded');
+    expect(worstRevision([current]).label).toBe('current');
+    // Nothing to be stale is still nothing checked.
+    expect(worstRevision([]).label).toBe('not checked');
+
+    // Same state, two documents: the datasheet speaks for the part.
+    const appNote = libraryDocument({
+      content_hash: 'a1',
+      doc_type: 'application note',
+      revision_state: revisionState({ staleness: 'stale', upstream_revision: 'App Rev B' }),
+    });
+    const datasheet = libraryDocument({
+      content_hash: 'd1',
+      doc_type: 'datasheet',
+      revision_state: revisionState({ staleness: 'stale', upstream_revision: 'SBASA41F' }),
+    });
+    expect(worstRevision([appNote, datasheet]).detail).toContain('SBASA41F');
+  });
+});
+
+describe('the freshness badge on the shelf', () => {
+  it('shows every document on the shelf as not checked, loudly', async () => {
+    renderLibrary();
+    const tree = await screen.findByRole('navigation', { name: 'Categories' });
+    await userEvent.setup().click(within(tree).getByRole('button', { name: /^Amplifiers/ }));
+
+    const contents = await screen.findByRole('region', { name: /Contents of Amplifiers/ });
+    const badges = within(contents).getAllByTestId('revision-badge');
+    expect(badges.length).toBeGreaterThan(0);
+    for (const badge of badges) {
+      expect(badge).toHaveAttribute('data-staleness', 'unknown');
+      expect(badge).toHaveAttribute('data-warns', 'true');
+      expect(badge).toHaveTextContent('not checked');
+    }
+    // The whole sentence, including the fix, is the badge spoken name.
+    expect(badges[0].getAttribute('aria-label')).toContain('dsa check-revisions');
+  });
+
+  it('badges a part by its least fresh document, without opening it', async () => {
+    getLibrary.mockResolvedValue(
+      libraryOut({
+        documents: [
+          libraryDocument({
+            content_hash: 'cur',
+            filename: 'lmx1204.pdf',
+            revision_state: revisionState({ staleness: 'current', checked_at: '2026-08-14' }),
+          }),
+          libraryDocument({
+            content_hash: 'reg',
+            filename: 'lmx1204-registers.pdf',
+            doc_type: 'register map',
+          }),
+        ],
+      }),
+    );
+
+    renderLibrary();
+    const tree = await screen.findByRole('navigation', { name: 'Categories' });
+    await userEvent.setup().click(within(tree).getByRole('button', { name: /^Amplifiers/ }));
+
+    const contents = await screen.findByRole('region', { name: /Contents of Amplifiers/ });
+    const part = within(contents)
+      .getAllByTestId('revision-badge')
+      .find((badge) => (badge.getAttribute('aria-label') ?? '').startsWith('LMX1204:'));
+    expect(part).toBeDefined();
+    expect(part).toHaveAttribute('data-staleness', 'unknown');
+    expect(part).toHaveTextContent('not checked');
+  });
+
+  it('puts the reading on the document row the editor opens', () => {
+    render(
+      createElement(DocumentRow, {
+        document: libraryDocument({
+          revision_state: revisionState({
+            staleness: 'stale',
+            upstream_revision: 'SBASA41F',
+            checked_at: '2026-08-14',
+          }),
+        }),
+        knownLabels: [],
+        applicabilityControl: null,
+        onPatched: () => {},
+      }),
+    );
+
+    const badge = screen.getByTestId('revision-badge');
+    expect(badge).toHaveAttribute('data-staleness', 'stale');
+    expect(badge).toHaveTextContent('superseded');
+    expect(badge.getAttribute('title')).toContain('SBASA41F is available upstream');
   });
 });
 

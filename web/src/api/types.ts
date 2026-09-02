@@ -46,9 +46,11 @@ export interface Applicability {
  * `ScopeRef.kind` — exactly one Part, Project or Family; no "everything".
  *
  * `family` is a *declared* series (`registry/families.yaml`), and nothing in
- * this application infers one: `/api/chat/resolve-scope` proposes only parts
- * and projects, so a family scope reaches the API only because a caller named
- * it. No pane offers one yet — see KNOWN_SHORTCOMINGS.md.
+ * this application infers one. `/api/chat/resolve-scope` offers a family only
+ * when the question names a declared one **exactly**, and offers it as a
+ * candidate rather than as the resolved scope, so a family becomes the scope
+ * of an answer because a person picked it. `GET /api/families` lists the same
+ * declared set, and it is the only thing a picker may offer.
  */
 export type ScopeKind = 'part' | 'project' | 'family';
 
@@ -277,6 +279,39 @@ export interface ProjectPartsIn {
 /** `GET /api/projects`. */
 export interface ProjectsOut {
   projects: ProjectOut[];
+  count: number;
+}
+
+// --- declared part families ---------------------------------------------------
+
+/**
+ * One **declared, confirmed** family, as a picker may offer it.
+ *
+ * Membership is declared, never inferred: every entry here was written by a
+ * human into `registry/families.yaml` and passed through the registry's own
+ * `resolve`, so a proposal, an unconfirmed entry and an empty family are all
+ * absent rather than quietly present. That matters because a family index
+ * tells a designer "this section is identical in every member" — a wrong
+ * member makes that sentence a lie they cannot see.
+ *
+ * `unbuilt_members` is reported, not filtered: a partly built family is still
+ * a declared family, and naming the gap beats silently narrowing it.
+ */
+export interface FamilyOut {
+  name: string;
+  title: string;
+  members: string[];
+  /** The member every delta is signed against: the first one declared. */
+  reference: string;
+  /** The human's one-line reason this grouping is real. Verbatim. */
+  note: string;
+  /** Members with no built corpus, in declared order. */
+  unbuilt_members: string[];
+}
+
+/** `GET /api/families` — name-ordered. An empty list is a real answer. */
+export interface FamiliesOut {
+  families: FamilyOut[];
   count: number;
 }
 
@@ -524,10 +559,12 @@ export interface LibraryDocumentOut {
   unbuilt_parts: string[];
   rebuild_needed: string[];
   /**
-   * Upstream freshness, as of the last `dsa check-revisions`. Present on the
-   * wire; **not yet rendered by any pane** — surfacing it needs a badge in
-   * `DocumentRow`, which is recorded in KNOWN_SHORTCOMINGS.md rather than
-   * half-built here.
+   * Upstream freshness, as of the last `dsa check-revisions`.
+   *
+   * Rendered by the Library's freshness badge (`routes/library/state.ts`
+   * decides the words, `RevisionBadge.tsx` draws them). `unknown` is the
+   * state every corpus in this repo is in and it reads "not checked" — never
+   * as a quiet tick, and never as "current".
    */
   revision_state: RevisionState;
 }

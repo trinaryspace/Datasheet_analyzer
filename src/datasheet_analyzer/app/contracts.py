@@ -16,6 +16,7 @@ in parallel against the same contract.
 | POST | `/api/parts/{part}/category` | `PartCategoryIn` | `PartCategoryOut` | — |
 | POST | `/api/categorize` | `CategorizeIn` | `CategorizeOut` | — |
 | GET | `/api/projects` | — | `ProjectsOut` | 06 |
+| GET | `/api/families` | — | `FamiliesOut` | — |
 | POST | `/api/projects` | `ProjectCreateIn` | `ProjectOut` | — |
 | POST | `/api/projects/{name}/parts` | `ProjectPartsIn` | `ProjectOut` | — |
 | DELETE | `/api/projects/{name}/parts/{part}` | — | `ProjectOut` | — |
@@ -116,6 +117,8 @@ __all__ = [
     "CitationOut",
     "DocProposal",
     "ErrorOut",
+    "FamiliesOut",
+    "FamilyOut",
     "JobEvent",
     "JobRegistryLike",
     "JobState",
@@ -320,6 +323,51 @@ class ProjectsOut(BaseModel):
     """`GET /api/projects` — empty list (200) when `projects_dir` is absent."""
 
     projects: list[ProjectOut] = Field(default_factory=list)
+    count: int = 0
+
+
+# --- declared part families ---------------------------------------------------------
+
+
+class FamilyOut(BaseModel):
+    """One **declared, confirmed** family, as a pane may offer it.
+
+    The whole point of this shape is that it can only describe something a
+    human wrote in `registry/families.yaml`. `GET /api/families` builds it by
+    running every entry through `families.registry.resolve`, which is the one
+    place the declaration rule lives - so a proposal in
+    `families.candidate.yaml`, an entry carrying `confirmed: false`, and a
+    family with no members all fail to appear here rather than appearing
+    quietly. A UI that offers what this endpoint returns cannot invent a
+    grouping, and that is the property ADR 0005 is protected by one noun up:
+    a family index tells a designer "this section is identical in every
+    member", and a wrong member makes that sentence a lie they cannot see.
+
+    `unbuilt_members` is reported rather than filtered: a family whose members
+    are not all built is still a declared family, and naming the gap is what
+    lets a pane say which member is missing instead of silently narrowing.
+    """
+
+    name: str = ""
+    title: str = ""
+    members: list[str] = Field(default_factory=list)
+    #: The member every delta is signed against: the first one declared.
+    reference: str = ""
+    #: The human's one-line reason this grouping is real. Free text, verbatim.
+    note: str = ""
+    #: Members with no built corpus under `parts_dir`, in declared order.
+    unbuilt_members: list[str] = Field(default_factory=list)
+
+
+class FamiliesOut(BaseModel):
+    """`GET /api/families` - every declared family, name-ordered.
+
+    An empty list (200) is the normal state of a shelf where nobody has
+    declared one, not an error: "you have declared no families" is a real
+    answer, and it is the answer a picker should render as such.
+    """
+
+    families: list[FamilyOut] = Field(default_factory=list)
     count: int = 0
 
 
