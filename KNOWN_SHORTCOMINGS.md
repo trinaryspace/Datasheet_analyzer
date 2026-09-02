@@ -328,57 +328,160 @@ above it.
 
 ## Extraction: what the new fleet reads badly
 
-**New 2026-09-02, and only findable at scale.** Fourteen parts across five
-vendors were onboarded in one run. Eleven of them read well. Four documents
-read worse than the page they came from, and all four are recorded here rather
-than averaged away, because a part that publishes zero of something looks
-identical to a part whose document prints none of it.
+**Recorded 2026-09-02 when fourteen parts were onboarded; every claim in it
+re-measured 2026-09-02 in a fidelity wave, and three of the four causes turned
+out to be wrong.** The table below is the reading as it stands today.
 
 | Part | The page prints | The corpus publishes |
 |---|---|---|
-| **LFCN-1000+** | `ELECTRICAL SPECIFICATIONS1,2 AT 25°C` — a 7-column Parameter / F# / Frequency / Min / Typ / Max / Units table | **0 tables detected**, 0 spec records |
-| **SKY67183-396LF** | `Pin Assignments` *and* `Signal Descriptions`, plus `Pin Configuration`, `Pinout`, `Pin Descriptions` — all five cues | 263 specs, 13 tables, **0 pins** |
-| **ADC12DJ5200RF** | section 5 `Pin Configuration and Functions`, `Pin Functions` tables from p.6 | 2254 specs, 344 tables, 123 registers, **0 pins** |
-| **QPA2213** | 28 pages that are almost entirely S-parameter and load-pull plots | 57 specs, **1 figure** |
+| **LFCN-1000+**, **TCM1-83X+**, **YAT-10+**, **ZX10R-2-183-S+**, **LHA-83W+**, **PMA1-14LN+**, **PSA-8A+** | an `ELECTRICAL SPECIFICATIONS` table with a printed `Parameter / Min. / Typ. / Max. / Units` header | **0 tables detected**, 0 spec records |
+| **ZFSC-2-2500+** (63 records), **ZEM-4300+** (44) | the same shape | one **whole-page** grid whose parameter column is wrong on most rows |
+| **SKY67183-396LF** | `Table 1. Signal Descriptions`, eight pins, six columns side by side | 263 specs, 13 tables, **0 pins** |
+| **QPA2213** | 97 titled plots over 28 pages | 57 specs, **1 figure** |
 
-`dsa status` names the reason for three of the four, and they are three
-different reasons rather than one bug seen four times.
+`ADC12DJ5200RF`'s 0 pins were the fifth row of this table and are **closed** —
+see the commit `a row printed for the other device is not a row about this
+part`; it now publishes 144 pins against a package that declares 144.
 
-- **LFCN-1000+ / YAT-10+ / TCM1-83X+** are the *short* Mini-Circuits shape and
-  the table detector finds nothing in them at all (0 detected, not 0 accepted).
-  Their siblings in the same house style do work — `ZFSC-2-2500+` publishes 63
-  spec records off a **one-page** document and `ZEM-4300+` publishes 44 — so
-  this is not "Mini-Circuits is unreadable", it is something narrower that
-  three of the six documents trip and three do not. Nobody has diffed the two
-  groups.
-- **ADC12DJ5200RF's pin table was found and then refused**, which is the
-  designed behaviour meeting a document it does not suit. `dsa status` prints
-  the reasons verbatim: *pin table: duplicate key 'D9' (rows 38 and 39)* and
-  *pin table: key column is not pin table keys (0 of 4 rows)*. A 221-page
-  RF-sampling ADC in a BGA prints the same ball designator on two rows of its
-  `Pin Functions` table, and the reader refuses the whole table rather than
-  publish two records that resolve to one id. AWR1843 hits the identical
-  duplicate (`F14`, `H13`) and still publishes 112 pins, so the rule is not
-  uniformly fatal — what differs between the two is not established.
-- **SKY67183-396LF is `pdf_layout`, detected 15 tables, accepted 13** and the
-  two it rejected are *no viable column split* and *columns not stable across
-  rows* — one of which is the pin table. It is the only Skyworks document of
-  the three that fails to publish pins; `SKY65405-21` publishes 7 and
-  `SKY13351-378LF` publishes 3 off the same vendor's pages.
-- **QPA2213's figures are not captioned in a way the title-anchor finds.** Its
-  four accepted tables give 57 spec records, so the page is being read; only
-  one region became a figure. Qorvo's plot-heavy pages carry their titles
-  inside the plot art.
+### The Mini-Circuits shape: one detection gap, and a false positive behind it
 
-**What the tool does instead.** Nothing is faked: a part with no readable pin
-table publishes no `pins.json` and `dsa pins` says so, exactly as AFE7950 has
-always done. The risk this entry exists to name is that a reader takes four
-silences as four documents that print nothing, when the pages are right there.
+The earlier reading — *"their siblings in the same house style do work, so this
+is something narrower that three of the six documents trip"* — was wrong twice
+over. It is **seven** of the ten Mini-Circuits parts that detect nothing, not
+three; and the two that "work" do not.
 
-**What would close it.** Diff the three Mini-Circuits documents that yield
-tables against the three that yield none; run `SKY67183-396LF` and
-`ADC12DJ5200RF` through `derive/pins.py` by hand against the table their pages
-print. Neither is a schema question and neither needs a network.
+`pdf_layout` finds a table two ways: a `Table N.` caption line, or a printed
+section heading (a line matching a TOC title key, or set at
+`_HEADING_SIZE` = 11.0 pt or more). A Mini-Circuits datasheet offers neither.
+It prints no captions and carries no TOC, so the structure ladder falls to one
+`Page N` section per page and there are no title keys at all; and its only
+heading-sized type is the product banner across the top, which on a multi-page
+document recurs and is stripped as furniture. Where a banner line does survive,
+the region under it is **the whole page**, and `_has_header_row` tests that
+region's *first printed row*. On LFCN-1000+ that row is `FEATURES`. The table's
+real header — `Parameter | F# | Frequency (MHz) | Min. | Typ. | Max. | Units`,
+set at 7.0 pt, fifteen lines further down — is never consulted.
+
+**The control case was not a control.** ZFSC-2-2500+'s first printed row is
+`Maximum Ratings | Features`, and the single token `ratings` in it passes the
+first-row gate. The whole page is then hypothesized as one table and accepted:
+that is where the 63 spec records come from. They are not 63 readings of the
+electrical specifications table. Their `row_verbatim` interleaves the maximum
+ratings block, the features bullets and the connector list, every record grades
+`confidence: low` with `parse_confidence: none` and empty min/typ/max, and
+rowspan materialization carries `PORT 2` — a coaxial-connection label — down
+the parameter column of twenty rows of the specifications table below it.
+ZEM-4300+'s 44 records are the same shape. **LFCN-1000+'s zero is more honest
+than ZFSC-2-2500+'s sixty-three**, and the INDEX.md line
+`Parameters: SUM PORT, PORT 1, PORT 2, A B, 1.25 1.25, 31.75` is that fact
+surfacing.
+
+**What was built and measured, and not landed.** A third detection path that
+anchors on the table's own header row: a baseline row carrying three distinct
+`_HEADER_TOKENS` (`Parameter Frequency (MHz) Min. Typ. Max. Units` = 5), the
+region running from it to the next caption, section title, furniture line or
+larger type, and the existing ladder and gate deciding as usual. Of the six
+Mini-Circuits documents scanned row by row, every one has exactly one such row
+and in all six it is the specifications header. Measured by re-extracting every
+PDF in the repository, before and after:
+
+- LFCN-1000+ 0 tables → its printed grid, **exactly as printed** — 7 rows,
+  `Pass Band`/`Stop Band` in the label column, `Insertion Loss | DC-F1 |
+  DC-1000 | — | — | 1.0 | dB`; TCM1-83X+ 0 → 11 rows, likewise correct;
+  YAT-10+, ZX10R-2-183-S+, LHA-83W+, PMA1-14LN+ and ZFDC-20-5+ each gain one.
+- **No table was lost anywhere and no gate part moved**: AD9081 29/29/0,
+  HMC520A 7/6/1, LM741 6 accepted, QPA1003P 5 accepted, QPA2213 4 accepted,
+  SKY13351-378LF 6, SKY65405-21 5, SKY67183-396LF 13, LMX2820's register map
+  139/124/15 — all identical to the reading without the path.
+
+It was not landed because **four of the seven new tables put the parameter
+column on the wrong rows.** YAT-10+ prints `Attenuation` on the first baseline
+of its three-row group and `VSWR` on the *middle* baseline of the next, and
+`_materialize_band0`'s nearest-anchor rule then lends each label one row too
+far: the grid reads `VSWR | 15 - 18 | 10.0 | 10.81 | 11.5`, where the page
+prints that line as **Attenuation, in dB**. PMA1-14LN+ and LHA-83W+ shift the
+same way (Gain values labelled `Frequency Range`), and ZX10R-2-183-S+ pulls the
+maximum-ratings block in from the page's other column, so
+`Permanent damage may occur if any of these limits are exceeded.` becomes a
+parameter. A VSWR of 10.81 is exactly the wrong value a designer acts on that
+this pipeline exists to prevent, so the recall was measured and dropped rather
+than shipped.
+
+**What would close it.** Not the detection path — that part is done and
+measured. Rowspan materialization that partitions rows by the table's **drawn
+rules** (`_Page.boxes()` already reads them) instead of by nearest baseline, so
+a label centred over its span and a label aligned to the top of its span both
+land on the rows the page rules them onto. With that in place the detection
+path lands as-is, and the ZFSC-2-2500+/ZEM-4300+ false positive closes with it
+(their whole-page region loses the first-row gate the moment the real header
+row is the anchor).
+
+### SKY67183-396LF: a section title inside a table's header row
+
+The recorded reason — `no viable column split` — is what `dsa status` prints,
+and it is a symptom. Measured: the region under `Table 1. Signal Descriptions`
+is **two lines long**. The table is six columns printed as two side-by-side
+halves, `Pin | Name | Description | Pin | Name | Description`, each cell its own
+line on one baseline at y=322.38; and the document has a *section* called
+`Description`. The region scanner ends a region at any line whose text matches
+a section title key, so the third header cell ends it, and the two lines that
+survive (`Pin`, `Name`) cannot split into columns. The page prints all eight
+pins; the corpus publishes none.
+
+Matching a title key against the **whole baseline row** rather than one line of
+it fixes that, and was measured to change nothing else anywhere in the corpus.
+It was not landed either, because the table then reads *wrongly*. Skyworks
+centres each header cell over its column while the body is left-aligned — the
+`Description` header prints at x=188.3, its body text at x=115.4 — so the
+header-anchored column split puts every description inside the `Name` band and
+`Table 1` comes out as four rows with names like
+`N/C change in performance)`, for an eight-pin part. Half a pinout with fused
+names, and a `package cross-check` warning beside it, is worse than the honest
+refusal: during schematic capture a missing pin reads as *this pin does not
+exist*.
+
+**What would close it.** A column model that reads a header cell's column from
+the body underneath it rather than from the header word's own left edge. The
+all-word rescue ladder already proposes the right bands here
+(`59.8 | 84.3 | 115.4 | 188.3 | ...`) and loses the tie to the header-anchored
+split by band count, which is the correct rule everywhere else — so this is a
+tie-break that needs new evidence, not a threshold to move.
+
+### QPA2213: 97 printed plot titles, one figure
+
+The recorded cause — *"Qorvo's plot-heavy pages carry their titles inside the
+plot art"* — is not what the document does. Measured over all 28 pages:
+
+- **zero** `Figure N.` captions, anywhere. The caption-anchored path is not
+  failing to parse them; there are none to parse.
+- **97** printed plot-title lines, one above each plot, in ordinary text:
+  `Output Power vs. Input Power vs. Temp.` (p.10, 11.16 pt),
+  `IMD3, IMD5 vs. POUT/Tone vs. Vdrain` (p.20),
+  `2nd Harmonic vs. POUT vs. Temp.` (p.22), four to six per page over pages
+  4 to 23.
+
+The title-anchored path misses every one of them for two reasons, both
+measurable: `_TITLE_SIZE` is an **absolute** 13.0 pt and these titles are
+11.16 to 11.19 pt, and a title must sit inside a drawn emphasis band, which
+Qorvo's plot pages do not draw (QPA1003P's do, which is where the 13.0 pt and
+the band requirement were measured). The one figure QPA2213 publishes is the
+page-1 block diagram, which does have a band.
+
+**What would close it.** A title size read relative to the page's own dominant
+body type rather than as an absolute, and vector content directly below in the
+title's own column as the evidence in place of the drawn band. Both are changes
+to `_FigureExtraction._run_title_anchored`, and both need the same corpus-wide
+before/after the detection path above got: HMC520A publishes 107 figures and
+AD9081 100 off the caption path, and neither may move.
+
+### What the tool does instead
+
+Nothing is faked. A part with no readable pin table publishes no `pins.json`
+and `dsa pins` says so; a document whose tables were never detected publishes
+no spec records rather than guessed ones. The risk this entry exists to name is
+that a reader takes those silences for documents that print nothing — and, now,
+that a reader takes ZFSC-2-2500+'s sixty-three records for sixty-three
+readings.
 
 ---
 
