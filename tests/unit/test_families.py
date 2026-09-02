@@ -612,6 +612,56 @@ class TestAskAcrossAFamily:
         assert all(line.shared_with == () for line in pack.answers)
 
 
+class TestTheCollapseIsAskAlone:
+    """The common-once fold belongs to the answer pack, and stops there.
+
+    `--family` resolves on `query`, `search` and `plots` and fans out exactly
+    as a project does; only `ask` folds. That asymmetry is a decision, recorded
+    in `retrieve/family.py`, and it is pinned here so it cannot drift into a
+    silent behaviour change in either direction.
+
+    The reason is the citation. A folded pack row keeps one member's citation
+    and *says whose* (`[common to A, B]`); a record list has nowhere to say it,
+    so folding would hand a `--json` consumer a page number that is wrong for
+    the other member. Measured on the real AFE795x family: of 387 spec rows
+    common to both members, 177 (45.7%) print on different pages.
+    """
+
+    def _scope(self, settings: Settings) -> FamilyRetriever:
+        return FamilyRetriever.for_parts("TEST995x", [settings.parts_dir / p for p in MEMBERS])
+
+    def test_ask_folds_a_row_every_member_printed_identically(self, tmp_path):
+        pack = self._scope(family_settings(tmp_path)).ask("1.8V supply minimum")
+        assert pack.shared is True
+        assert all(line.part == "" for line in pack.answers), "a folded row names no one part"
+        assert all(line.shared_with == MEMBERS for line in pack.answers)
+
+    def test_query_returns_the_row_per_member_with_each_member_s_own_citation(self, tmp_path):
+        settings = family_settings(tmp_path)  # members agree on this row
+        hits = self._scope(settings).specs(symbol="VDD1P8")
+        assert [h.as_dict()["part"] for h in hits] == list(MEMBERS), (
+            "one row per member, in declared order — the fan-out a project gets"
+        )
+        for hit in hits:
+            row = hit.as_dict()
+            assert row["citation"], "every record keeps the citation of the part it came from"
+            assert row["part"] in MEMBERS
+
+    def test_search_returns_the_section_per_member(self, tmp_path):
+        hits = self._scope(family_settings(tmp_path)).search("supply", limit=6)
+        assert {hit.citation.part for hit in hits} == set(MEMBERS), (
+            "a BM25 score is computed against its own corpus's statistics; "
+            "two members' hits are merged and labelled, never folded"
+        )
+
+    def test_the_family_index_is_where_records_are_folded(self, tmp_path):
+        """The aligned view exists — under the verb built for it."""
+        settings = family_settings(tmp_path)
+        index = _index(settings)
+        assert index.shared_sections, "shared sections are listed once here"
+        assert index.n_specs_identical, "and identical rows are counted, not tabulated"
+
+
 # --- the CLI surface ---------------------------------------------------------
 
 

@@ -5,7 +5,7 @@ question is `ProjectRetriever`'s fan-out with one rule added, and the rule *is*
 the ticket: **an answer every member gives identically is returned once**, and an
 answer that is not common is returned per member and flagged as divergent.
 
-Two decisions are worth stating.
+Three decisions are worth stating.
 
 - **"Common" means the members produced the identical finding, character for
   character.** Not "the same magnitude", not "close enough": the answer row's
@@ -17,6 +17,30 @@ Two decisions are worth stating.
   reference member's - the first declared - and the row names the members it is
   common to, because a designer who reads one page must know which page they
   read and which devices it stands for.
+- **The collapse is `ask`'s alone. It does not extend to `query`, `search` or
+  `plots`, and that is a decision rather than an omission.** All four verbs
+  resolve `--family` and fan out identically; only the answer pack folds. The
+  reason is the citation. `_collapse` keeps *one* member's citation and says
+  whose (`[common to A, B]`), which is honest in a rendered pack because the
+  pack has somewhere to say it. A record list has nowhere: a `SpecHit` reaches
+  a `--json` consumer as one row with one `citation`, so folding two members
+  into one row means shipping a page number that is wrong for the other
+  member. Measured on AFE795x, the one declared family: of the 1155 spec rows
+  the family returns, 763 are distinct printed rows and 387 are common to both
+  members - and **177 of those 387 (45.7%) print on different pages in the two
+  datasheets** (`ADC resolution` is p.14 in AFE7950 and p.13 in AFE7953).
+  Collapsing would attach a wrong citation to nearly half the rows it merged.
+  The other two verbs would not pay for themselves either: on the same family
+  `plots(q="output power")` returns 46 hits with 46 distinct
+  (caption, citation) pairs - nothing to fold - and a `SearchHit` carries a
+  BM25 score computed against its own corpus's statistics, which
+  `ProjectRetriever` already documents as not strictly comparable.
+
+  The record-level view of a series exists, under the verb built for it:
+  `dsa family build` (and the `get_family_index` MCP tool) lists shared
+  sections once and tabulates only what moved, with **both** operands' pages
+  on every delta. That is the aligned view, produced by an engine that decides
+  identity explicitly rather than by string equality.
 
 This module also owns the corpus walk that feeds `families/build.py`
 (`load_members`), for the same reason `retrieve/revdiff.py` owns the revision
