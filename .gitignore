@@ -57,3 +57,20 @@ __pycache__/
 # was swept up with them.
 /.scratch/library-pytest-junk/
 /.scratch/sessions-test-junk/
+
+# Family indexes (DSA_FAMILIES_DIR, default `families/`). Deliberately *not*
+# handled the way `projects/` is, and the difference is what a family
+# directory holds. A project directory mixes authored and derived: only
+# `projects/<NAME>/project.json` records who is on that board, so the
+# directory cannot be ignored without ignoring the one file nothing else can
+# reconstruct. A family directory holds `FAMILY_INDEX.md` and `family.json`
+# and nothing else — both derived, in full, from records already tracked, and
+# membership is *declared* in the tracked
+# `src/datasheet_analyzer/registry/families.yaml`. So the authored half of a
+# family is committed, exactly as a project's is; the derived half is a cache,
+# and it is ignored for the reason `/parts/*/cards/` is: `config.py` says of
+# `FAMILY_SCHEMA_VERSION` that a family index "is *not* part of any publish
+# cache key … there is no stale file for a version to invalidate", and
+# committing one would manufacture the stale file that note says cannot exist.
+# `dsa family build <NAME>` rebuilds it in a second.
+/families/
