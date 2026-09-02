@@ -675,8 +675,8 @@ def suggest_candidates(
             f"{len(kept)} templatable record(s) remained after exclusions "
             f"({skipped_rejected} previously rejected, "
             f"{skipped_existing} already in the golden set); "
-            f"{refused.total(SPECS_ARTIFACT) + refused.total(PINS_ARTIFACT) + refused.total(REGISTERS_ARTIFACT) + refused.total(PLOTS_ARTIFACT)} "
-            f"record(s) were refused outright (see `refused`)."
+            f"{sum(refused.total(a) for a in ARTIFACT_ORDER)} record(s) were "
+            f"refused outright (see `refused`)."
         )
     if not selected:
         notes.append(

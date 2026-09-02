@@ -312,6 +312,21 @@ be **exercised** here:
   generated question was committed to `tests/fixtures/`.
 - Rebuilding AFE7953 (needs the TI document viewer) — unchanged from phase 5.
 
+## Deliberately not ported
+
+- **MCP `get_audit`.** The source lineage shipped the scorecard as a
+  fourteenth MCP tool. Batch C's brief named the `audit/` package, the rubric
+  and the `dsa audit` CLI verb, and not the MCP surface, so it is not here:
+  `mcp_server/responses.py` declares no `get_audit` schema and
+  `test_mcp_server.py`'s whole-surface caps are untouched. Adding it is
+  additive and small — `build_scorecard` already returns a model, and the
+  headline is the sentence an agent would answer with — but it changes the
+  declared tool count, which is asserted in two places, and that belongs in a
+  batch that owns those assertions.
+- **`AGENT.md` and the `datasheet-corpus` skill do not mention `dsa audit` or
+  `dsa golden`.** The same standing gap phase 6 recorded for its own tools.
+  Not a criterion of either ticket.
+
 ## What batch D should know
 
 - **`dsa audit` is where a families/compare adapter's own trust signal belongs.**
