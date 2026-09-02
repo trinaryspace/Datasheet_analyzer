@@ -15,11 +15,12 @@ about documents rather than defects in this tool. Closing numbers for
 everything that has been retired are in `Reports/PHASE_6_5_REPORT.md` and
 `Reports/FIX_WAVE_2026-09-01.md`.
 
-The four entries after them come from the phase 7 port and are a different
+The five entries after them come from the phase 7 port and are a different
 kind: each names a mechanism that is built, tested and **unexercised against
 the thing it was built for** — a live upstream, a real vendor errata sheet, a
-twenty-part fleet, a human confirming a generated question. They are recorded
-here rather than reported as met.
+twenty-part fleet, a human confirming a generated question, a family whose
+members print one parameter differently. They are recorded here rather than
+reported as met.
 
 The four entries that the fix wave closed are described in
 `Reports/FIX_WAVE_2026-09-01.md` with their measured before and after: the
@@ -318,3 +319,61 @@ and name which of the four cards must answer).
 golden confirm --part AD9081 --pdf ad9081.pdf`, read each candidate against the
 printed page, and commit what survives. Until someone does, this repository's
 benchmarks are exactly the hand-written ones they always were.
+
+---
+
+## Part families: the reference family computes no delta at all
+
+**Phase 7, ticket 07, ported to this branch 2026-09-01.** `dsa family build
+AFE795x` produces a real index over the corpora committed here — 39 sections,
+14 of them identical in both members and listed once, 763 spec rows aligned on
+the printed row, 379 printing the same values everywhere, 384 in the delta
+table. What it does **not** produce is a single `si_delta`: **0 of 763 aligned
+rows carry a computed difference.**
+
+That is not a bug in the delta and it is worth reading precisely, because the
+zero has three separate causes and only one of them is about the devices.
+
+- **379 rows agree.** Both members print the same value, so there is nothing to
+  subtract. This is the family working: those rows are counted and not
+  tabulated, which is the whole token argument.
+- **360 rows are printed by one member and not the other**, and 16 more are
+  printed several times under one identity by one member. AFE7950 is the quad
+  TX/RX device and AFE7953 the dual, so their §4.9 supply-current tables sweep
+  *different operating modes* — `Mode 10: 4T4R2F` exists on one document and on
+  no page of the other. Nothing printed says which of AFE7950's modes pairs
+  with which of AFE7953's, so nothing is paired. Inventing a pairing would put
+  a delta between two unrelated measurements, which is the worst thing this
+  artifact could do: it would look exactly like an answer.
+- **8 rows align and differ, and every one of them differs by *column*, not by
+  value.** The §4.10 SPI timing rows read `t(SCLK)_R = 50` under `typ` in
+  AFE7950's corpus and `50` under `max` in AFE7953's — the same printed number,
+  read into different columns by two extraction runs. `si_delta` refuses to
+  subtract a `max` from a `typ` (ADR 0007), so these are listed under
+  "not comparable" with both verbatim values, correctly. They are a finding
+  about the *extraction*, not about the silicon, and the family index says so
+  by quoting both sides rather than scoring them.
+
+**What the delta path is proven on instead.** The synthetic family in
+`tests/unit/family_corpus.py`, where the two members differ by exactly one
+printed value (`TJ` max 105 against 125 °C) and the index computes `+20`
+against the reference with both pages cited. Every branch of the arithmetic is
+covered there; what is *not* covered is a real vendor publishing two members
+that print the same parameter, under the same printed conditions, in the same
+column, with different numbers.
+
+**What would close it.** A family whose members are closer than AFE795x —
+device options rather than channel counts — or the same two devices rebuilt
+through one extraction backend so the §4.10 column labels agree. The second is
+cheap and was measured: a `--vendor unknown` layout-floor build of afe7950.pdf
+takes 181 s, so rebuilding both members costs about six minutes and is a
+reasonable one-off, but it changes what `parts/` holds and every other measured
+reading in this repository with it. Recorded rather than done.
+
+**Also unexercised: pins and registers.** Neither AFE795x member publishes a
+readable pin table or register map (the standing shortcoming above), so the pin,
+register and bit-field delta paths are proven on synthetic corpora only. The
+family index states that absence in words — *"no member publishes pins … this
+family states nothing about pins, which is not the same as stating they
+agree"* — rather than printing an empty table a reader could mistake for
+agreement.

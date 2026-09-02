@@ -426,7 +426,65 @@ dsa plots  --project rf-frontend --q "gain"
 AFE7950 — Printed page 6 of afe7950.pdf.  Confidence: high.
 ```
 
-`--part` and `--project` are mutually exclusive, and one of them is required.
+`--part`, `--project` and `--family` (below) are mutually exclusive, and one of
+them is required.
+
+### Answer a whole series at once (`dsa family`)
+
+A **project** is parts somebody put on one board. A **family** is one device
+published in several options — AFE7950 and AFE7953 are one vendor's one document
+template, quad TX/RX and dual. Reading both datasheets means reading the same
+thirty-odd sections twice to find the handful that moved, so a family index
+lists every identical section **once** and tabulates only the differences.
+
+```bash
+dsa family list                    # what is declared, and what is only proposed
+dsa family suggest                 # PROPOSE groupings from built corpora
+dsa family confirm AFE795x         # the human act; --dry-run prints and writes nothing
+dsa family build AFE795x           # families/AFE795x/FAMILY_INDEX.md + family.json
+dsa ask --family AFE795x "maximum junction temperature"
+```
+
+```
+## AFE795x — family (AFE7950, AFE7953)
+### Answer
+TJ  Junction temperature: 150 °C (max) — §4.1, p.4  [high]  [common to AFE7950, AFE7953]
+### Verify
+AFE7950 — Printed page 4 of afe7950.pdf.  Confidence: high.
+```
+
+**Membership is declared, never inferred.** This is the rule the whole feature
+turns on. A family index says *"this section is identical in every member — read
+it once"*, and a wrong member makes that sentence a lie the reader cannot see.
+So `registry/families.yaml` is the only file `dsa family build` reads;
+`dsa family suggest` writes a different file (`families.candidate.yaml`) whose
+every entry carries `confirmed: false`; and the loader refuses that file **by
+name**, before parsing, so a proposal cannot be promoted by a typo. Only
+`dsa family confirm` moves an entry across.
+
+**What is "the same" is decided by reading, not by resemblance.** A section is
+shared only when every member prints it under the same title with byte-identical
+body text (the `<!-- source: -->` provenance line and the `# N Title` heading
+stripped first, because those name each member's own revision and section
+number). A spec row aligns on the row **as printed** inside the section as
+printed — symbol, name and conditions, character for character — because an
+alias key would fold `IVDD1P8` and `IVDD1P2` onto one bucket and then refuse
+them both. A pin, a register reset and a bit range are quoted on both sides and
+**never scored**: a signed difference between two bit patterns is a number that
+means nothing and looks like it means something.
+
+Measured on this repository's AFE7950 + AFE7953 corpora: 39 sections, 14 of them
+identical in both and listed once (3664 tokens counted once instead of twice);
+763 spec rows aligned, 379 printing the same values everywhere and counted
+rather than tabulated, 384 in the delta table, 461 refusals listed with their
+printed values. `FAMILY_INDEX.md` renders to **2290 tokens** under its 4000
+budget against **4758** for the two members' own `INDEX.md` files — a ratio of
+**0.481** — and `family.json` beside it always holds every row the budget capped.
+
+Neither AFE795x member publishes a readable pin table or register map, and the
+index says so in those words rather than printing an empty table: *"no member
+publishes pins … this family states nothing about pins, which is not the same as
+stating they agree."*
 
 ### Use it from an agent (MCP)
 
@@ -797,6 +855,7 @@ default settings — off the real ones.
 ```bash
 dsa status    # config, LLM availability, built parts, per-part confidence mix
               # + per-doc extraction stats + projects
+dsa family    # list | suggest | confirm | build (see above)
 dsa version
 ```
 
@@ -808,12 +867,14 @@ Environment variables (prefix `DSA_`, or `.env` file):
 |---|---|---|
 | `DSA_PARTS_DIR` | `parts` | where corpora are written |
 | `DSA_PROJECTS_DIR` | `projects` | where projects are written |
+| `DSA_FAMILIES_DIR` | `families` | where a family index is written |
 | `DSA_LIBRARY_DIR` | `library` | the document inventory: one record per `content_hash`, holding its applicability and your labels |
 | `DSA_SESSIONS_DIR` | `sessions` | saved `dsa serve` conversations |
 | `DSA_CACHE_DIR` | `.cache` | HTTP + extraction caches |
 | `DSA_INDEX_TOKEN_BUDGET` | `3000` | hard INDEX.md budget |
 | `DSA_ASK_BUDGET` | `4000` | default `dsa ask` pack budget (`--budget` overrides) |
 | `DSA_PROJECT_INDEX_TOKEN_BUDGET` | `4000` | hard PROJECT_INDEX.md budget |
+| `DSA_FAMILY_INDEX_TOKEN_BUDGET` | `4000` | hard FAMILY_INDEX.md budget |
 | `DSA_MCP_MAX_TOKENS` | `6000` | hard cap on every `dsa serve --mcp` response |
 | `DSA_LLM_DESCRIPTIONS` | `true` | use LLM for INDEX descriptions |
 | `DSA_MODEL` | `claude-haiku-4-5` | Anthropic model for descriptions |

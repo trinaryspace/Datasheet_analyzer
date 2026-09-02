@@ -13,7 +13,8 @@ tree and that is stated rather than smoothed.
 The port runs in batches. Batches A and B (document registry and `dsa fetch`;
 revision awareness and staleness; `dsa diff-rev`; errata cross-linking) are
 recorded in their commits and in `README.md`, `AGENTS.md` and
-`KNOWN_SHORTCOMINGS.md`. This report covers **batch C**: tickets 05 and 06.
+`KNOWN_SHORTCOMINGS.md`. This report covers **batch C** (tickets 05 and 06) and **batch D** (ticket 07,
+the last feature batch).
 
 ---
 
@@ -369,3 +370,343 @@ the corpora as they stand at pipeline 0.5.0.
 - **`test_scope_seam.py` forbids the identifier `part_dirs` in `cli.py`.** It
   is a grep-shaped guard against a front end building its own project scope;
   `_cmd_audit`'s `--all` loop calls its local `targets` for that reason.
+
+---
+
+# Batch D — ticket 07: part families
+
+Ported from `3022f28`. The direct answer to *"become an expert on a series of
+parts"*: `registry/families.yaml` declares who is in a family, `dsa family
+build` writes `families/<NAME>/FAMILY_INDEX.md` with the shared sections listed
+**once** and only the differences tabulated, and `dsa ask --family` returns a
+finding every member printed identically once and flags the members that differ.
+
+**The rule the whole ticket turns on:** *membership is declared, never
+inferred.* A family index says "this section is identical in every member — read
+it once", and a wrong member makes that sentence a lie a designer cannot see. So
+the suggester may only **propose**.
+
+## What shipped
+
+| Piece | Where | What it owns |
+|---|---|---|
+| membership | `families/registry.py` + `registry/families.yaml` | `FamilyEntry` / `FamilyRegistry`, the candidate file refused **by name**, `resolve`'s two refusals (`FamilyMiss`, `FamilyUnconfirmed`), each naming its fix |
+| the proposal | `families/suggest.py` | part-number stem + section-map Jaccard overlap, both above a floor; every proposal `confirmed: false` |
+| the derivation | `families/build.py` | section alignment (number, then printed title), the spec/pin/register/bit-field delta rows, the counts and the refusals |
+| the rendering | `families/render.py` | `FAMILY_INDEX.md` under a hard token budget with nine stages of degradation |
+| the files | `families/store.py` | `families/<NAME>/FAMILY_INDEX.md` (bounded) + `family.json` (complete) |
+| the question | `retrieve/family.py` + `pack.build_family_pack` | `FamilyRetriever` (a `ProjectRetriever` by composition), `load_members`, and the shared/divergent collapse |
+| the command | `cli.py` | `dsa family list\|suggest\|confirm\|build`, and `--family` as the third scope beside `--part` / `--project` |
+| the scope | `retrieve/scope.py` | `resolve_family`, `unbuilt_family_members`, and `resolve_scope`'s additive `family=""` |
+| the models | `models.py` | `FamilySection`, `FamilyIndex` (from the seam), now typed on `CompareRow` |
+
+## The comparison seam, and the duplication it exposed
+
+Ticket 07 is the only phase-7 feature that needs the comparison engine, which is
+why it was left last. The source drove it through `compare/build.py`'s
+`build_spec_comparison` with a `key_for=` hook that ticket added there. This
+branch spells comparison in `derive/compare.py` — `compare_specs`, `Comparison`,
+`CompareRow`, `CompareCell` — and had no hook.
+
+**The hook, ported additively.** `compare_specs(..., key_for: SpecKeyFn)`
+replaces exactly two things: the join key a spec record offers, and the row's
+`matched_on` sentence. Nothing else. The four join rungs, the
+exactly-one-free-row-per-part rule, the refusal of an ambiguous key, the SI
+delta and the parse population are untouched, and `_Candidate.aligned_on`
+defaults to `""` so `_matched_on` reaches its four original sentences on every
+row `dsa compare` builds.
+
+**Proof `dsa compare` is unchanged**, measured rather than argued: the full
+`compare_specs` payload over the committed AFE7950 + AFE7953 corpora was dumped
+before the change and after it and diffed — **byte-identical**, 742 rows (408
+aligned, 31 present in one part only, 303 unaligned, 415 deltas), every
+`matched_on` string included — together with a `--symbol TJ` comparison and its
+rendered markdown. The diff was re-run after the model move below and was
+identical again. `tests/unit/test_compare.py` is untouched and green.
+
+**Why a family cannot use the alias key.** `dsa compare` aligns two *unrelated*
+parts on the alias-resolved symbol, because that is what makes `TJ` and
+`Junction temperature` one row. A family's members are one vendor's one document
+template, so an alias key folds `IVDD1P8` and `IVDD1P2` onto one bucket and then
+refuses them both as ambiguous. The family key is therefore
+`(family section, printed symbol, printed name, printed conditions)`, compared
+character for character after the shared `normalize`.
+
+**The alignment numbers, measured here.** The source report claims 83 aligned
+rows on the alias key against 318 on the printed-row key. Neither reproduces —
+this branch's corpora carry record ids the source lineage's did not:
+
+| Key | Aligned rows | Identical | In the delta table |
+|---|---|---|---|
+| alias-resolved symbol (`dsa compare`) | **408** | — | 415 deltas computed |
+| printed row inside the family section | **763** | 379 | 384 |
+
+The relation the hook exists for holds — the printed-row key is strictly finer
+and pairs strictly more — and
+`test_the_printed_row_key_aligns_more_here_than_the_alias_key_would` asserts
+that relation rather than either number.
+
+## The duplicated comparison model, resolved
+
+The batch seam had added `ComparisonCell` / `ComparisonRow` / `PartComparison`
+to `models.py` while `derive/compare.py` already published this branch's
+`CompareCell` / `CompareDelta` / `CompareRow` / `Comparison`. Two comparison
+models in one tree is a defect.
+
+**The live ones win, and all three speculative ones are deleted.** Checked
+before deleting: nothing in this tree referenced them except the `FamilyIndex`
+the same seam added; `retrieve/revdiff.py` names `PartComparison` only in prose;
+the only other hits were under `.claude/worktrees/`, which is the other lineage's
+tree and not this one.
+
+`FamilyIndex.deltas` must therefore hold `CompareRow`, and `models.py` cannot
+import from `derive/compare.py` (that module imports `models`), so
+`CompareCell` / `CompareDelta` / `CompareRow` **moved into `models.py`** — beside
+`RevisionChange` and `FamilySection`, which is where every other derived-row
+model on this branch already lives — and `derive/compare.py` imports and
+re-exports them. Its `__all__` is unchanged, so no importer sees a difference,
+and the byte-identical payload diff above was re-taken after the move.
+
+Adapting families to `CompareRow` cost four shape changes, all recorded in
+`families/build.py`: `cells` is a dict keyed by part rather than a list; a delta
+is a `CompareDelta` on the row rather than a `delta` on each cell; `aligned_on`
+is `matched_on`; and the source's `ambiguous_in` / `note` become
+`not_comparable` lines plus `status` / `flags`, which is the field `dsa compare`
+already writes its own refusals into. `CompareRow` has no `group`, so the family
+section rides in the join key behind a unit separator (`\x1f`, the one byte a
+printed symbol cannot contain) and `families.section_of` reads it back; a test
+asserts that separator never reaches the rendered page.
+
+## The refusals, which are most of the design
+
+- **A section is shared only when it is identical everywhere** — same printed
+  title in every member, byte-identical body in every member, with the
+  `<!-- source: ... -->` provenance line and the `# N Title` heading removed
+  first (they name each member's own revision, pages and section number and
+  would make every section divergent for a reason that is not about the device).
+- **`partial` is not `divergent`.** "Some member does not print this section at
+  all" is a different fact from "every member prints it and something moved",
+  and only the first is an absence.
+- **A section aligns on its printed number, then on its printed title, and
+  nowhere else.** AFE7950 numbers its back matter §6.x and AFE7953 §5.x; the
+  title rung folds those into one section (measured: the five support sections)
+  and refuses to fold anything whose printed titles differ.
+- **A pin name, a register reset and a bit range are never scored.** Quoted on
+  both sides with no delta, no sign and no direction — `revdiff` refuses a reset
+  for the same reason, and it bears restating: a signed difference between two
+  bit patterns is a number that means nothing and looks like it means something.
+  A bit field is its own row rather than a cell of its register's, so "3
+  registers differ" can never silently mean "3 bit fields inside one register
+  do".
+- **An empty pin delta table is ambiguous, so it is never left to speak for
+  itself.** The notes state what each member publishes either way.
+- **A declared member with no corpus is named**, not dropped.
+
+## The token win, measured
+
+Both readings are on the corpora committed under `parts/`, rendered **under**
+the 4000-token budget that ships — a bound you did not apply is not a result:
+
+| Sections | Shared | Spec rows aligned | Identical | Delta rows | Refusals listed | `FAMILY_INDEX.md` | Σ member `INDEX.md` | Ratio |
+|---|---|---|---|---|---|---|---|---|
+| 39 | 14 | 763 | 379 | 384 | 461 | **2290 tok** | 4758 tok | **0.481** |
+
+The other half of the win is the one the ticket names: **3664 tokens** of
+section body are identical across both members and are listed once rather than
+twice.
+
+The 461 refusals break down, and every one of them is a line carrying the
+printed values: 360 keys only one member publishes, 16 keys one member prints
+several rows under, 43 printed pairs whose two sides did not read into the same
+unit, and 42 rows (21 per member) whose printed cell the numeric layer could
+not parse at all. 360 + 16 + 43 + 42 = 461, and 379 + 360 + 16 + 8 = 763.
+The arithmetic closes, which is the point of printing it.
+
+## The suggester proposes and nothing else
+
+`dsa family suggest` reads only built corpora, groups by shared part-number stem
+**and** section-map Jaccard overlap ≥ 0.8, and writes
+`registry/families.candidate.yaml` — a different filename, a `candidates:`
+top-level key, `confirmed: false` on every entry, and a header that says so. It
+is defended three ways, each asserted:
+
+1. `load_families` refuses that filename outright (before parsing, so the check
+   cannot depend on the proposal being well-formed);
+2. `load_candidates` forces `confirmed: False` whatever the file says, so a
+   hand-edited proposal cannot confirm itself;
+3. `resolve` refuses an unconfirmed entry even inside `families.yaml`, naming
+   `dsa family confirm <NAME>` — and the `--family` scope goes through the same
+   `resolve`, so the CLI cannot route around it.
+
+`TestSuggestOnlyProposes::test_an_unconfirmed_suggestion_builds_nothing_through_the_cli`
+runs the whole loop: suggest → `family build` exits 2 → no `families/<NAME>/`
+directory exists. `test_confirm_moves_it_across_and_then_it_builds` shows
+`--dry-run` still builds nothing.
+
+## `dsa ask --family`
+
+The third scope, beside `--part` and `--project`. `FamilyRetriever` is a
+`ProjectRetriever` by composition — every fan-out a design needs, a series needs
+identically — and the one thing a family adds is the answer rule:
+
+- a finding **every** declared member produced, **character for character**, is
+  returned once, carrying `shared_with` and the reference member's citation;
+- anything else is returned per member, `shared: false`, with one `divergence`
+  line per member under a `### Per-member differences` heading placed
+  immediately below the answer.
+
+Character-for-character is the whole strictness: `1.35 A` and `1350 mA` are the
+same magnitude and are not the same printed answer. A member that answered
+**nothing** is a divergence, not an abstention.
+
+`AnswerPack` gains `family` / `shared` / `divergence` and `PackLine` gains
+`shared_with`, all additive, all in `ANSWER_PACK_SCHEMA`, all empty on a
+single-part **and** on a project pack (both asserted).
+
+`SCOPE_ERROR` is left **character for character** as ADR 0006 worded it —
+`test_scope_seam.py` holds it to that — and the three-scope refusal
+(`FAMILY_SCOPE_ERROR`) widens the list while reusing that rationale clause
+verbatim rather than re-wording it. One rationale, written down once.
+
+## What did not reproduce from the source report
+
+Three claims, each re-measured here and each different:
+
+- **"619 of 619 AFE7950 spec records carry no addressable record id."** False on
+  this branch: `SpecRecord.id` is a computed property and all 619 (and all 536
+  of AFE7953's) carry one. The committed corpora are citable and the family
+  index over them is real, which is why the integration test uses them rather
+  than rebuilding both members.
+- **The hand-verified delta `IVDD1P8 / Group 3C: VDD1P8PLL + / 12.6 mA vs
+  16 mA`.** Does not exist here. Both members print
+  `Group 3C: VDD1P8PLL + VDD1P8PLLVCO`, but under *different operating modes*,
+  so nothing pairs on the printed row. That reading came off a layout-floor
+  rebuild whose row names differ from these corpora's.
+- **"83 aligned rows on the alias key vs 318 on the printed-row key."** Measured
+  here: 408 and 763.
+
+What is confirmed unchanged: **the reference family publishes no pins and no
+registers**, because neither AFE795x datasheet prints a table this repo can read
+as one. The index states that absence in words rather than implying agreement,
+and the pin/register/bit-field delta paths are proven on synthetic corpora.
+
+## Hand-verified against the printed datasheets
+
+Two findings, checked against the *printed page* of each PDF rather than against
+the corpus that produced them:
+
+| | AFE7950 | AFE7953 |
+|---|---|---|
+| **shared** — §4.1 `Peak Input Current` | `20` (max), p.4 | `20` (max), p.4 |
+| **only-in** — §4.9 `IVDD0P9`, `Mode 10: 4T4R2F` | `3578.9` (typ), p.25 | printed on **no page** |
+
+The second is the interesting one: AFE7950 is the quad-transmitter device and
+AFE7953 the dual, so `4T4R2F` appears nowhere in afe7953.pdf — and the test
+proves that by reading **all 134 of its pages**, not by trusting its corpus. An
+absence is the finding a series reader is asking about, and it is the one thing
+a corpus cannot be taken at its word for.
+
+## Shortcomings, honestly
+
+- **The reference family computes no `si_delta` at all** — 0 of 763 aligned
+  rows. Three separate causes, only one of which is about the devices: 379 rows
+  agree; 376 are only-in or ambiguous because the two devices sweep different
+  operating modes; and the 8 rows that align *and* differ do so by **column**
+  (`t(SCLK)_R = 50` under `typ` in one corpus and under `max` in the other),
+  which `si_delta` refuses to subtract and lists under "not comparable" with
+  both verbatim values. Recorded in `KNOWN_SHORTCOMINGS.md` with what would
+  close it.
+- **An ambiguous key is refused whole here, not per part.** This branch's join
+  pairs a key only where it names exactly one free row in *each* part that has
+  it, so a member printing two rows under one printed identity leaves every
+  candidate under that key unpaired. The source lineage refused per part and let
+  the unambiguous members still compare. This is stricter, not weaker, and it is
+  this branch's `dsa compare` behaviour rather than a family decision — changing
+  it would change `dsa compare`, which this batch was not permitted to do.
+- **The delta table is capped under a tight budget** (60 → 25 → 10 rows), says
+  so, names `family.json` as the complete copy, and orders rows so the cap drops
+  the least informative last.
+- **A family is not a corpus.** `families/<NAME>/` is written by its own command
+  and is no part of any part's publish cache key; rebuilding a member does not
+  refresh a family index, and nothing pretends otherwise.
+- **No MCP surface, and no GUI surface.** The plan lists `list_families` and
+  `get_family_index`; they are not in this ticket's acceptance criteria and did
+  not ship. `app/deps.py::get_retriever` still resolves `part` / `project` only.
+
+## What remains unrunnable offline
+
+Nothing in ticket 07 needs a network to *run*: `dsa family build` and
+`dsa ask --family` read only what the member corpora already publish, and no
+model call appears in either path. What cannot be **exercised** here:
+
+- **A computed delta on the reference family** — see the shortcoming above. It
+  needs either a closer family or both members rebuilt through one backend
+  (~6 min; a single `--vendor unknown` build of afe7950.pdf measured 181 s), and
+  a rebuild changes every other measured reading in this repository.
+- **The pin, register and bit-field delta paths on a real family.** Neither
+  AFE795x member publishes a readable pin table or register map.
+- **A family of more than two members.** `_record_deltas` and `_collapse` are
+  N-way by construction and are tested at N=2 only; no third AFE79xx corpus
+  exists here.
+- **A human confirming a proposal into the shipped `registry/families.yaml`.**
+  `AFE795x` was confirmed by hand in the port; every test that confirms writes
+  into a tmp `registry_dir`, never the checked-in file.
+
+## The gate, measured
+
+`.venv/Scripts/python.exe -m pytest tests/ -q` offline, on the final tree:
+**2879 tests, 2845 passed, 0 failed, 0 errors, 34 skipped**, 446 s. The
+pre-batch baseline was 2806 tests / 2772 passed / 0 failed / 34 skipped, so
+batch D adds **73 tests** — 54 in `tests/unit/test_families.py`, 17 in
+`tests/integration/test_phase7_families.py`, 2 parametrizations in
+`tests/unit/test_cli_json.py` (`family list --json`, `family build --json`) —
+and skips nothing new. `ruff check .` and `ruff format --check .` clean over
+350 files.
+
+`git status --short -- families` and `-- tests/fixtures` are both empty after
+the run, which is the point of the isolation fix in `524257e`.
+
+No `PdfLayoutBackend.output_version`, `STRUCTURE_STAGE_VERSION` or existing
+schema version moved, and **no corpus was rebuilt**: every number above was
+read off `parts/` as it stands at pipeline 0.5.0. `FAMILY_SCHEMA_VERSION` is
+`"1"` and is no part of any publish cache key — a family index is derived live,
+like a comparison and a scorecard.
+
+## Commits
+
+| | |
+|---|---|
+| `3e89c37` | `families/registry.py`, `families/suggest.py`, `registry/families.yaml` — membership, and a suggester that may only propose |
+| `28f1a49` | the `key_for=` hook on `derive/compare.py`, and the comparison-model duplication resolved |
+| `32198bd` | `families/build.py`, `render.py`, `store.py`, `retrieve/family.py` |
+| `78384f0` | `build_family_pack`, the third scope, `dsa family list\|suggest\|confirm\|build` |
+| `35fc89c` | 52 unit tests + 17 integration tests, every number re-measured |
+| `524257e` | a family build must not write into the repository it is tested from |
+
+## What the integration stage must still wire up
+
+- **`--family` on the other scoped verbs.** `_add_scope` now offers all three,
+  so `dsa query --family`, `dsa search --family` and `dsa plots --family`
+  already resolve and answer — but the *family* answer rule
+  (`build_family_pack`'s common-once collapse) exists for `ask` only. The other
+  verbs fan out like a project and label each hit with its part, which is
+  correct but is not the family reading. Deciding whether they should collapse
+  too is an integration call.
+- **MCP.** `list_families` / `get_family_index` are not declared, and
+  `mcp_server/server.py::resolve_scope` still passes two arguments. Adding the
+  scope is one keyword; adding the tools changes the declared tool count, which
+  is asserted in two places.
+- **The GUI.** `app/deps.py::get_retriever` takes `(part, project)`;
+  `app/routers/chat.py::resolve_scope` is the HTTP surface for the same
+  decision. Both are additive one-liners against `retrieve.scope.resolve_scope`,
+  which already takes `family=`.
+- **`AGENT.md` and the `datasheet-corpus` skill do not mention `dsa family`.**
+  The same standing gap phase 6 and batch C recorded for their own tools.
+- **Nothing decides whether `families/` is committed.** It is untracked and
+  un-ignored, exactly as `projects/` is, so a built family index currently
+  lives only on the machine that ran `dsa family build`. Whether the repo
+  should carry `families/AFE795x/` the way it carries `parts/` is an
+  integration decision, not this batch's. What *is* settled here: no test can
+  write one into the tree by accident — `conftest._point_dsa_at` exports
+  `DSA_FAMILIES_DIR` and `TestNothingHereWritesIntoTheRepository` asserts
+  `git status --porcelain -- families` is empty.
