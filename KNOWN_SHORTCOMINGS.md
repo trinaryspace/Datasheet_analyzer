@@ -748,3 +748,244 @@ scoped verbs and MCP on five of seven. The mechanism they need is in place
 docstrings, the scope table in the module docstring and the envelope tests.
 Recorded rather than done, because it is a change to a declared tool surface and
 this session's remit was the CLI.
+
+---
+
+## Scale gate: eleven of twenty-five parts cannot reach `B`, measured part by part
+
+**Phase 7, ticket 08, measured 2026-09-02** against the full 25-part fleet.
+The checklist asks that every onboarded part grade `>= B` on `dsa audit` **or
+carry a recorded shortcoming explaining why it cannot**. Fourteen reach `B` or
+better; eleven do not, and this is the record for those eleven. **No threshold
+in `registry/audit_rubric.yaml` was touched to produce this table** - the
+rubric was calibrated on eleven corpora before the fleet grew and it is left
+exactly where it was, because a scorecard tuned until the corpus passes is
+worth less than no scorecard.
+
+Two readings were taken, and the difference between them is itself the finding:
+
+| | A | B | C |
+|---|---:|---:|---:|
+| As the fleet stood (cards never built, upstream never checked) | 2 | 10 | 13 |
+| After `dsa card` on all 25 and `dsa check-revisions --all` | 2 | 12 | 11 |
+
+Both of those are real work rather than tuning - building the derived artifact
+a metric asks about, and asking upstream the question `revision_freshness`
+exists to answer - and both together moved exactly two parts (lm741 and
+QPA2213). It is also the shortcoming: **two of the thirteen metrics are not
+reproducible from a clone.** `cards_present` reads `parts/<PART>/cards/*.json`,
+a gitignored on-demand cache, so a fresh checkout grades every part `D` on it
+until someone runs `dsa card`; `revision_freshness` reads a state only an
+opt-in network command can set. A grade that depends on run order is a fact
+about the corpus rather than the rubric, and the audit entry above already says
+so - what ticket 08 adds is the size of it: **two whole grade steps across the
+fleet.**
+
+Building the cards was a measurement rather than a favour. Four cards were
+written for every part, and **twelve parts hold zero card rows** even so
+(LFCN-1000+, LHA-83W+, PMA1-14LN+, PSA-8A+, QPL9547, SKY13351-378LF, TCM1-83X+,
+YAT-10+, ZEM-4300+, ZFDC-20-5+, ZFSC-2-2500+, ZX10R-2-183-S+ - including
+QPL9547, which publishes real specs and still fills nothing). Those keep the
+`D` honestly: the selectors matched nothing, which is the reading the rubric
+wants.
+
+**The eleven, and why each cannot reach `B`.**
+
+| Part | Grade | The reading that holds it down |
+|---|:---:|---|
+| ZFDC-20-5+ | C 2.00 | `table accept rate` **F 0.00** - no table survives the gate |
+| SKY67183-396LF | C 2.42 | `records graded high` **F 0.00**; pin table refused |
+| LFCN-1000+ | C 2.44 | no specs, no pins, no registers, no card rows, no plots |
+| LHA-83W+ | C 2.44 | same |
+| PSA-8A+ | C 2.44 | same |
+| TCM1-83X+ | C 2.44 | same |
+| YAT-10+ | C 2.44 | same |
+| ZFSC-2-2500+ | C 2.44 | 63 spec rows, **0 graded high**, no pins/registers/card rows |
+| ZX10R-2-183-S+ | C 2.44 | no specs, no pins, no registers, no card rows |
+| ZEM-4300+ | C 2.56 | 44 spec rows, **0 graded high** |
+| SKY13351-378LF | C 2.58 | `records graded high` C 0.24; `figure axes read` F 0.00 |
+
+Ten of the eleven are Mini-Circuits or Skyworks, and both causes are already
+recorded above - *the Mini-Circuits shape: one detection gap, and a false
+positive behind it* (a fix was built and **reverted**, because it produced
+wrong values) and *SKY67183-396LF: a section title inside a table's header
+row*. Nothing new is claimed here; what is new is that the fleet is now large
+enough for those two entries to account for **40 % of it**.
+
+**The one lever left, and why it was not pulled.** `golden_pass_rate` is
+weight 4, the heaviest in the rubric, and it reports `n/a` for the nineteen
+parts with no confirmed benchmark. A benchmark at 100 % would move nearly every
+`C` here to `B` - LFCN-1000+ computes to 2.92 with one. That lever is exactly
+the human confirmation invariant 5 rests on, and pulling it by marking
+generated candidates `confirmed: true` would be the single most dishonest thing
+available in this repository. It stays unpulled, and the eleven `C`s stand.
+
+---
+
+## Scale gate: no golden candidate can be generated at all for nine parts
+
+**Phase 7, ticket 08, measured 2026-09-02.** `dsa golden suggest --n 20` was
+run against all 25 fleet parts. It proposed **301 candidates**, and for nine
+parts it proposed **zero** - every one of them Mini-Circuits, and a tenth
+(PMA1-14LN+) managed two.
+
+| Parts | Candidates | The generator's own recorded refusal |
+|---|---:|---|
+| LFCN-1000+, LHA-83W+, PSA-8A+, TCM1-83X+, YAT-10+, ZX10R-2-183-S+ | 0 | "this corpus publishes no record of this kind" - no specs, pins, registers or plots to template from |
+| ZFSC-2-2500+ | 0 | 63 spec records, all refused: "the record prints no name or symbol to ask about" |
+| ZEM-4300+ | 0 | 44 spec records, same refusal |
+| ZFDC-20-5+ | 0 | no templatable record survived |
+| PMA1-14LN+ | 2 | 2 of a very small population |
+
+The second row is the interesting one and it is **not** a generator defect. A
+Mini-Circuits spec table is a frequency matrix - the row key is `2000` and the
+columns are the measured quantities - so a row carries no symbol and no name,
+and a template over it would mint the question *"What is the maximum ?"*. The
+generator refuses it and says which rule dropped how many, which is ADR 0005's
+unparsed-population clause working. The consequence is real all the same:
+**ticket 08's "goldens cover every new part" cannot be met for nine parts by
+any amount of human confirmation, because there is nothing to confirm.**
+
+What would close it is not in the generator. It is a template keyed on the
+*column* rather than the row for a matrix-shaped table ("what is the insertion
+loss at 2000 MHz?"), which is a new template with its own refusal rules, or the
+Mini-Circuits detection gap above being closed so those corpora publish named
+records in the first place.
+
+**And the 301 that were generated: 296 machine-verified, 0 human-confirmed.**
+Each candidate's expected substrings were checked against (a) the corpus
+section covering the page it cites and (b) the printed PDF page text itself,
+through `evalh/citations.py` - the same two checks `dsa verify` runs. 301/301
+passed the corpus half; **296/301 (98.3 %) passed the page-truth half**, and
+277/282 of the query-side checks passed. The five page-truth failures are the
+shape the ticket-06 entry above already named - a printed identity composed
+from cells that never appear contiguously (lm741 `Input adjustment range`;
+QPA1003P `Input Power (P VD = +28 V, I`; SKY65405-21 `PIN, LNA TA`) - and the
+five query failures are register candidates on ADC12DJ5200RF and LMX1204 whose
+`regs` lookup does not return the row the question was templated from.
+
+Machine-verified is not confirmed, and the gap between them is the whole point
+of invariant 5. A page-truth check proves the substring is printed where the
+candidate says. It proves nothing about whether the *question* is worth asking,
+whether the row it names is the one a designer would mean, or whether the
+question reads as English at all. Those are the three things `dsa golden
+confirm` puts in front of a human, and no run of this ticket did any of them.
+
+**None of the 301 is in `tests/fixtures/`.** They were written to
+`.scratch/gate08/candidates/` instead, and the reason is worth recording: the
+first run wrote them to the default golden directory, and
+`tests/unit/test_golden_assist.py::TestNothingHereCanReachTheRealBenchmarks`
+**caught it** - two failures in a 3,046-test suite, one of them a `git status
+--porcelain -- tests/fixtures` shell-out. The defence worked on an agent that
+was actively trying to be careful, which is the only real test of a defence
+like that.
+
+---
+
+## Family: the reference family's zero delta is a fact about the two documents
+
+**Phase 7, ticket 08, re-measured 2026-09-02.** The entry above - *Part
+families: the reference family computes no delta at all* - records three causes
+for AFE795x's `0 of 763`, and re-measurement **confirms all three counts**
+(8 aligned, 360 only-in, 16 ambiguous, 379 identical). What it adds is the one
+piece of evidence that entry could not have: whether a *looser* join would find
+anything to subtract.
+
+It would not. `dsa compare AFE7950 AFE7953` aligns on the alias-resolved symbol
+rather than the printed row, pairs **408 rows** where the family pairs 8, and
+computes **415 SI delta cells - every single one of them zero.** Not one
+non-zero difference exists between these two devices in any row either engine
+can pair. The family's zero is therefore not an artifact of its stricter key:
+AFE7950 and AFE7953 print the same numbers wherever they both print a number,
+and no join, however loose, will produce a delta table from them. The "what
+would close it" line in that entry - *the same two devices rebuilt through one
+extraction backend so the column labels agree* - would resolve the 8 typ-vs-max
+rows and still yield zero, because those 8 rows print the same number too. It
+is recorded here rather than edited in above, because the earlier reading was
+correct and this one only goes further.
+
+**Three closer families were probed, in an isolated scratch registry, and none
+was declared.** `DSA_REGISTRY_DIR` and `DSA_FAMILIES_DIR` were pointed at
+`.scratch/gate08/`, so nothing was written to `registry/families.yaml` and no
+membership was declared by an agent - membership is DECLARED, never inferred,
+and an agent is not a human.
+
+| Probe | Members | Rows aligned | Non-zero SI deltas |
+|---|---|---:|---:|
+| AFE795x (declared) | AFE7950, AFE7953 | 8 of 763 | **0** |
+| LMXclk | LMX2820, LMX1204 | 2 of 261 | **2** |
+| QorvoPA | QPA1003P, QPA2213 | 1 of 90 | 0 - one delta, and it is wrong (below) |
+| SkyLNA | SKY65405-21, SKY67183-396LF | 0 of 105 | 0 |
+
+The LMXclk probe is the only pairing in this fleet that produces a real
+computed delta table, and it produces two rows:
+
+```
+IIL  Low-level input current   LMX1204 -25 uA (p.7)   LMX2820 -1 uA  (p.9)   delta -24 uA
+VIL  Low-level input voltage   LMX1204 0.4 V  (p.7)   LMX2820 0.6 V  (p.9)   delta -0.2 V
+```
+
+Both are correct against the printed pages. Two rows of 261 is not a delta
+table anyone would design against, and LMX1204 (a clock buffer) and LMX2820 (a
+wideband synthesizer) are not one series in any sense a hardware engineer would
+accept - they are two products that happen to share TI's document template.
+Declaring them would satisfy a checklist and mislead a reader, so the probe is
+recorded and the registry is unchanged.
+
+**What would close it is unchanged**: a vendor family whose members are device
+*options* - same parameter, same printed conditions, same column, different
+number. This fleet contains no such pair. That is a fact about which 25 parts
+were onboarded rather than about the family builder, and it is the honest
+reason ticket 08's third checklist item does not fully pass.
+
+---
+
+## `si_delta` reads a range as its low end, and prints `0` for a real difference
+
+**Found by ticket 08's family probe, 2026-09-02.** `derive/compare.py::_scalar`
+takes a `DerivedValue`'s range top **only when the column is named `max`**:
+
+```python
+if cell == "max" and value.value_si_hi is not None:
+    return value.value_si_hi
+return value.value_si
+```
+
+Qorvo prints absolute-maximum ratings in a **single unnamed value column**, so
+a range lands in a cell called `value` and both sides collapse to their low end:
+
+```
+QPA1003P  Storage Temperature   -55 to 150 degC    value_si -55.0  value_si_hi 150.0
+QPA2213   Storage Temperature   -55 to +125 degC   value_si -55.0  value_si_hi 125.0
+delta                            0 degC            value_kind: point
+```
+
+The two parts differ by **25 degC** at the top of the range and the published
+delta reads `0 degC` - the exact failure mode this repository's refusal
+discipline exists to prevent, and worse than a refusal, because `0` is an
+answer a designer will act on.
+
+**It is tested-in behaviour, not an oversight.**
+`tests/unit/test_compare.py::TestSiDelta::test_max_column_uses_the_top_of_a_range`
+asserts that any column other than `max` subtracts the number itself and not
+the range top, with exactly this pair of ranges as its fixture. That rule is
+defensible for a `typ` column sitting beside a `min` and a `max` - the range
+top belongs to the `max` cell and reading it into `typ` would double-count it.
+It is not defensible for a lone `value` column, which is the only cell the row
+has.
+
+**Recorded rather than fixed, deliberately.** The correct behaviour is arguable
+- refuse the pair with a stated reason, or publish a range delta carrying both
+endpoints - and it is a change to the numeric layer's contract plus a
+checked-in test that states the opposite intent. That is a maintainer's
+decision, not something to flip at the close of a phase. Blast radius, measured
+across every `dsa compare` run this ticket made (436 delta cells over eleven
+part pairs): **one row**. It is rare because it needs a single-column table
+*and* a range in it *and* a counterpart aligned to it. It is not rare enough to
+leave unwritten.
+
+**What would close it.** In `_scalar`, treat "this value carries a
+`value_si_hi` and the column is not `max`" as a refusal reason rather than a
+silent truncation; rewrite `test_max_column_uses_the_top_of_a_range` to assert
+the refusal for a lone `value` column while keeping the `min` / `max`
+behaviour; re-read the eleven pairs.
