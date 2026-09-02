@@ -14,6 +14,7 @@ import type { ComponentType, FormEvent } from 'react';
 
 import { patchLibraryDocument } from '../../api/client';
 import type { Applicability, LibraryDocumentOut } from '../../api/types';
+import { RevisionBadge } from './RevisionBadge';
 import type { ApplicabilityControlProps } from './shellPrimitives';
 import {
   addLabel,
@@ -116,6 +117,11 @@ export function DocumentRow({
           <span>{entry.doc_type || 'unknown type'}</span>
           <span>{entry.vendor || 'unknown vendor'}</span>
           <span>{entry.page_count} pages</span>
+          {/* The fifth item, and the only one that is a claim about the world
+              outside this machine: what `dsa check-revisions` last found
+              upstream. `unknown` reads "not checked" and is drawn as a
+              warning, never as a tick — see RevisionBadge. */}
+          <RevisionBadge state={entry.revision_state} subject={entry.filename} />
         </p>
       </header>
 

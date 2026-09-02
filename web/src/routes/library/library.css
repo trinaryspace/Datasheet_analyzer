@@ -456,3 +456,46 @@
   margin: 0;
   font-size: 0.95em;
 }
+
+/* --- upstream freshness ------------------------------------------------------
+   Three states, and the design decision is which of them is quiet. Only
+   `current` is: it is the only reading that says somebody checked and found
+   the document unchanged. `not checked` — which is what every corpus in this
+   repo reads today — wears the same warning colours as `superseded`, because
+   a grey dot beside a green one is exactly how "nobody looked" gets read as
+   "still good". The words differ; the loudness does not. */
+
+.revision-badge {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.25em;
+  padding: 0 0.45em;
+  border: 1px solid var(--color-border, #d8dee6);
+  border-radius: 999px;
+  font-size: 0.8em;
+  white-space: nowrap;
+  color: var(--color-fg-muted, #4a5261);
+}
+
+.revision-badge--warns {
+  border-color: var(--color-warn, #b54708);
+  background: var(--color-warn-soft, #fef0c7);
+  color: var(--color-warn-soft-fg, #7a2e0e);
+}
+
+/* A superseded document is the one reading that means "stop and check the
+   vendor's site", so it carries the border weight as well as the colour. */
+.revision-badge--stale {
+  border-width: 2px;
+  font-weight: 600;
+}
+
+.revision-badge--current {
+  border-color: var(--color-ok-soft, #d1fadf);
+  background: var(--color-ok-soft, #d1fadf);
+  color: var(--color-ok-soft-fg, #054f31);
+}
+
+.revision-badge__mark {
+  font-size: 0.95em;
+}
