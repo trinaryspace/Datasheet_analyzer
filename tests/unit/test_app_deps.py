@@ -13,6 +13,7 @@ steps aside the moment the real one exists, so this file never masks it.
 
 from __future__ import annotations
 
+import os
 import sys
 import types
 from pathlib import Path
@@ -254,6 +255,48 @@ class TestGetRetriever:
         )
         scope = get_retriever(ScopeRef(kind="project", name="rf-frontend"))
         assert isinstance(scope, ProjectRetriever)
+
+    def test_family_scope_returns_a_family_retriever(self, gui_env, resolve_scope_available):
+        """The third scope reaches the HTTP surface (phase 7, ticket 07).
+
+        Declared into a *tmp* registry, never the packaged one: a test may not
+        read or rewrite the families this repository ships.
+        """
+        from datasheet_analyzer.families.registry import (
+            FamilyEntry,
+            FamilyRegistry,
+            families_path,
+            save_families,
+        )
+        from datasheet_analyzer.retrieve.family import FamilyRetriever
+
+        build_manifest(gui_env / "parts", "TEST")
+        build_manifest(gui_env / "parts", "OTHER")
+        registry_dir = gui_env / "registry"
+        save_families(
+            FamilyRegistry(
+                families={
+                    "TESTx": FamilyEntry(name="TESTx", title="fixture", members=["TEST", "OTHER"])
+                }
+            ),
+            families_path(registry_dir),
+        )
+        os.environ["DSA_REGISTRY_DIR"] = str(registry_dir)
+        try:
+            reset_settings_cache()
+            scope = get_retriever(ScopeRef(kind="family", name="TESTx"))
+        finally:
+            os.environ.pop("DSA_REGISTRY_DIR", None)
+            reset_settings_cache()
+        assert isinstance(scope, FamilyRetriever)
+        assert scope.parts == ("TEST", "OTHER")
+        assert scope.reference == "TEST", "a shared answer is cited from the first declared"
+
+    def test_an_undeclared_family_is_400_and_never_inferred(self, gui_env, resolve_scope_available):
+        with pytest.raises(HTTPException) as caught:
+            get_retriever(ScopeRef(kind="family", name="AFE79xx"))
+        assert caught.value.status_code == 400
+        assert "never inferred from a part number" in caught.value.detail
 
     def test_unknown_part_is_400_carrying_the_refusal_text(self, gui_env, resolve_scope_available):
         with pytest.raises(HTTPException) as caught:

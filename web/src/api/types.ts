@@ -42,8 +42,15 @@ export interface Applicability {
   evidence: string;
 }
 
-/** `ScopeRef.kind` — exactly one Part or one Project; no "everything". */
-export type ScopeKind = 'part' | 'project';
+/**
+ * `ScopeRef.kind` — exactly one Part, Project or Family; no "everything".
+ *
+ * `family` is a *declared* series (`registry/families.yaml`), and nothing in
+ * this application infers one: `/api/chat/resolve-scope` proposes only parts
+ * and projects, so a family scope reaches the API only because a caller named
+ * it. No pane offers one yet — see KNOWN_SHORTCOMINGS.md.
+ */
+export type ScopeKind = 'part' | 'project' | 'family';
 
 /** The scope an answer was drawn from: always shown, always editable (ADR 0006). */
 export interface ScopeRef {
@@ -76,6 +83,31 @@ export interface CitationOut {
   needle: string;
 }
 
+/**
+ * Three-state upstream freshness. `unknown` is the default and is **not**
+ * `current`: nobody has checked. Never render it as "up to date".
+ */
+export type Staleness = 'current' | 'stale' | 'unknown';
+
+/**
+ * What the last `dsa check-revisions` found about one document.
+ *
+ * Owned by the document, not produced by a build — a freshly built corpus
+ * reads `unknown` with a null `checked_at` until somebody checks. `note` is
+ * read back verbatim (why a check could not run, or the drift note); never
+ * re-derive that sentence here. `content_drift` means upstream's bytes moved
+ * while the printed revision identifier did not — regenerated, not revised —
+ * so wording that implies a new revision exists is wrong.
+ */
+export interface RevisionState {
+  staleness: Staleness;
+  checked_at: string | null;
+  upstream_revision: string;
+  upstream_sha256: string;
+  content_drift: boolean;
+  note: string;
+}
+
 /** A `SourceDocument` as it appears inside a `LibraryDocument`. */
 export interface SourceDocument {
   content_hash: string;
@@ -96,6 +128,7 @@ export interface LibraryDocument {
   applicability: Applicability;
   /** User text. The machine-derived `PlotRecord.tags` are Tags, not Labels. */
   labels: string[];
+  revision_state: RevisionState;
   added_at: string;
   schema_version: string;
 }
@@ -490,6 +523,13 @@ export interface LibraryDocumentOut {
   parts_reached: string[];
   unbuilt_parts: string[];
   rebuild_needed: string[];
+  /**
+   * Upstream freshness, as of the last `dsa check-revisions`. Present on the
+   * wire; **not yet rendered by any pane** — surfacing it needs a badge in
+   * `DocumentRow`, which is recorded in KNOWN_SHORTCOMINGS.md rather than
+   * half-built here.
+   */
+  revision_state: RevisionState;
 }
 
 /** `GET /api/library`. `labels` is every label in use, for autocomplete. */

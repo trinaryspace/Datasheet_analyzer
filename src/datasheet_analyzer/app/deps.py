@@ -45,6 +45,7 @@ from datasheet_analyzer.config import Settings, get_settings
 from datasheet_analyzer.library.store import LibraryStore
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
+    from datasheet_analyzer.retrieve.family import FamilyRetriever
     from datasheet_analyzer.retrieve.project import ProjectRetriever
     from datasheet_analyzer.retrieve.retriever import Retriever
 
@@ -79,11 +80,16 @@ def get_library() -> LibraryStore:
     return LibraryStore(get_settings_dep().library_dir)
 
 
-def get_retriever(scope: ScopeRef) -> Retriever | ProjectRetriever:
-    """A `Retriever` for a part scope, a `ProjectRetriever` for a project.
+def get_retriever(scope: ScopeRef) -> Retriever | ProjectRetriever | FamilyRetriever:
+    """A `Retriever` for a part, a `ProjectRetriever` for a design, a
+    `FamilyRetriever` for a declared series.
 
     Raises `HTTPException(400)` carrying `resolve_scope`'s refusal text when
     the scope names nothing that exists.
+
+    The three-way split is `ScopeRef.kind`'s, not this function's: exactly one
+    of the three names is ever non-empty, so ADR 0006's precondition is
+    satisfied structurally rather than re-checked here.
     """
     from datasheet_analyzer.retrieve.scope import resolve_scope
 
@@ -92,7 +98,8 @@ def get_retriever(scope: ScopeRef) -> Retriever | ProjectRetriever:
     kind = scope.kind if scope is not None else "part"
     part = name if kind == "part" else ""
     project = name if kind == "project" else ""
-    retriever, reason = resolve_scope(part, project, settings=settings)
+    family = name if kind == "family" else ""
+    retriever, reason = resolve_scope(part, project, settings=settings, family=family)
     if retriever is None:
         # The refusal text travels verbatim: it is the only place ADR 0006's
         # rationale is written down, and a UI is meant to render it as-is.

@@ -194,6 +194,14 @@ function libraryDocument(over: Partial<LibraryDocumentOut> = {}): LibraryDocumen
     parts_reached: ['LMX1204'],
     unbuilt_parts: [],
     rebuild_needed: [],
+    revision_state: {
+      staleness: 'unknown',
+      checked_at: null,
+      upstream_revision: '',
+      upstream_sha256: '',
+      content_drift: false,
+      note: '',
+    },
     ...over,
   };
 }

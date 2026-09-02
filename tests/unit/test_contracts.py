@@ -86,8 +86,10 @@ from datasheet_analyzer.models import (
     JobState,
     LibraryDocument,
     RawDocument,
+    RevisionState,
     ScopeRef,
     SourceDocument,
+    Staleness,
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -729,6 +731,34 @@ def test_library_document_out_projects_a_stored_document():
     assert out.labels == ["reviewed"]
     assert out.parts_reached == ["AFE7950", "AFE7952"]
     assert out.rebuild_needed == []
+    # Phase 7, ticket 02: freshness reaches the workbench. Carried whole, and
+    # `unknown` until somebody runs `dsa check-revisions` — never `current`.
+    assert out.revision_state.staleness is Staleness.UNKNOWN
+    assert out.revision_state.checked_at is None
+
+
+def test_library_document_out_carries_the_revision_state_it_was_given():
+    """A checked document's reading survives the projection verbatim."""
+    document = LibraryDocument(
+        source=SourceDocument(
+            content_hash="8" * 64,
+            path="/shelf/afe7950.pdf",
+            part_number="AFE7950",
+            doc_type=DocType.DATASHEET,
+            page_count=146,
+        ),
+        revision_state=RevisionState(
+            staleness=Staleness.STALE,
+            upstream_revision="SBASA41F",
+            note="upstream prints SBASA41F; this corpus was built from SBASA41E",
+        ),
+    )
+    out = LibraryDocumentOut.from_document(document)
+    assert out.revision_state.staleness is Staleness.STALE
+    assert out.revision_state.upstream_revision == "SBASA41F"
+    assert out.revision_state.note == document.revision_state.note, (
+        "the note is read back verbatim, never re-derived per front end"
+    )
 
 
 def test_session_out_projects_a_session():
@@ -1130,6 +1160,8 @@ def test_client_exposes_one_function_per_endpoint_plus_sse():
 REQUIRED_TS_EXPORTS = [
     "Applicability",
     "ApplicabilityKind",
+    "RevisionState",
+    "Staleness",
     "ScopeKind",
     "ScopeRef",
     "CitationOut",

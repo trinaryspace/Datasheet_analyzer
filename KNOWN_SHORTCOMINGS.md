@@ -138,9 +138,16 @@ derivable parts, read the mismatch warnings, re-run with
 
 - `content_drift` is recorded (with `upstream_sha256`) and nothing consumes it
   yet; `dsa diff-rev` is its natural consumer.
-- `RevisionState` is not exposed on the workbench HTTP surface — the browser
-  panes show a document's applicability and labels but not its freshness. The
-  CLI, the corpus files and MCP all carry it.
+- `RevisionState` **reaches the workbench API and nothing renders it.** The
+  integration wave put the whole reading on `LibraryDocumentOut` (and its
+  TypeScript twin) rather than a flattened `staleness` string, so
+  `GET /api/library` now carries `staleness`, `checked_at`,
+  `upstream_revision`, `content_drift` and the verbatim `note` for every
+  document. No pane reads them: `DocumentRow`'s meta line is a fixed four-span
+  list and its three sections are applicability, labels and parts-reached.
+  Surfacing it needs a badge component and a place to put it — real frontend
+  work, deliberately not started here. The CLI, the corpus files and MCP
+  carried it already.
 - A two-document part reports one `dsa status` line naming its least fresh
   document. A per-document breakdown would be better and is not here.
 
@@ -377,3 +384,25 @@ family index states that absence in words — *"no member publishes pins … thi
 family states nothing about pins, which is not the same as stating they
 agree"* — rather than printing an empty table a reader could mistake for
 agreement.
+
+**Also parked: the family scope is nameable everywhere and offered nowhere.**
+The integration wave widened `ScopeRef.kind` to `part | project | family`, so
+`deps.get_retriever` resolves a family and `POST /api/chat/{id}/message` will
+answer a whole series with the common-once collapse when a caller names one.
+Nothing *offers* that scope. `app/scope_resolver.py` still proposes only parts
+and projects — a question naming `AFE79xx` produces part candidates through
+`_family_matches`, which is a string pattern and not this noun — and
+`ScopeChip` lists `getParts()` and `getProjects()`. Closing it needs
+`known_scopes` to read the family registry, a third tier in the resolver with
+its own tests, and a picker section: real work in two languages, not a wiring
+change. On MCP the same boundary holds for a different reason — see below.
+
+**Also parked: `search` / `find_spec` / `find_plots` / `ask` take no `family`
+argument over MCP.** `list_families` and `get_family_index` are ported and name
+their family in their own response body. Widening the shared envelope's `scope`
+object from `{part, project}` to `{part, project, family}` would change the
+declared `_meta.response_schema` of all sixteen tools — every one of them
+gaining a key only the family-scoped calls could ever fill — and would need a
+`family` parameter and a refusal path on each of the nine scoped tools. The
+CLI has all of this (`dsa ask --family AFE795x`); MCP has the catalog and the
+map and not the fan-out.

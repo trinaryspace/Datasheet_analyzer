@@ -74,6 +74,7 @@ from datasheet_analyzer.models import (
     CitationOut,
     JobState,
     LibraryDocument,
+    RevisionState,
     ScopeRef,
 )
 
@@ -82,10 +83,11 @@ def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
-# Re-exported so a caller has one import for "the contract": the four models
-# that must live in `models.py` (they are embedded in `ChatSession` and in
+# Re-exported so a caller has one import for "the contract": the models that
+# must live in `models.py` (they are embedded in `ChatSession` and in
 # `LibraryDocument`, which the pipeline persists) are part of this surface
-# too.
+# too. `RevisionState` joined them in phase 7: it is owned by the *document*,
+# written only by `dsa check-revisions`, and a build never fills it in.
 __all__ = [
     "ANALYZE_EVENT_END",
     "ANALYZE_EVENT_JOB",
@@ -138,6 +140,7 @@ __all__ = [
     "ProjectsOut",
     "RectOut",
     "ResolveIn",
+    "RevisionState",
     "RunSnapshot",
     "ScanIn",
     "ScanOut",
@@ -676,6 +679,14 @@ class LibraryDocumentOut(BaseModel):
     parts_reached: list[str] = Field(default_factory=list)
     unbuilt_parts: list[str] = Field(default_factory=list)
     rebuild_needed: list[str] = Field(default_factory=list)
+    #: What the last revision check found about this document (phase 7,
+    #: ticket 02). Carried whole rather than flattened to a `staleness`
+    #: string: the reading is `RevisionState`, and a second shape for the
+    #: same fact is a second fact that can disagree with itself. It defaults
+    #: to `unknown` with no `checked_at`, which is the honest state of every
+    #: document nobody has run `dsa check-revisions` against — never
+    #: `current`.
+    revision_state: RevisionState = Field(default_factory=RevisionState)
 
     @classmethod
     def from_document(
@@ -702,6 +713,7 @@ class LibraryDocumentOut(BaseModel):
             parts_reached=list(parts_reached),
             unbuilt_parts=list(unbuilt_parts),
             rebuild_needed=list(rebuild_needed),
+            revision_state=doc.revision_state,
         )
 
 

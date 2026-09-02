@@ -545,15 +545,24 @@ class ScopeRef(BaseModel):
     ADR 0006: there is no "all parts" scope. A question is resolved to one of
     these, and the resolved scope is *shown* on the answer so the scope of an
     answer is never implicit.
+
+    `family` is the third kind (phase 7, ticket 07) and is additive: it sits
+    beside `project` rather than under it, because a project is parts someone
+    put on one board and a family is one device published in several options.
+    `retrieve.scope.resolve_scope` has resolved all three since that ticket;
+    this is what lets an HTTP caller *name* the third one. Nothing in this
+    application infers a family from a question - `app/scope_resolver.py`
+    still proposes only parts and projects - so a family scope arrives only
+    because a client asked for it by name.
     """
 
-    kind: Literal["part", "project"] = "part"
+    kind: Literal["part", "project", "family"] = "part"
     name: str = ""
 
     @property
     def label(self) -> str:
-        """`AD9081` or `project: rx-frontend`."""
-        return self.name if self.kind == "part" else f"project: {self.name}"
+        """`AD9081`, `project: rx-frontend`, or `family: AFE795x`."""
+        return self.name if self.kind == "part" else f"{self.kind}: {self.name}"
 
     def __str__(self) -> str:  # pragma: no cover - convenience only
         return self.label
