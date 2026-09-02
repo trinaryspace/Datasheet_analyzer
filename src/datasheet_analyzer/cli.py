@@ -439,7 +439,7 @@ def _cmd_verify(args: argparse.Namespace) -> int:
 
 
 def _scope(args: argparse.Namespace):
-    """`(scope, show_part)` for a `--part` / `--project` command, or `(None, …)`.
+    """`(scope, show_part)` for a `--part` / `--project` / `--family` command.
 
     Resolution itself is `retrieve.scope.resolve_scope` — the one place the
     `--part` XOR `--project` precondition of ADR 0006 is written down, shared
@@ -451,22 +451,33 @@ def _scope(args: argparse.Namespace):
     from datasheet_analyzer.retrieve.scope import (
         missing_corpus_warning,
         resolve_scope,
+        unbuilt_family_members,
         unbuilt_members,
     )
 
     settings = get_settings()
     project = getattr(args, "project", "")
-    scope, reason = resolve_scope(getattr(args, "part", ""), project, settings=settings)
+    family = getattr(args, "family", "")
+    scope, reason = resolve_scope(
+        getattr(args, "part", ""), project, settings=settings, family=family
+    )
     if scope is None:
         print(f"project error: {reason}" if project else reason, file=sys.stderr)
-        return None, bool(project)
+        return None, bool(project or family)
+    if family:
+        # Same rule as a project's, one noun across: a declared member with no
+        # corpus is named, because a family answer quietly missing one device
+        # reads as an answer for all of them.
+        warning = missing_corpus_warning(unbuilt_family_members(family, settings=settings))
+        if warning:
+            print(f"warning: {warning}", file=sys.stderr)
     if project:
         # A member whose corpus is gone is named, never silently skipped: the
         # answer would otherwise be quietly missing one device.
         warning = missing_corpus_warning(unbuilt_members(project, settings=settings))
         if warning:
             print(f"warning: {warning}", file=sys.stderr)
-    return scope, bool(project)
+    return scope, bool(project or family)
 
 
 def _cmd_query(args: argparse.Namespace) -> int:
@@ -1027,6 +1038,181 @@ WEB_INSTALL_HINT = (
 )
 
 
+def _cmd_family(args: argparse.Namespace) -> int:
+    """`dsa family list|suggest|confirm|build`.
+
+    The one rule this command exists to enforce is `families/registry.py`'s:
+    **membership is declared, never inferred.** `suggest` writes a *proposal*
+    into `registry/families.candidate.yaml` and builds nothing; `confirm` is
+    the human act that moves one entry across; `build` reads `families.yaml`
+    and refuses anything else, with the command that fixes it.
+    """
+    from datasheet_analyzer.families import FamilyMiss, FamilyUnconfirmed
+
+    actions = {
+        "list": _family_list,
+        "suggest": _family_suggest,
+        "confirm": _family_confirm,
+        "build": _family_build,
+    }
+    settings = get_settings()
+    try:
+        return actions[args.action](args, settings)
+    except (FamilyMiss, FamilyUnconfirmed) as exc:
+        print(f"family error: {exc}", file=sys.stderr)
+        return 2
+
+
+def _family_registry(settings):
+    from datasheet_analyzer.families import families_path, load_families
+
+    return load_families(families_path(settings.registry_dir))
+
+
+def _family_list(args: argparse.Namespace, settings) -> int:
+    """Declared families, then anything merely proposed - never the two mixed.
+
+    A proposal is printed under its own heading and with its own count, because
+    a list that ran the two together would make an unconfirmed grouping look
+    like a decision somebody made.
+    """
+    import json
+
+    from datasheet_analyzer.families import candidates_path, load_candidates
+
+    registry = _family_registry(settings)
+    candidates = load_candidates(candidates_path(settings.registry_dir))
+    if args.json:
+        print(
+            json.dumps(
+                {
+                    "families": [
+                        registry.families[name].model_dump(mode="json") for name in registry.names
+                    ],
+                    "candidates": [c.model_dump(mode="json") for c in candidates],
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
+        return 0
+    if not registry.names:
+        print("no declared families - `dsa family suggest` proposes some from built corpora")
+    for name in registry.names:
+        entry = registry.families[name]
+        print(f"{name}  {entry.title or '(no title)'}")
+        print(f"  members: {', '.join(entry.members)} (reference {entry.reference})")
+        if entry.note:
+            print(f"  note: {entry.note}")
+    if candidates:
+        print()
+        print(f"{len(candidates)} proposal(s) in {candidates_path(settings.registry_dir).name}:")
+        print("  nothing here builds anything until `dsa family confirm <NAME>` moves it across")
+        for entry in candidates:
+            print(f"  {entry.name}  {', '.join(entry.members)}  (confirmed: {entry.confirmed})")
+    return 0
+
+
+def _family_suggest(args: argparse.Namespace, settings) -> int:
+    """Propose groupings over built corpora. This writes no declaration."""
+    from datasheet_analyzer.families import (
+        CandidatePart,
+        candidates_path,
+        save_candidates,
+        section_signature,
+        suggest_families,
+    )
+    from datasheet_analyzer.projects import is_built
+    from datasheet_analyzer.retrieve.index import CorpusIndex
+
+    parts = []
+    for entry in sorted(settings.parts_dir.glob("*")):
+        if not entry.is_dir() or not is_built(entry.name, settings.parts_dir):
+            continue
+        index = CorpusIndex.load(entry)
+        parts.append(
+            CandidatePart(
+                part_number=index.part_number or entry.name,
+                sections=section_signature(index.sections),
+            )
+        )
+    proposals = suggest_families(parts)
+    path = candidates_path(settings.registry_dir)
+    save_candidates(proposals, path)
+    print(f"{len(parts)} built part(s) read; {len(proposals)} proposal(s) written to {path}")
+    for entry in proposals:
+        print(f"  {entry.name}: {', '.join(entry.members)}")
+    print("Nothing here builds anything. Check both datasheets, then:")
+    print("  dsa family confirm <NAME>")
+    return 0
+
+
+def _family_confirm(args: argparse.Namespace, settings) -> int:
+    """Move one proposal into `families.yaml` - the human act, and the only one."""
+    from datasheet_analyzer.families import (
+        candidates_path,
+        families_path,
+        load_candidates,
+        save_families,
+    )
+
+    candidates = {c.name: c for c in load_candidates(candidates_path(settings.registry_dir))}
+    registry = _family_registry(settings)
+    entry = candidates.get(args.name) or registry.get(args.name)
+    if entry is None:
+        print(
+            f"no proposal or declaration named {args.name!r} - "
+            f"`dsa family suggest` proposes groupings from built corpora, and "
+            f"`dsa family list` shows what is already declared",
+            file=sys.stderr,
+        )
+        return 2
+    confirmed = entry.model_copy(update={"confirmed": True})
+    if args.dry_run:
+        print(f"would confirm {confirmed.name}: {', '.join(confirmed.members)}")
+        print("(dry run - nothing was written)")
+        return 0
+    registry.put(confirmed)
+    path = save_families(registry, families_path(settings.registry_dir))
+    print(f"confirmed {confirmed.name}: {', '.join(confirmed.members)} -> {path}")
+    print(f"  dsa family build {confirmed.name}")
+    return 0
+
+
+def _family_build(args: argparse.Namespace, settings) -> int:
+    """Derive and write `families/<NAME>/FAMILY_INDEX.md` and `family.json`."""
+    import json
+
+    from datasheet_analyzer.families import build_family_index, resolve, write_family_index
+    from datasheet_analyzer.retrieve import load_members
+    from datasheet_analyzer.tokens import count_tokens
+
+    entry = resolve(_family_registry(settings), args.name)
+    index = build_family_index(
+        load_members(entry.members, settings.parts_dir), name=entry.name, title=entry.title
+    )
+    path, text = write_family_index(
+        index,
+        families_dir=settings.families_dir,
+        token_budget=settings.family_index_token_budget,
+    )
+    if args.json:
+        print(json.dumps(index.model_dump(mode="json"), ensure_ascii=False, indent=2))
+        return 0
+    print(f"family: {path}")
+    print(
+        f"  {len(index.sections)} section(s), {len(index.shared_sections)} shared; "
+        f"{index.n_specs_aligned} spec row(s) aligned, {index.n_specs_identical} identical, "
+        f"{len(index.deltas)} in the delta table"
+    )
+    print(
+        f"  {len(index.pin_deltas)} pin and {len(index.register_deltas)} register/bit-field "
+        f"row(s) differ; {len(index.unparsed)} refusal(s) listed"
+    )
+    print(f"  {count_tokens(text)} tokens (budget {settings.family_index_token_budget})")
+    return 0
+
+
 def _cmd_serve(args: argparse.Namespace) -> int:
     """`dsa serve` — the local workbench; `dsa serve --mcp` — MCP over stdio.
 
@@ -1317,10 +1503,15 @@ def _cmd_status(_args: argparse.Namespace) -> int:
 
 
 def _add_scope(parser: argparse.ArgumentParser) -> None:
-    """`--part NAME` or `--project NAME`, exactly one of them.
+    """`--part NAME`, `--project NAME` or `--family NAME`, exactly one of them.
 
     Mutually exclusive and required: a lookup has to know what it is asking,
     and defaulting to "all parts" would make the scope of an answer implicit.
+
+    `--family` is the third scope (phase 7, ticket 07) and sits beside the
+    other two rather than under them: a project is parts someone put on one
+    board, a family is one device published in several options, and its
+    membership is declared in `registry/families.yaml` by a human.
     """
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--part", default="", help="one built part, e.g. AFE7950")
@@ -1328,6 +1519,11 @@ def _add_scope(parser: argparse.ArgumentParser) -> None:
         "--project",
         default="",
         help="every part of a project; each hit is labelled with its part",
+    )
+    group.add_argument(
+        "--family",
+        default="",
+        help="every declared member of a family; a common answer is returned once",
     )
 
 
@@ -1726,6 +1922,34 @@ def main(argv: list[str] | None = None) -> int:
     pp_status.add_argument("name", nargs="?", default="", help="one project (default: all)")
 
     p_project.set_defaults(func=_cmd_project)
+
+    p_family = sub.add_parser(
+        "family",
+        help="a declared series of parts: shared sections once, differences tabulated",
+    )
+    fsub = p_family.add_subparsers(dest="action", required=True)
+
+    pf_list = fsub.add_parser("list", help="declared families, and anything merely proposed")
+    pf_list.add_argument("--json", action="store_true", help="emit both lists as JSON")
+
+    fsub.add_parser(
+        "suggest",
+        help="PROPOSE groupings from built corpora into families.candidate.yaml (builds nothing)",
+    )
+
+    pf_confirm = fsub.add_parser(
+        "confirm", help="move one proposal into families.yaml - the human act"
+    )
+    pf_confirm.add_argument("name", help="family name, e.g. AFE795x")
+    pf_confirm.add_argument(
+        "--dry-run", action="store_true", help="print what would be confirmed and write nothing"
+    )
+
+    pf_build = fsub.add_parser("build", help="write families/<NAME>/FAMILY_INDEX.md + family.json")
+    pf_build.add_argument("name")
+    pf_build.add_argument("--json", action="store_true", help="emit the family index as JSON")
+
+    p_family.set_defaults(func=_cmd_family, json=False, dry_run=False, name="")
 
     p_serve = sub.add_parser(
         "serve",

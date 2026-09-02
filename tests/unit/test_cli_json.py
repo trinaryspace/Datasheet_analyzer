@@ -51,7 +51,31 @@ JSON_INVOCATIONS: dict[str, list[str]] = {
     # `golden suggest` writes a candidate file; `--out` keeps it in tmp, which
     # is also what keeps it away from the repository's own `tests/fixtures`.
     "suggest": ["golden", "suggest", "--part", "TEST", "--n", "3", "--json"],
+    # Part families (phase 7, ticket 07). `list` runs against the seeded
+    # declaration below; `build` derives the index for it. Both are keyed by
+    # the *sub*-verb name, which is what the parser scan below reads.
+    "list": ["family", "list", "--json"],
+    "build": ["family", "build", "TESTx", "--json"],
 }
+
+
+def _seed_family(settings) -> None:
+    """One declared family over the two built parts.
+
+    Written into the tmp `registry_dir`, never the repository's own copy,
+    for the same reason `_seed_registry` is: a test must not be able to
+    declare a family in the checked-in file.
+    """
+    from datasheet_analyzer.families import (
+        FamilyEntry,
+        FamilyRegistry,
+        families_path,
+        save_families,
+    )
+
+    registry = FamilyRegistry()
+    registry.put(FamilyEntry(name="TESTx", members=["TEST", "OTHER"], confirmed=True))
+    save_families(registry, families_path(settings.registry_dir))
 
 
 def _seed_registry(settings) -> None:
@@ -195,7 +219,9 @@ def test_every_json_verb_is_exercised():
 def test_json_verb_emits_only_json(verb, tmp_path, monkeypatch, capsys):
     settings = built_settings(tmp_path)
     _seed_registry(settings)
+    _seed_family(settings)
     monkeypatch.setattr("datasheet_analyzer.cli.get_settings", lambda: settings)
+    monkeypatch.setattr("datasheet_analyzer.config.get_settings", lambda: settings)
 
     cli.main(JSON_INVOCATIONS[verb])
     captured = capsys.readouterr()

@@ -602,8 +602,15 @@ def _pin_deltas(members: Sequence[FamilyMember]) -> list[CompareRow]:
 
 
 def _pin_cell(pin: PinRecord, what: str) -> str:
+    """One printed pin cell as a string.
+
+    `type` is the one field that is not already text: it may arrive as a
+    `PinType` or, from a corpus read back with `use_enum_values`, as the bare
+    string it serializes to. Both are the same printed word, and a family row
+    must not depend on which of the two a caller happened to hand it.
+    """
     if what == "type":
-        return pin.type.value
+        return str(getattr(pin.type, "value", pin.type)).strip()
     return str(getattr(pin, what, "")).strip()
 
 

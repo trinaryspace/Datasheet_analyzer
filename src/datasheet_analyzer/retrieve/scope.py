@@ -35,25 +35,44 @@ if TYPE_CHECKING:  # pragma: no cover - typing only
     from collections.abc import Sequence
 
     from datasheet_analyzer.config import Settings
+    from datasheet_analyzer.retrieve.family import FamilyRetriever
     from datasheet_analyzer.retrieve.project import ProjectRetriever
     from datasheet_analyzer.retrieve.retriever import Retriever
 
 __all__ = [
+    "FAMILY_SCOPE_ERROR",
     "PART_REQUIRED_ERROR",
     "SCOPE_ERROR",
+    "SCOPE_NAMES",
     "missing_corpus_warning",
     "no_corpus_error",
+    "resolve_family",
     "resolve_part",
     "resolve_scope",
+    "unbuilt_family_members",
     "unbuilt_members",
 ]
 
 #: Why a lookup must name its scope. ADR 0006's rationale, in the words the
 #: MCP server has always used; every front end shows this string unmodified.
+#: The three scopes a lookup may name, in the order they were added. A
+#: family (phase 7, ticket 07) is a *declared* series and sits beside a
+#: project rather than under it: a project is parts someone put on one
+#: board, a family is one device published in several options.
+SCOPE_NAMES: tuple[str, ...] = ("part", "project", "family")
+
 SCOPE_ERROR = (
     "name exactly one of `part` or `project` — a lookup has to know what it "
     "is asking, and defaulting to 'everything' would make the scope of an "
     "answer implicit"
+)
+
+#: The same refusal for a call that named the third scope. `SCOPE_ERROR` is
+#: ADR 0006's own wording and a test holds it character for character, so the
+#: family scope widens the *list* and reuses the rationale clause verbatim
+#: rather than re-wording it — one rationale, written down once.
+FAMILY_SCOPE_ERROR = (
+    "name exactly one of `part`, `project` or `family` — " + SCOPE_ERROR.partition("— ")[2]
 )
 
 #: A part-only lookup (`get_index`, `read_section`, `get_figure`) with no part.
@@ -92,21 +111,31 @@ def resolve_part(part: str, *, settings: Settings) -> tuple[Retriever | None, st
 
 
 def resolve_scope(
-    part: str, project: str, *, settings: Settings
-) -> tuple[Retriever | ProjectRetriever | None, str]:
-    """`(scope, "")` for exactly one of `part` / `project`, else `(None, reason)`.
+    part: str, project: str, *, settings: Settings, family: str = ""
+) -> tuple[Retriever | ProjectRetriever | FamilyRetriever | None, str]:
+    """`(scope, "")` for exactly one of `part` / `project` / `family`.
 
-    Both branches hand back an object from `retrieve/` — a `Retriever` for one
-    part, a `ProjectRetriever` for a design — so a caller only chooses a scope
-    and formats what it returns. Naming both, or naming neither, is refused
-    with `SCOPE_ERROR` rather than resolved to a default: see ADR 0006.
+    Every branch hands back an object from `retrieve/` — a `Retriever` for one
+    part, a `ProjectRetriever` for a design, a `FamilyRetriever` for a declared
+    series — so a caller only chooses a scope and formats what it returns.
+    Naming more than one, or naming none, is refused with `SCOPE_ERROR` rather
+    than resolved to a default: see ADR 0006.
+
+    `family` is additive (phase 7, ticket 07) and defaults to `""`, so every
+    existing two-argument call means exactly what it meant before. Membership
+    is read from `registry/families.yaml` and nowhere else: an undeclared or
+    unconfirmed family is a refusal carrying the command that fixes it, never
+    a grouping guessed from a part number.
     """
     from datasheet_analyzer.projects import ProjectError, load_project, part_dirs
     from datasheet_analyzer.retrieve.project import ProjectRetriever
 
     part, project = (part or "").strip(), (project or "").strip()
-    if bool(part) == bool(project):
-        return None, SCOPE_ERROR
+    family = (family or "").strip()
+    if [bool(part), bool(project), bool(family)].count(True) != 1:
+        return None, FAMILY_SCOPE_ERROR if family else SCOPE_ERROR
+    if family:
+        return resolve_family(family, settings=settings)
     if project:
         try:
             loaded = load_project(project, settings.projects_dir)
@@ -152,3 +181,47 @@ def missing_corpus_warning(missing: Sequence[str]) -> str:
         f"(`dsa build <pdf> --part {names[0]}`) or remove them from "
         f"the project; their answers are missing from this result"
     )
+
+
+def resolve_family(name: str, *, settings: Settings) -> tuple[FamilyRetriever | None, str]:
+    """`(FamilyRetriever, "")` for a declared, confirmed family, else a refusal.
+
+    The whole rule of ticket 07 lives on the other side of this call:
+    `families.registry.resolve` refuses a family nobody declared and one nobody
+    confirmed, with two different messages, each naming the command that fixes
+    it. Nothing here infers a grouping from a part number, and nothing widens a
+    family whose members are not all built — an unbuilt member is named by the
+    pack it fails to answer, exactly as an unbuilt project member is.
+    """
+    from datasheet_analyzer.families import FamilyMiss, FamilyUnconfirmed, load_families, resolve
+    from datasheet_analyzer.families.registry import families_path
+    from datasheet_analyzer.retrieve.family import FamilyRetriever
+
+    try:
+        entry = resolve(load_families(families_path(settings.registry_dir)), name)
+    except (FamilyMiss, FamilyUnconfirmed) as exc:
+        return None, str(exc)
+    return (
+        FamilyRetriever.for_parts(
+            entry.name, [settings.parts_dir / member for member in entry.members]
+        ),
+        "",
+    )
+
+
+def unbuilt_family_members(name: str, *, settings: Settings) -> list[str]:
+    """Declared members of `name` with no corpus on disk, in declared order.
+
+    Same shape and same reason as `unbuilt_members`: a family whose members are
+    only partly built still answers, from the members that are, and what it must
+    never do is answer *silently*.
+    """
+    from datasheet_analyzer.families import FamilyMiss, FamilyUnconfirmed, load_families, resolve
+    from datasheet_analyzer.families.registry import families_path
+    from datasheet_analyzer.projects import is_built
+
+    try:
+        entry = resolve(load_families(families_path(settings.registry_dir)), (name or "").strip())
+    except (FamilyMiss, FamilyUnconfirmed):
+        return []
+    return [m for m in entry.members if not is_built(m, settings.parts_dir)]
