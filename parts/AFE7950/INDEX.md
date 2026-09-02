@@ -1,5 +1,5 @@
 <!-- dsa:staleness -->
-> ⚠ Revision not checked: this corpus is built from SBASA41E and has not been confirmed against upstream. Run `dsa check-revisions --part AFE7950` before relying on it for a design decision.
+> ⚠ Revision current: SBASA41E confirmed against upstream (checked 2026-09-02). The upstream document's bytes differ but its revision identifier is still SBASA41E: the document was regenerated, not revised - this is not evidence of a new revision.
 <!-- /dsa:staleness -->
 
 # AFE7950 — datasheet corpus

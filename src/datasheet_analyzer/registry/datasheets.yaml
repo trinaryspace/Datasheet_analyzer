@@ -27,28 +27,76 @@ parts:
       sha256: a15af6a3385caf7f131080b24dff4fe4ae6b6e184db2c6496eee2404860189fe
       sha256_origin: local_file:ad9081.pdf
       retrieved_at: null
+  ADC12DJ5200RF:
+    vendor: ti
+    document:
+      doc_type: datasheet
+      url: https://www.ti.com/lit/ds/symlink/adc12dj5200rf.pdf
+      url_verified: true
+      revision: SLVSEN9H
+      sha256: 2a05fa14983bf2ea96b1c683669b8ddf4682cfb21083e8be20a76ab9b4d58271
+      sha256_origin: fetch:https://www.ti.com/lit/ds/symlink/adc12dj5200rf.pdf
+      retrieved_at: '2026-09-02T05:27:16.084675+00:00'
+      filename: adc12dj5200rf.pdf
   AFE7950:
     vendor: ti
     document:
       doc_type: datasheet
       url: https://www.ti.com/lit/ds/sbasa41e/sbasa41e.pdf
-      url_verified: false
+      url_verified: true
       url_derivation: ti_lit_ds(SBASA41E)
       revision: SBASA41E
       sha256: c1b4663b0b8088eff44c45e96683fbac0b611d9299722a21613dc0dfd774f512
       sha256_origin: local_file:afe7950.pdf
       retrieved_at: null
+    companions:
+    - doc_type: app_note
+      url: https://www.ti.com/lit/an/snaa360/snaa360.pdf
+      url_verified: true
+      revision: null
+      sha256: 5731d2b05143e1285b361bfa4a4c87ffc3e4f1f9766ee4e37e7b79e1a9fc400e
+      sha256_origin: fetch:https://www.ti.com/lit/an/snaa360/snaa360.pdf
+      retrieved_at: '2026-09-02T05:28:12.415806+00:00'
+      filename: snaa360.pdf
+    - doc_type: app_note
+      url: https://www.ti.com/lit/an/sbaa637/sbaa637.pdf
+      url_verified: true
+      revision: null
+      sha256: 4e5890085737aed420f9c0da3727619f15229320784638017edaea061d99f5cf
+      sha256_origin: fetch:https://www.ti.com/lit/an/sbaa637/sbaa637.pdf
+      retrieved_at: '2026-09-02T05:28:14.686343+00:00'
+      filename: sbaa637.pdf
   AFE7953:
     vendor: ti
     document:
       doc_type: datasheet
       url: https://www.ti.com/lit/ds/sbasan1a/sbasan1a.pdf
-      url_verified: false
+      url_verified: true
       url_derivation: ti_lit_ds(SBASAN1A)
       revision: SBASAN1A
       sha256: 52d435c0095ec0b002e36dcbc56711ecc7c909945cc756768ed168907be3b131
       sha256_origin: local_file:afe7953.pdf
       retrieved_at: null
+  AWR1843:
+    vendor: ti
+    document:
+      doc_type: datasheet
+      url: https://www.ti.com/lit/ds/symlink/awr1843.pdf
+      url_verified: true
+      revision: SWRS222D
+      sha256: 50f834e5f56fda4013de1dd08a329a4375b9c836b83bca6e136d625b582f267e
+      sha256_origin: fetch:https://www.ti.com/lit/ds/symlink/awr1843.pdf
+      retrieved_at: '2026-09-02T05:27:12.846973+00:00'
+      filename: awr1843.pdf
+    companions:
+    - doc_type: errata
+      url: https://www.ti.com/lit/er/swrz089/swrz089.pdf
+      url_verified: true
+      revision: SWRZ089C
+      sha256: c631fda34804c4352ac58a5af868053b546c7a9d18b1b067313bc3501c374dee
+      sha256_origin: fetch:https://www.ti.com/lit/er/swrz089/swrz089.pdf
+      retrieved_at: '2026-09-02T05:27:14.322206+00:00'
+      filename: swrz089.pdf
   HMC520A:
     vendor: adi
     document:
@@ -59,39 +107,96 @@ parts:
       sha256: a187cc0d33913f3d9f5a77ea32559d3810e7e2956b2b078bf755bce7a6da5454
       sha256_origin: local_file:hmc520a.pdf
       retrieved_at: null
+  LFCN-1000+:
+    vendor: minicircuits
+    document:
+      doc_type: datasheet
+      url: https://www.minicircuits.com/pdfs/LFCN-1000+.pdf
+      url_verified: true
+      revision: null
+      sha256: 515c280fa47ba7cf2bb7759ace9737e7808d226460e65a3652d182b5b538b0ef
+      sha256_origin: fetch:https://www.minicircuits.com/pdfs/LFCN-1000+.pdf
+      retrieved_at: '2026-09-02T05:27:31.211743+00:00'
+      filename: LFCN-1000.pdf
   LHA-83W+:
-    vendor: unknown
+    vendor: minicircuits
     document:
       doc_type: datasheet
       url: null
-      url_reason: no vendor could be pinned from this document's own pages, so there is no vendor whose
-        URL pattern could apply, and this tool never guesses one
+      url_reason: minicircuits.com/pdfs/<PART>.pdf serves this part (HTTP 200, 2026-09-02) but the bytes
+        differ from the copy this hash was taken from, and Mini-Circuits prints no revision identifier,
+        so nothing says whether the document was revised or only regenerated. Recording the URL would
+        attach a verified flag to that ambiguity; re-run `dsa fetch --accept-new-revision` after reading
+        the upstream document
       revision: null
       sha256: 84d60d37ef64e499ff036837c1fab6aee40be6506a90598019d7a6d776f836fe
       sha256_origin: local_file:tests/fixtures/pdf/LHA-83W+.pdf
       retrieved_at: null
+  LMX1204:
+    vendor: ti
+    document:
+      doc_type: datasheet
+      url: https://www.ti.com/lit/ds/symlink/lmx1204.pdf
+      url_verified: true
+      revision: SNAS800B
+      sha256: acd53c1fbc131e09d73a83afedc27015991e385fd06714041e726648286545d4
+      sha256_origin: fetch:https://www.ti.com/lit/ds/symlink/lmx1204.pdf
+      retrieved_at: '2026-09-02T05:28:11.103853+00:00'
+      filename: lmx1204.pdf
+    companions:
+    - doc_type: app_note
+      url: https://www.ti.com/lit/an/snaa360/snaa360.pdf
+      url_verified: true
+      revision: null
+      sha256: 5731d2b05143e1285b361bfa4a4c87ffc3e4f1f9766ee4e37e7b79e1a9fc400e
+      sha256_origin: fetch:https://www.ti.com/lit/an/snaa360/snaa360.pdf
+      retrieved_at: '2026-09-02T05:28:13.333104+00:00'
+      filename: snaa360.pdf
+  LMX2820:
+    vendor: ti
+    document:
+      doc_type: datasheet
+      url: https://www.ti.com/lit/ds/symlink/lmx2820.pdf
+      url_verified: true
+      revision: SNAS783C
+      sha256: ee308ef78eff73a33d8c7630dcea6dbb52e6ec13b6682d7fa647495f332ad57f
+      sha256_origin: fetch:https://www.ti.com/lit/ds/symlink/lmx2820.pdf
+      retrieved_at: '2026-09-02T05:27:10.141025+00:00'
+      filename: lmx2820.pdf
+    companions:
+    - doc_type: register_map
+      url: https://www.ti.com/lit/ug/snau251/snau251.pdf
+      url_verified: true
+      revision: SNAU251A
+      sha256: c8615edf175dac4ccaad08e6f26c682e3125e73d4b5c2e63dc2f2b553ed2d875
+      sha256_origin: fetch:https://www.ti.com/lit/ug/snau251/snau251.pdf
+      retrieved_at: '2026-09-02T05:27:11.498174+00:00'
+      filename: snau251.pdf
   PMA1-14LN+:
-    vendor: unknown
+    vendor: minicircuits
     document:
       doc_type: datasheet
       url: null
-      url_reason: no vendor could be pinned from this document's own pages, so there is no vendor whose
-        URL pattern could apply, and this tool never guesses one
+      url_reason: minicircuits.com/pdfs/<PART>.pdf serves this part (HTTP 200, 2026-09-02) but the bytes
+        differ from the copy this hash was taken from, and Mini-Circuits prints no revision identifier,
+        so nothing says whether the document was revised or only regenerated. Recording the URL would
+        attach a verified flag to that ambiguity; re-run `dsa fetch --accept-new-revision` after reading
+        the upstream document
       revision: null
       sha256: 56f2df5d520cda6dce783465f4bd261f7041dd57ce1f2a540d2f6f537a0e6f38
       sha256_origin: local_file:tests/fixtures/pdf/PMA1-14LN+.pdf
       retrieved_at: null
   PSA-8A+:
-    vendor: unknown
+    vendor: minicircuits
     document:
       doc_type: datasheet
-      url: null
-      url_reason: no vendor could be pinned from this document's own pages, so there is no vendor whose
-        URL pattern could apply, and this tool never guesses one
+      url: https://www.minicircuits.com/pdfs/PSA-8A+.pdf
+      url_verified: true
       revision: null
       sha256: 5a1ed218ef86014f712f0fab7b614933740bd0b978573cefc3bc9b43f1fb190a
-      sha256_origin: local_file:tests/fixtures/pdf/PSA-8A+.pdf
-      retrieved_at: null
+      sha256_origin: fetch:https://www.minicircuits.com/pdfs/PSA-8A+.pdf
+      retrieved_at: '2026-09-02T05:28:48.431971+00:00'
+      filename: PSA-8A.pdf
   QPA1003P:
     vendor: qorvo
     document:
@@ -102,23 +207,133 @@ parts:
       sha256: 31985b228cd1d6aaaa415b347afd40e53b43d21d6957171f62a6f98f665d8844
       sha256_origin: local_file:QPA1003P.pdf
       retrieved_at: null
-  ZX10R-2-183-S+:
-    vendor: unknown
+  QPA2213:
+    vendor: qorvo
     document:
       doc_type: datasheet
-      url: null
-      url_reason: no vendor could be pinned from this document's own pages, so there is no vendor whose
-        URL pattern could apply, and this tool never guesses one
+      url: https://www.qorvo.com/products/d/da006580
+      url_verified: true
+      revision: Rev. E
+      sha256: e74e3151c93b9dc902817d3fdd1c7b666efa1a649204d63ba65450b18ea8daf6
+      sha256_origin: fetch:https://www.qorvo.com/products/d/da006580
+      retrieved_at: '2026-09-02T05:28:01.542098+00:00'
+      filename: da006580.pdf
+  QPL9547:
+    vendor: qorvo
+    document:
+      doc_type: datasheet
+      url: https://www.qorvo.com/products/d/da007268
+      url_verified: true
+      revision: Rev. D
+      sha256: 3dc7fb15c55f6c5dce0a398e2abc387b33b26c0132e6e89bfb7e5df59feef460
+      sha256_origin: fetch:https://www.qorvo.com/products/d/da007268
+      retrieved_at: '2026-09-02T05:27:59.772127+00:00'
+      filename: da007268.pdf
+  SKY13351-378LF:
+    vendor: skyworks
+    document:
+      doc_type: datasheet
+      url: https://www.skyworksinc.com/-/media/5E82DAE396A64F5D8598F71A4EC4B215.pdf
+      url_verified: true
+      revision: null
+      sha256: 878d1d44ee03b65c55b8075fd5ae6cf154c3e973f0c0ef4873f280c65ef7860c
+      sha256_origin: fetch:https://www.skyworksinc.com/-/media/5E82DAE396A64F5D8598F71A4EC4B215.pdf
+      retrieved_at: '2026-09-02T05:27:45.030374+00:00'
+      filename: 5E82DAE396A64F5D8598F71A4EC4B215.pdf
+  SKY65405-21:
+    vendor: skyworks
+    document:
+      doc_type: datasheet
+      url: https://www.skyworksinc.com/-/media/SkyWorks/Documents/Products/501-600/SKY65405_21_201446I.pdf
+      url_verified: true
+      revision: null
+      sha256: d5baa4c342718dfe112fb0403cc8d8e5fed04b2aa46ff4338dde13b80a50f706
+      sha256_origin: fetch:https://www.skyworksinc.com/-/media/SkyWorks/Documents/Products/501-600/SKY65405_21_201446I.pdf
+      retrieved_at: '2026-09-02T05:27:43.312701+00:00'
+      filename: SKY65405_21_201446I.pdf
+  SKY67183-396LF:
+    vendor: skyworks
+    document:
+      doc_type: datasheet
+      url: https://www.skyworksinc.com/-/media/409D78A8622A4A0FAADB0D8E555209B6.pdf
+      url_verified: true
+      revision: null
+      sha256: f7f0b7bd75ec5cb1d9003556bd9ed1b58086cb70aa76c853bc2bb9bcdc82c365
+      sha256_origin: fetch:https://www.skyworksinc.com/-/media/409D78A8622A4A0FAADB0D8E555209B6.pdf
+      retrieved_at: '2026-09-02T05:27:41.499649+00:00'
+      filename: 409D78A8622A4A0FAADB0D8E555209B6.pdf
+  TCM1-83X+:
+    vendor: minicircuits
+    document:
+      doc_type: datasheet
+      url: https://www.minicircuits.com/pdfs/TCM1-83X+.pdf
+      url_verified: true
+      revision: null
+      sha256: f078cbc492b5dbd4e8b65fb8db911fc71be5811e7e6bfb69621c0d4901ab5646
+      sha256_origin: fetch:https://www.minicircuits.com/pdfs/TCM1-83X+.pdf
+      retrieved_at: '2026-09-02T05:27:27.350070+00:00'
+      filename: TCM1-83X.pdf
+  YAT-10+:
+    vendor: minicircuits
+    document:
+      doc_type: datasheet
+      url: https://www.minicircuits.com/pdfs/YAT-10+.pdf
+      url_verified: true
+      revision: null
+      sha256: 6a744b10ee7749bfa9c29a7630d679321b69e58c883be31a736b856aa96df928
+      sha256_origin: fetch:https://www.minicircuits.com/pdfs/YAT-10+.pdf
+      retrieved_at: '2026-09-02T05:27:29.994566+00:00'
+      filename: YAT-10.pdf
+  ZEM-4300+:
+    vendor: minicircuits
+    document:
+      doc_type: datasheet
+      url: https://www.minicircuits.com/pdfs/ZEM-4300+.pdf
+      url_verified: true
+      revision: null
+      sha256: 6b95cd8c480c72bf97a5c25440f8af32b1b36ea9e2238c3edac59bb14d45bcb5
+      sha256_origin: fetch:https://www.minicircuits.com/pdfs/ZEM-4300+.pdf
+      retrieved_at: '2026-09-02T05:27:24.737331+00:00'
+      filename: ZEM-4300.pdf
+  ZFDC-20-5+:
+    vendor: minicircuits
+    document:
+      doc_type: datasheet
+      url: https://www.minicircuits.com/pdfs/ZFDC-20-5+.pdf
+      url_verified: true
+      revision: null
+      sha256: 7145e63825bf13c810be9878c3beda27c3bbae1903cbe3490d985a8901be3e8f
+      sha256_origin: fetch:https://www.minicircuits.com/pdfs/ZFDC-20-5+.pdf
+      retrieved_at: '2026-09-02T05:27:26.046106+00:00'
+      filename: ZFDC-20-5.pdf
+  ZFSC-2-2500+:
+    vendor: minicircuits
+    document:
+      doc_type: datasheet
+      url: https://www.minicircuits.com/pdfs/ZFSC-2-2500+.pdf
+      url_verified: true
+      revision: null
+      sha256: 7f37a402a3fb5de2a1a60429a1917af328d80ba315c610ab06dfdcf76c2246e3
+      sha256_origin: fetch:https://www.minicircuits.com/pdfs/ZFSC-2-2500+.pdf
+      retrieved_at: '2026-09-02T05:27:28.705624+00:00'
+      filename: ZFSC-2-2500.pdf
+  ZX10R-2-183-S+:
+    vendor: minicircuits
+    document:
+      doc_type: datasheet
+      url: https://www.minicircuits.com/pdfs/ZX10R-2-183-S+.pdf
+      url_verified: true
       revision: null
       sha256: dc88511ff6a68cdf979d63d5da43f9a2e6441317dd32e567623c565d22671a18
-      sha256_origin: local_file:tests/fixtures/pdf/ZX10R-2-183-S+.pdf
-      retrieved_at: null
+      sha256_origin: fetch:https://www.minicircuits.com/pdfs/ZX10R-2-183-S+.pdf
+      retrieved_at: '2026-09-02T05:28:50.000269+00:00'
+      filename: ZX10R-2-183-S.pdf
   lm741:
     vendor: ti
     document:
       doc_type: datasheet
       url: https://www.ti.com/lit/ds/snosc25d/snosc25d.pdf
-      url_verified: false
+      url_verified: true
       url_derivation: ti_lit_ds(SNOSC25D)
       revision: SNOSC25D
       sha256: e0d1e5a2f2ecf5ce318fadb27a088319fb55e4268c94a1aca4fbbb9caa1ede5e
