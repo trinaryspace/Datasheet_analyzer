@@ -43,6 +43,40 @@ BRANDLESS_PDFS = (
 )
 
 
+def _repo_families_listing() -> frozenset[str]:
+    """Every path under the repository's own `families/`, relative to it."""
+    root = REPO_ROOT / "families"
+    if not root.exists():
+        return frozenset()
+    return frozenset(str(p.relative_to(root)) for p in root.rglob("*"))
+
+
+#: What the repository's own `families/` directory held when this session
+#: started, captured at collection time.
+#:
+#: `git status` used to be the detector for a test that builds a family index
+#: into the working tree, and it stopped being one when `/families/` was
+#: gitignored: a family directory is derived in full from tracked records, so
+#: it is a cache, and an ignored path reports nothing. This snapshot is the
+#: detector instead — and it is the better one, because it distinguishes the
+#: thing that matters. A *user's* `dsa family build` is legitimate and is
+#: already here when the run starts; only a change **during** the run is a
+#: test writing into the repository it is asserting against.
+REPO_FAMILIES_AT_START = _repo_families_listing()
+
+
+@pytest.fixture(scope="session")
+def repo_families_guard():
+    """`(listing at session start, a callable that lists it now)`.
+
+    Handed over as a fixture rather than imported, because `tests/` is not a
+    package: `from tests.conftest import ...` resolves only while the working
+    directory happens to be on `sys.path`, which is true for
+    `python -m pytest` and not for every way this suite is run.
+    """
+    return REPO_FAMILIES_AT_START, _repo_families_listing
+
+
 @pytest.fixture(autouse=True)
 def fresh_retrieval_cache():
     """Hermetic per invariant #4: the retrieval core caches a loaded corpus

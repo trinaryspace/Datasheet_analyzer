@@ -737,14 +737,17 @@ class TestNothingHereWritesIntoTheRepository:
 
         assert self.REPO not in get_settings().families_dir.parents
 
-    def test_no_family_index_was_built_into_the_working_tree(self):
-        import subprocess
+    def test_no_family_index_was_built_into_the_working_tree(self, repo_families_guard):
+        """Nothing under the repo's own `families/` moved during this run.
 
-        result = subprocess.run(
-            ["git", "status", "--porcelain", "--", "families"],
-            cwd=self.REPO,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        assert result.stdout.strip() == "", result.stdout
+        This used to read `git status --porcelain -- families`, which stopped
+        detecting anything the moment `/families/` was gitignored (a family
+        index is derived in full from tracked records, so the directory is a
+        cache). `conftest.REPO_FAMILIES_AT_START` is the replacement, and it
+        is the sharper check: a user's own `dsa family build` is legitimate
+        and is already there when the session starts, so only a change *during*
+        the run is a test writing into the repository it asserts against.
+        """
+        at_start, listing = repo_families_guard
+        now = listing()
+        assert now == at_start, sorted(now ^ at_start)
