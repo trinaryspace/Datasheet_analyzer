@@ -1,0 +1,20 @@
+# Part families (phase 7, ticket 07). Membership is DECLARED, never inferred.
+#
+#   members     the part numbers, in order. The first is the reference every
+#               delta is signed against.
+#   confirmed   a human put this entry here. `dsa family build` refuses an
+#               entry that says false.
+#
+# `dsa family suggest` PROPOSES groupings into families.candidate.yaml; nothing
+# it writes builds anything until `dsa family confirm <NAME>` moves it here.
+schema_version: '1'
+families:
+  AFE795x:
+    title: AFE79xx RF-sampling transceivers
+    members:
+    - AFE7950
+    - AFE7953
+    note: 'Confirmed by hand against both printed datasheets (SBASA41E, SBASAN1A): one document template,
+      39 identically-titled sections, the same section numbering through §4.12. AFE7950 is the quad TX/RX
+      device and AFE7953 the dual; that is the difference the delta table exists to show.'
+    confirmed: true
