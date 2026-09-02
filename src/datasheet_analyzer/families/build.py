@@ -721,7 +721,7 @@ def _field_deltas(members: Sequence[FamilyMember]) -> list[CompareRow]:
                         ref=source_ref(f"{ref_base}/{REGISTERS_ARTIFACT}", register.id),
                         page=bit_field.page,
                         section=register.section,
-                        confidence=register.fields_confidence,
+                        confidence=bit_field.confidence or register.confidence,
                     )
                     for what in FIELD_FIELDS
                     if _field_cell(bit_field, what)
