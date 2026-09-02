@@ -702,8 +702,8 @@ def _ends(value: DerivedValue, cell: str) -> tuple[float, float] | None:
     single = _scalar(value, cell)
     if single is not None:
         return single, single
-    assert value.value_si_hi is not None  # `_scalar` only declines a range
-    return value.value_si, value.value_si_hi
+    high = value.value_si if value.value_si_hi is None else value.value_si_hi
+    return value.value_si, high
 
 
 def si_delta(a: DerivedValue, b: DerivedValue, cell: str) -> tuple[float, str] | None:
