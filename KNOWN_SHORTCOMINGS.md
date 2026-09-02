@@ -323,7 +323,8 @@ identical to a part whose document prints none of it.
 | **ADC12DJ5200RF** | section 5 `Pin Configuration and Functions`, `Pin Functions` tables from p.6 | 2254 specs, 344 tables, 123 registers, **0 pins** |
 | **QPA2213** | 28 pages that are almost entirely S-parameter and load-pull plots | 57 specs, **1 figure** |
 
-Three separate causes, none of them the same bug.
+`dsa status` names the reason for three of the four, and they are three
+different reasons rather than one bug seen four times.
 
 - **LFCN-1000+ / YAT-10+ / TCM1-83X+** are the *short* Mini-Circuits shape and
   the table detector finds nothing in them at all (0 detected, not 0 accepted).
@@ -332,18 +333,24 @@ Three separate causes, none of them the same bug.
   this is not "Mini-Circuits is unreadable", it is something narrower that
   three of the six documents trip and three do not. Nobody has diffed the two
   groups.
-- **ADC12DJ5200RF has no pins because its datasheet is read by `ti_html`, not
-  `pdf_layout`.** The vendor profile for `ti` prefers TI's own document viewer,
-  and that path publishes 155 sections, 344 tables and 123 registers off a
-  221-page document while yielding no pin table. `LMX2820` — same vendor, same
-  backend chain — publishes 48 pins, so the viewer is not incapable; this one
-  document's pin section does not survive it. `AWR1843` (also `ti_html`)
-  publishes 112 pins and **0 figures**, which is the same split from the other
-  side.
-- **SKY67183-396LF is `pdf_layout` and still publishes no pins**, which is the
-  one of the four with no ready explanation. It is the only Skyworks document
-  of the three that fails to: `SKY65405-21` publishes 7 and `SKY13351-378LF`
-  publishes 3, off the same vendor's pages.
+- **ADC12DJ5200RF's pin table was found and then refused**, which is the
+  designed behaviour meeting a document it does not suit. `dsa status` prints
+  the reasons verbatim: *pin table: duplicate key 'D9' (rows 38 and 39)* and
+  *pin table: key column is not pin table keys (0 of 4 rows)*. A 221-page
+  RF-sampling ADC in a BGA prints the same ball designator on two rows of its
+  `Pin Functions` table, and the reader refuses the whole table rather than
+  publish two records that resolve to one id. AWR1843 hits the identical
+  duplicate (`F14`, `H13`) and still publishes 112 pins, so the rule is not
+  uniformly fatal — what differs between the two is not established.
+- **SKY67183-396LF is `pdf_layout`, detected 15 tables, accepted 13** and the
+  two it rejected are *no viable column split* and *columns not stable across
+  rows* — one of which is the pin table. It is the only Skyworks document of
+  the three that fails to publish pins; `SKY65405-21` publishes 7 and
+  `SKY13351-378LF` publishes 3 off the same vendor's pages.
+- **QPA2213's figures are not captioned in a way the title-anchor finds.** Its
+  four accepted tables give 57 spec records, so the page is being read; only
+  one region became a figure. Qorvo's plot-heavy pages carry their titles
+  inside the plot art.
 
 **What the tool does instead.** Nothing is faked: a part with no readable pin
 table publishes no `pins.json` and `dsa pins` says so, exactly as AFE7950 has

@@ -56,10 +56,12 @@ import `datasheet_analyzer.families` first.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from datasheet_analyzer.models import DocType, SectionFile
 from datasheet_analyzer.retrieve.index import CorpusIndex
 from datasheet_analyzer.retrieve.project import ProjectRetriever
 from datasheet_analyzer.retrieve.retriever import Retriever
@@ -139,12 +141,13 @@ def load_members(part_numbers, parts_dir: Path) -> list[FamilyMember]:
         bases = {
             doc.name: doc.ref_base for doc in load_card_corpus(part_dir, part_number).documents
         }
+        sections = _datasheet_sections(index)
         out.append(
             FamilyMember(
                 part_number=part_number,
                 part_dir=part_dir,
-                sections=tuple(index.sections),
-                bodies=_bodies(part_number, part_dir, index),
+                sections=sections,
+                bodies=_bodies(part_number, part_dir, sections),
                 pins=tuple(
                     MemberRecord(ref_base=bases.get(doc, f"docs/{doc}"), record=record)
                     for doc, pinset in load_part_pins(part_dir, part_number).sets
@@ -162,7 +165,40 @@ def load_members(part_numbers, parts_dir: Path) -> list[FamilyMember]:
     return out
 
 
-def _bodies(part_number: str, part_dir: Path, index: CorpusIndex) -> dict[str, str]:
+def _datasheet_sections(index: CorpusIndex) -> tuple[SectionFile, ...]:
+    """The member's **datasheet** sections, not every section it publishes.
+
+    A family folds two members' sections together, and its first rung is the
+    printed section *number* — which is only meaningful inside one document.
+    A member that also holds an app note contributed that note's sections to
+    the fold, so AFE7950's SNAA360 `3 Summary` was matched against AFE7953's
+    datasheet `3 Description` and published as a divergence between two
+    devices. It is not one; it is a comparison between two different documents.
+
+    Companions are not dropped from the family everywhere — pins and registers
+    still come from every document a member holds, because a register map is
+    exactly where a family's registers live. It is *section folding*, and only
+    that, which needs one document per member to be meaningful.
+
+    A manifest that names no datasheet (or none whose sections are present)
+    falls back to every section, which is what this did for every corpus
+    before a part in this repo held a companion at all.
+    """
+    manifest = index.manifest
+    if manifest is None:
+        return tuple(index.sections)
+    hashes = {
+        doc.content_hash
+        for doc in manifest.documents
+        if doc.doc_type == DocType.DATASHEET and doc.content_hash
+    }
+    if not hashes:
+        return tuple(index.sections)
+    kept = tuple(s for s in index.sections if s.doc_hash in hashes)
+    return kept or tuple(index.sections)
+
+
+def _bodies(part_number: str, part_dir: Path, sections: Sequence[SectionFile]) -> dict[str, str]:
     """Each section file's comparable body, read once per member.
 
     A section file that has gone missing reads as a marker naming **this**
@@ -175,7 +211,7 @@ def _bodies(part_number: str, part_dir: Path, index: CorpusIndex) -> dict[str, s
     from datasheet_analyzer.families.build import section_body
 
     out: dict[str, str] = {}
-    for section in index.sections:
+    for section in sections:
         path = part_dir / section.file
         try:
             out[section.file] = section_body(path.read_text(encoding="utf-8"))

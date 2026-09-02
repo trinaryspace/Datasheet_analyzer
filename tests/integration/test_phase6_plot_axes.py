@@ -40,14 +40,22 @@ PARTS = REPO / "parts"
 HIGH_FRACTION_FLOOR = 0.60
 
 
-def _catalogs() -> list[tuple[str, Path, Path]]:
-    """(part, plots.json, source PDF) for every built part with a local PDF."""
+def _catalogs(datasheets_only: bool = False) -> list[tuple[str, Path, Path]]:
+    """(part, plots.json, source PDF) for every built part with a local PDF.
+
+    `datasheets_only` narrows it to each part's *datasheet*. A part may hold
+    companions — AFE7950 holds two app notes — and their `plots.json` files sit
+    beside the datasheet's under `docs/`, sorted before it. A caller asking for
+    "AFE7950's figure catalog" means the datasheet's 514 figures, not an app
+    note's zero.
+    """
     out: list[tuple[str, Path, Path]] = []
     for manifest_path in sorted(PARTS.glob("*/manifest.json")):
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-        sources = {
-            doc["content_hash"][:8]: Path(doc["path"]) for doc in manifest.get("documents", [])
-        }
+        documents = manifest.get("documents", [])
+        if datasheets_only:
+            documents = [d for d in documents if d.get("doc_type") == "datasheet"]
+        sources = {doc["content_hash"][:8]: Path(doc["path"]) for doc in documents}
         docs_dir = manifest_path.parent / "docs"
         if not docs_dir.is_dir():
             continue
@@ -70,7 +78,7 @@ def _annotate(plots_json: Path, pdf: Path) -> tuple[PlotSet, object]:
 
 @pytest.fixture(scope="module")
 def afe7950_axes() -> tuple[PlotSet, object]:
-    hits = [entry for entry in _catalogs() if entry[0] == "AFE7950"]
+    hits = [entry for entry in _catalogs(datasheets_only=True) if entry[0] == "AFE7950"]
     if not hits:
         pytest.skip("AFE7950 corpus or afe7950.pdf not present")
     _part, plots_json, pdf = hits[0]

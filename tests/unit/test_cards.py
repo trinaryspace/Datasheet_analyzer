@@ -207,6 +207,14 @@ SECTIONS = [
 ]
 
 
+#: The shipped derivation-rule version. Most of this file pins `"1"` on
+#: purpose — a card built and read at the same version must round-trip
+#: whatever that version is — but the three assertions below go through the
+#: default (`publish_part_cards`, `cli_card`), so they have to read it rather
+#: than repeat it.
+SHIPPED_CARD_VERSION = Settings().card_version
+
+
 def reference_records() -> list[SpecRecord]:
     return [
         # --- 4.1 absolute maximum ratings (p.4)
@@ -1056,7 +1064,7 @@ class TestCli:
         reset_settings_cache()
         assert cli_card(self._args(part=part)) == 0
         out = capsys.readouterr().out
-        assert BANNER.format(version="1") in out
+        assert BANNER.format(version=SHIPPED_CARD_VERSION) in out
         assert "Supply voltage 0.9V" in out
         reset_settings_cache()
 
@@ -1217,11 +1225,11 @@ class TestCorpusKey:
         part_dir = tmp_path / "parts" / "REF9000"
         publish_corpus(part_dir, "REF9000", reference_records(), sections=SECTIONS)
         publish_part_cards(part_dir, "REF9000")
-        assert cards_current(part_dir, "1") is True
+        assert cards_current(part_dir, SHIPPED_CARD_VERSION) is True
 
         _republish_to_library(part_dir, tmp_path / "library")
-        assert cards_current(part_dir, "1") is False
-        assert load_card(part_dir, CARD_POWER, card_version="1") is None
+        assert cards_current(part_dir, SHIPPED_CARD_VERSION) is False
+        assert load_card(part_dir, CARD_POWER, card_version=SHIPPED_CARD_VERSION) is None
 
 
 class TestRetiringCardsOnRepublish:

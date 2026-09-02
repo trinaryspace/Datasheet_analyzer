@@ -30,6 +30,7 @@ from datasheet_analyzer.extract.http import ReplayBinaryFetcher, ReplayFetcher
 from datasheet_analyzer.extract.pdf_structure import page_texts
 from datasheet_analyzer.models import (
     CorpusManifest,
+    DocType,
     PlotSet,
     SectionNode,
     SpecSet,
@@ -125,7 +126,7 @@ class TestRealBuild:
             assert path is not None and path.exists(), s.file
         # Phase 2: specs.json written next to the sections dir
         doc_dir = document_dirs(result.manifest, part_dir=result.part_dir)[
-            result.manifest.documents[0].content_hash
+            _datasheets(result.manifest)[0].content_hash
         ]
         assert (doc_dir / "specs.json").exists()
 
@@ -154,7 +155,7 @@ class TestRealBuild:
     def test_exact_spec_values_in_corpus_files(self, built):
         result, _ = built
         doc_dir = document_dirs(result.manifest, part_dir=result.part_dir)[
-            result.manifest.documents[0].content_hash
+            _datasheets(result.manifest)[0].content_hash
         ]
         tx45 = next(f for f in doc_dir.rglob("4-5-transmitter-electrical-characteristics.md"))
         text = tx45.read_text(encoding="utf-8")
@@ -242,11 +243,23 @@ class TestRealBuild:
 # --------------------------------------------------------------------------
 
 
+def _datasheets(manifest: CorpusManifest) -> list:
+    """The manifest's datasheet documents.
+
+    This regrade re-pins published grids against *the datasheet PDF* it is
+    handed, so a companion is not merely irrelevant here — its sections cannot
+    be pinned against a document they were not printed in, and a `pdf_text`
+    companion publishes no `specs.json` to regrade at all. AFE7950 holds two
+    app notes since 2026-09-02.
+    """
+    return [doc for doc in manifest.documents if doc.doc_type is DocType.DATASHEET]
+
+
 def _committed_nodes(part_dir: Path, manifest: CorpusManifest) -> list[SectionNode]:
     """Rebuild each published section as a `SectionNode` carrying its grids."""
     nodes: list[SectionNode] = []
     dirs = document_dirs(manifest, part_dir=part_dir)
-    for doc in manifest.documents:
+    for doc in _datasheets(manifest):
         doc_dir = dirs[doc.content_hash]
         for sec in manifest.sections:
             if sec.doc_hash != doc.content_hash:
@@ -288,7 +301,7 @@ def regrade_committed_corpus(part_dir: Path, pdf: Path) -> dict:
 
     specs, plots, unmatched = [], [], 0
     dirs = document_dirs(manifest, part_dir=part_dir)
-    for doc in manifest.documents:
+    for doc in _datasheets(manifest):
         doc_dir = dirs[doc.content_hash]
         specset = SpecSet.model_validate_json((doc_dir / "specs.json").read_text(encoding="utf-8"))
         for rec in specset.records:

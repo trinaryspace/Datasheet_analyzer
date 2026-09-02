@@ -211,7 +211,14 @@ class Settings(BaseSettings):
     # instead of silently leaving stale cards on disk. Bump it in the commit
     # that changes a rule; overriding it by env is how a rule change is tried
     # against a corpus without editing the source.
-    card_version: str = "1"
+    # "2" (2026-09-02): section titles are looked up per *document*. A section
+    # number is only unique inside one document, and a flat `{number: title}`
+    # map let a companion's section 4.1 answer for the datasheet's — AFE7950's
+    # limits card silently stopped recognising its Absolute Maximum Ratings
+    # side the moment the part gained an app note. That is a derivation-rule
+    # change, so the cache key moves with it rather than leaving a wrong card
+    # on disk with a matching key.
+    card_version: str = "2"
 
     # Where the per-part golden benchmarks live (`DSA_GOLDEN_DIR`, phase 7,
     # ticket 06). Empty means the repository's own `tests/fixtures`, which is

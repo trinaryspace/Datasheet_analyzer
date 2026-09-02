@@ -535,7 +535,11 @@ class TestInvariantEight:
 
 class TestCardVersion:
     def test_card_version_is_env_driven_with_a_default(self, monkeypatch):
-        assert Settings().card_version == "1"
+        # The default is *a* version, not a particular one — it is bumped in
+        # the commit that changes a derivation rule (ADR 0007), so pinning the
+        # digit here would make every such commit edit this test. What must
+        # hold is that it is non-empty and that the env wins over it.
+        assert Settings().card_version
         monkeypatch.setenv("DSA_CARD_VERSION", "7")
         reset_settings_cache()
         try:

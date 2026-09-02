@@ -462,7 +462,11 @@ class TestGateSevenAxisCatalog:
             pytest.skip("afe7950.pdf is not readable from here")
         manifest = read_manifest(directory)
         plots_json = None
-        for doc_hash in (d.content_hash for d in manifest.documents):
+        # The *datasheet*'s catalog. AFE7950 also holds two app notes, whose
+        # `plots.json` files publish nothing — the last one seen would win.
+        for doc_hash in (
+            d.content_hash for d in manifest.documents if d.doc_type.value == "datasheet"
+        ):
             for candidate in (REPO / "library" / "docs").glob(f"*{doc_hash[:8]}/plots.json"):
                 plots_json = candidate
             for candidate in (directory / "docs").glob(f"*{doc_hash[:8]}/plots.json"):

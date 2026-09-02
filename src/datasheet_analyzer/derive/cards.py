@@ -343,6 +343,11 @@ class CardDocument:
 
     name: str
     ref_base: str
+    #: The document's own content hash, as `specs.json` / the manifest's
+    #: section files carry it. A section *number* is only unique inside one
+    #: document, so this is what makes a title lookup unambiguous on a part
+    #: that holds more than one.
+    doc_hash: str = ""
     records: tuple[SpecRecord, ...] = ()
     pins: tuple[PinRecord, ...] = ()
     citable: frozenset[int] = frozenset()
@@ -379,9 +384,19 @@ class CardCorpus:
     part_dir: Path
     library_dir: Path | None = None
     documents: tuple[CardDocument, ...] = ()
-    #: Section number -> printed title, from the manifest. The `limits` card
-    #: recognises a side from it; a sweep row records it as its note.
-    section_titles: dict[str, str] = field(default_factory=dict)
+    #: `(doc_hash, section number)` -> printed title, from the manifest. The
+    #: `limits` card recognises a side from it; a sweep row records it as its
+    #: note.
+    #:
+    #: Keyed by document, not by number alone, because **a section number is
+    #: only unique inside one document**. AFE7950's datasheet prints
+    #: `4.1 Absolute Maximum Ratings`; the moment the part also holds an app
+    #: note that prints its own section 4, a flat `{number: title}` map let the
+    #: companion's title win and the limits card stopped recognising the
+    #: absolute-maximum side at all — every row one-sided, every margin
+    #: uncomputed, and no error anywhere. (ADR 0004 says section identity is a
+    #: per-document fact; this map used to disagree.)
+    section_titles: dict[tuple[str, str], str] = field(default_factory=dict)
 
     @property
     def has_records(self) -> bool:
@@ -396,8 +411,23 @@ class CardCorpus:
         """This corpus's contribution to a card's cache key — see `corpus_key`."""
         return corpus_key((doc.name, doc.ref_base) for doc in self.documents)
 
-    def section_title(self, number: str) -> str:
-        return self.section_titles.get((number or "").strip(), "")
+    def section_title(self, number: str, doc_hash: str = "") -> str:
+        """The title printed above section `number` of `doc_hash`.
+
+        A caller that cannot name the document (or a corpus published before
+        section files carried a hash) falls back to the number alone, and only
+        when it is unambiguous across every document the part holds: an
+        ambiguous number answers `""`, which is what "no title" already means
+        everywhere this is read.
+        """
+        number = (number or "").strip()
+        if not number:
+            return ""
+        hit = self.section_titles.get((doc_hash, number))
+        if hit is not None:
+            return hit
+        titles = {t for (_h, n), t in self.section_titles.items() if n == number}
+        return titles.pop() if len(titles) == 1 else ""
 
 
 def corpus_key(documents: Iterable[tuple[str, str]]) -> str:
@@ -522,6 +552,7 @@ def load_card_corpus(part_dir: Path | str, part: str = "") -> CardCorpus:
             CardDocument(
                 name=doc.name,
                 ref_base=_ref_base(directory, part_dir, index.library_dir),
+                doc_hash=doc.doc_hash,
                 records=doc.specs,
                 pins=pins,
                 citable=citable,
@@ -529,7 +560,7 @@ def load_card_corpus(part_dir: Path | str, part: str = "") -> CardCorpus:
                 uncitable=refused,
             )
         )
-    titles = {s.number: s.title for s in index.sections if s.number}
+    titles = {(s.doc_hash, s.number): s.title for s in index.sections if s.number}
     return CardCorpus(
         part=part or index.part_number or part_dir.name,
         part_dir=part_dir,
@@ -693,7 +724,7 @@ def _sweep_group(
                         label=record.name or record.symbol,
                         symbol=family or record.symbol,
                         values=values,
-                        note=corpus.section_title(record.section),
+                        note=corpus.section_title(record.section, doc.doc_hash),
                     ),
                 )
             )
@@ -878,7 +909,7 @@ def _candidates(
     uncitable = 0
     for doc in corpus.documents:
         for position, record in enumerate(doc.records):
-            title = corpus.section_title(record.section)
+            title = corpus.section_title(record.section, doc.doc_hash)
             side = _side_for(record, title, spec.sides)
             if side is None:
                 continue

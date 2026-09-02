@@ -53,7 +53,7 @@ REFERENCE_PARTS = ("AFE7950", "AD9081")
 
 #: The card version these assertions were written against. Passed explicitly
 #: so the gate does not depend on the ambient `DSA_CARD_VERSION`.
-CARD_VERSION = "1"
+CARD_VERSION = "2"
 
 
 def _part_dir(part: str) -> Path:

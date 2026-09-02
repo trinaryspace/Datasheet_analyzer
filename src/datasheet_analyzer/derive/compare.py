@@ -436,7 +436,7 @@ def _spec_candidates(
                     identities=identities,
                     family=key,
                     alias=alias,
-                    note=corpus.section_title(record.section),
+                    note=corpus.section_title(record.section, doc.doc_hash),
                     conditions=record.conditions,
                     page=record.page,
                     order=(record.section, record.table_index, record.row_index),
