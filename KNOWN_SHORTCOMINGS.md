@@ -155,12 +155,30 @@ verified on the wire**.
   null on those three, because the hash that is recorded did not come off that
   download. `url_verified: true` with `retrieved_at: null` is a deliberate,
   asserted combination (`TestCheckedInRegistry`), not an inconsistency.
-- **`dsa check-revisions --all`: 3 checked, 0 stale, 3 content-drift, 9 could
-  not be checked.** AFE7950 and AFE7953's `INDEX.md` staleness banners are the
-  first in this repo to read "Revision current … regenerated, not revised"
-  instead of "not checked". The `stale` path is still unexercised against a
-  real superseded document — no vendor in this corpus has moved a revision
-  under us yet.
+- **`dsa check-revisions --all` over the whole fleet: 25 checked, 0 stale,
+  3 content-drift, 6 could not be checked.** Ten documents came back `current`
+  with their revision confirmed on the wire — ADC12DJ5200RF, AFE7950, AFE7953,
+  AWR1843 (datasheet *and* errata), LMX1204, LMX2820 (datasheet *and* register
+  map), QPA2213, QPL9547, lm741 — and seven of those are byte-identical to
+  what this corpus holds. Only the three TI documents with `local_file:`
+  hashes drift. The `stale` path is still unexercised against a real
+  superseded document: no vendor in this corpus has moved a revision under us
+  yet.
+- **Twelve documents read `unknown` because their publisher prints no revision
+  identifier at all** — every Mini-Circuits and every Skyworks datasheet, plus
+  both TI app notes. The tool says exactly that ("the upstream document prints
+  no revision identifier this repo's shared lexicon can read, so the
+  comparison is inconclusive") rather than guessing, and there is nothing to
+  fix in the tool: those vendors do not print one. It does mean that for 12 of
+  30 documents, "is this current?" cannot be answered by revision identity and
+  would have to be answered by bytes.
+- **A part's banner is its least fresh document, and that now bites the
+  reference part.** AFE7950's datasheet is `current` and its two app notes are
+  `unknown`, so `parts/AFE7950/INDEX.md` reads "Revision not checked" — which
+  is the designed reduction (`staleness.corpus_staleness`) applied honestly,
+  and is also strictly less useful than what the same part showed when it held
+  one document. The per-document breakdown noted at the bottom of this entry
+  is what would fix it.
 - **`LMX1204` is in the registry now, and it is the strongest citation-fidelity
   result here.** `https://www.ti.com/lit/ds/symlink/lmx1204.pdf` returns
   `acd53c1fbc131e09…` — byte-for-byte the `content_hash` its corpus was built

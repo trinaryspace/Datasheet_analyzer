@@ -1,5 +1,5 @@
 <!-- dsa:staleness -->
-> ⚠ Revision not checked: this corpus is built from a document that prints no revision identifier and has not been confirmed against upstream. Run `dsa check-revisions --part AFE7950` before relying on it for a design decision.
+> ⚠ Revision not checked: this corpus is built from a document that prints no revision identifier and has not been confirmed against upstream - the upstream document prints no revision identifier this repo's shared lexicon can read, so the comparison is inconclusive. Run `dsa check-revisions --part AFE7950` before relying on it for a design decision.
 <!-- /dsa:staleness -->
 
 # AFE7950 — datasheet corpus
