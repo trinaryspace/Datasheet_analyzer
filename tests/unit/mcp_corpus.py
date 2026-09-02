@@ -319,6 +319,7 @@ def empty_settings(tmp_path: Path) -> Settings:
         parts_dir=tmp_path / "parts",
         cache_dir=tmp_path / ".cache",
         projects_dir=tmp_path / "projects",
+        families_dir=tmp_path / "families",
         # The *document* registry only (phase 7, ticket 01) - the alias, card,
         # pin-type and device-table lexicons always read the packaged
         # directory. Pointed at tmp so `dsa fetch` and `dsa check-revisions`

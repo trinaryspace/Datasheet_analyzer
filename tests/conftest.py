@@ -77,6 +77,12 @@ def _point_dsa_at(root: Path):
     - and edit the benchmark it is being measured against. Tests that want to
     *read* the committed benchmarks name their paths explicitly (`conftest.FIXTURES`),
     which is unaffected; only the settings-resolved default moves.
+
+    `DSA_FAMILIES_DIR` is here for the same reason once more (phase 7,
+    ticket 07): `dsa family build` **writes** `families/<NAME>/`, and a test
+    that reached `get_settings()` without naming a families directory built
+    one into the repository's own working tree. Observed exactly once, from
+    `test_cli_json.py`'s `family build --json` invocation.
     """
     from _pytest.monkeypatch import MonkeyPatch
 
@@ -87,6 +93,7 @@ def _point_dsa_at(root: Path):
     mp.setenv("DSA_SESSIONS_DIR", str(root / "sessions"))
     mp.setenv("DSA_PARTS_DIR", str(root / "parts"))
     mp.setenv("DSA_GOLDEN_DIR", str(root / "golden"))
+    mp.setenv("DSA_FAMILIES_DIR", str(root / "families"))
     reset_settings_cache()
     yield root
     mp.undo()

@@ -38,6 +38,8 @@ second comparison model:
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 from family_corpus import family_settings
 
@@ -663,3 +665,36 @@ class TestTheCliScope:
         out = capsys.readouterr().out
         assert "no declared families" in out
         assert "proposal(s)" in out and "confirmed: False" in out
+
+
+class TestNothingHereWritesIntoTheRepository:
+    """`dsa family build` writes a directory, and a test must not aim it here.
+
+    `Settings.families_dir` defaults to `./families`, so a test that reaches
+    `get_settings()` without naming one builds a family index into the working
+    tree. That happened exactly once during this port, from `test_cli_json`'s
+    `family build --json` invocation, and it is why `conftest._point_dsa_at`
+    now exports `DSA_FAMILIES_DIR` alongside `DSA_PARTS_DIR` and
+    `DSA_GOLDEN_DIR`. This is the same shape of guard the golden benchmarks
+    carry, for the same reason: a suite that writes into the repository it is
+    asserting against fails in a way that looks like a code regression.
+    """
+
+    REPO = Path(__file__).parent.parent.parent
+
+    def test_the_settings_default_is_redirected_for_every_test(self):
+        from datasheet_analyzer.config import get_settings
+
+        assert self.REPO not in get_settings().families_dir.parents
+
+    def test_no_family_index_was_built_into_the_working_tree(self):
+        import subprocess
+
+        result = subprocess.run(
+            ["git", "status", "--porcelain", "--", "families"],
+            cwd=self.REPO,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert result.stdout.strip() == "", result.stdout
