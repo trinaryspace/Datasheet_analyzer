@@ -59,7 +59,7 @@ import argparse
 import json
 import logging
 import sys
-from collections.abc import Iterable, Iterator, Sequence
+from collections.abc import Callable, Iterable, Iterator, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -80,6 +80,9 @@ from datasheet_analyzer.models import (
     CARD_KINDS,
     VALUE_KIND_POINT,
     Card,
+    CompareCell,
+    CompareDelta,
+    CompareRow,
     Confidence,
     DerivedValue,
     SpecRecord,
@@ -106,6 +109,23 @@ SPEC_CELLS: tuple[str, ...] = ("min", "typ", "max", "value")
 MATCH_IDENTITY = "printed identity"
 MATCH_FAMILY = "alias family"
 MATCH_SYMBOL = "printed symbol"
+
+#: `(join key, aligned_on)` for one spec record — an **additive** override of
+#: the alias-resolved key `dsa compare` normally joins on (phase 7, ticket 07).
+#:
+#: It exists for the family index, whose members are one vendor's one document
+#: template published for several devices: there the identity that survives is
+#: the row exactly as printed inside the section it was printed in, and
+#: resolving it through the alias lexicon would collapse `IVDD1P8` and
+#: `IVDD1P2` onto one key and then refuse them both as ambiguous. The second
+#: element replaces the row's `matched_on` sentence, because a caller holding a
+#: stronger identity than the lexicon is also the only one that can say in
+#: words what it matched on.
+#:
+#: Everything downstream of the key is unchanged — the four join rungs, the
+#: exactly-one-free-row-per-part rule, the refusal of an ambiguous key, the
+#: delta, the parse population. One alignment engine, two artifacts.
+SpecKeyFn = Callable[[SpecRecord], tuple[str, str]]
 
 #: What became of a row.
 STATUS_ALIGNED = "aligned"  # every part has exactly one row for this key
@@ -134,6 +154,7 @@ __all__ = [
     "CompareRow",
     "Comparison",
     "PartCoverage",
+    "SpecKeyFn",
     "audit_comparison",
     "cli_compare",
     "compare_cards",
@@ -146,60 +167,6 @@ __all__ = [
 
 
 # --- the comparison, as data ------------------------------------------------
-
-
-class CompareCell(BaseModel):
-    """One part's side of one aligned row: what it printed, and where.
-
-    `values` is keyed by column (`min`, `typ`, `max`, `value`, or whatever
-    columns a card filled) and every entry is a `DerivedValue`, so a citation
-    on a comparison resolves by exactly the rule every other derived artifact
-    follows.
-    """
-
-    part_number: str = ""
-    label: str = ""  # what this part printed as the parameter name
-    symbol: str = ""  # what this part printed as the symbol
-    note: str = ""  # section title, or the card group the row came from
-    conditions: str = ""  # the printed conditions that qualify this row
-    page: int | None = None
-    values: dict[str, DerivedValue] = Field(default_factory=dict)
-
-
-class CompareDelta(BaseModel):
-    """`b - a` for one column of one row — the only thing this module derives.
-
-    The envelope on `value` cites the record on the **`part_number` side**,
-    which is the same convention the `limits` card's margin follows: a
-    computed value carries one citation and the row carries both, so both
-    printed values and both pages are always on the table beside it.
-    `baseline_source` / `baseline_page` name the other half explicitly.
-    """
-
-    cell: str = ""
-    baseline: str = ""  # the part subtracted *from* (`a`)
-    part_number: str = ""  # the part subtracted (`b`)
-    value: DerivedValue = Field(default_factory=DerivedValue)
-    baseline_source: str = ""
-    baseline_page: int | None = None
-
-
-class CompareRow(BaseModel):
-    """One aligned parameter across every part in the comparison."""
-
-    key: str = ""  # the join key: printed identity, alias family or symbol
-    label: str = ""  # what to call the row (the baseline part's print, else the first)
-    symbol: str = ""
-    matched_on: str = ""  # what put these rows together, in words
-    status: str = ""  # one of the `STATUS_*` values
-    cells: dict[str, CompareCell] = Field(default_factory=dict)  # part -> its side
-    deltas: list[CompareDelta] = Field(default_factory=list)
-    present_in: list[str] = Field(default_factory=list)
-    missing_from: list[str] = Field(default_factory=list)
-    # Why a column of this row carries no delta. Never empty when a printed
-    # pair went uncompared — that is the "and says so" half of invariant 8.
-    not_comparable: list[str] = Field(default_factory=list)
-    flags: list[str] = Field(default_factory=list)
 
 
 class CompareCoverage(BaseModel):
@@ -338,6 +305,10 @@ class _Candidate:
     page: int | None
     order: tuple[str, int, int]
     values: dict[str, DerivedValue]
+    #: What put this row's key together, in words, when a `SpecKeyFn` supplied
+    #: it. Empty for every row `dsa compare` builds, which is what keeps
+    #: `_matched_on`'s four sentences exactly as they were.
+    aligned_on: str = ""
 
     def cell(self) -> CompareCell:
         return CompareCell(
@@ -418,6 +389,7 @@ def _spec_candidates(
     *,
     symbol: str = "",
     entry: AliasEntry | None = None,
+    key_for: SpecKeyFn | None = None,
 ) -> tuple[list[_Candidate], list[SpecRecord], int]:
     """Every published spec record of one part that printed a value.
 
@@ -425,6 +397,11 @@ def _spec_candidates(
     and how many matching records could not be cited so that the citation
     resolves back to them — refused rather than compared under another row's
     id, the same rule the design cards apply.
+
+    `key_for` (additive, phase 7 ticket 07) replaces the alias-resolved join
+    key with one the caller computed, and nothing else: the row still
+    carries what it printed, still has to be citable, and still goes through
+    the same four rungs and the same refusals.
     """
     candidates: list[_Candidate] = []
     records: list[SpecRecord] = []
@@ -442,12 +419,21 @@ def _spec_candidates(
             if not values:
                 continue
             records.append(record)
+            identities = _identities(record.symbol, record.name)
+            aligned_on = ""
+            if key_for is not None:
+                # One key, offered at every rung, so the caller's identity
+                # is the only thing that can pair two rows: an alias family
+                # the caller did not ask for must not widen the join behind
+                # it.
+                key, aligned_on = key_for(record)
+                identities, alias = (key,), ""
             candidates.append(
                 _Candidate(
                     part=part,
                     label=record.name or record.symbol,
                     symbol=record.symbol or record.name,
-                    identities=_identities(record.symbol, record.name),
+                    identities=identities,
                     family=key,
                     alias=alias,
                     note=corpus.section_title(record.section),
@@ -455,6 +441,7 @@ def _spec_candidates(
                     page=record.page,
                     order=(record.section, record.table_index, record.row_index),
                     values=values,
+                    aligned_on=aligned_on,
                 )
             )
     return candidates, records, uncitable
@@ -616,11 +603,19 @@ def _join(
 
 
 def _matched_on(basis: str, key: str, qualified: bool, picks: dict[str, _Candidate]) -> str:
-    """What put these rows together, in words a reader can check on the page."""
+    """What put these rows together, in words a reader can check on the page.
+
+    A caller that supplied its own key (`SpecKeyFn`) supplied the sentence
+    too, and it wins: only that caller knows what its key means. Every row
+    `dsa compare` builds carries an empty `aligned_on` and reaches the four
+    sentences below unchanged.
+    """
+    sample = next(iter(picks.values()))
+    if sample.aligned_on:
+        return sample.aligned_on
     where = " and conditions" if qualified else ""
     if basis == MATCH_IDENTITY:
         return f"{MATCH_IDENTITY}{where} {key!r}"
-    sample = next(iter(picks.values()))
     if sample.alias:
         printed = ", ".join(f"{part} prints {c.symbol!r}" for part, c in sorted(picks.items()))
         return f"{MATCH_FAMILY}{where} {sample.alias} ({printed})"
@@ -901,8 +896,14 @@ def compare_specs(
     *,
     symbol: str = "",
     lexicon: AliasLexicon | None = None,
+    key_for: SpecKeyFn | None = None,
 ) -> Comparison:
-    """Compare parts' published spec records, optionally filtered to one symbol."""
+    """Compare parts' published spec records, optionally filtered to one symbol.
+
+    `key_for` is the family index's hook (`SpecKeyFn`): it replaces the join
+    key and the row's `matched_on` sentence and touches nothing else.
+    `dsa compare` never passes one.
+    """
     aliases = lexicon or load_lexicon()
     entry, how = resolve_symbol_query(symbol, aliases)
     names = [part for part, _dir in parts]
@@ -914,7 +915,7 @@ def compare_specs(
     for part, part_dir in parts:
         corpus = load_card_corpus(part_dir, part)
         found, records, uncitable = _spec_candidates(
-            corpus, part, aliases, symbol=symbol, entry=entry
+            corpus, part, aliases, symbol=symbol, entry=entry, key_for=key_for
         )
         candidates.extend(found)
         parse_coverage.append(PartCoverage.from_coverage(part, coverage(records)))

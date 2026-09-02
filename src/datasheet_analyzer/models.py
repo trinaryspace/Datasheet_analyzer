@@ -1677,118 +1677,58 @@ class AuditScorecard(BaseModel):
     notes: list[str] = Field(default_factory=list)
 
 
-class ComparisonCell(BaseModel):
-    """What one part printed for one aligned parameter.
+class CompareCell(BaseModel):
+    """One part's side of one aligned row: what it printed, and where.
 
-    One column of a comparison row. It quotes that part's row and nothing
-    else: `values` are the printed cells in their provenance envelopes (`min`,
-    `typ`, `max`, `value` for a spec comparison; whatever a design card
-    publishes for a card comparison), each carrying its own `source`, `page`
-    and rule.
-
-    - `label` / `detail` are the row's identity **as that part printed it**,
-      which is the whole point of a cross-part row: two parts name one
-      parameter differently and the comparison must show both names rather
-      than pick one.
-    - `matched_via` is the rung this part's record answered the query on
-      (`symbol`, `alias:junction temperature`, …). A comparison that aligned
-      two rows must be able to say how each of them was found, or a
-      mis-alignment is invisible.
-    - `citation` is the rendered citation of the record this cell quotes.
-    - `delta` is this cell's value **minus the reference part's**, in the SI
-      base both parsed to, and exists only where both sides parsed the same
-      printed column. It is a computed value, so it carries no `verbatim`: no
-      page printed a difference between two datasheets.
+    `values` is keyed by column (`min`, `typ`, `max`, `value`, or whatever
+    columns a card filled) and every entry is a `DerivedValue`, so a citation
+    on a comparison resolves by exactly the rule every other derived artifact
+    follows.
     """
 
     part_number: str = ""
-    label: str = ""
-    detail: str = ""
-    section: str = ""
-    section_title: str = ""
-    matched_via: str = ""
-    citation: str = ""
+    label: str = ""  # what this part printed as the parameter name
+    symbol: str = ""  # what this part printed as the symbol
+    note: str = ""  # section title, or the card group the row came from
+    conditions: str = ""  # the printed conditions that qualify this row
+    page: int | None = None
     values: dict[str, DerivedValue] = Field(default_factory=dict)
-    delta: DerivedValue | None = None
 
 
-class ComparisonRow(BaseModel):
-    """One parameter, across the parts being compared.
+class CompareDelta(BaseModel):
+    """`b - a` for one column of one row — the only thing this module derives.
 
-    - `key` is what the row aligned **on** — the alias-resolved symbol where
-      the lexicon claims the parameter, otherwise the printed identity the
-      parts share — and `aligned_on` says which of those it was, so an
-      alignment can never be silently wrong: a reader can check the rule that
-      produced it.
-    - `role` is the printed column the deltas were computed on (`max`), `""`
-      when no two cells stated a comparable number in the same column.
-    - `reference` is the part every delta on this row is measured against —
-      the first part named that printed the parameter.
-    - `missing_from` lists the compared parts that publish **no** record for
-      this parameter. It is a finding, not a gap to hide: during part
-      selection an absent parameter is information.
-    - `ambiguous_in` lists the parts that publish **several** rows here which
-      no shared printed name could pair, so they hold no column of this row.
-      It is deliberately not the same list as `missing_from`: one part said
-      nothing, the other said several things at once, and only the first is a
-      fact about the device.
+    The envelope on `value` cites the record on the **`part_number` side**,
+    which is the same convention the `limits` card's margin follows: a
+    computed value carries one citation and the row carries both, so both
+    printed values and both pages are always on the table beside it.
+    `baseline_source` / `baseline_page` name the other half explicitly.
     """
 
-    key: str = ""
-    aligned_on: str = ""
-    group: str = ""
-    role: str = ""
-    reference: str = ""
-    cells: list[ComparisonCell] = Field(default_factory=list)
+    cell: str = ""
+    baseline: str = ""  # the part subtracted *from* (`a`)
+    part_number: str = ""  # the part subtracted (`b`)
+    value: DerivedValue = Field(default_factory=DerivedValue)
+    baseline_source: str = ""
+    baseline_page: int | None = None
+
+
+class CompareRow(BaseModel):
+    """One aligned parameter across every part in the comparison."""
+
+    key: str = ""  # the join key: printed identity, alias family or symbol
+    label: str = ""  # what to call the row (the baseline part's print, else the first)
+    symbol: str = ""
+    matched_on: str = ""  # what put these rows together, in words
+    status: str = ""  # one of the `STATUS_*` values
+    cells: dict[str, CompareCell] = Field(default_factory=dict)  # part -> its side
+    deltas: list[CompareDelta] = Field(default_factory=list)
+    present_in: list[str] = Field(default_factory=list)
     missing_from: list[str] = Field(default_factory=list)
-    ambiguous_in: list[str] = Field(default_factory=list)
+    # Why a column of this row carries no delta. Never empty when a printed
+    # pair went uncompared — that is the "and says so" half of invariant 8.
+    not_comparable: list[str] = Field(default_factory=list)
     flags: list[str] = Field(default_factory=list)
-    note: str = ""
-    citation: str = ""
-
-    @property
-    def n_deltas(self) -> int:
-        return sum(1 for cell in self.cells if cell.delta is not None)
-
-
-class PartComparison(BaseModel):
-    """The part-selection question, answered once.
-
-    A derived artifact under ADR 0005 like a design card, and derived from the
-    very same records: every value is a quoted cell in its envelope or a
-    number computed from two of them by a named rule, and nothing here is
-    written that the parts' own corpora do not already hold.
-
-    Unlike a card it is **never written to disk** — it exists for the length
-    of one question — so it carries `card_version` as the derivation-rule
-    version it was produced under rather than as a cache key.
-
-    - `rows` may be empty, and an empty comparison is a valid one:
-      `empty_reason` then states what was looked for in which parts.
-    - `notes` carries the population sentences invariant 8 requires of any
-      consumer that compares, and `unparsed` one line per pair it could not
-      compare — including every value of an ambiguous alignment it refused,
-      quoted verbatim, so nothing is ever dropped from a decision in silence.
-    """
-
-    schema_version: str = ""
-    card_version: str = ""
-    kind: str = ""  # "symbol" | "name" | "card"
-    query: str = ""
-    parts: list[str] = Field(default_factory=list)
-    reference: str = ""
-    rows: list[ComparisonRow] = Field(default_factory=list)
-    notes: list[str] = Field(default_factory=list)
-    unparsed: list[str] = Field(default_factory=list)
-    empty_reason: str = ""
-
-    @property
-    def n_rows(self) -> int:
-        return len(self.rows)
-
-    @property
-    def n_deltas(self) -> int:
-        return sum(row.n_deltas for row in self.rows)
 
 
 class RevisionChange(BaseModel):
@@ -1936,9 +1876,8 @@ class FamilyIndex(BaseModel):
     - `sections` carries every section of the series once, each saying whether
       it is shared or divergent (`FamilySection`).
     - `deltas` / `pin_deltas` / `register_deltas` are the rows that **differ**,
-      as `ComparisonRow`s — the same row type a cross-part comparison
-      publishes, because a family delta is a cross-part comparison restricted
-      to what moved. Rows that align and agree are counted
+      as `CompareRow`s — the same row type `dsa compare` publishes, because
+      a family delta is a cross-part comparison restricted to what moved. Rows that align and agree are counted
       (`n_specs_identical`) and not listed: listing them is the cost the
       family index exists to avoid.
     - `notes` carries the population sentences invariant 8 requires of a
@@ -1956,9 +1895,9 @@ class FamilyIndex(BaseModel):
     members: list[str] = Field(default_factory=list)
     reference: str = ""
     sections: list[FamilySection] = Field(default_factory=list)
-    deltas: list[ComparisonRow] = Field(default_factory=list)
-    pin_deltas: list[ComparisonRow] = Field(default_factory=list)
-    register_deltas: list[ComparisonRow] = Field(default_factory=list)
+    deltas: list[CompareRow] = Field(default_factory=list)
+    pin_deltas: list[CompareRow] = Field(default_factory=list)
+    register_deltas: list[CompareRow] = Field(default_factory=list)
     #: Spec rows that aligned across at least two members, and how many of
     #: those printed the same values everywhere. The second number is the
     #: measured half of "list the shared once".
