@@ -1,6 +1,19 @@
 # PHASE 7 PLAN — Reach & Trust
 
-**Status: planned.** Execution contract for `.scratch/reach-and-trust/`.
+> **Status: SUPERSEDED, 2026-09-02**, by `Reports/PHASE_7_REPORT.md`, whose
+> ticket-08 section closes the phase and the roadmap. This file is kept as the
+> record of what was decided **before** anything was measured; where it and the
+> report disagree, the report is right about this tree.
+>
+> Read the report first. Four of the plan's promises did not survive contact
+> with a 25-part fleet and are recorded there and in `KNOWN_SHORTCOMINGS.md`
+> rather than quietly dropped: `dsa verify` is at 100 % over the six parts that
+> carry a human-confirmed benchmark and not across the fleet; nine
+> Mini-Circuits parts can generate no golden candidate at all; no family in
+> this fleet produces a substantive delta table; and eleven of the 25 parts
+> grade `C` on `dsa audit` with the rubric left exactly where it was.
+
+**Was: planned.** Execution contract for `.scratch/reach-and-trust/`.
 Superseded on landing by `Reports/PHASE_7_REPORT.md`.
 
 **Depends on Phases 5–6.** This is the breadth phase: after depth is proven on

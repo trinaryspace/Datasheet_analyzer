@@ -912,3 +912,266 @@ placeholders. Nothing new was added to that list by this wave.
 
 Frontend, from `web/`: `npm run typecheck` clean, `npm test` **193 passed**
 across 6 files.
+
+---
+
+# Ticket 08 — the scale gate, and what it does not pass
+
+Measured 2026-09-02 on this tree at `7854374` plus this ticket's own commits.
+Every number below was read off a command that ran here; nothing is carried
+over from a plan or a source lineage.
+
+**The gate does not pass.** Five of the eleven checklist items pass outright,
+two pass with a stated qualification, and **four do not pass** — with the
+reason measured in each case rather than argued around. That verdict is the
+deliverable: a scorecard that flatters the corpus is worth less than no
+scorecard, and the same is true of a phase report.
+
+| # | Checklist item | Verdict |
+|---|---|:---:|
+| 1 | >= 20 parts across >= 3 vendors | **PASS** |
+| 2 | One project of >= 8 parts, answering project-scoped questions correctly | **PARTIAL** |
+| 3 | One family of >= 2 members with a correct delta table | **PARTIAL** |
+| 4 | Every part grades >= B, or carries a recorded shortcoming | **PASS** (by the second clause) |
+| 5 | Generated-then-confirmed goldens for every new part; `dsa verify` 100 % across the fleet | **FAIL** |
+| 6 | All phase 5 and phase 6 goldens still at 100 % | **PASS** |
+| 7 | `pytest` offline, `ruff` clean, fixture-set runtime measured | **PASS** |
+| 8 | `AGENTS.md` / `CONTEXT.md` / `README.md` updated | **PASS** |
+| 9 | This report, with measured numbers | **PASS** |
+| 10 | `PHASE_7_PLAN.md` marked superseded | **PASS** |
+
+## 1. Twenty-five parts, five vendors — PASS
+
+Confirmed rather than redone: `TestCheckedInRegistry::
+test_the_scale_gate_is_readable_from_the_registry` already asserts it against
+`registry/datasheets.yaml`, and the registry reads 25 parts / 30 documents /
+5 vendors, all 25 datasheet URLs `url_verified: true`.
+
+| Vendor | Parts | Which |
+|---|---:|---|
+| Mini-Circuits | 10 | LFCN-1000+, LHA-83W+, PMA1-14LN+, PSA-8A+, TCM1-83X+, YAT-10+, ZEM-4300+, ZFDC-20-5+, ZFSC-2-2500+, ZX10R-2-183-S+ |
+| Texas Instruments | 7 | ADC12DJ5200RF, AFE7950, AFE7953, AWR1843, LMX1204, LMX2820, lm741 |
+| Qorvo | 3 | QPA1003P, QPA2213, QPL9547 |
+| Skyworks | 3 | SKY13351-378LF, SKY65405-21, SKY67183-396LF |
+| Analog Devices | 2 | AD9081, HMC520A |
+
+30 registry documents: 25 datasheets, 3 application notes, 1 errata, 1 register
+map. 1,084 printed pages. `parts/` holds 31 document *references* over those 30
+files, because AFE7950 and LMX1204 both register TI's `snaa360` app note.
+
+Only AFE7950 and AFE7953 are tracked corpora (ADR 0008); **neither was touched
+by this ticket** beyond having its four design cards built (a gitignored
+on-demand cache) and its upstream revision checked (which writes inventory
+state, not corpus content). `git status` over `parts/AFE7950` and
+`parts/AFE7953` is clean.
+
+## 2. `xband-rx-digitizer` — 10 parts, five vendors, one receive slice — PARTIAL
+
+The project is a real design rather than a bag of parts: a 6-10 GHz receive
+slice digitised at 5.2 GSPS, with every vendor on the shelf represented.
+
+```
+RF in -> SKY67183-396LF LNA -> QPL9547 gain stage -> HMC520A I/Q downconverter
+         (LO from LMX2820, sampled through ZFDC-20-5+)
+      -> ZFSC-2-2500+ IF split -> LFCN-1000+ anti-alias LPF -> YAT-10+ pad
+      -> ADC12DJ5200RF;  LMX1204 buffers the sampling clock and SYSREF into
+         the ADC's JESD204C link.
+```
+
+`dsa project build` writes `PROJECT_INDEX.md` at **562 tokens** against a
+4,000-token budget, and `AGENT.md` at 1,952 against 2,200. The ten member
+`INDEX.md` files sum to **21,856 tokens**, so the project index is **2.6 % of
+the parts it maps** — a 38.9x reduction, which is the whole argument for the
+noun.
+
+**The deterministic path is exact.** Thirty symbols were taken from
+machine-verified candidates belonging to six named members, and each was asked
+**project-scoped** through `dsa query --project xband-rx-digitizer --symbol X`:
+
+| | asked | the member's own row returned | every hit carried a part label |
+|---|---:|---:|---:|
+| `dsa query --project` | 30 | **30** | **30** |
+
+That is the invariant that matters most at project scope — *name the part in
+every answer*, never merge two devices into one claim — and it holds without
+exception.
+
+**The routed path ranks badly, and this is why the item is PARTIAL.** The same
+thirty questions asked as prose through `dsa ask --project`:
+
+| | asked | right member ranked first | right member in top 3 | expected substrings present in the pack |
+|---|---:|---:|---:|---:|
+| question as generated | 30 | 13 | 21 | 23 |
+| question with the part number prepended | 30 | 12 | 22 | 22 |
+
+Prepending the part number changes essentially nothing, which is the finding:
+**project-scoped `ask` ranking is member-blind.** A ten-member BM25 fan-out
+returns hits that are individually correct, individually cited and individually
+labelled, and orders them without regard to a member the question names. Asked
+"What is the ADC sampling rate?", the pack's first answer is LMX2820 §7.3.7.1.1
+*Determining the VCO Gain and Ranges*, p.18 — a true citation to the wrong
+device.
+
+Two mitigations are honest to note and neither closes it: several of these
+questions have more than one right answer at project scope (ten members publish
+a supply voltage), and the protocol in `AGENT.md` already tells an agent to
+drop to `query` when it knows the path. But a designer typing a part number
+into a project question should not have to.
+
+**What would close it.** A member-name boost in the project fan-out's ranking —
+`retrieve/` work with its own tests, not this ticket's — and it is recorded
+here rather than done.
+
+## 3. Families — a correct delta table with nothing in it — PARTIAL
+
+`dsa family build AFE795x` builds and its delta table is **correct**: 39
+sections, 14 identical in both members and listed once, 763 spec rows aligned,
+379 printing the same values everywhere, 384 in the delta table, every one of
+the 384 classified (8 `aligned`, 360 `only-in`, 16 `ambiguous`) and every
+refusal listed. **2,290 tokens against the two member indexes' 5,587** — 41 %
+of the sum, a 2.4x win, which is the token argument the noun exists for.
+
+What it contains is **zero computed differences**, and the recorded cause was
+re-measured. All three of the existing entry's counts hold. What is new:
+
+- `dsa compare AFE7950 AFE7953` uses a *looser* join (alias-resolved symbol
+  rather than the printed row inside a family section). It pairs **408 rows**
+  where the family pairs 8, and computes **415 SI delta cells — all 415 zero.**
+  There is no non-zero difference to find. The family's zero is a fact about
+  the two documents, not an artifact of its stricter key, and the "rebuild both
+  through one backend" fix recorded earlier would not change it.
+- Three closer families were **probed** with `DSA_REGISTRY_DIR` and
+  `DSA_FAMILIES_DIR` pointed at `.scratch/`, so nothing was declared:
+  LMX2820+LMX1204 yields 2 non-zero deltas of 261 rows (IIL min -24 uA, VIL max
+  -0.2 V, both correct against the printed pages); QPA1003P+QPA2213 yields one
+  delta and it is **wrong** (see the `si_delta` range entry in
+  KNOWN_SHORTCOMINGS.md); SKY65405-21+SKY67183-396LF yields none.
+
+**Nothing was declared in `registry/families.yaml`.** Membership is DECLARED,
+never inferred, and an agent confirming a family is the same category of lie as
+an agent confirming a golden. LMX1204 is a clock buffer and LMX2820 a wideband
+synthesizer; declaring them one series would satisfy this checklist item and
+mislead every reader after it. The item stays PARTIAL.
+
+## 4. Audit grades, every part, no rubric edit — PASS by the second clause
+
+`dsa audit --all` over 25 parts. **No threshold, weight or letter in
+`registry/audit_rubric.yaml` was changed.**
+
+| Grade | Parts |
+|---|---|
+| **A** (2) | ADC12DJ5200RF 3.73, AFE7953 3.60 |
+| **B** (12) | LMX2820 3.47, AD9081 3.39, AFE7950 3.25, AWR1843 3.19, HMC520A 3.17, SKY65405-21 2.95, LMX1204 2.89, QPA1003P 2.87, QPL9547 2.79, QPA2213 2.68, lm741 2.65, PMA1-14LN+ 2.62 |
+| **C** (11) | SKY13351-378LF 2.58, ZEM-4300+ 2.56, LFCN-1000+ 2.44, LHA-83W+ 2.44, PSA-8A+ 2.44, TCM1-83X+ 2.44, YAT-10+ 2.44, ZFSC-2-2500+ 2.44, ZX10R-2-183-S+ 2.44, SKY67183-396LF 2.42, ZFDC-20-5+ 2.00 |
+
+Eleven parts are below `B`. Each is named in KNOWN_SHORTCOMINGS.md with the
+reading that holds it down, so the checklist's second clause is met — the first
+is not, and saying "PASS" without that sentence would be the flattery this
+ticket was told to avoid.
+
+Two levers were pulled before the reading, and both are the work the metric
+asks for rather than tuning:
+
+- `dsa card` on all 25 parts x 4 cards. Twelve parts still hold **zero card
+  rows** and keep the `D` honestly.
+- `dsa check-revisions --all` (opt-in, network). **9 current, 0 stale, 16
+  unknown, 3 content-drift.** The 16 split into 6 with no registry URL and 10
+  whose documents print no revision identifier the shared lexicon can read —
+  every Mini-Circuits and Skyworks datasheet. The 3 drifts (AFE7950, AFE7953,
+  lm741) are the same printed revision over different upstream bytes.
+
+Together those two moved exactly two parts: **A2/B10/C13 -> A2/B12/C11**. That
+is also a finding about the rubric, recorded as a shortcoming: **two of the
+thirteen metrics are not reproducible from a clone**, and the fleet's grade
+distribution therefore depends on run order by two whole steps.
+
+The third lever, `golden_pass_rate` at weight 4, would move nearly every
+remaining `C` to `B` — LFCN-1000+ computes to 2.92 with one benchmark at 100 %.
+It was not pulled. See item 5.
+
+## 5. Goldens — 301 generated, 296 machine-verified, **0 confirmed** — FAIL
+
+This is the honest centre of the ticket, so it is stated without hedging:
+
+> **No human has confirmed any golden question generated by this ticket.**
+> An agent ran `dsa golden suggest`, an agent checked the results against the
+> printed pages, and an agent wrote this paragraph. `dsa golden confirm` exists
+> for a person and no person has run it. Every "machine-verified" number below
+> is real evidence and is **not** confirmation, and nothing generated here
+> counts toward `dsa verify`, toward `golden_pass_rate`, or toward this gate.
+
+**Generation, across all 25 parts.**
+
+| | Parts | Candidates |
+|---|---:|---:|
+| proposed 19-20 candidates | 15 | 299 |
+| proposed 2 | 1 (PMA1-14LN+) | 2 |
+| proposed **none** | **9** (all Mini-Circuits) | 0 |
+| | **25** | **301** |
+
+Throughput: 5 parts in **9.1 s** wall clock, so the whole fleet regenerates in
+well under a minute. Generation is not the bottleneck; confirmation is, which
+was always the argument for ticket 06.
+
+**Machine verification, against the printed page.** Each candidate's expected
+substrings were checked through `evalh/citations.py` — the same two checks
+`dsa verify` runs — against (a) the corpus section covering the cited page and
+(b) the PDF page text itself, resolved through each part's `sources.json`.
+
+| Check | Result |
+|---|---|
+| corpus contains every expected substring | **301 / 301** |
+| the cited printed page contains them | **296 / 301 (98.3 %)** |
+| query-side (`spec` / `plot` / `ask` / `search`) | **277 / 282 (98.2 %)** |
+
+The 5 page-truth failures are the shape ticket 06 already recorded — a printed
+identity composed from cells that never appear contiguously on the page (lm741
+`Input adjustment range`; QPA1003P `Input Power (P VD = +28 V, I` x2;
+SKY65405-21 `PIN, LNA TA` and `f TA`). The 5 query failures are register
+candidates on ADC12DJ5200RF (4) and LMX1204 (1). Both sets are exactly what a
+reviewer would edit or reject, which is what confirmation is for.
+
+**Nothing was committed to `tests/fixtures/`,** and the first attempt proves the
+guard works. The initial run wrote candidates to the default golden directory;
+the suite came back **3046 tests, 2 failed** — `TestNothingHereCanReachTheReal
+Benchmarks::test_every_committed_benchmark_is_byte_identical_after_all_of_that`
+(which shells out to `git status --porcelain -- tests/fixtures`) and
+`test_no_candidate_or_rejection_file_was_left_beside_them`. The candidates were
+moved to `.scratch/gate08/candidates/`. The existing hand-written benchmarks
+are byte-identical.
+
+**Why the item is FAIL and not PARTIAL**, in two independent ways:
+
+1. **Nineteen of 25 parts carry no confirmed benchmark**, so "goldens cover
+   every new part" is unmet by 19.
+2. **For nine of those nineteen it is unmeetable even by a human**, because the
+   generator can propose nothing to confirm. A Mini-Circuits spec table is a
+   frequency matrix — the row key is `2000` and the columns are the quantities
+   — so a row carries no symbol and no name, and the generator refuses all 63
+   of ZFSC-2-2500+'s and all 44 of ZEM-4300+'s rather than mint *"What is the
+   maximum ?"*. That refusal is correct. Closing it needs a column-keyed
+   template for matrix tables, which does not exist.
+
+**What `dsa verify` does say, measured.** Over the six parts that carry a
+human-confirmed benchmark, it is at 100 %:
+
+| Part | golden Q&A | spec / plot / ask / search | total |
+|---|---:|---:|---:|
+| AD9081 | 8/8 | 6/6 | 14/14 |
+| AFE7950 | 21/21 | 17/17 | 38/38 |
+| AFE7953 | 13/13 | 10/10 | 23/23 |
+| HMC520A | 15/15 | 8/8 | 23/23 |
+| lm741 | 17/17 | 7/7 | 24/24 |
+| QPA1003P | 16/16 | 5/5 | 21/21 |
+| **total** | **90/90** | **53/53** | **143/143** |
+
+"`dsa verify` at 100 % across the fleet" is true of the 24 % of the fleet that
+has anything to verify. Reporting that as 100 % without this sentence would be
+the single most misleading number available in this document.
+
+## 6. Phase 5 and phase 6 goldens — 90/90 — PASS
+
+Re-measured, not assumed: the `golden Q&A` column above sums to **90 of 90,
+100 %**, matching the figure carried into this ticket. Each of those questions
+was checked twice — the corpus section covering the cited page, and the printed
+PDF page itself — with `--pdf` supplied for all six parts.
