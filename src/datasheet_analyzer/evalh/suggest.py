@@ -214,6 +214,35 @@ def _spec_candidate(record: SpecRecord, doc: str):
     return question, verbatim
 
 
+def _routable_designator(designator: str) -> bool:
+    """Whether the ask router could name this pin from a question about it.
+
+    `retrieve.pack` finds a pin by lifting an upper-case designator or
+    identifier out of the question text, so a datasheet that numbers its pins
+    `1..40` prints nothing the route can name. Measured on LMX1204: all five
+    numeric pin candidates route `search` rather than `pin`.
+
+    A candidate is a claim about the *document*, and a path marker is a claim
+    about the *tool*. Where the second cannot be true, it is left off rather
+    than asserted - the same rule a derived artifact follows when it cannot
+    fill a field. It is deliberately not the same thing as filtering a
+    candidate by whether it would pass: the question, its page and its
+    verbatim answer are proposed exactly as they would be otherwise.
+    """
+    from datasheet_analyzer.retrieve.pack import PIN_DESIGNATOR_RE, RECORD_IDENTIFIER_RE
+
+    text = designator.strip()
+    return bool(PIN_DESIGNATOR_RE.search(text) or RECORD_IDENTIFIER_RE.search(text))
+
+
+#: What a pin candidate's notes say when the ask route cannot be claimed.
+UNROUTABLE_PIN = (
+    "no `ask_query` route is asserted: the ask router names a pin by an "
+    "upper-case designator lifted from the question, and this pin is printed "
+    "without one, so the pin path cannot be reached by asking about it"
+)
+
+
 def _pin_candidate(record: PinRecord, doc: str):
     if not record.pin.strip():
         return None, NO_IDENTITY
@@ -221,21 +250,25 @@ def _pin_candidate(record: PinRecord, doc: str):
         return None, NO_ANSWER
     if record.page is None:
         return None, NO_PAGE
+    routable = _routable_designator(record.pin)
+    notes = (
+        f"generated from {PINS_ARTIFACT} row {record.id} of {doc}; "
+        "confirm the designator and the printed name against the page"
+    )
+    if not routable:
+        notes += f". {UNROUTABLE_PIN}"
     question = GoldenQuestion(
         id="",
         question=f"Which signal is on pin {record.pin}?",
         expected_substrings=[record.pin, record.name],
         pages=[record.page],
         section=record.section,
-        kind="ask",
         # This branch has no `pin_query`: a pin golden is an `ask_query`
         # naming the route the answer pack must take, which is the shape
         # `evalh.citations` documents and the hand-written AD9081 set uses.
-        ask_query={"route": "pin"},
-        notes=(
-            f"generated from {PINS_ARTIFACT} row {record.id} of {doc}; "
-            "confirm the designator and the printed name against the page"
-        ),
+        kind="ask" if routable else "direct",
+        ask_query={"route": "pin"} if routable else None,
+        notes=notes,
     )
     verbatim = " | ".join(record.row_verbatim) or f"{record.pin} {record.name}"
     return question, verbatim

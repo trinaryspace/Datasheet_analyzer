@@ -8,12 +8,18 @@ why it is missing, what the tool does instead, and what would close it. A
 shortcoming that is recorded is a decision; a shortcoming that is silently
 worked around is a bug.
 
-**Every figure below was re-measured on the fix wave of 2026-09-01** — a full
-offline re-extract and rebuild of all eleven parts at pipeline 0.5.0, extractor
-`tables-10`, structure stage 3. Two entries remain and both are facts about
-documents rather than defects in this tool. Closing numbers for everything that
-has been retired are in `Reports/PHASE_6_5_REPORT.md` and
+**The first two figures below were re-measured on the fix wave of
+2026-09-01** — a full offline re-extract and rebuild of all eleven parts at
+pipeline 0.5.0, extractor `tables-10`, structure stage 3 — and both are facts
+about documents rather than defects in this tool. Closing numbers for
+everything that has been retired are in `Reports/PHASE_6_5_REPORT.md` and
 `Reports/FIX_WAVE_2026-09-01.md`.
+
+The four entries after them come from the phase 7 port and are a different
+kind: each names a mechanism that is built, tested and **unexercised against
+the thing it was built for** — a live upstream, a real vendor errata sheet, a
+twenty-part fleet, a human confirming a generated question. They are recorded
+here rather than reported as met.
 
 The four entries that the fix wave closed are described in
 `Reports/FIX_WAVE_2026-09-01.md` with their measured before and after: the
@@ -192,3 +198,123 @@ datasheet citation. The answer pack's supporting excerpt does not: it strips
 the banner (`errata.render.strip_banner`), because that surface exists to quote
 what the datasheet page prints and the erratum is already on the answer row
 above it.
+
+---
+
+## Audit: the rubric is calibrated on eleven corpora, and one metric on none
+
+**Phase 7, ticket 05, ported to this branch 2026-09-01.** Every threshold in
+`registry/audit_rubric.yaml` is anchored to a reading measured on the corpora
+under `parts/`, and the head of that file records which reading each cut point
+was placed against. Eleven corpora is a small sample, seven of them RF/analog
+datasheets and eight of them from one extraction backend. `A` is placed at or
+just below what the best real corpus achieves, which means it moves as the
+pipeline improves: `axis_coverage`'s `A` moved from 0.45 to 0.75 on this port,
+because the fleet's best reading is now 78 % and leaving `A` where the source
+lineage put it would have handed an `A` to a corpus reading less than the
+median. That is the file being data rather than an oracle — but it is not the
+same thing as a rubric validated against twenty parts.
+
+**One metric has no measurement behind it at all.** `errata_link_rate` grades
+how many of a part's published errata items a deterministic rule could place
+against a record. **No part in this repository registers an errata document**
+(see the errata entry below), so every corpus reports `n/a` and the cut points
+are placed by argument rather than by reading — `C` at 0.50 because half the
+known issues unreachable is where an agent must say so out loud. The metric is
+in the scorecard because a corpus that publishes errata nobody could place is
+one an agent will answer from while silently omitting them; it is not there
+because anything has ever exercised it.
+
+**`revision_freshness` is `unknown` on all eleven**, correctly: no corpus here
+has been checked against a live upstream. `unknown` grades `C`, weight 3, so
+every part in this repository carries that `C` today and the fleet's grades are
+lower than they will be once `dsa check-revisions` has run. The grade therefore
+depends on run order, which is a fact about the corpus rather than about the
+rubric, and the scorecard says so in its own notes.
+
+**`alias_hit_rate`'s top rungs are uncalibrated.** Only two benchmarks here ask
+a spec question keyed by a designer's words: AFE7953 resolves 2 of 5 off the
+lexicon and AFE7950 0 of 11. Nothing has ever read above 40 %, so `A` at 0.90
+and `B` at 0.70 are aspirations rather than measurements. The metric is
+weighted 1 for exactly that reason: it measures the lexicon and the benchmark,
+not the extraction.
+
+**What would close it.** Onboard twenty parts and re-read the fleet table; file
+a real errata document and re-read `errata_link_rate`; run `dsa check-revisions
+--all` against a connection and re-read `revision_freshness`. Every one of
+those is a YAML edit away from moving a threshold, which is the design.
+
+**One metric the port dropped rather than published.** `table_pin_rate`
+(tables cited to one printed page, over all tables) is in the phase-7 plan and
+is **not** in this branch's scorecard: the publisher here stamps a table's page
+on the `TableBlock` at construction and never carries the count into
+`CorpusStats`, so the metric could only ever report `n/a`. Reading its absence
+as "0 tables pinned" is the defamation the `n/a` rule exists to forbid, and
+recording the count would mean rebuilding every corpus in the repository.
+Closing it means adding `CorpusStats.tables_pinned: int | None` — the `None`
+being the whole design — and a rebuild.
+
+---
+
+## Golden generation: no generated question has ever been confirmed by a human
+
+**Phase 7, ticket 06, ported to this branch 2026-09-01.** `dsa golden suggest`
+and `dsa golden confirm` are built, tested and measured, and **not one
+generated question has been committed to `tests/fixtures/`**. That is not an
+oversight: accepting one *is* the human verification invariant 5 rests on, and
+a maintainer has to do it. Every measurement below ran against a scratch golden
+directory under `.scratch/`; the committed benchmarks are byte-identical, and
+`tests/unit/test_golden_assist.py::TestNothingHereCanReachTheRealBenchmarks`
+asserts that by shelling out to `git status --porcelain -- tests/fixtures`.
+
+**How good the proposals are, measured.** Twenty candidates per part, all
+accepted unread, then verified — the corpus half of every check, plus the
+page-truth half against the printed PDF:
+
+| Part | corpus-side | page-truth-inclusive |
+|---|---|---|
+| AD9081 | 20/20 text, 7/7 spec, 6/6 plot, 7/7 ask | 20/20 |
+| AFE7950 | 20/20 text, 10/10 spec, 10/10 plot | 20/20 |
+| AFE7953 | 20/20 text, 10/10 spec, 10/10 plot | 20/20 |
+| HMC520A | 20/20 text, 7/7 spec, 6/6 plot | 20/20 |
+| LMX1204 | 20/20 text, 5/5 spec, 5/5 plot, 4/5 ask | 19/20 |
+| lm741 | 20/20 text, 17/17 spec, 3/3 plot | 19/20 |
+| QPA1003P | 20/20 text, 16/16 spec, 4/4 plot | 18/20 |
+
+The six page-truth failures are all one shape and all the reviewer's job: a
+printed identity composed from cells that never appear contiguously on the page
+(`Input adjustment range` on lm741 p.5; `Input Power (P VD = +28 V, I` on
+QPA1003P, where the name cell wrapped mid-print). The corpus holds the row and
+the query path finds it; the page never printed that exact run. A candidate to
+edit or reject, which is what `confirm` is for — and a useful measurement of
+how often a table's identity cell is a join rather than a quote.
+
+**A finding about the tool, not about the documents.** LMX1204's one ask-path
+failure is a register named `R1` whose answer pack lands on pages the question
+does not cite. Its *pin* candidates surfaced something larger and are the
+reason the templates changed: the ask router names a pin by an upper-case
+designator lifted from the question text (`retrieve.pack.PIN_DESIGNATOR_RE`),
+so **a datasheet that numbers its pins `1..40` cannot reach the pin route by
+asking about a pin at all** — all five LMX1204 pin candidates routed `search`.
+The generator now withholds `ask_query: {route: pin}` for such a designator and
+says why on the candidate, because a path marker is a claim about the tool and
+this one would be false. The router gap itself is untouched and is real: `dsa
+ask --part LMX1204 "Which signal is on pin 20?"` answers from full-text search
+rather than from `pins.json`.
+
+**Question wording is a format string over printed cells, and it shows.** A
+record whose name cell wrapped mid-print produces a question that reads exactly
+that badly. It is verbatim and it is correct about the record; it is also the
+first thing a reviewer edits, which is why `edit` takes the question text. No
+model call may fix it (invariant 8) and no heuristic should: rewriting a
+printed identity would break the substring it exists to match.
+
+**Not generated at all:** `ask_query` / `search_query` *twins* of an existing
+question (minting a twin means choosing which question deserves one — judgment,
+not a template), and card goldens (they live in the file's own `cards:` block
+and name which of the four cards must answer).
+
+**What would close it.** Run `dsa golden suggest --part AD9081`, then `dsa
+golden confirm --part AD9081 --pdf ad9081.pdf`, read each candidate against the
+printed page, and commit what survives. Until someone does, this repository's
+benchmarks are exactly the hand-written ones they always were.

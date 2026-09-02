@@ -134,6 +134,17 @@ _DESIGNATOR = re.compile(r"\b[A-Z]{1,2}\d{1,3}\b")
 _IDENTIFIER = re.compile(r"\b[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)*[A-Z0-9]\b")
 _HEX_LITERAL = re.compile(r"\b0x[0-9a-fA-F]+\b")
 
+#: Public names for the two patterns above, so a consumer that needs to know
+#: *whether this route could name a given record* reads the same definition the
+#: route uses rather than restating it. `evalh.suggest` is the caller: a
+#: generated pin candidate may only assert `ask_query: {route: pin}` when the
+#: printed designator is a token this pattern would lift out of the question
+#: text. A datasheet that numbers its pins 1..40 prints no such token, and
+#: asserting a path that cannot be taken would make the proposal wrong about
+#: the tool rather than about the document.
+PIN_DESIGNATOR_RE = _DESIGNATOR
+RECORD_IDENTIFIER_RE = _IDENTIFIER
+
 # How many candidates each route offers the budget. The budget is the real
 # limit; these caps only stop a prefix-family query from rendering two hundred
 # lines just to trim them again.

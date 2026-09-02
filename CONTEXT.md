@@ -361,3 +361,51 @@ carrying what it matched on and a confidence grade. An item that no rule
 could place is *unlinked*, which is a published state with its own heading,
 never a discarded one: `n_items` is the sum of the linked and unlinked lists.
 _Avoid_: match, mapping, association, hit
+
+**Scorecard**:
+One corpus's thirteen graded readings plus the overall letter they average to,
+produced by `dsa audit` and never written to disk. It is a statement about
+*trust before answering*, not about how a build went (`ExtractionStats` is
+that), and it exists to be acted on: the `headline` is one sentence an agent
+can put in front of an answer to downgrade its own confidence language.
+_Avoid_: report, quality score, health check, grade card
+
+**Metric reading**:
+What one audit metric measured, kept distinct from what the rubric made of
+it. A reading either exists or it does not, and the second case is
+`available: false` with a reason — never a zero and never full marks, because
+both are claims the corpus did not make. A metric with no reading is excluded
+from the average rather than folded into it.
+_Avoid_: score, value (a reading may be a state or a boolean), N/A as a number
+
+**Rubric**:
+`registry/audit_rubric.yaml` — the thresholds, weights and letters, as
+checked-in data beside every other lexicon. Nothing in `audit/` carries a cut
+point, so a metric the rubric does not name is not graded at all rather than
+falling back to a hidden default. A disagreement about a grade is a YAML edit.
+_Avoid_: config, policy, standard, scoring model
+
+**Golden candidate**:
+A *proposal* for a benchmark question, templated from one published record
+that already carries a verbatim answer and a printed page. It is not a golden
+question and it counts toward nothing: it is written `confirmed: false` into a
+differently-named file whose top-level key is `candidates:`, and the golden
+loader refuses that file by name. It becomes a question only when a human
+accepts it, which is the clause invariant 5 gains.
+_Avoid_: generated question, draft golden, auto-golden, suggestion
+
+**Refused population**:
+The records a generation run could not template, counted by artifact and by
+reason. ADR 0005's unparsed-population clause applied to a selector: a corpus
+that yields three candidates out of six hundred records has to be able to say
+which rule dropped the rest, or "the generator is broken" and "these records
+are unaddressable" read identically.
+_Avoid_: skipped, dropped, filtered, excluded (which is the ledger, not this)
+
+**Confirmation provenance**:
+How a set of accepted candidates was actually confirmed, recorded in the
+golden file's own header. Three distinct claims — walked beside the printed
+PDF page, walked beside the corpus's own text, or accepted in a bulk run where
+no page was displayed — and the last is the default, because the safe default
+for a claim about human verification is the one that does not make it.
+_Avoid_: verified, reviewed, approved (all three assert more than is known)

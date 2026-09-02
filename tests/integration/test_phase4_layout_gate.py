@@ -1032,7 +1032,9 @@ class TestGateGoldens:
         assert unclaimed <= {q.id for q in questions if q.plot_query}, name
 
     @pytest.mark.parametrize("name", ["AD9081", "LM741", "QPA1003P", "HMC520A"])
-    def test_dsa_verify_end_to_end_100_percent(self, gate, name, monkeypatch, capsys):
+    def test_dsa_verify_end_to_end_100_percent(
+        self, gate, name, monkeypatch, capsys, committed_golden_dir
+    ):
         # the user-facing command: per-part golden discovery (no --golden),
         # full text + spec-query + plot-query verification against the
         # built corpus, zero exit. The spec/plot counts are derived from

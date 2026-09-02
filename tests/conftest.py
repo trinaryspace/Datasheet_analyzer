@@ -136,6 +136,24 @@ def isolated_library(tmp_path):
 
 
 @pytest.fixture
+def committed_golden_dir(monkeypatch):
+    """Point `DSA_GOLDEN_DIR` back at the benchmarks committed to this repo.
+
+    For the handful of tests that exercise *discovery* - `dsa verify --part X`
+    with no `--golden`, resolving `tests/fixtures/golden_qa_<PART>.yaml` by
+    name. They only read. Every other test keeps the temporary directory
+    `_point_dsa_at` sets, which is what stops `dsa golden confirm` from
+    reaching the objective function.
+    """
+    from datasheet_analyzer.config import reset_settings_cache
+
+    monkeypatch.setenv("DSA_GOLDEN_DIR", str(FIXTURES))
+    reset_settings_cache()
+    yield FIXTURES
+    reset_settings_cache()
+
+
+@pytest.fixture
 def make_synthetic_pdf():
     """Factory for the shared synthetic part PDF: 2 pages, TOC with
     Features (p.1) + Absolute Maximum Ratings (p.2). One fixture so every

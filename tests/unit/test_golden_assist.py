@@ -41,7 +41,7 @@ from pathlib import Path
 
 import pytest
 import yaml
-from mcp_corpus import build_part, empty_settings
+from mcp_corpus import DOC_HASH, build_part, empty_settings
 
 from datasheet_analyzer import cli
 from datasheet_analyzer.config import PINS_SCHEMA_VERSION, PIPELINE_VERSION, Settings
@@ -1149,3 +1149,71 @@ class TestNoModelCallInTheGenerationPath:
             assert question.startswith(
                 ("What is ", "Which signal ", "At what address ", "Which figure ")
             )
+
+
+class TestAPathMarkerIsOnlyAssertedWhenItCanBeTaken:
+    """A candidate is a claim about the document; a route marker is a claim
+    about the tool. Measured on LMX1204: the ask router names a pin by an
+    upper-case designator lifted from the question text, so every candidate
+    from a datasheet that numbers its pins `1..40` routed `search` and failed
+    a `{route: pin}` assertion five times out of five. The marker is now
+    withheld with the reason on the candidate, rather than asserted and wrong.
+    """
+
+    def _pins(self, part_dir, designators):
+        doc_dir = part_dir / "docs" / f"datasheet-{DOC_HASH[:8]}"
+        write_pinset(
+            doc_dir,
+            PinSet(
+                schema_version=PINS_SCHEMA_VERSION,
+                part_number=part_dir.name,
+                doc_hash=DOC_HASH,
+                pins=[
+                    PinRecord(
+                        pin=designator,
+                        name=f"SIG{i}",
+                        type="power",
+                        type_evidence="name:*vdd*",
+                        section="4.3",
+                        table_index=2,
+                        row_index=i,
+                        page=6,
+                        confidence=Confidence.HIGH,
+                    )
+                    for i, designator in enumerate(designators)
+                ],
+            ),
+        )
+        clear_index_cache()
+        return {
+            c.question.id: c
+            for c in suggest_candidates(part_dir, n=20).candidates
+            if c.artifact == PINS_ARTIFACT
+        }
+
+    def test_a_lettered_designator_still_asserts_the_pin_route(self, part_dir):
+        candidates = self._pins(part_dir, ["A1", "B12"])
+        assert candidates
+        for candidate in candidates.values():
+            assert candidate.question.ask_query == {"route": "pin"}
+            assert candidate.question.kind == "ask"
+
+    def test_a_numeric_designator_asserts_no_route_and_says_why(self, part_dir):
+        candidates = self._pins(part_dir, ["20", "31"])
+        assert candidates
+        for candidate in candidates.values():
+            assert candidate.question.ask_query is None
+            assert candidate.question.kind == "direct"
+            assert "cannot be reached by asking about it" in candidate.question.notes
+            # the question itself is proposed exactly as it otherwise would be
+            assert candidate.question.pages == [6]
+            assert candidate.page == 6
+
+    def test_the_rule_is_the_router_s_own_pattern_not_a_restatement(self):
+        from datasheet_analyzer.evalh.suggest import _routable_designator
+        from datasheet_analyzer.retrieve.pack import PIN_DESIGNATOR_RE
+
+        assert _routable_designator("A1") is True
+        assert _routable_designator("20") is False
+        assert PIN_DESIGNATOR_RE.search("A1")
+        assert not PIN_DESIGNATOR_RE.search("20")

@@ -678,6 +678,120 @@ point: an empty `errata_links.json` would read as "no known issues", which is a
 claim this corpus has no evidence for. See `KNOWN_SHORTCOMINGS.md` for what has
 and has not been confirmed against a real vendor errata sheet.
 
+### Grade a corpus before you trust it (`dsa audit`)
+
+`extraction_stats` tells the *builder* how a build went. `dsa audit` tells the
+*reader* whether to trust what came out of it — thirteen readings taken off
+artifacts the corpus already publishes, each graded A–F against
+`src/datasheet_analyzer/registry/audit_rubric.yaml`, averaged by weight into
+one letter and one sentence.
+
+```bash
+dsa audit AD9081              # one part's scorecard
+dsa audit --all               # the fleet table, worst grade first
+dsa audit --all --json        # the same, for tooling
+dsa audit --all --min-grade B # exit 1 if any part is below B (opt-in)
+```
+
+```
+| Metric                   | Reading | Count   | Grade | Weight |
+| section page coverage    | 100%    | 34/34   | A     | 3      |
+| table accept rate        | 100%    | 29/29   | A     | 2      |
+| mean table fidelity      | 88%     |         | B     | 2      |
+| records graded high      | 49%     | 422/859 | A     | 3      |
+| figure axes read         | 0%      | 0/100   | F     | 1      |
+| revision freshness       | unknown |         | C     | 3      |
+| golden pass rate         | 100%    | 16/16   | A     | 4      |
+...
+> This corpus grades B - figure axes read 0%. 2 of 13 metrics could not be
+> computed and are excluded, not scored.
+```
+
+Three things are worth knowing before reading a grade.
+
+**A metric the corpus carries no fact for is `n/a`, and it is excluded from the
+average.** Never zero, which would defame a corpus for a statistic nobody
+recorded; never full marks, which would flatter one. The rule ships in the
+scorecard's own `unavailable_policy` field, so a reader is told the convention
+rather than left to assume it, and the count of excluded metrics is printed
+beside the grade — a `B` earned on ten metrics is a different claim from a `B`
+earned on all thirteen. A **missing artifact** is different and is graded down:
+a corpus that publishes no pins, no registers or no card rows is a corpus that
+cannot answer those questions.
+
+**The thresholds are data.** Every cut point in `audit_rubric.yaml` is anchored
+to a value measured on this repository's own eleven corpora, and the ~120-line
+comment block at the head of the file says which reading each one was placed
+against. Nothing in `datasheet_analyzer/audit/` hard-codes a threshold, a
+weight or a letter: a metric the YAML does not carry is not graded at all, and
+`tests/unit/test_audit.py` proves it by *deleting* one.
+
+**`revision freshness` reads `unknown` on every corpus in this repository, and
+`unknown` grades `C` rather than `A`.** Nobody has checked is not the same as
+still current. Run `dsa check-revisions` first if you want that row to mean
+something.
+
+### Propose benchmark questions, then confirm them (`dsa golden`)
+
+Invariant 5 says the golden set is this project's objective function and that
+it is hand-verified. That survives sixty parts only if the *typing* goes and
+the *judgment* stays. `dsa golden suggest` templates candidate questions from
+records that already carry a verbatim answer and a printed page; `dsa golden
+confirm` walks them beside that page and merges the ones a human accepts.
+
+```bash
+dsa golden suggest --part AD9081 --n 20        # writes golden_qa_AD9081.candidate.yaml
+dsa golden confirm --part AD9081 --pdf ad9081.pdf   # walk them by hand
+dsa golden confirm --part AD9081 --accept-ids g-a15af6a3-pin_t0-r1-A2
+dsa golden confirm --part AD9081 --decisions decisions.yaml --dry-run
+```
+
+**A candidate counts toward nothing until a human confirms it.** That is the
+clause invariant 5 gains, and it is defended three ways rather than one,
+because the failure would be silent: the candidate file has a different
+*filename* from the benchmark, its top-level key is `candidates:` and it has no
+`questions:` at all, and `load_golden` refuses it *by name* — `dsa verify
+--golden <candidate file>` exits 2 and says which file to point at instead.
+
+**Selection is stratified, and the stratification is the point.** Twenty
+questions off one easy spec table satisfy `--n 20` and confirm only the
+extraction path that was already working. Candidates are drawn by a recursive
+round-robin over artifact → extraction backend → confidence grade → printed
+section, and the mix is published in the file so a degenerate set is visible on
+sight. Measured on AD9081 with `--n 20`: 7 specs, 7 pins, 4 plots, spread over
+three confidence grades.
+
+**Nothing is dropped in silence.** Every record no template could use is
+counted by artifact and by reason, and printed:
+
+```
+Refused - 344 record(s) no template could use:
+| Artifact   | Reason                                         | Records |
+| specs.json | the record prints no name or symbol to ask about | 268    |
+| specs.json | the record prints no numeric answer to ask for   |  70    |
+| plots.json | the caption is only a figure label               |   1    |
+```
+
+That table is how a *stale* corpus is told apart from a broken generator: a
+part whose records predate ADR 0005 record ids reports "the record carries no
+id to cite" and names the rebuild, rather than reporting an empty pool with a
+plausible wrong cause.
+
+**The merged file says how it was confirmed, and never more than that.** A
+`--pdf` walk stamps "shown beside the printed PDF page it cites"; a walk with
+no PDF stamps that the corpus's own text was shown and cannot confirm a page
+citation; a bulk `--accept-ids` / `--decisions` run — the default — stamps that
+**no page was displayed** and the questions are unverified. The merge appends,
+keeping the existing bytes as the prefix of the new file and matching its
+indentation, and it validates the result *before* opening the file for writing,
+so a merge that would produce unparsable YAML cannot corrupt the benchmark.
+
+**Back up the golden file before a real confirm run anyway.** All the committed
+benchmarks are git-tracked, so recovery is `git checkout --
+tests/fixtures/golden_qa_<PART>.yaml`. `DSA_GOLDEN_DIR` moves where all three
+files live, which is what keeps a test run — or a prototype that inherited
+default settings — off the real ones.
+
 ### Other commands
 
 ```bash
