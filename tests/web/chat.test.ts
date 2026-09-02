@@ -144,7 +144,15 @@ interface ServerOptions {
   resolution?: Record<string, unknown>;
   parts?: string[];
   projects?: string[];
+  /**
+   * The families `GET /api/families` declares. Names only — the endpoint
+   * returns exactly what a human wrote in `registry/families.yaml`, so a test
+   * that wants one offered has to declare it here, which is the point.
+   */
+  families?: string[];
   sessionsFail?: string;
+  /** A 400 the message endpoint answers with, carrying this `detail`. */
+  messageFail?: string;
 }
 
 interface FakeServer {
@@ -187,6 +195,7 @@ function installServer(options: ServerOptions = {}): FakeServer {
   };
   const parts = options.parts ?? ['AFE7950', 'LMX1204'];
   const projects = options.projects ?? ['rx-frontend'];
+  const families = options.families ?? ['AFE795x'];
 
   const fake = async (input: unknown, init?: RequestInit) => {
     const url = String(input);
@@ -220,6 +229,17 @@ function installServer(options: ServerOptions = {}): FakeServer {
     }
     if (url.includes('/api/chat/') && url.endsWith('/message')) {
       server.chatRequests.push({ url, body: JSON.parse(String(init?.body ?? '{}')) });
+      if (options.messageFail) {
+        // What `deps.get_retriever` does with a scope that names nothing: a
+        // 400 carrying the refusal verbatim, before the stream ever opens.
+        return {
+          ok: false,
+          status: 400,
+          statusText: 'Bad Request',
+          json: async () => ({ detail: options.messageFail }),
+          text: async () => options.messageFail as string,
+        };
+      }
       const stream = makeStream(init?.signal as AbortSignal);
       server.streams.push(stream);
       return { ok: true, status: 200, statusText: 'OK', body: stream.body };
@@ -241,6 +261,19 @@ function installServer(options: ServerOptions = {}): FakeServer {
           plot_confidence: {},
         })),
         count: parts.length,
+      });
+    }
+    if (url.endsWith('/api/families')) {
+      return jsonResponse({
+        families: families.map((name) => ({
+          name,
+          title: `${name} series`,
+          members: ['AFE7950', 'AFE7953'],
+          reference: 'AFE7950',
+          note: 'confirmed by hand against both printed datasheets',
+          unbuilt_members: [],
+        })),
+        count: families.length,
       });
     }
     if (url.endsWith('/api/projects')) {
@@ -531,6 +564,146 @@ describe('the scope chip', () => {
     await userEvent.setup().click(within(choices).getByRole('button', { name: 'LMX1204' }));
     await waitFor(() => expect(server.chatRequests).toHaveLength(1));
     expect(server.chatRequests[0].body).toEqual({ question: 'what is the gain?', scope: LMX });
+  });
+});
+
+// --- the third scope kind ------------------------------------------------------------
+//
+// A family scope answers from a whole declared series and reads each shared
+// section once. That is only safe because a human wrote the membership down,
+// so the pane's job is to make a declared family *choosable* and to make an
+// invented one impossible. Both halves are asserted below.
+
+const FAMILY: ScopeRef = { kind: 'family', name: 'AFE795x' };
+
+/** Ask, let the answer finish, and open the scope picker on it. */
+async function openPicker(server: FakeServer): Promise<HTMLElement> {
+  await settled();
+  await ask('how hot can it run?');
+  await waitFor(() => expect(server.streams.length).toBe(1));
+  await server.lastStream().push(frame({ type: 'token', text: 'an answer' }));
+  await server.lastStream().push(frame({ type: 'done' }));
+  await server.lastStream().finish();
+  await userEvent.setup().click(await screen.findByRole('button', { name: /AFE7950/ }));
+  return screen.findByRole('dialog', { name: 'Change scope' });
+}
+
+describe('declared families in the scope picker', () => {
+  it('offers a declared family beside the parts and the projects', async () => {
+    const server = installServer();
+    renderPane({ sessionId: 's1' });
+    const picker = await openPicker(server);
+
+    const family = within(picker).getByRole('option', { name: /AFE795x/ });
+    expect(family).toHaveAttribute('data-scope-kind', 'family');
+    // Its kind is on the face of the option: `AFE795x` beside `AFE7950` would
+    // otherwise read as one more part number.
+    expect(family).toHaveTextContent('family');
+    expect(within(picker).getByRole('option', { name: /rx-frontend/ })).toBeInTheDocument();
+  });
+
+  it('offers only what the server declared — the filter cannot invent one', async () => {
+    const server = installServer();
+    renderPane({ sessionId: 's1' });
+    const picker = await openPicker(server);
+
+    // `AFE79xx` is the wildcard the *part* tier matches with. It is not the
+    // declared name, so nothing in the picker answers to it: a family is not
+    // something a user can conjure by typing a plausible pattern.
+    await userEvent.setup().type(within(picker).getByLabelText('Filter scopes'), 'AFE79xx');
+
+    await waitFor(() => expect(within(picker).queryAllByRole('option')).toHaveLength(0));
+  });
+
+  it('re-asks the question under a family the user picked', async () => {
+    const server = installServer();
+    renderPane({ sessionId: 's1' });
+    const picker = await openPicker(server);
+
+    await userEvent.setup().click(within(picker).getByRole('option', { name: /AFE795x/ }));
+
+    await waitFor(() => expect(server.chatRequests).toHaveLength(2));
+    expect(server.chatRequests[1].body).toEqual({ question: 'how hot can it run?', scope: FAMILY });
+    // The chip now says which series is being answered from.
+    const chip = await screen.findByRole('button', { name: /AFE795x/ });
+    expect(chip).toHaveAttribute('data-scope-kind', 'family');
+  });
+
+  it('says where the family list comes from, in both of its states', async () => {
+    const withFamilies = installServer();
+    renderPane({ sessionId: 's1' });
+    const picker = await openPicker(withFamilies);
+    expect(picker).toHaveTextContent('declared by hand in registry/families.yaml');
+
+    cleanup();
+    vi.unstubAllGlobals();
+
+    // The empty case is the one that has to teach: silence would read as
+    // "this build has no families", not "nobody has declared one yet".
+    const none = installServer({ families: [] });
+    renderPane({ sessionId: 's1' });
+    const empty = await openPicker(none);
+    expect(empty).toHaveTextContent('No families are declared');
+    expect(empty).toHaveTextContent('never inferred');
+    expect(empty).toHaveTextContent('dsa family confirm <NAME>');
+    expect(within(empty).queryByText(/^family$/)).toBeNull();
+  });
+
+  it('renders the backend refusal when a family scope names nothing declared', async () => {
+    // The scope reaches the API because it was saved in a session, or because
+    // a family was un-declared since. The answer is the registry's own
+    // sentence, verbatim — never a blank pane, and never a silent widen.
+    const refusal =
+      "no declared family 'AFE79xx' — a family is declared by a human, never inferred from a " +
+      'part number. Declared families: AFE795x.';
+    const server = installServer({
+      messageFail: refusal,
+      resolution: {
+        scope: { kind: 'family', name: 'AFE79xx' },
+        confident: true,
+        candidates: [],
+        question: '',
+        matched_via: 'user',
+      },
+    });
+    renderPane({ sessionId: 's1' });
+    await settled();
+    await ask('what do they share?');
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('no declared family');
+    expect(alert).toHaveTextContent('never inferred from a part number');
+    expect(alert).toHaveTextContent('Declared families: AFE795x');
+    expect(server.streams).toHaveLength(0);
+  });
+
+  it('names the kind on an ambiguous family candidate', async () => {
+    const server = installServer({
+      resolution: {
+        scope: null,
+        confident: false,
+        candidates: [FAMILY],
+        question: 'AFE795x is a declared family, not a single part.',
+        matched_via: 'family-declared',
+      },
+    });
+    renderPane({ sessionId: 's1' });
+    await settled();
+    await ask('what changes across the AFE795x?');
+
+    const choices = await screen.findByTestId('chat-ambiguous');
+    expect(choices).toHaveTextContent('is a declared family, not a single part');
+    // `family: AFE795x`, mirroring `ScopeRef.label` — a bare `AFE795x` here
+    // would offer a whole series in the shape of a part number.
+    const button = within(choices).getByRole('button', { name: 'family: AFE795x' });
+    expect(server.chatRequests).toHaveLength(0);
+
+    await userEvent.setup().click(button);
+    await waitFor(() => expect(server.chatRequests).toHaveLength(1));
+    expect(server.chatRequests[0].body).toEqual({
+      question: 'what changes across the AFE795x?',
+      scope: FAMILY,
+    });
   });
 });
 
