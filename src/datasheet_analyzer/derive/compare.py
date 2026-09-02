@@ -38,11 +38,19 @@ thing this command could do — it would look exactly like an answer.
 **Nothing is silently dropped.** A parameter one part prints and the other
 does not is a row (`only in AFE7950`), because during part selection an absent
 parameter *is* the finding. A pair that could not be subtracted — one side
-unparseable, or two different units — is a row too, listed under "not
-comparable" with both verbatim values, and counted: "3 of 47 aligned value
-pair(s) could not be compared". Per-part parse coverage is reported beside it
-with the same sentence `structure/quantities.coverage` produces everywhere
-else.
+unparseable, two different units, or two *ranges* in a column that names
+neither end of one — is a row too, listed under "not comparable" with both
+verbatim values, and counted: "3 of 47 aligned value pair(s) could not be
+compared". Per-part parse coverage is reported beside it with the same sentence
+`structure/quantities.coverage` produces everywhere else.
+
+That last refusal is the one a reader should push on. Qorvo prints its absolute
+maximums in a single unnamed `value` column, so `-55 to 150 degC` and `-55 to
++125 degC` land in a cell called `value`; taking either one's low end and
+subtracting publishes `0 degC` for two parts that differ by 25 degC at the top,
+and flags the row `identical`. Two ranges are not a scalar. `si_delta` returns
+one only where the difference is the same at both ends, and otherwise the row
+carries a sentence saying so and no number at all.
 
 **More than two parts is supported, not truncated.** With N parts the first is
 the baseline and every other part is deltaed against it, so `dsa compare A B
@@ -58,6 +66,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import math
 import sys
 from collections.abc import Callable, Iterable, Iterator, Sequence
 from dataclasses import dataclass, field
@@ -651,34 +660,86 @@ def _mark_ambiguous(
 # --- the one derived value --------------------------------------------------
 
 
-def _scalar(value: DerivedValue, cell: str) -> float | None:
-    """The single number a column asserts, or `None` when it parsed to none.
+#: The columns that *name* which end of a printed quantity they assert, and
+#: which end that is. A `max` cell printing `-40 to 125` asserts `125`; a `min`
+#: cell printing a span asserts its low end. This is the rule
+#: `structure/quantities.annotate_record` applies to `min_si` / `max_si`, for
+#: the same reason. Every **other** column — `typ`, a lone unnamed `value`, a
+#: vendor-named column — asserts the whole printed quantity, so a range printed
+#: in one is two numbers and not a scalar (see `_ends`).
+_BOUND_CELLS: dict[str, bool] = {"min": False, "max": True}
 
-    A cell that printed a range in a `max` column (`-40 to 125`) asserts its
-    top; every other column asserts the number itself. The same rule
-    `structure/quantities.annotate_record` applies, for the same reason.
+
+def _scalar(value: DerivedValue, cell: str) -> float | None:
+    """The single number a bound-naming column asserts, or `None`.
+
+    `None` when nothing parsed, and — for any column that does not name an end
+    — `None` when what parsed was a *range*, because such a cell asserts both
+    of its ends and picking one silently is a guess. `_ends` is what the delta
+    goes through; this stays the narrow "one number or nothing" reader.
     """
     if value.value_si is None:
         return None
-    if cell == "max" and value.value_si_hi is not None:
-        return value.value_si_hi
-    return value.value_si
+    if value.value_si_hi is None:
+        return value.value_si
+    take_high = _BOUND_CELLS.get(cell)
+    if take_high is None:
+        return None
+    return value.value_si_hi if take_high else value.value_si
+
+
+def _ends(value: DerivedValue, cell: str) -> tuple[float, float] | None:
+    """`(low, high)` of what a column asserts, or `None` when nothing parsed.
+
+    A point asserts the same number twice. A range in a bound-naming column
+    asserts the end that column names, twice. A range anywhere else asserts
+    both of its ends, and the two are only subtractable when the difference
+    comes out the same at each — which is what `si_delta` checks.
+    """
+    if value.value_si is None:
+        return None
+    single = _scalar(value, cell)
+    if single is not None:
+        return single, single
+    assert value.value_si_hi is not None  # `_scalar` only declines a range
+    return value.value_si, value.value_si_hi
 
 
 def si_delta(a: DerivedValue, b: DerivedValue, cell: str) -> tuple[float, str] | None:
     """`(b - a, unit)` in the base unit both parsed to, or `None`.
 
     The documented pure function behind `si_delta`. `None` — never a guess —
-    when either side did not parse to a number, or when the two numbers are
-    not in the same unit: `1.35 A` and `1350 mA` are the same quantity and
-    subtract cleanly, `150 degC` and `150 W` do not.
+    when either side did not parse to a number, when the two numbers are not
+    in the same unit (`1.35 A` and `1350 mA` are the same quantity and subtract
+    cleanly, `150 degC` and `150 W` do not), or when a **range** was printed in
+    a column that does not name an end and the two sides do not differ by the
+    same amount at both ends.
+
+    That last clause is the one worth stating twice. Qorvo prints absolute
+    maximums in a single unnamed `value` column, so `-55 to 150 degC` and
+    `-55 to +125 degC` both land in a cell called `value`; reading either's
+    `value_si` gives `-55`, and `b - a` gives `0 degC` for parts that differ by
+    25 degC at the top. Two ranges are not a scalar. They subtract to one only
+    when they are the same span shifted — `-40 to 85` against `-20 to 105` is
+    `+20` at both ends and that *is* a single honest number — and otherwise
+    this returns `None` and the caller says why in words.
     """
-    left, right = _scalar(a, cell), _scalar(b, cell)
+    left, right = _ends(a, cell), _ends(b, cell)
     if left is None or right is None:
         return None
     if a.unit_si != b.unit_si:
         return None
-    return right - left, a.unit_si
+    low, high = right[0] - left[0], right[1] - left[1]
+    if not math.isclose(low, high, rel_tol=1e-12, abs_tol=1e-12):
+        return None
+    return low, a.unit_si
+
+
+def _range_refusal(a: DerivedValue, b: DerivedValue, cell: str) -> bool:
+    """True when the pair parsed and matched units but is not a scalar pair."""
+    if a.value_si is None or b.value_si is None or a.unit_si != b.unit_si:
+        return False
+    return _scalar(a, cell) is None or _scalar(b, cell) is None
 
 
 def _weaker(*grades: Confidence) -> Confidence:
@@ -712,10 +773,16 @@ def _delta(
         )
     computed = si_delta(a, b, cell)
     if computed is None:
+        why = (
+            f"do not differ by a single number: the {cell!r} column names neither end of a "
+            f"range, so a range printed in it asserts both, and these two ends do not move "
+            f"together"
+            if _range_refusal(a, b, cell)
+            else "did not both parse to a number in the same unit"
+        )
         return None, (
             f"{baseline.label or baseline.symbol} [{cell}]: {baseline.part} {a.verbatim!r} "
-            f"(p.{a.page}) and {other.part} {b.verbatim!r} (p.{b.page}) did not both parse to "
-            f"a number in the same unit"
+            f"(p.{a.page}) and {other.part} {b.verbatim!r} (p.{b.page}) {why}"
         )
     delta, unit = computed
     return (

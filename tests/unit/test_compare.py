@@ -249,12 +249,38 @@ class TestSiDelta:
         assert si_delta(a, b, "max") is None
         assert si_delta(b, a, "max") is None
 
-    def test_max_column_uses_the_top_of_a_range(self):
+    def test_a_bound_naming_column_uses_the_end_it_names(self):
         a = self._value("-40 to 85", -40.0, "°C", hi=85.0)
         b = self._value("-40 to 125", -40.0, "°C", hi=125.0)
+        # `max` names the top of what it printed; `min` names the bottom.
         assert si_delta(a, b, "max") == (40.0, "°C")
-        # Any other column asserts the number itself, not the range's top.
-        assert si_delta(a, b, "typ") == (0.0, "°C")
+        assert si_delta(a, b, "min") == (0.0, "°C")
+
+    def test_a_range_in_a_column_that_names_no_end_does_not_subtract(self):
+        """The Qorvo case: a lone unnamed `value` column holding a range.
+
+        `-55 to 150` and `-55 to +125` share a low end and differ by 25 °C at
+        the top. Reading either one's `value_si` publishes `0 °C` for parts
+        that are 25 °C apart, which is worse than no answer.
+        """
+        a = self._value("-55 to 150", -55.0, "°C", hi=150.0)
+        b = self._value("-55 to +125", -55.0, "°C", hi=125.0)
+        assert si_delta(a, b, "value") is None
+        assert si_delta(a, b, "typ") is None
+
+    def test_a_range_against_a_point_does_not_subtract(self):
+        a = self._value("-55 to 150", -55.0, "°C", hi=150.0)
+        b = self._value("125", 125.0, "°C")
+        assert si_delta(a, b, "value") is None
+        assert si_delta(b, a, "value") is None
+
+    def test_ranges_that_move_together_subtract_to_one_number(self):
+        """A shifted span *is* a scalar difference: +20 °C at both ends."""
+        a = self._value("-40 to 85", -40.0, "°C", hi=85.0)
+        b = self._value("-20 to 105", -20.0, "°C", hi=105.0)
+        assert si_delta(a, b, "value") == (20.0, "°C")
+        # Two identical ranges still report the zero they honestly are.
+        assert si_delta(a, a, "value") == (0.0, "°C")
 
 
 # --- alignment --------------------------------------------------------------
@@ -313,6 +339,59 @@ class TestAlignment:
         assert row.cells["PART-B"].values["min"].page == 6
         assert row.cells["PART-A"].values["min"].verbatim == "2.4"
         assert row.cells["PART-B"].values["min"].verbatim == "2.2"
+
+
+class TestRangeInAnUnnamedColumn:
+    """A single unnamed `value` column holding a range publishes no delta.
+
+    Qorvo's absolute-maximum tables are one column wide, so a range lands in a
+    cell called `value`. Before this refusal, `-55 to 150 °C` against `-55 to
+    +125 °C` published `0 °C` and flagged the row `identical` — two parts 25 °C
+    apart, reported as the same part.
+    """
+
+    @pytest.fixture
+    def spans(self, tmp_path: Path) -> Comparison:
+        root = tmp_path / "parts"
+        publish(
+            root / "A",
+            "A",
+            [
+                _spec("4.1", 0, "Tstg", "Storage temperature", value="-55 to 150", unit="°C"),
+                _spec("4.1", 1, "TA", "Operating temperature", value="-40 to 85", unit="°C"),
+            ],
+        )
+        publish(
+            root / "B",
+            "B",
+            [
+                _spec("4.1", 0, "Tstg", "Storage temperature", value="-55 to +125", unit="°C"),
+                _spec("4.1", 1, "TA", "Operating temperature", value="-20 to 105", unit="°C"),
+            ],
+        )
+        comparison, reason = compare_parts(["A", "B"], parts_dir=root, write=False)
+        assert comparison is not None, reason
+        return comparison
+
+    def test_ends_that_do_not_move_together_publish_no_number(self, spans: Comparison):
+        row = row_for(spans, "Storage temperature")
+        assert row.status == STATUS_ALIGNED
+        assert row.deltas == []
+        assert FLAG_IDENTICAL not in row.flags
+        assert FLAG_DIFFERS not in row.flags
+
+    def test_the_refusal_says_why_and_is_counted(self, spans: Comparison):
+        row = row_for(spans, "Storage temperature")
+        assert any("names neither end of a range" in reason for reason in row.not_comparable)
+        assert any("names neither end of a range" in reason for reason in spans.coverage.reasons)
+        assert spans.coverage.considered > spans.coverage.compared
+
+    def test_a_span_that_shifts_wholesale_is_still_one_number(self, spans: Comparison):
+        """`-40 to 85` against `-20 to 105` is `+20 °C` at both ends."""
+        row = row_for(spans, "Operating temperature")
+        delta = delta_for(row, "B", "value")
+        assert delta is not None and delta.value_si == pytest.approx(20.0)
+        assert FLAG_DIFFERS in row.flags
 
 
 class TestAmbiguity:
