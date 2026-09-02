@@ -25,17 +25,25 @@ from datasheet_analyzer.models import ScopeRef
 # --- helpers ------------------------------------------------------------------
 
 
-def resolve(question: str, parts: list[str] | None = None, projects: list[str] | None = None):
+def resolve(
+    question: str,
+    parts: list[str] | None = None,
+    projects: list[str] | None = None,
+    families: list[str] | None = None,
+):
     """Call `resolve` and assert the contract holds for whatever comes back.
 
     Every scenario in this file goes through here, so "every returned
     `ScopeResolution` validates against the contract model" is checked once per
-    case rather than in a single token test.
+    case rather than in a single token test. `families` are the names declared
+    in `registry/families.yaml`; passing an undeclared one would be the test
+    inventing a grouping, which is the thing the noun forbids.
     """
     result = scope_resolver.resolve(
         question,
         parts=list(parts or []),
         projects=list(projects or []),
+        families=list(families) if families is not None else None,
     )
     assert isinstance(result, ScopeResolution)
     # Round-trips through the frozen model: no extra state, no wrong types.
@@ -338,3 +346,114 @@ def test_resolve_is_deterministic_regardless_of_input_order():
     backward = resolve("AFE795 sample rate?", parts=["AFE7952", "AFE7950"])
 
     assert forward == backward
+
+
+# --- declared families: offered, never chosen ---------------------------------
+#
+# A family scope reads each shared section once, from the reference member, and
+# states that every member prints it. That claim is only true because a human
+# wrote the membership down, so the resolver may *offer* a declared family and
+# may never arrive at one on its own. Both halves are tested: the offer exists
+# (otherwise no pane can present it) and there is no path to a confident family.
+
+DECLARED = ["AFE795x"]
+MEMBERS = ["AFE7950", "AFE7953"]
+
+
+def test_declared_family_named_exactly_is_offered_as_a_candidate():
+    result = resolve("what changes across the AFE795x?", parts=MEMBERS, families=DECLARED)
+
+    assert result.confident is False
+    assert result.scope is None
+    assert result.candidates == [ScopeRef(kind="family", name="AFE795x")]
+    assert result.matched_via == "family-declared"
+    assert "declared family" in result.question
+    # The sentence must hand the choice back rather than announce a decision.
+    assert "never chosen for you" in result.question
+
+
+def test_a_family_is_never_the_confident_scope():
+    """The load-bearing negative: no input makes `resolve` pick a family.
+
+    Swept over the shapes that would each be a plausible confident hit — the
+    name alone, the name with nothing else declared, the name in a question
+    with no parts at all — because "confident" is what would skip the pane.
+    """
+    for question in ("AFE795x", "AFE795x thermal limits?", "tell me about afe795x"):
+        for parts in ([], MEMBERS):
+            result = resolve(question, parts=parts, families=DECLARED)
+            assert result.confident is False, question
+            assert result.scope is None, question
+            assert ScopeRef(kind="family", name="AFE795x") in result.candidates, question
+
+
+def test_a_member_part_number_never_offers_its_family():
+    """Membership is declared, not inferred — and not inferred backwards either."""
+    result = resolve("max TJ of the AFE7950?", parts=MEMBERS, families=DECLARED)
+
+    assert result.confident is True
+    assert result.scope == ScopeRef(kind="part", name="AFE7950")
+    assert result.candidates == []
+
+
+def test_a_wildcard_pattern_is_not_the_family_noun():
+    """`AFE79xx` matches part *numbers*; it does not name the declared family.
+
+    The prefix tier's `AFE79xx` wildcard has existed since ticket 10 and is a
+    string pattern over part numbers. Letting it reach a family would be
+    exactly the inference the registry exists to prevent, so the candidates
+    here are the two parts and nothing else.
+    """
+    result = resolve("what does the AFE79xx sample at?", parts=MEMBERS, families=DECLARED)
+
+    assert names(result) == MEMBERS
+    assert all(ref.kind == "part" for ref in result.candidates)
+
+
+def test_a_prefix_of_a_family_name_does_not_offer_the_family():
+    result = resolve("AFE795 sample rate?", parts=MEMBERS, families=DECLARED)
+
+    assert all(ref.kind == "part" for ref in result.candidates)
+    assert result.matched_via.startswith("prefix:")
+
+
+def test_an_undeclared_family_name_matches_nothing():
+    """The registry is the whole vocabulary: a name not in it is not a family."""
+    result = resolve("compare the AFE79yz", parts=MEMBERS, families=DECLARED)
+
+    assert result.candidates == []
+    assert result.matched_via == "none"
+
+
+def test_a_family_named_beside_a_part_asks_between_them():
+    result = resolve("AFE7950 versus the AFE795x", parts=MEMBERS, families=DECLARED)
+
+    assert result.candidates == [
+        ScopeRef(kind="part", name="AFE7950"),
+        ScopeRef(kind="family", name="AFE795x"),
+    ]
+    assert result.matched_via == "exact-ambiguous"
+    # `ScopeRef.label` is what distinguishes the two in the question.
+    assert "family: AFE795x" in result.question
+
+
+def test_the_unknown_question_recites_declared_families_too():
+    result = resolve("how do I bias this?", parts=["LM741"], families=DECLARED)
+
+    assert result.matched_via == "none"
+    assert "LM741" in result.question
+    assert "family: AFE795x" in result.question
+
+
+def test_omitting_families_resolves_exactly_as_before():
+    """The parameter is additive: an old caller sees no change at all."""
+    with_default = scope_resolver.resolve("AFE795x?", parts=MEMBERS, projects=[])
+    with_none = scope_resolver.resolve("AFE795x?", parts=MEMBERS, projects=[], families=None)
+    with_empty = scope_resolver.resolve("AFE795x?", parts=MEMBERS, projects=[], families=[])
+
+    assert with_default == with_none == with_empty
+    # `AFE795x` still reaches the two parts through the wildcard tier, which is
+    # the pre-existing behaviour; what it must not reach is a family nobody
+    # declared to this call.
+    assert names(with_default) == MEMBERS
+    assert all(ref.kind == "part" for ref in with_default.candidates)

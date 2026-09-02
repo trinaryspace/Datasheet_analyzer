@@ -58,6 +58,7 @@ __all__ = [
     "build_params",
     "build_tools",
     "collect_citations",
+    "known_families",
     "known_scopes",
     "resolve_question",
     "stream_turn",
@@ -486,8 +487,15 @@ def _figure_blocks(payload: Any) -> list[dict[str, Any]]:
 # --- scope --------------------------------------------------------------------
 
 
-def known_scopes(settings: Settings | None = None) -> tuple[list[str], list[str]]:
-    """`(part names, project names)` as they exist on disk right now."""
+def known_scopes(settings: Settings | None = None) -> tuple[list[str], list[str], list[str]]:
+    """`(part names, project names, family names)` as they exist right now.
+
+    The first two are read off disk. The third is read out of
+    `registry/families.yaml` through the same `declared_families` the
+    `/api/families` route serves, so what the resolver may offer and what a
+    picker lists are one list: a family is **declared**, and there is no path
+    here that derives one from a part number.
+    """
     settings = settings or get_settings()
     from datasheet_analyzer.projects.store import list_projects as _list_projects
     from datasheet_analyzer.retrieve.index import discover_parts
@@ -500,15 +508,34 @@ def known_scopes(settings: Settings | None = None) -> tuple[list[str], list[str]
         projects = list(_list_projects(settings.projects_dir))
     except OSError:  # pragma: no cover - unreadable projects_dir
         projects = []
-    return parts, projects
+    return parts, projects, known_families(settings)
+
+
+def known_families(settings: Settings | None = None) -> list[str]:
+    """The names a human has declared and confirmed, or `[]`.
+
+    Delegates to the route's own reader rather than parsing the registry a
+    second time: `routers.families.declared_families` runs every entry through
+    `families.registry.resolve`, which is where "declared, confirmed, and with
+    members" is defined once.
+    """
+    settings = settings or get_settings()
+    from datasheet_analyzer.app.routers.families import declared_families
+
+    return [family.name for family in declared_families(settings)]
 
 
 def resolve_question(question: str, *, settings: Settings | None = None) -> ScopeResolution:
-    """Resolve a question against the parts and projects that exist (ticket 10)."""
+    """Resolve against the parts, projects and declared families (ticket 10).
+
+    A declared family can be *offered* by this call and is never returned as
+    the confident scope — `scope_resolver` holds that line, and this is only
+    where the three name lists come from.
+    """
     from datasheet_analyzer.app.scope_resolver import resolve
 
-    parts, projects = known_scopes(settings)
-    return resolve(question, parts=parts, projects=projects)
+    parts, projects, families = known_scopes(settings)
+    return resolve(question, parts=parts, projects=projects, families=families)
 
 
 def build_client(settings: Settings | None = None) -> Any:

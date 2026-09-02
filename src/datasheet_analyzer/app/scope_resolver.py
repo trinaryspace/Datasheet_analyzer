@@ -1,6 +1,8 @@
-"""Question -> exactly one Part or Project scope (ticket 10).
+"""Question -> exactly one Part, Project or declared Family scope (ticket 10).
 
-**Signature frozen by ticket 00; the body is ticket 10's.**
+**Signature frozen by ticket 00; the body is ticket 10's.** `families` was
+added later, keyword-only and defaulting to none, so every existing caller
+resolves exactly as before.
 
 This is the mechanism ADR 0006 rests on. Retrieval refuses an "all parts"
 scope on purpose; the GUI honours that not by making the user pick a scope
@@ -12,11 +14,23 @@ matching, not inference. The order:
 
 1. Exact, case-insensitive, whole-token match of a known part or project
    name. Exactly one match -> confident.
-2. Prefix or family match (`AFE795` against `AFE7950`; `AFE79xx` against
-   both) -> candidates, not confident.
+2. Prefix or family-pattern match (`AFE795` against `AFE7950`; `AFE79xx`
+   against both) -> candidates, not confident. This tier matches **part
+   numbers**; the wildcard is a string pattern, not the family noun.
 3. Several matches at the same strength -> candidates, not confident.
 4. No match -> `scope=None`, `candidates=[]`, and a `question` asking which
    part is meant.
+
+**Declared families are offered and never chosen.** A `family` scope reads a
+shared section once, from the reference member, and states that every member
+prints it - so a wrong grouping puts another part's numbers in front of a
+designer with no visible seam. Membership is therefore declared in
+`registry/families.yaml` and never inferred, and this resolver holds that line
+two ways: a family is matched **only** by an exact whole-token hit on its
+declared name (never by prefix, never by wildcard, never from a member's part
+number), and even a single such hit comes back as a *candidate* - so no path
+through this function ever returns a family as the confident scope. A family
+becomes the scope because a person picked it, or not at all.
 
 Never widen. There is no "search everything" tier, and a single built part is
 **not** a safe default: answering from the only part that happens to exist is
@@ -61,7 +75,7 @@ def _normalize(question: str) -> str:
     return re.sub(r"\s+", " ", question.lower()).strip()
 
 
-def _refs(kind: Literal["part", "project"], names: list[str]) -> list[ScopeRef]:
+def _refs(kind: Literal["part", "project", "family"], names: list[str]) -> list[ScopeRef]:
     """`names` as scope refs, blank and duplicate names dropped."""
     seen: set[str] = set()
     refs: list[ScopeRef] = []
@@ -76,10 +90,25 @@ def _refs(kind: Literal["part", "project"], names: list[str]) -> list[ScopeRef]:
 
 
 def _known(parts: list[str], projects: list[str]) -> list[ScopeRef]:
-    """Every candidate scope, parts before projects, each name-ordered."""
+    """Every part and project scope, parts before projects, each name-ordered.
+
+    Families are **not** here: the tiers below match part numbers by prefix and
+    by wildcard, and a family must never be reached that way. They are matched
+    separately, by exact name only (`_declared_families`).
+    """
     return sorted(_refs("part", parts), key=lambda ref: ref.name.lower()) + sorted(
         _refs("project", projects), key=lambda ref: ref.name.lower()
     )
+
+
+def _declared_families(families: list[str] | None) -> list[ScopeRef]:
+    """The declared family names as scope refs, name-ordered.
+
+    The caller reads them from `registry/families.yaml`. Anything not in that
+    file is not a family as far as this function is concerned, which is the
+    point: there is no shape here that could produce one from a part number.
+    """
+    return sorted(_refs("family", families or []), key=lambda ref: ref.name.lower())
 
 
 def _appears(name: str, normalized: str) -> bool:
@@ -119,6 +148,22 @@ def _ask_which(candidates: list[ScopeRef]) -> str:
     return f"Which did you mean — {_join([ref.label for ref in candidates])}?"
 
 
+def _ask_family(name: str) -> str:
+    """The offer a lone declared family comes back with.
+
+    Deliberately an offer and not a resolution. A family scope answers from a
+    whole declared series and reads each shared section once, so committing to
+    it is a claim about *which devices are the same device* - a claim only the
+    person who declared the family can make. So the sentence says what the
+    noun is and hands the choice back.
+    """
+    return (
+        f"{name} is a declared family, not a single part. Choose it to answer from "
+        f"the whole declared series, or name a member part instead - a family scope "
+        f"is offered, never chosen for you."
+    )
+
+
 def _ask_unknown(known: list[ScopeRef]) -> str:
     """The no-match question. Never a guess, and never a widening."""
     if not known:
@@ -131,18 +176,40 @@ def _ask_unknown(known: list[ScopeRef]) -> str:
     return f"Which part is this question about? Known: {', '.join(listed)}{more}."
 
 
-def resolve(question: str, *, parts: list[str], projects: list[str]) -> ScopeResolution:
-    """Resolve `question` against the known part and project names.
+def resolve(
+    question: str,
+    *,
+    parts: list[str],
+    projects: list[str],
+    families: list[str] | None = None,
+) -> ScopeResolution:
+    """Resolve `question` against the known part, project and family names.
 
-    `parts` and `projects` are passed in: this function makes no filesystem
-    access and no model call, which is what makes it trivially testable and
-    what keeps scope resolution off every derivation path.
+    `parts`, `projects` and `families` are passed in: this function makes no
+    filesystem access and no model call, which is what makes it trivially
+    testable and what keeps scope resolution off every derivation path.
+    `families` are the names declared in `registry/families.yaml` and already
+    confirmed; passing an undeclared one would be the caller inventing a
+    grouping, which is the one thing this noun forbids.
     """
     known = _known(parts, projects)
+    declared = _declared_families(families)
     normalized = _normalize(question)
 
-    # 1. Exact whole-token match. Exactly one -> confident; several -> ask.
+    # 1. Exact whole-token match. Exactly one part or project -> confident;
+    #    several -> ask. A declared family named exactly is *added to the
+    #    choices* and never taken as the answer, however alone it stands:
+    #    see the module header. `AFE795x` typed in full is still an offer.
     exact = [ref for ref in known if _appears(ref.name, normalized)]
+    exact_families = [ref for ref in declared if _appears(ref.name, normalized)]
+    if exact_families:
+        candidates = exact + exact_families
+        lone = not exact and len(exact_families) == 1
+        return ScopeResolution(
+            candidates=candidates,
+            question=_ask_family(exact_families[0].name) if lone else _ask_which(candidates),
+            matched_via="family-declared" if lone else "exact-ambiguous",
+        )
     if len(exact) == 1:
         return ScopeResolution(scope=exact[0], confident=True, matched_via="exact")
     if exact:
@@ -178,5 +245,7 @@ def resolve(question: str, *, parts: list[str], projects: list[str]) -> ScopeRes
         )
 
     # 3. Nothing matched. Ask — do not widen, and do not fall back on the only
-    #    part that happens to exist (ADR 0006).
-    return ScopeResolution(question=_ask_unknown(known), matched_via="none")
+    #    part that happens to exist (ADR 0006). Declared families are recited
+    #    with the rest: they are offerable scopes, and a reader who is told
+    #    what exists can name one.
+    return ScopeResolution(question=_ask_unknown(known + declared), matched_via="none")

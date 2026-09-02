@@ -32,6 +32,7 @@ import type {
   CategoryCreateIn,
   CategoryOut,
   CategoryRenameIn,
+  FamiliesOut,
   PartCategoryIn,
   PartCategoryOut,
   BrowseListOut,
@@ -115,6 +116,19 @@ export function getParts(): Promise<PartsOut> {
 /** `GET /api/projects`. */
 export function getProjects(): Promise<ProjectsOut> {
   return request<ProjectsOut>('/projects');
+}
+
+/**
+ * `GET /api/families` — the families a human has declared, and only those.
+ *
+ * The only source a picker may offer a family scope from. The endpoint reads
+ * `registry/families.yaml` through the registry's own `resolve`, so a
+ * proposal or an unconfirmed entry never reaches this list; nothing in the
+ * frontend may add to it, because a family this list does not hold is one
+ * nobody declared.
+ */
+export function getFamilies(): Promise<FamiliesOut> {
+  return request<FamiliesOut>('/families');
 }
 
 /** `POST /api/projects` — a new, empty working set. 409 if the name is taken. */
