@@ -44,7 +44,14 @@ AGENT_FILENAME = "AGENT.md"
 #: must not keep serving. Embedded in every emitted file as `PROTOCOL_MARKER`,
 #: which `agent_doc_current()` reads — invalidation by embedded version field,
 #: as invariant 6 requires.
-PROTOCOL_VERSION = "1"
+# "2": phase 7's verbs join the protocol (`VERBS`, `NETWORK_RULE`) and the MCP
+# tool list grows by three. An `AGENT.md` written at v1 is not *wrong* — every
+# rule in it still holds — but it tells an agent the corpus can only be read,
+# so a corpus published under it must republish once rather than skip forever.
+# The two tracked reference corpora were regenerated in the same commit (ADR
+# 0008: a tracked corpus is current), which is a rewrite of `AGENT.md` and its
+# recorded token count, not a rebuild: no extraction ran and no schema moved.
+PROTOCOL_VERSION = "2"
 PROTOCOL_MARKER = f"<!-- dsa-agent-protocol: v{PROTOCOL_VERSION} -->"
 
 #: Ceiling on an emitted `AGENT.md`. Small on purpose: this file is loaded
@@ -54,7 +61,15 @@ PROTOCOL_MARKER = f"<!-- dsa-agent-protocol: v{PROTOCOL_VERSION} -->"
 #: 1596 for the worst case the renderers allow (a long project name and twelve
 #: long part numbers). The ceiling leaves that case room rather than sitting on
 #: it — this is a bound on a fixed text, not a budget something degrades under.
-AGENT_DOC_TOKEN_BUDGET = 1700
+#:
+#: Re-measured when phase 7's verbs joined the protocol (v2): **1799** for a
+#: part, 1887 for a three-part project, **2045** for the worst case, 1987 for
+#: the skill. The ceiling moves with them rather than the text being cut to
+#: fit a number chosen before the text existed — and it is still well under
+#: the 3000 an `INDEX.md` may spend, which is the comparison that matters.
+#: The margin above the worst case is 155 tokens; the old 1700 sat 4 tokens
+#: above its own worst case, which was a ceiling in name only.
+AGENT_DOC_TOKEN_BUDGET = 2200
 
 #: Member parts named in a project's `AGENT.md` header before it defers to
 #: `PROJECT_INDEX.md` — a 40-part design must not push a fixed text over its
@@ -148,6 +163,47 @@ CONFIDENCE_ROWS: tuple[str, ...] = (
     ),
 )
 
+#: **The verbs beyond one answer.** Canonical, like `RULES`: a protocol that
+#: named `dsa audit` in the skill and not in a part's `AGENT.md` would be two
+#: protocols again. Each entry is one line; the block that renders them adds
+#: the network warning.
+VERBS: tuple[str, ...] = (
+    (
+        "`dsa fetch --part <PART>` — onboard a part from the checked-in "
+        "document registry. **Network.** A part the registry does not know is "
+        "an error naming `--url`, never a guessed address."
+    ),
+    (
+        "`dsa check-revisions --part <PART>` — ask upstream whether this "
+        "corpus is still current. **Network.** The only thing that writes a "
+        "revision state; a build never does, which is what keeps builds "
+        "offline."
+    ),
+    (
+        "`dsa diff-rev --part <PART> --from <rev> --to <rev>` — what moved "
+        "between two revisions: specs, sections, pins, registers, each cited."
+    ),
+    (
+        "`dsa audit --part <PART>` — thirteen graded readings of the corpus "
+        "and one headline sentence. Read it before trusting a corpus you did "
+        "not build; a metric it could not measure is `n/a`, never zero."
+    ),
+    (
+        "`dsa family build <NAME>` and the `--family <NAME>` scope — a "
+        "**declared** series (`registry/families.yaml`). On `ask`, a finding "
+        "every member printed identically comes back **once**, naming the "
+        "members and whose page it is cited from; anything else comes back "
+        "per member, flagged divergent."
+    ),
+)
+
+#: The one rule that goes with them, spelled out once.
+NETWORK_RULE = (
+    "**Never run a network verb to answer a question.** `fetch` and "
+    "`check-revisions` are the designer's to run. When a corpus is missing or "
+    "stale, say so and name the command; do not go and get it mid-answer."
+)
+
 #: The fallback sentence, spelled out once (rule 7's normative long form).
 FALLBACK_RULE = (
     "A `low` or `unknown` grade never means the row is wrong and never means "
@@ -156,6 +212,26 @@ FALLBACK_RULE = (
     "page in the PDF to confirm it. The corpus is the fast path; the printed "
     "page is the authority."
 )
+
+
+def verbs_block() -> list[str]:
+    """The corpus-maintenance verbs, identical in every destination.
+
+    Separate from `rules_block()` because these are not reading rules: a rule
+    governs how an answer is composed, and these are commands that change what
+    there is to read. They are listed so an agent knows they exist and knows
+    which two it must not run.
+    """
+    return [
+        "## Beyond one answer",
+        "",
+        ("Answering is one verb. The corpus is also acquired, kept current, graded and compared:"),
+        "",
+        *[f"- {verb}" for verb in VERBS],
+        "",
+        NETWORK_RULE,
+        "",
+    ]
 
 
 def rules_block() -> list[str]:
@@ -233,8 +309,9 @@ def _mcp_block(key: str, value: str) -> list[str]:
         "",
         (
             "Tools: `list_parts`, `list_projects`, `get_index`, `search`, `find_spec`, "
-            "`read_section`, `find_plots`, `get_figure`, `ask`, and the derived "
-            "views `find_pin`, `find_register`, `get_card`, `compare_parts`. "
+            "`read_section`, `find_plots`, `get_figure`, `ask`, the derived "
+            "views `find_pin`, `find_register`, `get_card`, `compare_parts`, and "
+            "phase 7's `list_families`, `get_family_index`, `get_audit`. "
             "Resources: "
             "`dsa://part/<PART>/INDEX.md`, `dsa://project/<NAME>/PROJECT_INDEX.md`."
         ),
@@ -326,6 +403,7 @@ def build_part_agent_markdown(
         ),
     )
     body += _mcp_block("part", part_number)
+    body += verbs_block()
     return "\n".join(body)
 
 
@@ -387,6 +465,7 @@ def build_project_agent_markdown(project_name: str, part_numbers: list[str] | No
         label=f"{example} — ",
     )
     body += _mcp_block("project", project_name)
+    body += verbs_block()
     return "\n".join(body)
 
 
@@ -433,6 +512,7 @@ def build_skill_markdown() -> str:
         ),
     )
     body += _mcp_block("part", "<PART>")
+    body += verbs_block()
     body += [
         "## What not to do",
         "",

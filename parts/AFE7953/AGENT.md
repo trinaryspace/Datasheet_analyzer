@@ -1,6 +1,6 @@
 # AFE7953 — agent protocol
 
-<!-- dsa-agent-protocol: v1 -->
+<!-- dsa-agent-protocol: v2 -->
 
 This is a **retrieval corpus**, not a document. `INDEX.md` beside this file is the map; this file is the protocol. Both are small enough to load every time — do that instead of exploring `docs/`.
 
@@ -63,7 +63,7 @@ Report the value **with its unit** and the `§<n>, p.<page>` exactly as printed.
 
 ## Access path 2 — MCP tools (`dsa serve --mcp`)
 
-Tools: `list_parts`, `list_projects`, `get_index`, `search`, `find_spec`, `read_section`, `find_plots`, `get_figure`, `ask`, and the derived views `find_pin`, `find_register`, `get_card`, `compare_parts`. Resources: `dsa://part/<PART>/INDEX.md`, `dsa://project/<NAME>/PROJECT_INDEX.md`.
+Tools: `list_parts`, `list_projects`, `get_index`, `search`, `find_spec`, `read_section`, `find_plots`, `get_figure`, `ask`, the derived views `find_pin`, `find_register`, `get_card`, `compare_parts`, and phase 7's `list_families`, `get_family_index`, `get_audit`. Resources: `dsa://part/<PART>/INDEX.md`, `dsa://project/<NAME>/PROJECT_INDEX.md`.
 
 Worked example — the same question, then the figure behind it (call, then the shape that comes back):
 
@@ -77,3 +77,15 @@ get_figure {"part": "<PART>", "file": "figures/<name>.png"}
 ```
 
 `find_spec` names the ladder rung in `matched_via` and returns `suggestions` rather than a guess; `read_section`, `get_index` and `get_figure` are part-scoped, and `get_figure` only returns a file the plot catalog claims. Every response carries `citations`, a `confidence` per hit, and `notice` + `truncated` when the `DSA_MCP_MAX_TOKENS` cap bit — `over_cap` means even the citation floor did not fit, so raise the cap instead of reading it as a short answer.
+
+## Beyond one answer
+
+Answering is one verb. The corpus is also acquired, kept current, graded and compared:
+
+- `dsa fetch --part <PART>` — onboard a part from the checked-in document registry. **Network.** A part the registry does not know is an error naming `--url`, never a guessed address.
+- `dsa check-revisions --part <PART>` — ask upstream whether this corpus is still current. **Network.** The only thing that writes a revision state; a build never does, which is what keeps builds offline.
+- `dsa diff-rev --part <PART> --from <rev> --to <rev>` — what moved between two revisions: specs, sections, pins, registers, each cited.
+- `dsa audit --part <PART>` — thirteen graded readings of the corpus and one headline sentence. Read it before trusting a corpus you did not build; a metric it could not measure is `n/a`, never zero.
+- `dsa family build <NAME>` and the `--family <NAME>` scope — a **declared** series (`registry/families.yaml`). On `ask`, a finding every member printed identically comes back **once**, naming the members and whose page it is cited from; anything else comes back per member, flagged divergent.
+
+**Never run a network verb to answer a question.** `fetch` and `check-revisions` are the designer's to run. When a corpus is missing or stale, say so and name the command; do not go and get it mid-answer.

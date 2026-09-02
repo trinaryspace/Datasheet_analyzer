@@ -41,10 +41,12 @@ from datasheet_analyzer.protocol import (
     AGENT_FILENAME,
     CONFIDENCE_ROWS,
     FALLBACK_RULE,
+    NETWORK_RULE,
     PROTOCOL_MARKER,
     RULES,
     SKILL_NAME,
     SKILL_RELPATH,
+    VERBS,
     agent_doc_current,
     build_part_agent_markdown,
     build_project_agent_markdown,
@@ -190,6 +192,20 @@ class TestBothAccessPathsAreDocumented:
             assert "find_spec" in text and "read_section" in text
             assert "DSA_MCP_MAX_TOKENS" in text, "the cap is part of the protocol"
 
+    def test_the_new_verbs_are_named_in_all_three(self, part_doc, project_doc, skill_doc):
+        """Phase 7's commands reach every destination, or none of them.
+
+        The failure this guards is the one the module exists to prevent: a
+        skill that knows about `dsa audit` beside a shipped `AGENT.md` that
+        does not is two protocols, and the corpus is the one an agent trusts.
+        """
+        for name, text in (("part", part_doc), ("project", project_doc), ("skill", skill_doc)):
+            for verb in ("dsa fetch", "dsa check-revisions", "dsa diff-rev", "dsa audit"):
+                assert verb in text, f"{name} lost {verb}"
+            assert "--family <NAME>" in text, name
+            assert NETWORK_RULE in text, f"{name} lost the network rule"
+            assert "get_audit" in text and "get_family_index" in text, name
+
     def test_the_part_document_points_at_its_own_map_and_files(self, part_doc):
         assert "`INDEX.md`" in part_doc
         assert "`docs/datasheet-c1b4663b/`" in part_doc
@@ -237,8 +253,8 @@ class TestTheSkillIsDiscoverableAndDoesNotDrift:
     def test_every_shared_rule_appears_verbatim_in_all_three(
         self, part_doc, project_doc, skill_doc
     ):
-        shared = [*RULES, *CONFIDENCE_ROWS, FALLBACK_RULE]
-        assert len(shared) == len(RULES) + len(CONFIDENCE_ROWS) + 1
+        shared = [*RULES, *CONFIDENCE_ROWS, FALLBACK_RULE, *VERBS, NETWORK_RULE]
+        assert len(shared) == len(RULES) + len(CONFIDENCE_ROWS) + len(VERBS) + 2
         for line in shared:
             for name, text in (("part", part_doc), ("project", project_doc), ("skill", skill_doc)):
                 assert line in text, f"{name} AGENT.md/skill lost: {line[:60]}…"
