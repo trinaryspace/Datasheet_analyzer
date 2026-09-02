@@ -312,6 +312,21 @@ be **exercised** here:
   generated question was committed to `tests/fixtures/`.
 - Rebuilding AFE7953 (needs the TI document viewer) — unchanged from phase 5.
 
+## The gate, measured
+
+`.venv/Scripts/python.exe -m pytest tests/ -q` offline, twice, on the final
+tree: **2806 tests, 2772 passed, 0 failed, 0 errors, 34 skipped**, 449 s and
+452 s. The branch's pre-batch baseline was 2673 passed / 0 failed / 34 skipped,
+so batch C adds 131 tests (49 in `tests/unit/test_audit.py`, 80 in
+`tests/unit/test_golden_assist.py`, 2 parametrizations in
+`tests/unit/test_cli_json.py`) and skips nothing new. `ruff check .` and
+`ruff format --check .` clean over 340 files. `git status --short
+tests/fixtures/` empty after every run.
+
+No `PdfLayoutBackend.output_version`, `STRUCTURE_STAGE_VERSION` or existing
+schema version moved, and no corpus was rebuilt: every grade above was read off
+the corpora as they stand at pipeline 0.5.0.
+
 ## Deliberately not ported
 
 - **MCP `get_audit`.** The source lineage shipped the scorecard as a
