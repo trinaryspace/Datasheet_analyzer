@@ -57,7 +57,7 @@ from dataclasses import dataclass
 
 from datasheet_analyzer.config import REVDIFF_SCHEMA_VERSION, get_settings
 from datasheet_analyzer.derive.cards import cell_value
-from datasheet_analyzer.derive.compare import si_delta
+from datasheet_analyzer.derive.compare import range_not_a_scalar, si_delta
 from datasheet_analyzer.derive.provenance import (
     PINS_ARTIFACT,
     REGISTERS_ARTIFACT,
@@ -1094,9 +1094,12 @@ def _delta(
     documented pure function for subtracting two printed cells, rather than a
     second implementation here: `dsa compare` and `dsa diff-rev` ask the same
     question of the same two envelopes, and two rules for "what is a delta"
-    is exactly the divergence a reader could never see. One consequence worth
-    naming: a `max` cell that printed a **range** asserts its top on this
-    branch, so it scores rather than dropping to review by hand.
+    is exactly the divergence a reader could never see. Two consequences worth
+    naming, both inherited: a `min` or `max` cell that printed a **range**
+    asserts the end its name states, so it scores rather than dropping to
+    review by hand; a range in a `typ` or a lone `value` cell asserts both of
+    its ends, and unless both ends moved by the same amount there is no single
+    number to score, so it drops to review by hand with that stated.
     """
     if before is None or after is None:
         return None, (
@@ -1113,6 +1116,12 @@ def _delta(
         return None, (
             f"no delta: the numeric layer read no comparable number from "
             f"{', '.join(unreadable)} — both are quoted above, verbatim"
+        )
+    if computed is None and range_not_a_scalar(before, after, role):
+        return None, (
+            f"no delta: the {role!r} column names neither end of a range, so a range printed "
+            f"in it asserts both, and these two ends did not move by the same amount — the "
+            f"span is quoted above on each side rather than collapsed to one number"
         )
     if computed is None:
         return None, (

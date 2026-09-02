@@ -169,6 +169,7 @@ __all__ = [
     "compare_cards",
     "compare_parts",
     "compare_specs",
+    "range_not_a_scalar",
     "render_comparison",
     "resolve_symbol_query",
     "si_delta",
@@ -735,8 +736,16 @@ def si_delta(a: DerivedValue, b: DerivedValue, cell: str) -> tuple[float, str] |
     return low, a.unit_si
 
 
-def _range_refusal(a: DerivedValue, b: DerivedValue, cell: str) -> bool:
-    """True when the pair parsed and matched units but is not a scalar pair."""
+def range_not_a_scalar(a: DerivedValue, b: DerivedValue, cell: str) -> bool:
+    """Did `si_delta` decline this pair *because* one of them printed a range?
+
+    `si_delta` returns `None` for three different reasons and a caller that
+    reports the wrong one is lying about the refusal, not just about the
+    number. This distinguishes the range case — both sides parsed, both are in
+    the same unit, and at least one printed a span in a column that names
+    neither of its ends — from an unparsed side or a unit mismatch. `dsa
+    compare` and `dsa diff-rev` both ask it before writing their sentence.
+    """
     if a.value_si is None or b.value_si is None or a.unit_si != b.unit_si:
         return False
     return _scalar(a, cell) is None or _scalar(b, cell) is None
@@ -777,7 +786,7 @@ def _delta(
             f"do not differ by a single number: the {cell!r} column names neither end of a "
             f"range, so a range printed in it asserts both, and these two ends do not move "
             f"together"
-            if _range_refusal(a, b, cell)
+            if range_not_a_scalar(a, b, cell)
             else "did not both parse to a number in the same unit"
         )
         return None, (

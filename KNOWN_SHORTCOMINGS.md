@@ -940,52 +940,55 @@ reason ticket 08's third checklist item does not fully pass.
 
 ---
 
-## `si_delta` reads a range as its low end, and prints `0` for a real difference
+## Cards: a `limits` margin compares the two tops and says nothing about the two bottoms
 
-**Found by ticket 08's family probe, 2026-09-02.** `derive/compare.py::_scalar`
-takes a `DerivedValue`'s range top **only when the column is named `max`**:
+**Re-measured 2026-09-02, narrowed from an entry that is now closed.** The
+entry that stood here — "`si_delta` reads a range as its low end, and prints
+`0` for a real difference" — is **fixed**, not parked. `dsa compare
+QPA1003P QPA2213` published `0 degC` for Storage Temperature (`-55 to 150 degC`
+against `-55 to +125 degC`) *and* flagged the row `identical`; the second of
+those was not recorded here and was the worse claim. `derive/compare.py`
+now subtracts a range only where the difference is the same at both ends, and
+refuses with a sentence otherwise. Blast radius before and after, all 300 pairs
+of the 25-part fleet: 67,920 aligned rows, 589 published deltas, 335 (row,
+column) cells carrying a `value_si_hi`, **one** delta computed from a collapsed
+range — this one, and it was wrong. After: 588 deltas, zero from a collapsed
+range. `dsa compare` publishes one fewer number fleet-wide, which is the
+better number. `dsa diff-rev` shares the same function and inherits it.
 
-```python
-if cell == "max" and value.value_si_hi is not None:
-    return value.value_si_hi
-return value.value_si
-```
+**What survives is narrower and is a different rule.** `derive/cards.py`'s
+`compute_margin` — the `limits` card's `abs_max_margin` — subtracts
+`Quantity.high` from `Quantity.high`: the *top* of the absolute-maximum side
+minus the *top* of the recommended side. That is the right reading of "how
+much headroom is there before the absolute maximum", and it is what the
+column's name says it computes. But when **both** sides print a span in one
+unnamed column, the cold end has a margin too and the card does not carry it:
+an absolute-maximum `-55 to 150 degC` against a recommended `-40 to 85 degC`
+prints `65 degC` and never mentions that the low-end headroom is `15 degC`.
+That is incomplete, not wrong, and it is why this is an entry rather than a
+second fix.
 
-Qorvo prints absolute-maximum ratings in a **single unnamed value column**, so
-a range lands in a cell called `value` and both sides collapse to their low end:
+**Measured, 2026-09-02.** Across all 25 parts, the `limits` cards publish
+**9** margin rows in total, and **0** of them have a range on either side.
+The residue is currently inert; it is recorded because the population that
+would exercise it — a vendor printing both its absolute-maximum and its
+recommended tables one column wide, with spans in both — is exactly the shape
+Qorvo prints, and the fleet gains Qorvo parts.
 
-```
-QPA1003P  Storage Temperature   -55 to 150 degC    value_si -55.0  value_si_hi 150.0
-QPA2213   Storage Temperature   -55 to +125 degC   value_si -55.0  value_si_hi 125.0
-delta                            0 degC            value_kind: point
-```
+**What would close it.** A second derived cell (`margin_low`) beside `margin`
+on the rows where both sides parsed as ranges, named in the column header so
+it cannot be read as the same quantity, plus the `DSA_CARD_VERSION` bump ADR
+0007 requires for a derivation-rule change and a rebuild of the 9 rows. It was
+not done in the same commit as the `si_delta` fix because it changes a card
+that is on disk and this one does not: `si_delta` is computed at compare time
+and written to no artifact.
 
-The two parts differ by **25 degC** at the top of the range and the published
-delta reads `0 degC` - the exact failure mode this repository's refusal
-discipline exists to prevent, and worse than a refusal, because `0` is an
-answer a designer will act on.
-
-**It is tested-in behaviour, not an oversight.**
-`tests/unit/test_compare.py::TestSiDelta::test_max_column_uses_the_top_of_a_range`
-asserts that any column other than `max` subtracts the number itself and not
-the range top, with exactly this pair of ranges as its fixture. That rule is
-defensible for a `typ` column sitting beside a `min` and a `max` - the range
-top belongs to the `max` cell and reading it into `typ` would double-count it.
-It is not defensible for a lone `value` column, which is the only cell the row
-has.
-
-**Recorded rather than fixed, deliberately.** The correct behaviour is arguable
-- refuse the pair with a stated reason, or publish a range delta carrying both
-endpoints - and it is a change to the numeric layer's contract plus a
-checked-in test that states the opposite intent. That is a maintainer's
-decision, not something to flip at the close of a phase. Blast radius, measured
-across every `dsa compare` run this ticket made (436 delta cells over eleven
-part pairs): **one row**. It is rare because it needs a single-column table
-*and* a range in it *and* a counterpart aligned to it. It is not rare enough to
-leave unwritten.
-
-**What would close it.** In `_scalar`, treat "this value carries a
-`value_si_hi` and the column is not `max`" as a refusal reason rather than a
-silent truncation; rewrite `test_max_column_uses_the_top_of_a_range` to assert
-the refusal for a lone `value` column while keeping the `min` / `max`
-behaviour; re-read the eleven pairs.
+**Two related collapses were checked and are not defects.**
+`structure/quantities.annotate_record` reads a range in a `typ` cell as its
+low end for `typ_si` (96 such cells fleet-wide, almost all of them misparses
+of things like `10-18` for 10^-18 and `0.5*P - 3`); nothing in the tree
+computes with `typ_si`, so it is published beside the verbatim print and read
+by a human. The family index (`families/build.py`) goes through
+`compare_specs` and inherits the fix; the reference family `AFE795x` carries
+384 delta rows, **0** delta cells and **0** range-carrying cells, so its
+`family.json` is unchanged by this fix and was not rebuilt.

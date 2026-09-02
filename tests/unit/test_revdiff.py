@@ -242,6 +242,34 @@ class TestSpecAlignment:
         assert FLAG_REVIEW in unscored[0].flags
         assert diff.n_deltas == 1
 
+    def test_a_range_in_an_unnamed_column_drops_to_review_rather_than_scoring(self):
+        """Two spans in a lone `value` cell are not one number apart.
+
+        The revision moves the top of the rating from 150 °C to 125 °C and
+        leaves the bottom at -55 °C. Reading either side's low end scores this
+        `0 °C`, which is the `dsa compare` defect on this branch; it drops to
+        review by hand with both spans quoted instead.
+        """
+        before = _side("A", specs=(_spec(0, symbol="Tstg", value="-55 to 150"),))
+        after = _side("B", HASH_B, specs=(_spec(0, symbol="Tstg", value="-55 to +125"),))
+        diff = build_revision_diff(before, after)
+
+        changed = [c for c in diff.changes if c.delta is None]
+        assert len(changed) == 1
+        assert FLAG_REVIEW in changed[0].flags
+        assert "names neither end of a range" in changed[0].note
+        assert diff.n_deltas == 0
+
+    def test_a_range_that_moves_wholesale_still_scores(self):
+        """-55 to 150 becoming -35 to 170 is +20 °C at both ends."""
+        before = _side("A", specs=(_spec(0, symbol="Tstg", value="-55 to 150"),))
+        after = _side("B", HASH_B, specs=(_spec(0, symbol="Tstg", value="-35 to 170"),))
+        diff = build_revision_diff(before, after)
+
+        scored = [c for c in diff.changes if c.delta is not None]
+        assert len(scored) == 1
+        assert scored[0].delta.value_si == pytest.approx(20.0)
+
     def test_unscored_change_is_quoted_verbatim_under_review_by_hand(self):
         before = _side("A", specs=(_spec(0, symbol="OutputNoise", typ="See Figure 7"),))
         after = _side("B", HASH_B, specs=(_spec(0, symbol="OutputNoise", typ="See Figure 9"),))
